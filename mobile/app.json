@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Telehealth",
+    "slug": "telehealth-patient",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.telehealth.patient"
+    },
+    "android": {
+      "package": "com.telehealth.patient"
+    },
+    "plugins": [
+      "expo-notifications",
+      "expo-secure-store"
+    ]
+  }
+}

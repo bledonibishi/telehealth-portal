@@ -1,0 +1,35 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { join } from 'path';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
+import { CliniciansModule } from './clinicians/clinicians.module';
+import { PatientsModule } from './patients/patients.module';
+import { ConsultationsModule } from './consultations/consultations.module';
+import { PrescriptionsModule } from './prescriptions/prescriptions.module';
+import { MessagingModule } from './messaging/messaging.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    GraphQLModule.forRoot<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      sortSchema: true,
+      subscriptions: { 'graphql-ws': true },
+      context: ({ req }) => ({ req }),
+    }),
+    PrismaModule,
+    AuditModule,
+    AuthModule,
+    CliniciansModule,
+    PatientsModule,
+    ConsultationsModule,
+    PrescriptionsModule,
+    MessagingModule,
+  ],
+})
+export class AppModule {}

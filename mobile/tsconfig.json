@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-native",
+    "strict": true,
+    "paths": {
+      "@telehealth/shared-types": ["../packages/shared-types/src"]
+    }
+  },
+  "include": ["src", "App.tsx"]
+}
