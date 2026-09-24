@@ -74,14 +74,23 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           })}
         </nav>
 
-        <div className="px-4 py-4 border-t border-gray-200">
-          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-gray-700">
-            Sign out
-          </button>
-        </div>
+
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="h-12 bg-white border-b border-gray-200 flex items-center justify-end px-6 shrink-0">
+          <button
+            onClick={handleLogout}
+            className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M18 12H9m0 0l3-3m-3 3l3 3" />
+            </svg>
+            Sign out
+          </button>
+        </header>
+        <main className="flex-1 overflow-hidden">{children}</main>
+      </div>
     </div>
   );
 }

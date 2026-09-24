@@ -23,10 +23,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('MFA verification required');
     }
 
-    if (payload.role === UserRole.CLINICIAN) {
+    const clinicianRoles = ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'];
+
+    if (clinicianRoles.includes(payload.role)) {
       const clinician = await this.prisma.clinician.findUnique({ where: { id: payload.sub } });
       if (!clinician) throw new UnauthorizedException();
-      return { id: clinician.id, email: clinician.email, role: UserRole.CLINICIAN };
+      return { id: clinician.id, email: clinician.email, role: clinician.role };
     }
 
     if (payload.role === UserRole.PATIENT) {

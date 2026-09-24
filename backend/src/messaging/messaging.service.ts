@@ -45,6 +45,6 @@ export class MessagingService {
   }
 
   subscribeToNewMessages(consultationId: string) {
-    return pubSub.asyncIterableIterator(`NEW_MESSAGE.${consultationId}`);
+    return pubSub.asyncIterator(`NEW_MESSAGE.${consultationId}`);
   }
 }
