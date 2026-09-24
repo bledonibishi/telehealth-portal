@@ -1,10 +1,12 @@
 'use client';
 
 import { useQuery } from '@apollo/client';
+import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
 import { RedFlagBanner } from './RedFlagBanner';
 import { DecisionPanel } from './DecisionPanel';
 import { MessageThread } from './MessageThread';
+import { PatientHistory } from './PatientHistory';
 import { getToken } from '@/lib/auth';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -30,6 +32,12 @@ export function ConsultationDetail({ id }: { id: string }) {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div>
+        <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
+          ← Back to queue
+        </Link>
+      </div>
+
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">
@@ -92,6 +100,11 @@ export function ConsultationDetail({ id }: { id: string }) {
               </dl>
             </div>
           )}
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
+            <PatientHistory patientId={c.patient.id} excludeId={c.id} />
+          </div>
         </aside>
       </div>
     </div>
