@@ -36,7 +36,7 @@ export class AuthService {
       return { mfaRequired: true, pendingToken, accessToken: null, clinician: null };
     }
 
-    const accessToken = this.jwtService.sign({ sub: clinician.id, role: UserRole.CLINICIAN });
+    const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
@@ -64,7 +64,7 @@ export class AuthService {
       resourceId: clinician.id,
     });
 
-    const accessToken = this.jwtService.sign({ sub: clinician.id, role: UserRole.CLINICIAN });
+    const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
