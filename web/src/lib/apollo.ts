@@ -12,8 +12,7 @@ const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
 const httpLink = createHttpLink({ uri: GRAPHQL_URL });
 
 const authLink = setContext((_, { headers }) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  // TODO: move to HttpOnly cookies before production
+  const token = typeof window !== 'undefined' ? localStorage.getItem('patient_token') : null;
   return { headers: { ...headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } };
 });
 
@@ -23,7 +22,7 @@ const wsLink =
         createClient({
           url: WS_URL,
           connectionParams: () => {
-            const token = localStorage.getItem('access_token');
+            const token = localStorage.getItem('patient_token');
             return token ? { authorization: `Bearer ${token}` } : {};
           },
         }),
