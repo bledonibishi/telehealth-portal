@@ -17,6 +17,13 @@ export enum UserRole {
   ADMIN = 'ADMIN',
 }
 
+export enum ClinicianRole {
+  ADMIN = 'ADMIN',
+  DOCTOR = 'DOCTOR',
+  CX_TEAM = 'CX_TEAM',
+  PROVIDER = 'PROVIDER',
+}
+
 export enum RedFlagSeverity {
   CRITICAL = 'CRITICAL',
   WARNING = 'WARNING',

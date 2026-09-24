@@ -5,6 +5,18 @@ import { PatientModel } from '../../patients/models/patient.model';
 import { PrescriptionModel } from '../../prescriptions/models/prescription.model';
 import { MessageModel } from '../../messaging/models/message.model';
 
+@ObjectType('QuizAnswer')
+export class QuizAnswerType {
+  @Field()
+  questionId: string;
+
+  @Field()
+  question: string;
+
+  @Field()
+  answer: string;
+}
+
 @ObjectType('RedFlag')
 export class RedFlagModel {
   @Field(() => ID)
@@ -42,6 +54,9 @@ export class ConsultationModel {
 
   @Field(() => PrescriptionModel, { nullable: true })
   prescription?: PrescriptionModel;
+
+  @Field(() => [QuizAnswerType])
+  quizAnswers: QuizAnswerType[];
 
   @Field(() => [MessageModel])
   messages: MessageModel[];
