@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ClinicianRole } from '../../common/enums';
 
 @ObjectType('Clinician')
 export class ClinicianModel {
@@ -14,8 +15,11 @@ export class ClinicianModel {
   @Field()
   lastName: string;
 
-  @Field()
-  gmcNumber: string;
+  @Field({ nullable: true })
+  gmcNumber?: string;
+
+  @Field(() => ClinicianRole)
+  role: ClinicianRole;
 
   @Field()
   isVerified: boolean;

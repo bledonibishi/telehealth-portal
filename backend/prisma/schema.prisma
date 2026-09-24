@@ -31,34 +31,64 @@ enum RedFlagSeverity {
   WARNING
 }
 
+enum ClinicianRole {
+  ADMIN
+  DOCTOR
+  CX_TEAM
+  PROVIDER
+}
+
 model Clinician {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  firstName    String   @map("first_name")
-  lastName     String   @map("last_name")
-  gmcNumber    String   @unique @map("gmc_number")
-  isVerified   Boolean  @default(false) @map("is_verified")
-  mfaSecret    String?  @map("mfa_secret")
-  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  firstName    String        @map("first_name")
+  lastName     String        @map("last_name")
+  gmcNumber    String?       @unique @map("gmc_number")
+  role         ClinicianRole @default(DOCTOR)
+  isVerified   Boolean       @default(false) @map("is_verified")
+  mfaSecret    String?       @map("mfa_secret")
+  mfaEnabled   Boolean       @default(false) @map("mfa_enabled")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   consultations Consultation[]
 
   @@map("clinicians")
 }
 
-model Patient {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  firstName    String   @map("first_name")
-  lastName     String   @map("last_name")
-  dateOfBirth  DateTime @map("date_of_birth")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+model Lead {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  firstName       String           @map("first_name")
+  lastName        String           @map("last_name")
+  productKind     ConsultationKind @map("product_kind")
+  quizAnswers     Json             @map("quiz_answers")
+  stripeSessionId String?          @map("stripe_session_id")
+  convertedAt     DateTime?        @map("converted_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
+  patient Patient?
+
+  @@map("leads")
+}
+
+model Patient {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  passwordHash            String    @map("password_hash")
+  firstName               String    @map("first_name")
+  lastName                String    @map("last_name")
+  dateOfBirth             DateTime  @map("date_of_birth")
+  leadId                  String?   @unique @map("lead_id")
+  activationToken         String?   @unique @map("activation_token")
+  activationTokenExpiresAt DateTime? @map("activation_token_expires_at")
+  activatedAt             DateTime? @map("activated_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  lead          Lead?          @relation(fields: [leadId], references: [id])
   consultations Consultation[]
 
   @@map("patients")

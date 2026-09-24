@@ -17,6 +17,12 @@ export class PatientModel {
   @Field()
   dateOfBirth: Date;
 
+  @Field({ nullable: true })
+  leadId?: string;
+
+  @Field({ nullable: true })
+  activatedAt?: Date;
+
   @Field()
   createdAt: Date;
 }

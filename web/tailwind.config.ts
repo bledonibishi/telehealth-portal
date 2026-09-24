@@ -5,9 +5,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        brand: { 50: '#f0f9ff', 500: '#0ea5e9', 900: '#0c4a6e' },
-        danger: { 50: '#fff1f2', 500: '#f43f5e', 900: '#881337' },
-        warn: { 50: '#fffbeb', 500: '#f59e0b', 900: '#78350f' },
+        brand: { 50: '#f0fdf9', 100: '#ccfbef', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 900: '#134e4a' },
+        danger: { 50: '#fff1f2', 100: '#ffe4e6', 500: '#f43f5e', 900: '#881337' },
       },
     },
   },

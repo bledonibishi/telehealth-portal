@@ -17,14 +17,12 @@ export function MessageThread({ consultationId, currentUserId }: { consultationI
   useSubscription(NEW_MESSAGE_SUBSCRIPTION, {
     variables: { consultationId },
     onData({ client, data: { data: subData } }) {
-      const cache = client.cache;
-      cache.modify({
-        fields: {
-          messages(existing = []) {
-            return [...existing, subData.newMessage];
-          },
-        },
-      });
+      client.cache.updateQuery(
+        { query: GET_MESSAGES, variables: { consultationId } },
+        (existing) => ({
+          messages: [...(existing?.messages ?? []), subData.newMessage],
+        }),
+      );
     },
   });
 
