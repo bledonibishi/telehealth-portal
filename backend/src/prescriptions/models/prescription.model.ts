@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ConsultationModel } from '../../consultations/models/consultation.model';
 
 @ObjectType('Prescription')
 export class PrescriptionModel {
@@ -22,4 +23,10 @@ export class PrescriptionModel {
 
   @Field({ nullable: true })
   pharmacyRef?: string;
+
+  @Field({ nullable: true })
+  dispatchedAt?: Date;
+
+  @Field(() => ConsultationModel, { nullable: true })
+  consultation?: ConsultationModel;
 }

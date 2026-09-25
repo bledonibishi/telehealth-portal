@@ -1,0 +1,221 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input ApproveConsultationInput {
+  consultationId: ID!
+  dosage: String!
+  instructions: String!
+  medication: String!
+}
+
+type AuthResponse {
+  accessToken: String
+  clinician: Clinician
+  mfaRequired: Boolean!
+  pendingToken: String
+}
+
+type Clinician {
+  createdAt: DateTime!
+  email: String!
+  firstName: String!
+  gmcNumber: String
+  id: ID!
+  isVerified: Boolean!
+  lastName: String!
+  mfaEnabled: Boolean!
+  role: ClinicianRole!
+}
+
+enum ClinicianRole {
+  ADMIN
+  CX_TEAM
+  DOCTOR
+  PROVIDER
+}
+
+type Consultation {
+  clinician: Clinician
+  id: ID!
+  kind: ConsultationKind!
+  messages: [Message!]!
+  patient: Patient!
+  prescription: Prescription
+  quizAnswers: [QuizAnswer!]!
+  redFlags: [RedFlag!]!
+  status: ConsultationStatus!
+  submittedAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum ConsultationKind {
+  GLP1
+  HRT
+}
+
+enum ConsultationStatus {
+  APPROVED
+  DECLINED
+  IN_REVIEW
+  MORE_INFO_REQUESTED
+  SUBMITTED
+}
+
+input CreateLeadInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  productKind: ConsultationKind!
+  quizAnswers: [QuizAnswerInput!]!
+  stripeSessionId: String
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+input DeclineConsultationInput {
+  consultationId: ID!
+  reason: String!
+}
+
+type Lead {
+  convertedAt: DateTime
+  createdAt: DateTime!
+  email: String!
+  firstName: String!
+  id: ID!
+  lastName: String!
+  productKind: ConsultationKind!
+  quizAnswers: [QuizAnswer!]!
+  stripeSessionId: String
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type Message {
+  consultationId: String!
+  content: String!
+  id: ID!
+  senderId: String!
+  senderRole: UserRole!
+  sentAt: DateTime!
+}
+
+type MfaSetupResponse {
+  otpauthUrl: String!
+  secret: String!
+}
+
+type Mutation {
+  approveConsultation(input: ApproveConsultationInput!): Consultation!
+  createLead(input: CreateLeadInput!): Lead!
+  declineConsultation(input: DeclineConsultationInput!): Consultation!
+  enableMfa(totpCode: String!): Boolean!
+  loginClinician(input: LoginInput!): AuthResponse!
+  requestMoreInfo(consultationId: ID!): Consultation!
+  sendMessage(input: SendMessageInput!): Message!
+  setupMfa: MfaSetupResponse!
+  submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
+  updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
+  updatePatient(input: UpdatePatientInput!): Patient!
+  verifyMfa(pendingToken: String!, totpCode: String!): AuthResponse!
+}
+
+type Patient {
+  activatedAt: DateTime
+  consultations: [Consultation!]!
+  createdAt: DateTime!
+  dateOfBirth: DateTime!
+  email: String!
+  firstName: String!
+  id: ID!
+  lastName: String!
+  leadId: String
+}
+
+type Prescription {
+  consultationId: String!
+  dispatchedAt: DateTime
+  dosage: String!
+  id: ID!
+  instructions: String!
+  issuedAt: DateTime!
+  medication: String!
+  pharmacyRef: String
+}
+
+type Query {
+  clinicians: [Clinician!]!
+  consultation(id: ID!): Consultation!
+
+  """
+  Review queue — critical red flags pinned first, then sorted by wait time
+  """
+  consultationQueue: [Consultation!]!
+  lead(id: ID!): Lead!
+  leads: [Lead!]!
+  messages(consultationId: ID!): [Message!]!
+  patient(id: ID!): Patient
+
+  """Prior consultations for a patient, newest first"""
+  patientHistory(patientId: ID!): [Consultation!]!
+  patients: [Patient!]!
+}
+
+type QuizAnswer {
+  answer: String!
+  question: String!
+  questionId: String!
+}
+
+input QuizAnswerInput {
+  answer: String!
+  question: String!
+  questionId: String!
+}
+
+type RedFlag {
+  createdAt: DateTime!
+  description: String!
+  id: ID!
+  severity: RedFlagSeverity!
+}
+
+enum RedFlagSeverity {
+  CRITICAL
+  WARNING
+}
+
+input SendMessageInput {
+  consultationId: ID!
+  content: String!
+}
+
+input SubmitIntakeQuizInput {
+  answers: [QuizAnswerInput!]!
+  kind: ConsultationKind!
+}
+
+type Subscription {
+  newMessage(consultationId: ID!): Message!
+}
+
+input UpdatePatientInput {
+  dateOfBirth: DateTime
+  email: String
+  firstName: String
+  id: ID!
+  lastName: String
+}
+
+enum UserRole {
+  ADMIN
+  CLINICIAN
+  PATIENT
+}

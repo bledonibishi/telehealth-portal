@@ -12,6 +12,10 @@ import { ConsultationsModule } from './consultations/consultations.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
+import { StripeModule } from './stripe/stripe.module';
+import { EmailModule } from './email/email.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -32,6 +36,10 @@ import { LeadsModule } from './leads/leads.module';
     PrescriptionsModule,
     MessagingModule,
     LeadsModule,
+    StripeModule,
+    EmailModule,
+    NotificationsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

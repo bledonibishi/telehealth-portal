@@ -12,7 +12,24 @@ export class PatientsService {
   }
 
   findById(id: string) {
-    return this.prisma.patient.findUnique({ where: { id } });
+    return this.prisma.patient.findUnique({
+      where: { id },
+      include: {
+        consultations: {
+          orderBy: { submittedAt: 'desc' },
+          include: {
+            redFlags: true,
+            prescription: true,
+            messages: { orderBy: { sentAt: 'asc' } },
+            clinician: true,
+          },
+        },
+      },
+    });
+  }
+
+  update(id: string, data: { firstName?: string; lastName?: string; email?: string; dateOfBirth?: Date }) {
+    return this.prisma.patient.update({ where: { id }, data });
   }
 
   findByEmail(email: string) {
