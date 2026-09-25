@@ -31,6 +31,7 @@ const CONSULTATION_FRAGMENT = gql`
       instructions
       issuedAt
       pharmacyRef
+      dispatchedAt
     }
     quizAnswers {
       questionId

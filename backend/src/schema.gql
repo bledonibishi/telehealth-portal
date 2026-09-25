@@ -141,6 +141,7 @@ type Patient {
 
 type Prescription {
   consultationId: String!
+  dispatchedAt: DateTime
   dosage: String!
   id: ID!
   instructions: String!

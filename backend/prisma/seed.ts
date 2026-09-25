@@ -241,6 +241,8 @@ async function main() {
       dosage: '1 sachet (1.25g) daily',
       instructions: 'Apply to inner arm or thigh, rotate sites daily. Review after 3 months.',
       issuedAt: daysAgo(7),
+      pharmacyRef: 'PH-2026-00123',
+      dispatchedAt: daysAgo(6),
     },
   });
 
