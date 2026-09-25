@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import * as bcrypt from 'bcrypt';
 import { authenticator } from 'otplib';
+import { PostHogService } from '../posthog/posthog.service';
 
 @Injectable()
 export class AuthService {
@@ -12,6 +13,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private audit: AuditService,
+    private posthog: PostHogService,
   ) {}
 
   async loginClinician(email: string, password: string) {
@@ -37,6 +39,16 @@ export class AuthService {
     }
 
     const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
+    this.posthog.identify(clinician.id, {
+      email: clinician.email,
+      first_name: clinician.firstName,
+      last_name: clinician.lastName,
+      role: clinician.role,
+    });
+    this.posthog.capture(clinician.id, 'clinician_logged_in', {
+      login_method: 'password',
+      mfa_enabled: false,
+    });
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
@@ -65,6 +77,16 @@ export class AuthService {
     });
 
     const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
+    this.posthog.identify(clinician.id, {
+      email: clinician.email,
+      first_name: clinician.firstName,
+      last_name: clinician.lastName,
+      role: clinician.role,
+    });
+    this.posthog.capture(clinician.id, 'clinician_logged_in', {
+      login_method: 'password_and_mfa',
+      mfa_enabled: true,
+    });
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
@@ -87,6 +109,9 @@ export class AuthService {
     await this.prisma.clinician.update({
       where: { id: clinicianId },
       data: { mfaEnabled: true },
+    });
+    this.posthog.capture(clinicianId, 'mfa_enabled', {
+      role: UserRole.CLINICIAN,
     });
     return true;
   }

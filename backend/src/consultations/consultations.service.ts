@@ -5,6 +5,8 @@ import { ConsultationStatus, UserRole } from '../common/enums';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
 import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
+import { PostHogService } from '../posthog/posthog.service';
+import { PostHogLoggerService } from '../posthog/posthog-logger.service';
 
 const REVIEWABLE = [
   ConsultationStatus.SUBMITTED,
@@ -37,6 +39,8 @@ export class ConsultationsService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private posthog: PostHogService,
+    private posthogLogger: PostHogLoggerService,
   ) {}
 
   async findQueue() {
@@ -106,6 +110,19 @@ export class ConsultationsService {
       resourceId: consultation.id,
     });
 
+    this.posthog.capture(patientId, 'consultation_submitted', {
+      consultation_id: consultation.id,
+      consultation_kind: consultation.kind,
+      warning_count: consultation.redFlags.length,
+    });
+    this.posthogLogger.info('consultation workflow completed', {
+      operation: 'submit',
+      status: consultation.status,
+      consultation_id: consultation.id,
+      consultation_kind: consultation.kind,
+      posthogDistinctId: patientId,
+    });
+
     return consultation;
   }
 
@@ -141,6 +158,19 @@ export class ConsultationsService {
       metadata: { medication: input.medication, dosage: input.dosage },
     });
 
+    this.posthog.capture(clinicianId, 'consultation_approved', {
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      previous_status: c.status,
+    });
+    this.posthogLogger.info('consultation workflow completed', {
+      operation: 'approve',
+      status: updated.status,
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      posthogDistinctId: clinicianId,
+    });
+
     return updated;
   }
 
@@ -163,6 +193,19 @@ export class ConsultationsService {
       resourceType: 'Consultation',
       resourceId: input.consultationId,
       metadata: { reason: input.reason },
+    });
+
+    this.posthog.capture(clinicianId, 'consultation_declined', {
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      previous_status: c.status,
+    });
+    this.posthogLogger.info('consultation workflow completed', {
+      operation: 'decline',
+      status: updated.status,
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      posthogDistinctId: clinicianId,
     });
 
     return updated;
@@ -188,6 +231,19 @@ export class ConsultationsService {
       action: 'CONSULTATION_MORE_INFO_REQUESTED',
       resourceType: 'Consultation',
       resourceId: consultationId,
+    });
+
+    this.posthog.capture(clinicianId, 'consultation_more_info_requested', {
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      previous_status: c.status,
+    });
+    this.posthogLogger.info('consultation workflow completed', {
+      operation: 'request_more_info',
+      status: updated.status,
+      consultation_id: updated.id,
+      consultation_kind: updated.kind,
+      posthogDistinctId: clinicianId,
     });
 
     return updated;
