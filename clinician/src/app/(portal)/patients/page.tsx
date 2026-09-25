@@ -24,9 +24,9 @@ export default function PatientsPage() {
   const activated = patients.filter((p: any) => p.activatedAt).length;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-screen overflow-hidden">
       {/* List */}
-      <div className={`flex flex-col transition-all duration-200 ${selectedId ? 'w-[420px] min-w-[340px]' : 'flex-1'} border-r border-gray-200 overflow-hidden`}>
+      <div className={`flex flex-col transition-all duration-200 ${selectedId ? 'hidden' : 'flex-1'} border-r border-gray-200 overflow-hidden`}>
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
           <div>

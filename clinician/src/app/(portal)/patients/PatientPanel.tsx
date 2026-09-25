@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
+import { SEND_MESSAGE } from '@/graphql/messaging';
 import { hasAccess } from '@/lib/role';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -25,12 +26,16 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [reply, setReply] = useState('');
 
   const isAdmin = hasAccess(['ADMIN']);
 
   const { data, loading } = useQuery(GET_PATIENT, { variables: { id: patientId } });
   const [updatePatient, { loading: saving }] = useMutation(UPDATE_PATIENT, {
     refetchQueries: [{ query: GET_PATIENTS }],
+  });
+  const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
   });
 
   const p = data?.patient;
@@ -44,6 +49,13 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const latestConsult = p.consultations?.[0];
   const allPrescriptions = p.consultations?.flatMap((c: any) => c.prescription ? [{ ...c.prescription, kind: c.kind }] : []) ?? [];
   const allMessages = p.consultations?.flatMap((c: any) => c.messages ?? []) ?? [];
+  const latestConsultId = p.consultations?.[0]?.id;
+
+  const handleReply = async () => {
+    if (!reply.trim() || !latestConsultId) return;
+    await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
+    setReply('');
+  };
 
   const handleSave = async () => {
     await updatePatient({
@@ -240,12 +252,13 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
         {/* ── Messages ── */}
         {tab === 'messages' && (
-          <div className="p-5 flex flex-col h-full">
-            {allMessages.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-400">No messages yet.</div>
-            ) : (
-              <div className="space-y-3">
-                {allMessages.map((msg: any) => {
+          <div className="flex flex-col h-full">
+            {/* Message thread */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {allMessages.length === 0 ? (
+                <div className="py-12 text-center text-sm text-gray-400">No messages yet.</div>
+              ) : (
+                allMessages.map((msg: any) => {
                   const isPatient = msg.senderRole === 'PATIENT';
                   return (
                     <div key={msg.id} className={`flex ${isPatient ? 'justify-start' : 'justify-end'}`}>
@@ -255,7 +268,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                           : 'bg-brand-500 text-white rounded-tr-sm'
                       }`}>
                         <p className={`text-xs mb-1 font-medium ${isPatient ? 'text-gray-500' : 'text-blue-100'}`}>
-                          {isPatient ? `${p.firstName}` : 'Clinician'}
+                          {isPatient ? p.firstName : 'Clinician team'}
                         </p>
                         <p>{msg.content}</p>
                         <p className={`text-xs mt-1 ${isPatient ? 'text-gray-400' : 'text-blue-200'}`}>
@@ -264,7 +277,35 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                       </div>
                     </div>
                   );
-                })}
+                })
+              )}
+            </div>
+
+            {/* Reply input */}
+            {latestConsultId ? (
+              <div className="border-t border-gray-100 p-4 bg-white">
+                <div className="flex gap-2">
+                  <textarea
+                    rows={2}
+                    placeholder="Reply to patient…"
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
+                    className="flex-1 resize-none border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <button
+                    onClick={handleReply}
+                    disabled={!reply.trim() || sending}
+                    className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {sending ? '…' : 'Send'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">Enter to send · Shift+Enter for new line</p>
+              </div>
+            ) : (
+              <div className="border-t border-gray-100 p-4 text-center text-xs text-gray-400">
+                No active consultation to message against.
               </div>
             )}
           </div>

@@ -122,6 +122,7 @@ type Mutation {
   sendMessage(input: SendMessageInput!): Message!
   setupMfa: MfaSetupResponse!
   submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
+  updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
   updatePatient(input: UpdatePatientInput!): Patient!
   verifyMfa(pendingToken: String!, totpCode: String!): AuthResponse!
 }
@@ -149,6 +150,7 @@ type Prescription {
 }
 
 type Query {
+  clinicians: [Clinician!]!
   consultation(id: ID!): Consultation!
 
   """

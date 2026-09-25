@@ -18,6 +18,7 @@ const NAV: NavItem[] = [
   { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'] },
   { href: '/queue',   label: 'Review queue',    icon: '📋', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',  label: 'Orders',          icon: '📦', roles: ['ADMIN', 'PROVIDER'] },
+  { href: '/team',    label: 'Team & Roles',    icon: '🛡️', roles: ['ADMIN'] },
 ];
 
 const ROLE_BADGE: Record<ClinicianRole, { label: string; cls: string }> = {
@@ -89,7 +90,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             Sign out
           </button>
         </header>
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   );

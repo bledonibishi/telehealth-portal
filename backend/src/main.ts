@@ -4,7 +4,10 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Preserve raw body for Stripe webhook signature verification
+    rawBody: true,
+  });
   const config = app.get(ConfigService);
 
   const allowedOrigins = config.get<string>('ALLOWED_ORIGINS', 'http://localhost:3000').split(',');
