@@ -31,10 +31,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const pathname = usePathname();
   const [role, setRole] = useState<ClinicianRole | null>(null);
+  // Hold back the pages until the browser confirms a token, so their queries never run
+  // during server rendering or before the redirect to /login.
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
     setRole(getCurrentRole());
+    setAuthChecked(true);
   }, [router]);
 
   const handleLogout = () => { clearToken(); router.replace('/login'); };
@@ -81,7 +85,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto">{authChecked ? children : null}</main>
     </div>
   );
 }

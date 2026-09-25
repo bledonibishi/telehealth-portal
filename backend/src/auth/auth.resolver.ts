@@ -2,7 +2,7 @@ import { Resolver, Mutation, Args } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginInput } from './dto/login.input';
-import { AuthResponse, MfaSetupResponse } from './dto/auth-response.type';
+import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { GqlAuthGuard } from './guards/gql-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -21,6 +21,11 @@ export class AuthResolver {
     @Args('totpCode') totpCode: string,
   ) {
     return this.authService.verifyMfa(pendingToken, totpCode);
+  }
+
+  @Mutation(() => RefreshResponse)
+  refreshAccessToken(@Args('refreshToken') refreshToken: string) {
+    return this.authService.refreshAccessToken(refreshToken);
   }
 
   @UseGuards(GqlAuthGuard)
