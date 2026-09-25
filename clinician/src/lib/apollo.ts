@@ -21,6 +21,7 @@ const authLink = setContext((_, { headers }) => {
   return { headers: { ...headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } };
 });
 
+const REFRESH_QUERY = print(REFRESH_ACCESS_TOKEN);
 let refreshInFlight: Promise<string | null> | null = null;
 
 // Calls the API directly, not through the client, so a failed refresh cannot loop back into errorLink.
@@ -31,7 +32,7 @@ function refreshAccessToken(): Promise<string | null> {
   refreshInFlight ??= fetch(GRAPHQL_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: print(REFRESH_ACCESS_TOKEN), variables: { refreshToken } }),
+    body: JSON.stringify({ query: REFRESH_QUERY, variables: { refreshToken } }),
   })
     .then((res) => res.json())
     .then(({ data }) => {
@@ -52,8 +53,6 @@ function endSession() {
   if (window.location.pathname !== '/login') window.location.replace('/login');
 }
 
-const REFRESHABLE_REASONS = ['TOKEN_EXPIRED', 'TOKEN_MISSING'];
-
 const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
   const reason = graphQLErrors
     ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
@@ -61,7 +60,7 @@ const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
   // Errors without a reason (for example a wrong password) are not session failures.
   if (!reason || typeof window === 'undefined') return;
 
-  if (!REFRESHABLE_REASONS.includes(reason) || operation.getContext().retriedAfterRefresh) {
+  if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {
     endSession();
     return;
   }

@@ -24,6 +24,10 @@ export function authFailure(reason: AuthFailureReason) {
   return new UnauthorizedException({ statusCode: 401, message: MESSAGES[reason], reason });
 }
 
+export function reasonFromJwtError(err: any): AuthFailureReason {
+  return err?.name === 'TokenExpiredError' ? AuthFailureReason.TOKEN_EXPIRED : AuthFailureReason.TOKEN_INVALID;
+}
+
 export function authFailureReason(exception: UnauthorizedException): string {
   const response = exception.getResponse();
   return (typeof response === 'object' && (response as { reason?: string }).reason) || 'UNKNOWN';

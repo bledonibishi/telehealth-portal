@@ -1,7 +1,7 @@
 import { Injectable, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { GqlExecutionContext } from '@nestjs/graphql';
-import { AuthFailureReason, authFailure, authFailureReason } from '../auth-failure';
+import { AuthFailureReason, authFailure, authFailureReason, reasonFromJwtError } from '../auth-failure';
 
 @Injectable()
 export class GqlAuthGuard extends AuthGuard('jwt') {
@@ -26,7 +26,6 @@ export class GqlAuthGuard extends AuthGuard('jwt') {
 }
 
 function reasonFromPassportInfo(info: any): AuthFailureReason {
-  if (info?.name === 'TokenExpiredError') return AuthFailureReason.TOKEN_EXPIRED;
   if (info?.message === 'No auth token') return AuthFailureReason.TOKEN_MISSING;
-  return AuthFailureReason.TOKEN_INVALID;
+  return reasonFromJwtError(info);
 }

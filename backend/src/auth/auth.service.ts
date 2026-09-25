@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
-import { AuthFailureReason, authFailure } from './auth-failure';
+import { AuthFailureReason, authFailure, reasonFromJwtError } from './auth-failure';
 
 @Injectable()
 export class AuthService {
@@ -73,22 +73,19 @@ export class AuthService {
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshToken);
-    } catch (err: any) {
-      throw authFailure(
-        err?.name === 'TokenExpiredError' ? AuthFailureReason.TOKEN_EXPIRED : AuthFailureReason.TOKEN_INVALID,
-      );
+    } catch (err) {
+      throw authFailure(reasonFromJwtError(err));
     }
     if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
 
-    const account =
+    // Only clinicians get refresh tokens today; patients have no login mutation yet.
+    const clinician =
       payload.role === UserRole.CLINICIAN
         ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
-        : payload.role === UserRole.PATIENT
-          ? await this.prisma.patient.findUnique({ where: { id: payload.sub } })
-          : null;
-    if (!account) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+        : null;
+    if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
 
-    return this.issueTokens(account.id, payload.role);
+    return this.issueTokens(clinician.id, UserRole.CLINICIAN);
   }
 
   private issueTokens(sub: string, role: UserRole) {
