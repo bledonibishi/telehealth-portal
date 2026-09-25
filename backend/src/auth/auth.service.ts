@@ -7,6 +7,11 @@ import * as bcrypt from 'bcrypt';
 import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
 
+export interface LoginAttempt {
+  ip?: string;
+  userAgent?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -16,9 +21,17 @@ export class AuthService {
     private posthog: PostHogService,
   ) {}
 
-  async loginClinician(email: string, password: string) {
+  async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
     const clinician = await this.prisma.clinician.findUnique({ where: { email } });
     if (!clinician || !(await bcrypt.compare(password, clinician.passwordHash))) {
+      await this.audit.log({
+        actorId: clinician?.id ?? 'anonymous',
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_LOGIN_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician?.id ?? 'unknown',
+        metadata: { email, reason: clinician ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', ...attempt },
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -52,7 +65,7 @@ export class AuthService {
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
-  async verifyMfa(pendingToken: string, totpCode: string) {
+  async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {
     let payload: any;
     try {
       payload = this.jwtService.verify(pendingToken);
@@ -65,6 +78,14 @@ export class AuthService {
     if (!clinician?.mfaSecret) throw new UnauthorizedException('MFA not configured');
 
     if (!authenticator.verify({ token: totpCode, secret: clinician.mfaSecret })) {
+      await this.audit.log({
+        actorId: clinician.id,
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_MFA_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician.id,
+        metadata: { ...attempt },
+      });
       throw new UnauthorizedException('Invalid TOTP code');
     }
 
