@@ -8,3 +8,11 @@ build/
 .DS_Store
 *.tsbuildinfo
 prisma/migrations/
+
+# Compiled output from ts-node / tsc (not the NestJS dist/)
+backend/prisma/*.js
+backend/prisma/*.js.map
+backend/prisma/*.d.ts
+packages/shared-types/src/*.js
+packages/shared-types/src/*.js.map
+packages/shared-types/src/*.d.ts
