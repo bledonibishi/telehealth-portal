@@ -25,6 +25,7 @@ type NotifCounts = {
 };
 
 const NAV: NavItem[] = [
+  { href: '/',         label: 'Dashboard',     icon: '📊', roles: ['ADMIN'] },
   { href: '/leads',    label: 'Leads',         icon: '🎯', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
   { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
@@ -73,7 +74,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
         <nav className="flex-1 px-2 py-4 space-y-1">
           {visibleNav.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            const active =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname === item.href || pathname.startsWith(item.href + '/');
             const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
             return (
               <Link

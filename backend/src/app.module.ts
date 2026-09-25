@@ -15,6 +15,7 @@ import { LeadsModule } from './leads/leads.module';
 import { StripeModule } from './stripe/stripe.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     StripeModule,
     EmailModule,
     NotificationsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
