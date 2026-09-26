@@ -17,6 +17,30 @@ type AuthResponse {
   pendingToken: String
 }
 
+type CheckIn {
+  answers: [QuizAnswer!]
+
+  """
+  The link the patient uses to complete their check-in. Only set while a check-in is SENT and awaiting a response.
+  """
+  checkInUrl: String
+  completedAt: DateTime
+  createdAt: DateTime!
+  dueAt: DateTime!
+  id: ID!
+  patientFirstName: String
+  sentAt: DateTime
+  status: CheckInStatus!
+  tokenExpiresAt: DateTime
+  wantsToReorder: Boolean
+}
+
+enum CheckInStatus {
+  COMPLETED
+  SCHEDULED
+  SENT
+}
+
 type Clinician {
   createdAt: DateTime!
   email: String!
@@ -136,6 +160,11 @@ type Mutation {
   loginClinician(input: LoginInput!): AuthResponse!
   loginPatient(input: LoginInput!): AuthResponse!
   requestMoreInfo(consultationId: ID!): Consultation!
+
+  """
+  Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.
+  """
+  rescheduleCheckIn(dueAt: DateTime!, id: ID!): CheckIn!
   reviewOnboarding(input: ReviewOnboardingInput!): OnboardingSubmission!
   saveBodyPhotosStep(input: SaveBodyPhotosStepInput!): OnboardingSubmission!
   saveIdentityStep(input: SaveIdentityStepInput!): OnboardingSubmission!
@@ -143,6 +172,7 @@ type Mutation {
   savePriorMedicationUse(priorMedicationUse: Boolean!): OnboardingSubmission!
   sendMessage(input: SendMessageInput!): Message!
   setupMfa: MfaSetupResponse!
+  submitCheckIn(input: SubmitCheckInInput!, token: String!): CheckIn!
   submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
   submitOnboarding: OnboardingSubmission!
   updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
@@ -187,6 +217,7 @@ type OnboardingSubmission {
 
 type Patient {
   activatedAt: DateTime
+  checkIns: [CheckIn!]!
   consultations: [Consultation!]!
   createdAt: DateTime!
   dateOfBirth: DateTime!
@@ -232,6 +263,7 @@ enum PrescriptionProofType {
 }
 
 type Query {
+  checkInByToken(token: String!): CheckIn!
   clinicians: [Clinician!]!
   consultation(id: ID!): Consultation!
 
@@ -303,6 +335,11 @@ input SavePrescriptionProofStepInput {
 input SendMessageInput {
   consultationId: ID!
   content: String!
+}
+
+input SubmitCheckInInput {
+  answers: [QuizAnswerInput!]!
+  wantsToReorder: Boolean!
 }
 
 input SubmitIntakeQuizInput {
