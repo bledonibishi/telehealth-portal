@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE } from '@/graphql/messaging';
+import { DISPATCH_ORDER, MARK_ORDER_OUT_FOR_DELIVERY, MARK_ORDER_DELIVERED, GET_ORDERS } from '@/graphql/orders';
 import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING } from '@/graphql/onboarding';
 import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
@@ -30,13 +31,47 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'onboarding' | 'messages' | 'checkin';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin';
+
+const ORDER_STAGES = ['Prescribed', 'Dispatched', 'Out for delivery', 'Delivered'] as const;
+
+function orderStageIndex(rx: any): number {
+  if (rx.deliveredAt) return 3;
+  if (rx.outForDeliveryAt) return 2;
+  if (rx.dispatchedAt) return 1;
+  return 0;
+}
+
+function OrderStageTracker({ rx }: { rx: any }) {
+  const current = orderStageIndex(rx);
+  return (
+    <div className="flex items-center">
+      {ORDER_STAGES.map((stage, i) => (
+        <div key={stage} className="flex items-center flex-1 last:flex-none">
+          <div className="flex flex-col items-center">
+            <div className={`w-2.5 h-2.5 rounded-full ${i <= current ? 'bg-brand-500' : 'bg-gray-200'} ${i === current ? 'ring-4 ring-brand-100' : ''}`} />
+            <span className={`text-[10px] mt-1 whitespace-nowrap ${i <= current ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>{stage}</span>
+          </div>
+          {i < ORDER_STAGES.length - 1 && (
+            <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-brand-500' : 'bg-gray-200'}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  const [pharmacyRef, setPharmacyRef] = useState('');
+  const [shippingId, setShippingId] = useState<string | null>(null);
+  const [carrier, setCarrier] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [changesReason, setChangesReason] = useState('');
   const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
@@ -44,6 +79,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
 
   const isAdmin = hasAccess(['ADMIN']);
+  const canDispatch = hasAccess(['ADMIN', 'PROVIDER']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
 
   const { data, loading } = useQuery(GET_PATIENT, { variables: { id: patientId } });
@@ -53,6 +89,15 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   });
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
+  });
+  const [dispatchOrder, { loading: dispatching }] = useMutation(DISPATCH_ORDER, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
+  });
+  const [markOutForDelivery, { loading: shipping }] = useMutation(MARK_ORDER_OUT_FOR_DELIVERY, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
+  });
+  const [markDelivered, { loading: delivering }] = useMutation(MARK_ORDER_DELIVERED, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
   });
   const [reviewOnboarding, { loading: reviewing }] = useMutation(REVIEW_ONBOARDING, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
@@ -80,6 +125,32 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
+  };
+
+  const handleDispatch = async (id: string) => {
+    if (!pharmacyRef.trim()) return;
+    await dispatchOrder({ variables: { id, pharmacyRef: pharmacyRef.trim() } });
+    setDispatchingId(null);
+    setPharmacyRef('');
+  };
+
+  const handleMarkOutForDelivery = async (id: string) => {
+    await markOutForDelivery({
+      variables: {
+        id,
+        carrier: carrier.trim() || null,
+        trackingNumber: trackingNumber.trim() || null,
+        trackingUrl: trackingUrl.trim() || null,
+      },
+    });
+    setShippingId(null);
+    setCarrier('');
+    setTrackingNumber('');
+    setTrackingUrl('');
+  };
+
+  const handleMarkDelivered = async (id: string) => {
+    await markDelivered({ variables: { id } });
   };
 
   const handleApproveOnboarding = async () => {
@@ -139,6 +210,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'overview',      label: 'Overview' },
     { key: 'onboarding',    label: onboardingLabel },
     { key: 'prescriptions', label: `Prescriptions (${allPrescriptions.length})` },
+    { key: 'orders',        label: `Orders (${allPrescriptions.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
     { key: 'checkin',       label: 'Check-in' },
   ];
@@ -420,6 +492,157 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Orders ── */}
+        {tab === 'orders' && (
+          <div className="p-5">
+            {allPrescriptions.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-400">No orders yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {allPrescriptions.map((rx: any) => {
+                  const isDispatchingThis = dispatchingId === rx.id;
+                  const isShippingThis = shippingId === rx.id;
+                  const stage = orderStageIndex(rx);
+                  return (
+                    <div key={rx.id} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[rx.kind]}`}>{rx.kind}</span>
+                          <span className="text-xs text-gray-700 font-medium">{ORDER_STAGES[stage]}</span>
+                        </div>
+                      </div>
+
+                      <p className="font-semibold text-gray-900 text-sm mb-4">{rx.medication} · {rx.dosage}</p>
+
+                      <OrderStageTracker rx={rx} />
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-xs text-gray-400">
+                        <span>Prescribed {formatDistanceToNow(new Date(rx.issuedAt), { addSuffix: true })}</span>
+                        {rx.dispatchedAt && <span>Dispatched {format(new Date(rx.dispatchedAt), 'dd MMM yyyy')}</span>}
+                        {rx.outForDeliveryAt && <span>Out for delivery {format(new Date(rx.outForDeliveryAt), 'dd MMM yyyy')}</span>}
+                        {rx.deliveredAt && <span>Delivered {format(new Date(rx.deliveredAt), 'dd MMM yyyy')}</span>}
+                        {rx.pharmacyRef && (
+                          <span>Ref: <span className="font-mono text-gray-600">{rx.pharmacyRef}</span></span>
+                        )}
+                      </div>
+
+                      {(rx.carrier || rx.trackingNumber || rx.trackingUrl) && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          {rx.carrier && <span>{rx.carrier} </span>}
+                          {rx.trackingNumber && <span className="font-mono">{rx.trackingNumber}</span>}
+                          {rx.trackingUrl && (
+                            <a href={rx.trackingUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:text-brand-900 ml-2">
+                              Track package →
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {canDispatch && !rx.dispatchedAt && !isDispatchingThis && (
+                        <button
+                          onClick={() => setDispatchingId(rx.id)}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100"
+                        >
+                          Mark dispatched
+                        </button>
+                      )}
+
+                      {isDispatchingThis && (
+                        <div className="mt-3 flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="Pharmacy / tracking reference…"
+                            value={pharmacyRef}
+                            onChange={(e) => setPharmacyRef(e.target.value)}
+                            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-64"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleDispatch(rx.id)}
+                            disabled={!pharmacyRef.trim() || dispatching}
+                            className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+                          >
+                            {dispatching ? '…' : 'Confirm dispatch'}
+                          </button>
+                          <button
+                            onClick={() => { setDispatchingId(null); setPharmacyRef(''); }}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+
+                      {canDispatch && rx.dispatchedAt && !rx.outForDeliveryAt && !isShippingThis && (
+                        <button
+                          onClick={() => setShippingId(rx.id)}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100"
+                        >
+                          Mark out for delivery
+                        </button>
+                      )}
+
+                      {isShippingThis && (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Carrier (e.g. Royal Mail)"
+                              value={carrier}
+                              onChange={(e) => setCarrier(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-40"
+                              autoFocus
+                            />
+                            <input
+                              type="text"
+                              placeholder="Tracking number"
+                              value={trackingNumber}
+                              onChange={(e) => setTrackingNumber(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-40"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Tracking URL (optional)"
+                              value={trackingUrl}
+                              onChange={(e) => setTrackingUrl(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 flex-1"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleMarkOutForDelivery(rx.id)}
+                              disabled={shipping}
+                              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+                            >
+                              {shipping ? '…' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => { setShippingId(null); setCarrier(''); setTrackingNumber(''); setTrackingUrl(''); }}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {canDispatch && rx.outForDeliveryAt && !rx.deliveredAt && (
+                        <button
+                          onClick={() => handleMarkDelivered(rx.id)}
+                          disabled={delivering}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-40"
+                        >
+                          {delivering ? '…' : 'Mark delivered'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

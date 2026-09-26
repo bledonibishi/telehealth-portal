@@ -10,6 +10,11 @@ export const GET_ORDERS = gql`
       issuedAt
       pharmacyRef
       dispatchedAt
+      carrier
+      trackingNumber
+      trackingUrl
+      outForDeliveryAt
+      deliveredAt
       consultation {
         id
         kind
@@ -30,6 +35,27 @@ export const DISPATCH_ORDER = gql`
       id
       pharmacyRef
       dispatchedAt
+    }
+  }
+`;
+
+export const MARK_ORDER_OUT_FOR_DELIVERY = gql`
+  mutation MarkOrderOutForDelivery($id: ID!, $carrier: String, $trackingNumber: String, $trackingUrl: String) {
+    markOrderOutForDelivery(id: $id, carrier: $carrier, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl) {
+      id
+      carrier
+      trackingNumber
+      trackingUrl
+      outForDeliveryAt
+    }
+  }
+`;
+
+export const MARK_ORDER_DELIVERED = gql`
+  mutation MarkOrderDelivered($id: ID!) {
+    markOrderDelivered(id: $id) {
+      id
+      deliveredAt
     }
   }
 `;

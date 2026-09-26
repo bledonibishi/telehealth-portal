@@ -1,5 +1,5 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, ForbiddenException } from '@nestjs/common';
 import { ConsultationsService } from './consultations.service';
 import { ConsultationModel } from './models/consultation.model';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
@@ -28,6 +28,20 @@ export class ConsultationsResolver {
   @Query(() => [ConsultationModel], { description: 'Prior consultations for a patient, newest first' })
   patientHistory(@Args('patientId', { type: () => ID }) patientId: string) {
     return this.consultationsService.findByPatient(patientId);
+  }
+
+  @UseGuards(GqlAuthGuard)
+  @Query(() => [ConsultationModel], { description: "The authenticated patient's own consultations" })
+  myConsultations(@CurrentUser() user: any) {
+    return this.consultationsService.findByPatient(user.id);
+  }
+
+  @UseGuards(GqlAuthGuard)
+  @Query(() => ConsultationModel, { description: 'A single consultation belonging to the authenticated patient' })
+  async myConsultation(@CurrentUser() user: any, @Args('id', { type: () => ID }) id: string) {
+    const consultation = await this.consultationsService.findById(id);
+    if (consultation.patientId !== user.id) throw new ForbiddenException();
+    return consultation;
   }
 
   @UseGuards(GqlAuthGuard)
