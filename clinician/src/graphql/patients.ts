@@ -38,6 +38,18 @@ export const GET_PATIENT = gql`
         messages { id senderId senderRole content sentAt }
         clinician { id firstName lastName }
       }
+      checkIns {
+        id
+        status
+        dueAt
+        createdAt
+        sentAt
+        tokenExpiresAt
+        completedAt
+        wantsToReorder
+        answers { questionId question answer }
+        checkInUrl
+      }
     }
   }
 `;

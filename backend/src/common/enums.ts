@@ -9,6 +9,7 @@ import {
   PersonaStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
+  CheckInStatus,
 } from '@telehealth/shared-types';
 
 registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
@@ -20,6 +21,7 @@ registerEnumType(OnboardingStatus, { name: 'OnboardingStatus' });
 registerEnumType(PersonaStatus, { name: 'PersonaStatus' });
 registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
+registerEnumType(CheckInStatus, { name: 'CheckInStatus' });
 
 export {
   ConsultationStatus,
@@ -31,4 +33,5 @@ export {
   PersonaStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
+  CheckInStatus,
 };

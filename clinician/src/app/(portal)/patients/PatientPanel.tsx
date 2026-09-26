@@ -6,6 +6,7 @@ import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE } from '@/graphql/messaging';
 import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING } from '@/graphql/onboarding';
+import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
 import { hasAccess } from '@/lib/role';
 
@@ -29,7 +30,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'onboarding' | 'messages';
+type Tab = 'overview' | 'prescriptions' | 'onboarding' | 'messages' | 'checkin';
 
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -38,6 +39,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [reply, setReply] = useState('');
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [changesReason, setChangesReason] = useState('');
+  const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
+  const [checkInDate, setCheckInDate] = useState('');
+  const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
 
   const isAdmin = hasAccess(['ADMIN']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
@@ -53,6 +57,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [reviewOnboarding, { loading: reviewing }] = useMutation(REVIEW_ONBOARDING, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
   });
+  const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
+  });
 
   const p = data?.patient;
   const onboarding = onboardingData?.onboardingSubmission;
@@ -66,6 +73,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const latestConsult = p.consultations?.[0];
   const allPrescriptions = p.consultations?.flatMap((c: any) => c.prescription ? [{ ...c.prescription, kind: c.kind }] : []) ?? [];
   const allMessages = p.consultations?.flatMap((c: any) => c.messages ?? []) ?? [];
+  const checkIns = p.checkIns ?? [];
   const latestConsultId = p.consultations?.[0]?.id;
 
   const handleReply = async () => {
@@ -83,6 +91,13 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     await reviewOnboarding({ variables: { input: { patientId, approve: false, rejectionReason: changesReason.trim() } } });
     setRequestingChanges(false);
     setChangesReason('');
+  };
+
+  const handleRescheduleCheckIn = async (id: string) => {
+    if (!checkInDate) return;
+    await rescheduleCheckIn({ variables: { id, dueAt: new Date(checkInDate).toISOString() } });
+    setEditingCheckInId(null);
+    setCheckInDate('');
   };
 
   const handleSave = async () => {
@@ -125,6 +140,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'onboarding',    label: onboardingLabel },
     { key: 'prescriptions', label: `Prescriptions (${allPrescriptions.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
+    { key: 'checkin',       label: 'Check-in' },
   ];
 
   return (
@@ -465,6 +481,177 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
             ) : (
               <div className="border-t border-gray-100 p-4 text-center text-xs text-gray-400">
                 No active consultation to message against.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Check-in ── */}
+        {tab === 'checkin' && (
+          <div className="p-5">
+            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+              <p className="text-sm font-semibold text-gray-800">Monthly check-in</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.
+              </p>
+            </div>
+
+            {!p.activatedAt ? (
+              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
+                Check-in schedule starts once the patient activates their account.
+              </div>
+            ) : checkIns.length === 0 ? (
+              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
+                First check-in hasn&rsquo;t been scheduled yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {checkIns.map((c: any) => {
+                  const dueDate = new Date(c.dueAt);
+                  const overdue = c.status !== 'COMPLETED' && dueDate < new Date();
+                  return (
+                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded ${
+                            c.status === 'COMPLETED'
+                              ? 'bg-green-50 text-green-700'
+                              : overdue
+                                ? 'bg-red-50 text-red-700'
+                                : c.status === 'SENT'
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {c.status === 'COMPLETED' ? 'Completed' : overdue ? 'Overdue' : c.status === 'SENT' ? 'Sent — awaiting response' : 'Scheduled'}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <p className="text-xs text-gray-400">Scheduled</p>
+                          <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.createdAt), 'dd MMM yyyy')}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-400">Due</p>
+                          <p className={`text-xs font-medium mt-0.5 ${overdue ? 'text-red-600' : 'text-gray-800'}`}>
+                            {format(dueDate, 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                        {c.sentAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Sent</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">
+                              {formatDistanceToNow(new Date(c.sentAt), { addSuffix: true })}
+                            </p>
+                          </div>
+                        )}
+                        {c.status === 'SENT' && c.tokenExpiresAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Link expires</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.tokenExpiresAt), 'dd MMM yyyy')}</p>
+                          </div>
+                        )}
+                        {c.completedAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Completed</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">
+                              {formatDistanceToNow(new Date(c.completedAt), { addSuffix: true })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {c.status === 'SENT' && c.checkInUrl && (
+                        <div className="mb-3">
+                          <p className="text-xs text-gray-400 mb-1">Check-in link</p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              readOnly
+                              value={c.checkInUrl}
+                              onClick={(e) => e.currentTarget.select()}
+                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-gray-50 truncate"
+                            />
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(c.checkInUrl);
+                                setCopiedCheckInId(c.id);
+                                setTimeout(() => setCopiedCheckInId((cur) => (cur === c.id ? null : cur)), 2000);
+                              }}
+                              className="shrink-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-700"
+                            >
+                              {copiedCheckInId === c.id ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {c.status === 'COMPLETED' ? (
+                        <div className="space-y-2 mt-2">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-400">Reorder prescription:</p>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.wantsToReorder ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {c.wantsToReorder ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                          {c.answers?.map((a: any) => (
+                            <div key={a.questionId} className="bg-gray-50 rounded-lg px-3 py-2">
+                              <p className="text-xs text-gray-400">{a.question}</p>
+                              <p className="text-xs font-medium text-gray-800 mt-0.5">{a.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-gray-400">
+                            {c.status === 'SENT' ? 'Waiting for the patient to complete their check-in.' : 'Will be emailed automatically once due.'}
+                          </p>
+                          {c.status === 'SCHEDULED' && canReviewOnboarding && (
+                            editingCheckInId === c.id ? (
+                              <div className="mt-2 flex items-center gap-2">
+                                <input
+                                  type="datetime-local"
+                                  value={checkInDate}
+                                  onChange={(e) => setCheckInDate(e.target.value)}
+                                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleRescheduleCheckIn(c.id)}
+                                  disabled={!checkInDate || rescheduling}
+                                  className="text-xs px-2.5 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40"
+                                >
+                                  {rescheduling ? '…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => { setEditingCheckInId(null); setCheckInDate(''); }}
+                                  className="text-xs text-gray-400 hover:text-gray-600"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingCheckInId(c.id);
+                                  const now = new Date();
+                                  const pad = (n: number) => String(n).padStart(2, '0');
+                                  setCheckInDate(
+                                    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`,
+                                  );
+                                }}
+                                className="mt-2 text-xs text-brand-500 hover:text-brand-900"
+                              >
+                                Edit due date
+                              </button>
+                            )
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
