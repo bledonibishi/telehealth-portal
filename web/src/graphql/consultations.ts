@@ -12,6 +12,11 @@ export const MY_CONSULTATIONS = gql`
         medication
         dosage
         issuedAt
+        dispatchedAt
+        pharmacyRef
+        outForDeliveryAt
+        deliveredAt
+        trackingUrl
       }
       redFlags {
         severity
@@ -40,6 +45,7 @@ export const MY_CONSULTATION = gql`
         instructions
         issuedAt
         pharmacyRef
+        dispatchedAt
       }
       messages {
         id

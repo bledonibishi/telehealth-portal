@@ -27,6 +27,21 @@ export class PrescriptionModel {
   @Field({ nullable: true })
   dispatchedAt?: Date;
 
+  @Field({ nullable: true })
+  carrier?: string;
+
+  @Field({ nullable: true })
+  trackingNumber?: string;
+
+  @Field({ nullable: true })
+  trackingUrl?: string;
+
+  @Field({ nullable: true })
+  outForDeliveryAt?: Date;
+
+  @Field({ nullable: true })
+  deliveredAt?: Date;
+
   @Field(() => ConsultationModel, { nullable: true })
   consultation?: ConsultationModel;
 }

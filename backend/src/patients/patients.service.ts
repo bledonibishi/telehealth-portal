@@ -24,6 +24,7 @@ export class PatientsService {
             clinician: true,
           },
         },
+        checkIns: { orderBy: { createdAt: 'desc' } },
       },
     });
   }

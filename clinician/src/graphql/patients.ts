@@ -34,9 +34,24 @@ export const GET_PATIENT = gql`
         updatedAt
         quizAnswers { questionId question answer }
         redFlags { id description severity }
-        prescription { id medication dosage instructions issuedAt pharmacyRef }
+        prescription {
+          id medication dosage instructions issuedAt pharmacyRef dispatchedAt
+          carrier trackingNumber trackingUrl outForDeliveryAt deliveredAt
+        }
         messages { id senderId senderRole content sentAt }
         clinician { id firstName lastName }
+      }
+      checkIns {
+        id
+        status
+        dueAt
+        createdAt
+        sentAt
+        tokenExpiresAt
+        completedAt
+        wantsToReorder
+        answers { questionId question answer }
+        checkInUrl
       }
     }
   }

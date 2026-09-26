@@ -22,4 +22,21 @@ export class PrescriptionsResolver {
   ) {
     return this.prescriptionsService.dispatch(id, pharmacyRef);
   }
+
+  @UseGuards(GqlAuthGuard)
+  @Mutation(() => PrescriptionModel)
+  markOrderOutForDelivery(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('carrier', { nullable: true }) carrier?: string,
+    @Args('trackingNumber', { nullable: true }) trackingNumber?: string,
+    @Args('trackingUrl', { nullable: true }) trackingUrl?: string,
+  ) {
+    return this.prescriptionsService.markOutForDelivery(id, carrier, trackingNumber, trackingUrl);
+  }
+
+  @UseGuards(GqlAuthGuard)
+  @Mutation(() => PrescriptionModel)
+  markOrderDelivered(@Args('id', { type: () => ID }) id: string) {
+    return this.prescriptionsService.markDelivered(id);
+  }
 }
