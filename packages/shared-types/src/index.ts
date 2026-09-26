@@ -29,6 +29,35 @@ export enum RedFlagSeverity {
   WARNING = 'WARNING',
 }
 
+export enum OnboardingStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export enum PersonaStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  FAILED = 'FAILED',
+  NOT_CONFIGURED = 'NOT_CONFIGURED',
+}
+
+export enum PhotoReviewStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+}
+
+export enum PrescriptionProofType {
+  MEDICINE_BOX_LABEL = 'MEDICINE_BOX_LABEL',
+  PRESCRIPTION_DOCUMENT = 'PRESCRIPTION_DOCUMENT',
+  PHARMACY_RECORD = 'PHARMACY_RECORD',
+  ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;

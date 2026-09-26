@@ -2,14 +2,19 @@
 
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { isAuthenticated, clearToken } from '@/lib/auth';
+import { MY_ONBOARDING } from '@/graphql/onboarding';
 
 const NAV = [
   { href: '/dashboard', label: 'My consultations', icon: '📋' },
   { href: '/messages', label: 'Messages', icon: '💬' },
   { href: '/prescription', label: 'Prescriptions', icon: '💊' },
 ];
+
+// Patients can still reach support while onboarding is incomplete.
+const ONBOARDING_EXEMPT_PATHS = ['/messages'];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,10 +24,43 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     if (!isAuthenticated()) router.replace('/login');
   }, [router]);
 
+  const { data: onboardingData, error: onboardingError } = useQuery(MY_ONBOARDING, {
+    skip: !isAuthenticated(),
+    fetchPolicy: 'cache-and-network',
+  });
+  const onboardingStatus = onboardingData?.myOnboarding?.status;
+
   const handleLogout = () => {
     clearToken();
     router.replace('/login');
   };
+
+  useEffect(() => {
+    if (!onboardingError) return;
+    // Most likely an expired/invalid token — send them back to log in rather
+    // than getting stuck on a blank gated screen forever.
+    handleLogout();
+  }, [onboardingError]);
+
+  useEffect(() => {
+    if (!onboardingStatus) return;
+    if (onboardingStatus !== 'APPROVED' && !ONBOARDING_EXEMPT_PATHS.includes(pathname)) {
+      router.replace('/onboarding');
+    }
+  }, [onboardingStatus, pathname, router]);
+
+  const gated = !ONBOARDING_EXEMPT_PATHS.includes(pathname) && onboardingStatus !== 'APPROVED';
+  if (gated) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        {onboardingError ? (
+          <p className="text-sm text-slate-400">Signing you out…</p>
+        ) : (
+          <p className="text-sm text-slate-400">Loading…</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50">

@@ -16,6 +16,11 @@ export class AuthResolver {
   }
 
   @Mutation(() => AuthResponse)
+  loginPatient(@Args('input') input: LoginInput) {
+    return this.authService.loginPatient(input.email, input.password);
+  }
+
+  @Mutation(() => AuthResponse)
   verifyMfa(
     @Args('pendingToken') pendingToken: string,
     @Args('totpCode') totpCode: string,

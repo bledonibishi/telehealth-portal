@@ -5,7 +5,16 @@ import { useQuery, useMutation } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE } from '@/graphql/messaging';
+import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING } from '@/graphql/onboarding';
+import AuthedImage from '@/components/AuthedImage';
 import { hasAccess } from '@/lib/role';
+
+const PROOF_TYPE_LABEL: Record<string, string> = {
+  MEDICINE_BOX_LABEL: 'Medicine box label',
+  PRESCRIPTION_DOCUMENT: 'Prescription document',
+  PHARMACY_RECORD: 'Pharmacy record',
+  ORDER_CONFIRMATION: 'Order confirmation',
+};
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -20,25 +29,33 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'messages' | 'checkin';
+type Tab = 'overview' | 'prescriptions' | 'onboarding' | 'messages';
 
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
+  const [requestingChanges, setRequestingChanges] = useState(false);
+  const [changesReason, setChangesReason] = useState('');
 
   const isAdmin = hasAccess(['ADMIN']);
+  const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
 
   const { data, loading } = useQuery(GET_PATIENT, { variables: { id: patientId } });
+  const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
   const [updatePatient, { loading: saving }] = useMutation(UPDATE_PATIENT, {
     refetchQueries: [{ query: GET_PATIENTS }],
   });
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
   });
+  const [reviewOnboarding, { loading: reviewing }] = useMutation(REVIEW_ONBOARDING, {
+    refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
+  });
 
   const p = data?.patient;
+  const onboarding = onboardingData?.onboardingSubmission;
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
@@ -55,6 +72,17 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
+  };
+
+  const handleApproveOnboarding = async () => {
+    await reviewOnboarding({ variables: { input: { patientId, approve: true } } });
+  };
+
+  const handleRequestChanges = async () => {
+    if (!changesReason.trim()) return;
+    await reviewOnboarding({ variables: { input: { patientId, approve: false, rejectionReason: changesReason.trim() } } });
+    setRequestingChanges(false);
+    setChangesReason('');
   };
 
   const handleSave = async () => {
@@ -89,11 +117,14 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     </div>
   );
 
+  const onboardingLabel =
+    onboarding?.status === 'PENDING_REVIEW' ? 'Onboarding ⚠️' : 'Onboarding';
+
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview',      label: 'Overview' },
+    { key: 'onboarding',    label: onboardingLabel },
     { key: 'prescriptions', label: `Prescriptions (${allPrescriptions.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
-    { key: 'checkin',       label: 'Check-in' },
   ];
 
   return (
@@ -213,6 +244,134 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
           </div>
         )}
 
+        {/* ── Onboarding ── */}
+        {tab === 'onboarding' && (
+          <div className="p-5">
+            {!onboarding || onboarding.status === 'IN_PROGRESS' ? (
+              <div className="py-12 text-center text-sm text-gray-400">
+                {onboarding ? 'Patient hasn’t submitted onboarding yet.' : 'Patient hasn’t started onboarding yet.'}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                      onboarding.status === 'PENDING_REVIEW'
+                        ? 'bg-amber-50 text-amber-700'
+                        : onboarding.status === 'APPROVED'
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-red-50 text-red-700'
+                    }`}
+                  >
+                    {onboarding.status.replace(/_/g, ' ')}
+                  </span>
+                  {onboarding.submittedAt && (
+                    <span className="text-xs text-gray-400">
+                      Submitted {formatDistanceToNow(new Date(onboarding.submittedAt), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Identity check</p>
+                    <p className="text-sm text-gray-800">
+                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? 'Manual review' : onboarding.personaStatus.replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Photo compliance</p>
+                    <p className="text-sm text-gray-800">{onboarding.photoReviewStatus.replace(/_/g, ' ')}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ID document &amp; selfie</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <AuthedImage path={onboarding.idDocumentUrl} alt="ID document" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                    <AuthedImage path={onboarding.selfieUrl} alt="Selfie" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Full body photos</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt="Front-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                    <AuthedImage path={onboarding.bodyPhotoSideUrl} alt="Side-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Prior medication use</p>
+                  {onboarding.priorMedicationUse ? (
+                    <div>
+                      <p className="text-sm text-gray-800 mb-2">
+                        Yes — proof provided: {PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType}
+                      </p>
+                      <AuthedImage path={onboarding.prescriptionProofUrl} alt="Prescription proof" className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No — first time using this medication.</p>
+                  )}
+                </div>
+
+                {onboarding.status === 'REJECTED' && onboarding.rejectionReason && (
+                  <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl px-3 py-2.5 text-sm">
+                    <p className="font-medium">Changes requested</p>
+                    <p className="mt-1">{onboarding.rejectionReason}</p>
+                  </div>
+                )}
+
+                {canReviewOnboarding && onboarding.status === 'PENDING_REVIEW' && (
+                  <div className="border-t border-gray-100 pt-4">
+                    {requestingChanges ? (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={3}
+                          placeholder="What does the patient need to fix or add? e.g. retake the front body photo, provide clearer proof of prescription…"
+                          value={changesReason}
+                          onChange={(e) => setChangesReason(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleRequestChanges}
+                            disabled={!changesReason.trim() || reviewing}
+                            className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-40"
+                          >
+                            {reviewing ? '…' : 'Send request'}
+                          </button>
+                          <button onClick={() => setRequestingChanges(false)} className="text-sm text-gray-400 hover:text-gray-600">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleApproveOnboarding}
+                          disabled={reviewing}
+                          className="flex-1 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-40"
+                        >
+                          {reviewing ? '…' : 'Approve'}
+                        </button>
+                        <button
+                          onClick={() => setRequestingChanges(true)}
+                          disabled={reviewing}
+                          className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                        >
+                          Request changes
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Prescriptions ── */}
         {tab === 'prescriptions' && (
           <div className="p-5">
@@ -306,47 +465,6 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
             ) : (
               <div className="border-t border-gray-100 p-4 text-center text-xs text-gray-400">
                 No active consultation to message against.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Check-in ── */}
-        {tab === 'checkin' && (
-          <div className="p-5">
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">Monthly check-in</p>
-              <p className="text-xs text-gray-500 mt-1">
-                After 1 month of treatment, the patient will receive a check-in quiz to review progress and reorder their prescription.
-              </p>
-            </div>
-
-            {p.activatedAt ? (
-              (() => {
-                const activatedDate = new Date(p.activatedAt);
-                const nextCheckIn = new Date(activatedDate.getTime() + 30 * 86_400_000);
-                const overdue = nextCheckIn < new Date();
-                return (
-                  <div className="space-y-3">
-                    <div className="border border-gray-100 rounded-xl p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-700">Next check-in due</p>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${overdue ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
-                          {overdue ? 'Overdue' : formatDistanceToNow(nextCheckIn, { addSuffix: true })}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{format(nextCheckIn, 'dd MMM yyyy')}</p>
-                    </div>
-                    <div className="border border-gray-100 rounded-xl p-4 text-center">
-                      <p className="text-sm text-gray-500 mb-3">No check-ins completed yet</p>
-                      <p className="text-xs text-gray-400">The patient will complete check-ins through the patient app. Results will appear here.</p>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
-              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
-                Check-in schedule starts once the patient activates their account.
               </div>
             )}
           </div>
