@@ -45,8 +45,8 @@ export class PostHogService implements OnApplicationShutdown {
     this.client?.identify({ distinctId, properties });
   }
 
-  captureException(error: unknown, distinctId?: string) {
-    this.client?.captureException(error, distinctId);
+  captureException(error: unknown, distinctId?: string, properties?: Record<string, unknown>) {
+    this.client?.captureException(error, distinctId, properties);
   }
 
   async onApplicationShutdown() {
