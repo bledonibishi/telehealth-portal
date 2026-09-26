@@ -16,11 +16,11 @@ export default function LoginPage() {
 
   const [loginClinician, { loading: loginLoading }] = useMutation(LOGIN_CLINICIAN, {
     onCompleted(data) {
-      const { accessToken, mfaRequired, pendingToken: pt } = data.loginClinician;
+      const { accessToken, refreshToken, mfaRequired, pendingToken: pt } = data.loginClinician;
       if (mfaRequired) {
         setPendingToken(pt);
       } else {
-        setToken(accessToken);
+        setToken(accessToken, refreshToken);
         router.push('/queue');
       }
     },
@@ -31,7 +31,7 @@ export default function LoginPage() {
 
   const [verifyMfa, { loading: mfaLoading }] = useMutation(VERIFY_MFA, {
     onCompleted(data) {
-      setToken(data.verifyMfa.accessToken);
+      setToken(data.verifyMfa.accessToken, data.verifyMfa.refreshToken);
       router.push('/queue');
     },
     onError(err) {

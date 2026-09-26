@@ -14,6 +14,7 @@ type AuthResponse {
   clinician: Clinician
   mfaRequired: Boolean!
   pendingToken: String
+  refreshToken: String
 }
 
 type Clinician {
@@ -118,6 +119,7 @@ type Mutation {
   declineConsultation(input: DeclineConsultationInput!): Consultation!
   enableMfa(totpCode: String!): Boolean!
   loginClinician(input: LoginInput!): AuthResponse!
+  refreshAccessToken(refreshToken: String!): RefreshResponse!
   requestMoreInfo(consultationId: ID!): Consultation!
   sendMessage(input: SendMessageInput!): Message!
   setupMfa: MfaSetupResponse!
@@ -190,6 +192,11 @@ type RedFlag {
 enum RedFlagSeverity {
   CRITICAL
   WARNING
+}
+
+type RefreshResponse {
+  accessToken: String!
+  refreshToken: String!
 }
 
 input SendMessageInput {

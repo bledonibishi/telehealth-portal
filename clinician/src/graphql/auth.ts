@@ -4,6 +4,7 @@ export const LOGIN_CLINICIAN = gql`
   mutation LoginClinician($input: LoginInput!) {
     loginClinician(input: $input) {
       accessToken
+      refreshToken
       pendingToken
       mfaRequired
       clinician {
@@ -23,6 +24,7 @@ export const VERIFY_MFA = gql`
   mutation VerifyMfa($pendingToken: String!, $totpCode: String!) {
     verifyMfa(pendingToken: $pendingToken, totpCode: $totpCode) {
       accessToken
+      refreshToken
       mfaRequired
       clinician {
         id
@@ -30,6 +32,15 @@ export const VERIFY_MFA = gql`
         firstName
         lastName
       }
+    }
+  }
+`;
+
+export const REFRESH_ACCESS_TOKEN = gql`
+  mutation RefreshAccessToken($refreshToken: String!) {
+    refreshAccessToken(refreshToken: $refreshToken) {
+      accessToken
+      refreshToken
     }
   }
 `;
