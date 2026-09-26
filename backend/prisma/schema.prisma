@@ -181,6 +181,11 @@ model Prescription {
   issuedAt          DateTime  @default(now()) @map("issued_at")
   pharmacyRef       String?   @map("pharmacy_ref")
   dispatchedAt      DateTime? @map("dispatched_at")
+  carrier           String?   @map("carrier")
+  trackingNumber    String?   @map("tracking_number")
+  trackingUrl       String?   @map("tracking_url")
+  outForDeliveryAt  DateTime? @map("out_for_delivery_at")
+  deliveredAt       DateTime? @map("delivered_at")
 
   consultation Consultation @relation(fields: [consultationId], references: [id])
 
