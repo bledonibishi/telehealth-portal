@@ -6,6 +6,7 @@
     "build": "nest build",
     "start": "node dist/main",
     "test": "jest",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
