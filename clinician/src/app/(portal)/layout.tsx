@@ -1,23 +1,36 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@apollo/client';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { getCurrentRole, type ClinicianRole } from '@/lib/role';
+import { NotificationBell } from '@/components/NotificationBell';
+import { GET_NOTIFICATION_COUNTS } from '@/graphql/notifications';
 
 type NavItem = {
   href: string;
   label: string;
   icon: string;
-  roles: ClinicianRole[]; // which roles can see this
+  roles: ClinicianRole[];
+  badgeKey?: keyof NotifCounts;
+};
+
+type NotifCounts = {
+  newLeads: number;
+  pendingConsultations: number;
+  patientMessages: number;
+  pendingOrders: number;
 };
 
 const NAV: NavItem[] = [
-  { href: '/leads',   label: 'Leads',          icon: '🎯', roles: ['ADMIN', 'CX_TEAM'] },
-  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'] },
-  { href: '/queue',   label: 'Review queue',    icon: '📋', roles: ['ADMIN', 'DOCTOR'] },
-  { href: '/orders',  label: 'Orders',          icon: '📦', roles: ['ADMIN', 'PROVIDER'] },
+  { href: '/',         label: 'Dashboard',     icon: '📊', roles: ['ADMIN'] },
+  { href: '/leads',    label: 'Leads',         icon: '🎯', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
+  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
+  { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
+  { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
+  { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
 ];
 
 const ROLE_BADGE: Record<ClinicianRole, { label: string; cls: string }> = {
@@ -31,6 +44,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const pathname = usePathname();
   const [role, setRole] = useState<ClinicianRole | null>(null);
+
+  const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
+  const counts: NotifCounts = data?.notificationCounts ?? {
+    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0,
+  };
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
@@ -56,7 +74,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
         <nav className="flex-1 px-2 py-4 space-y-1">
           {visibleNav.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            const active =
+              item.href === '/'
+                ? pathname === '/'
+                : pathname === item.href || pathname.startsWith(item.href + '/');
+            const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
             return (
               <Link
                 key={item.href}
@@ -68,20 +90,37 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 }`}
               >
                 <span className="text-base">{item.icon}</span>
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {badgeCount > 0 && (
+                  <span className="ml-auto w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {badgeCount > 9 ? '9+' : badgeCount}
+                  </span>
+                )}
               </Link>
             );
           })}
         </nav>
-
-        <div className="px-4 py-4 border-t border-gray-200">
-          <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-gray-700">
-            Sign out
-          </button>
-        </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
+          <div /> {/* spacer */}
+          <div className="flex items-center gap-3">
+            <NotificationBell />
+            <div className="w-px h-5 bg-gray-200" />
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M18 12H9m0 0l3-3m-3 3l3 3" />
+              </svg>
+              Sign out
+            </button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto">{children}</main>
+      </div>
     </div>
   );
 }

@@ -12,10 +12,16 @@ import { ConsultationsModule } from './consultations/consultations.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
+import { StripeModule } from './stripe/stripe.module';
+import { EmailModule } from './email/email.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { PostHogModule } from './posthog/posthog.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    PostHogModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
@@ -32,6 +38,10 @@ import { LeadsModule } from './leads/leads.module';
     PrescriptionsModule,
     MessagingModule,
     LeadsModule,
+    StripeModule,
+    EmailModule,
+    NotificationsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

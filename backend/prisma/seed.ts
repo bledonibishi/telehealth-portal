@@ -1,259 +1,292 @@
-import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import { PrismaClient, ConsultationStatus, ConsultationKind, RedFlagSeverity, Role } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-// Relative date helper — keeps seed data always "fresh" relative to today
-function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const hash = (pw: string) => bcrypt.hash(pw, 10);
+const dob = (year: number, month: number, day: number) => new Date(year, month - 1, day);
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+// ─── Quiz answers ─────────────────────────────────────────────────────────────
+
+const HRT_QUIZ = [
+  { questionId: 'hrt_1', question: 'Are you currently experiencing hot flushes?', answer: 'Yes, frequently' },
+  { questionId: 'hrt_2', question: 'How would you describe your sleep quality?', answer: 'Poor – waking frequently' },
+  { questionId: 'hrt_3', question: 'Have you been diagnosed with breast cancer?', answer: 'No' },
+  { questionId: 'hrt_4', question: 'Do you have a history of blood clots?', answer: 'No' },
+  { questionId: 'hrt_5', question: 'Are you currently pregnant or breastfeeding?', answer: 'No' },
+];
+
+const GLP1_QUIZ = [
+  { questionId: 'glp_1', question: 'What is your current BMI?', answer: '34.2' },
+  { questionId: 'glp_2', question: 'Have you tried other weight-loss methods?', answer: 'Yes – diet and exercise for 12+ months' },
+  { questionId: 'glp_3', question: 'Do you have Type 2 diabetes?', answer: 'No' },
+  { questionId: 'glp_4', question: 'Do you have a personal or family history of medullary thyroid cancer?', answer: 'No' },
+  { questionId: 'glp_5', question: 'Do you have pancreatitis or severe GI disease?', answer: 'No' },
+];
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('Seeding database...');
+  console.log('🌱 Seeding database…\n');
 
-  // ─── Clinicians ───────────────────────────────────────────────────────────
-  const alice = await prisma.clinician.upsert({
-    where: { email: 'alice.smith@clinic.dev' },
+  // ── Clinicians ──────────────────────────────────────────────────────────────
+  const pw = await hash('password123');
+
+  const [admin, doctor, cx, provider] = await Promise.all([
+    prisma.clinician.upsert({
+      where: { email: 'admin@clinic.dev' },
+      update: {},
+      create: { email: 'admin@clinic.dev', passwordHash: pw, firstName: 'Alice', lastName: 'Admin', role: 'ADMIN' },
+    }),
+    prisma.clinician.upsert({
+      where: { email: 'doctor@clinic.dev' },
+      update: {},
+      create: { email: 'doctor@clinic.dev', passwordHash: pw, firstName: 'David', lastName: 'Chen', role: 'DOCTOR', gmcNumber: 'GMC7654321' },
+    }),
+    prisma.clinician.upsert({
+      where: { email: 'cx@clinic.dev' },
+      update: {},
+      create: { email: 'cx@clinic.dev', passwordHash: pw, firstName: 'Clara', lastName: 'Watson', role: 'CX_TEAM' },
+    }),
+    prisma.clinician.upsert({
+      where: { email: 'provider@clinic.dev' },
+      update: {},
+      create: { email: 'provider@clinic.dev', passwordHash: pw, firstName: 'Peter', lastName: 'Supply', role: 'PROVIDER' },
+    }),
+  ]);
+  console.log('✓ Clinicians  admin / doctor / cx / provider  (all password: password123)');
+
+  // ── Leads ───────────────────────────────────────────────────────────────────
+  // 3 unconverted leads, 2 converted (will become patients below)
+
+  const leadSarah = await prisma.lead.upsert({
+    where: { email: 'sarah.jones@example.com' },
     update: {},
     create: {
-      email: 'alice.smith@clinic.dev',
-      passwordHash: await bcrypt.hash('Password123!', 10),
-      firstName: 'Alice',
-      lastName: 'Smith',
-      gmcNumber: 'GMC1234567',
-      isVerified: true,
-      mfaEnabled: false,
-    },
-  });
-
-  const bob = await prisma.clinician.upsert({
-    where: { email: 'bob.jones@clinic.dev' },
-    update: {},
-    create: {
-      email: 'bob.jones@clinic.dev',
-      passwordHash: await bcrypt.hash('Password123!', 10),
-      firstName: 'Bob',
-      lastName: 'Jones',
-      gmcNumber: 'GMC7654321',
-      isVerified: true,
-      mfaEnabled: false,
-    },
-  });
-
-  console.log(`Clinicians: ${alice.email}, ${bob.email}`);
-
-  // ─── Patients ─────────────────────────────────────────────────────────────
-  const patient1 = await prisma.patient.upsert({
-    where: { email: 'jane.doe@patient.dev' },
-    update: {},
-    create: {
-      email: 'jane.doe@patient.dev',
-      passwordHash: await bcrypt.hash('Password123!', 10),
-      firstName: 'Jane',
-      lastName: 'Doe',
-      dateOfBirth: new Date('1980-04-15'),
-    },
-  });
-
-  const patient2 = await prisma.patient.upsert({
-    where: { email: 'sarah.miller@patient.dev' },
-    update: {},
-    create: {
-      email: 'sarah.miller@patient.dev',
-      passwordHash: await bcrypt.hash('Password123!', 10),
+      email: 'sarah.jones@example.com',
       firstName: 'Sarah',
-      lastName: 'Miller',
-      dateOfBirth: new Date('1975-09-22'),
+      lastName: 'Jones',
+      productKind: ConsultationKind.HRT,
+      quizAnswers: HRT_QUIZ,
+      createdAt: daysAgo(5),
     },
   });
 
-  const patient3 = await prisma.patient.upsert({
-    where: { email: 'emily.clark@patient.dev' },
+  const leadMark = await prisma.lead.upsert({
+    where: { email: 'mark.taylor@example.com' },
     update: {},
     create: {
-      email: 'emily.clark@patient.dev',
-      passwordHash: await bcrypt.hash('Password123!', 10),
-      firstName: 'Emily',
-      lastName: 'Clark',
-      dateOfBirth: new Date('1990-01-30'),
+      email: 'mark.taylor@example.com',
+      firstName: 'Mark',
+      lastName: 'Taylor',
+      productKind: ConsultationKind.GLP1,
+      quizAnswers: GLP1_QUIZ,
+      stripeSessionId: 'cs_test_abandoned_001',
+      createdAt: daysAgo(3),
     },
   });
 
-  console.log(`Patients: ${patient1.email}, ${patient2.email}, ${patient3.email}`);
-
-  // ─── Consultation 1: HRT, submitted 2 days ago, has warning red flag ───────
-  const consultation1 = await prisma.consultation.upsert({
-    where: { id: 'seed-consultation-1' },
-    update: { submittedAt: daysAgo(2) },
+  const leadNina = await prisma.lead.upsert({
+    where: { email: 'nina.patel@example.com' },
+    update: {},
     create: {
-      id: 'seed-consultation-1',
-      patientId: patient1.id,
-      kind: 'HRT',
-      status: 'SUBMITTED',
-      submittedAt: daysAgo(2),
-      quizAnswers: [
-        { questionId: 'active_cancer', question: 'Have you been diagnosed with any active cancer?', answer: 'no' },
-        { questionId: 'blood_clots_history', question: 'Do you have a history of blood clots?', answer: 'no' },
-        { questionId: 'unexplained_bleeding', question: 'Are you experiencing unexplained vaginal bleeding?', answer: 'no' },
-        { questionId: 'recent_heart_attack', question: 'Have you had a heart attack or stroke in the last 12 months?', answer: 'no' },
-        { questionId: 'liver_disease', question: 'Do you have liver disease?', answer: 'yes' },
-        { questionId: 'uncontrolled_hypertension', question: 'Do you have uncontrolled high blood pressure?', answer: 'no' },
-        { questionId: 'main_symptoms', question: 'What are your main symptoms?', answer: 'Hot flushes' },
-        { questionId: 'last_period', question: 'When was your last period?', answer: '1–2 years ago' },
-      ],
-      redFlags: {
-        create: [
-          { description: 'Liver disease reported', severity: 'WARNING' },
-        ],
-      },
+      email: 'nina.patel@example.com',
+      firstName: 'Nina',
+      lastName: 'Patel',
+      productKind: ConsultationKind.HRT,
+      quizAnswers: HRT_QUIZ,
+      createdAt: daysAgo(1),
     },
   });
 
-  // ─── Consultation 2: HRT, in review 5 days ago, critical red flag ──────────
-  const consultation2 = await prisma.consultation.upsert({
-    where: { id: 'seed-consultation-2' },
-    update: { submittedAt: daysAgo(5) },
+  // Two leads that paid and converted
+  const leadEmma = await prisma.lead.upsert({
+    where: { email: 'emma.white@example.com' },
+    update: {},
     create: {
-      id: 'seed-consultation-2',
-      patientId: patient2.id,
-      clinicianId: alice.id,
-      kind: 'HRT',
-      status: 'IN_REVIEW',
-      submittedAt: daysAgo(5),
-      quizAnswers: [
-        { questionId: 'active_cancer', question: 'Have you been diagnosed with any active cancer?', answer: 'no' },
-        { questionId: 'blood_clots_history', question: 'Do you have a history of blood clots?', answer: 'yes' },
-        { questionId: 'unexplained_bleeding', question: 'Are you experiencing unexplained vaginal bleeding?', answer: 'no' },
-        { questionId: 'recent_heart_attack', question: 'Have you had a heart attack or stroke in the last 12 months?', answer: 'no' },
-        { questionId: 'liver_disease', question: 'Do you have liver disease?', answer: 'no' },
-        { questionId: 'uncontrolled_hypertension', question: 'Do you have uncontrolled high blood pressure?', answer: 'no' },
-        { questionId: 'main_symptoms', question: 'What are your main symptoms?', answer: 'Night sweats' },
-        { questionId: 'last_period', question: 'When was your last period?', answer: 'More than 2 years ago' },
-      ],
-      redFlags: {
-        create: [
-          { description: 'History of blood clots or DVT reported', severity: 'CRITICAL' },
-        ],
-      },
+      email: 'emma.white@example.com',
+      firstName: 'Emma',
+      lastName: 'White',
+      productKind: ConsultationKind.HRT,
+      quizAnswers: HRT_QUIZ,
+      stripeSessionId: 'cs_test_paid_001',
+      convertedAt: daysAgo(10),
+      createdAt: daysAgo(12),
     },
   });
 
-  // ─── Consultation 3: HRT, more info requested 10 days ago, with messages ───
-  const consultation3 = await prisma.consultation.upsert({
-    where: { id: 'seed-consultation-3' },
-    update: { submittedAt: daysAgo(10) },
+  const leadJames = await prisma.lead.upsert({
+    where: { email: 'james.brook@example.com' },
+    update: {},
     create: {
-      id: 'seed-consultation-3',
-      patientId: patient3.id,
-      clinicianId: bob.id,
-      kind: 'HRT',
-      status: 'MORE_INFO_REQUESTED',
-      submittedAt: daysAgo(10),
-      quizAnswers: [
-        { questionId: 'active_cancer', question: 'Have you been diagnosed with any active cancer?', answer: 'no' },
-        { questionId: 'blood_clots_history', question: 'Do you have a history of blood clots?', answer: 'no' },
-        { questionId: 'unexplained_bleeding', question: 'Are you experiencing unexplained vaginal bleeding?', answer: 'no' },
-        { questionId: 'recent_heart_attack', question: 'Have you had a heart attack or stroke in the last 12 months?', answer: 'no' },
-        { questionId: 'liver_disease', question: 'Do you have liver disease?', answer: 'no' },
-        { questionId: 'uncontrolled_hypertension', question: 'Do you have uncontrolled high blood pressure?', answer: 'no' },
-        { questionId: 'main_symptoms', question: 'What are your main symptoms?', answer: 'Multiple' },
-        { questionId: 'last_period', question: 'When was your last period?', answer: 'Within the last 12 months' },
-      ],
+      email: 'james.brook@example.com',
+      firstName: 'James',
+      lastName: 'Brook',
+      productKind: ConsultationKind.GLP1,
+      quizAnswers: GLP1_QUIZ,
+      stripeSessionId: 'cs_test_paid_002',
+      convertedAt: daysAgo(7),
+      createdAt: daysAgo(8),
     },
   });
 
-  // Messages on consultation 3
+  console.log('✓ Leads  (3 unconverted, 2 converted)');
+
+  // ── Patients ────────────────────────────────────────────────────────────────
+  // Emma — activated patient (HRT)
+  const patientEmma = await prisma.patient.upsert({
+    where: { email: 'emma.white@example.com' },
+    update: {},
+    create: {
+      email: 'emma.white@example.com',
+      passwordHash: pw,
+      firstName: 'Emma',
+      lastName: 'White',
+      dateOfBirth: dob(1978, 4, 14),
+      leadId: leadEmma.id,
+      activatedAt: daysAgo(9),
+      createdAt: daysAgo(10),
+    },
+  });
+
+  // James — paid but hasn't clicked the activation link yet
+  const patientJames = await prisma.patient.upsert({
+    where: { email: 'james.brook@example.com' },
+    update: {},
+    create: {
+      email: 'james.brook@example.com',
+      passwordHash: pw,
+      firstName: 'James',
+      lastName: 'Brook',
+      dateOfBirth: dob(1985, 9, 3),
+      leadId: leadJames.id,
+      activationToken: 'dev-activation-token-james',
+      activationTokenExpiresAt: new Date(Date.now() + 7 * 86_400_000),
+      createdAt: daysAgo(7),
+    },
+  });
+
+  console.log('✓ Patients  emma (activated) / james (pending activation)');
+
+  // ── Consultations ───────────────────────────────────────────────────────────
+  // Emma has 2 consultations in various states
+  const consultApproved = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-emma-approved' },
+    update: {},
+    create: {
+      id: 'seed-consult-emma-approved',
+      patientId: patientEmma.id,
+      clinicianId: doctor.id,
+      kind: ConsultationKind.HRT,
+      status: ConsultationStatus.APPROVED,
+      quizAnswers: HRT_QUIZ,
+      submittedAt: daysAgo(8),
+    },
+  });
+
+  const consultSubmitted = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-emma-submitted' },
+    update: {},
+    create: {
+      id: 'seed-consult-emma-submitted',
+      patientId: patientEmma.id,
+      kind: ConsultationKind.HRT,
+      status: ConsultationStatus.SUBMITTED,
+      quizAnswers: HRT_QUIZ,
+      submittedAt: daysAgo(1),
+    },
+  });
+
+  // James has 1 consultation in review with a red flag
+  const consultInReview = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-james-review' },
+    update: {},
+    create: {
+      id: 'seed-consult-james-review',
+      patientId: patientJames.id,
+      clinicianId: doctor.id,
+      kind: ConsultationKind.GLP1,
+      status: ConsultationStatus.IN_REVIEW,
+      quizAnswers: GLP1_QUIZ,
+      submittedAt: daysAgo(6),
+    },
+  });
+
+  console.log('✓ Consultations  (approved, submitted, in-review)');
+
+  // ── Red flags ───────────────────────────────────────────────────────────────
+  await prisma.redFlag.upsert({
+    where: { id: 'seed-redflag-001' },
+    update: {},
+    create: {
+      id: 'seed-redflag-001',
+      consultationId: consultInReview.id,
+      description: 'BMI over 30 with reported history of GERD — monitor for GI side effects',
+      severity: RedFlagSeverity.WARNING,
+    },
+  });
+
+  console.log('✓ Red flags');
+
+  // ── Prescription ────────────────────────────────────────────────────────────
+  await prisma.prescription.upsert({
+    where: { consultationId: consultApproved.id },
+    update: {},
+    create: {
+      consultationId: consultApproved.id,
+      medication: 'Oestraclin Gel 0.06%',
+      dosage: '1 sachet (1.25g) daily',
+      instructions: 'Apply to inner arm or thigh, rotate sites daily. Review after 3 months.',
+      issuedAt: daysAgo(7),
+      pharmacyRef: 'PH-2026-00123',
+      dispatchedAt: daysAgo(6),
+    },
+  });
+
+  console.log('✓ Prescriptions');
+
+  // ── Messages ────────────────────────────────────────────────────────────────
   await prisma.message.createMany({
     skipDuplicates: true,
     data: [
       {
-        id: 'seed-msg-1',
-        consultationId: consultation3.id,
-        senderId: bob.id,
-        senderRole: 'CLINICIAN',
-        content: 'Hi Emily, could you clarify which symptoms you are experiencing? You selected "Multiple" — please list them so I can review your case fully.',
+        id: 'seed-msg-001',
+        consultationId: consultApproved.id,
+        senderId: patientEmma.id,
+        senderRole: Role.PATIENT,
+        content: 'Hi, I just wanted to check — is it normal to feel a bit tired in the first week?',
+        sentAt: daysAgo(7),
       },
       {
-        id: 'seed-msg-2',
-        consultationId: consultation3.id,
-        senderId: patient3.id,
-        senderRole: 'PATIENT',
-        content: 'Hi Dr Jones, I have been experiencing hot flushes, mood swings, and disrupted sleep for about 6 months now.',
+        id: 'seed-msg-002',
+        consultationId: consultApproved.id,
+        senderId: doctor.id,
+        senderRole: Role.CLINICIAN,
+        content: 'Yes, mild fatigue in the first week is completely normal as your body adjusts. If it persists beyond 2 weeks please let us know.',
+        sentAt: daysAgo(6),
+      },
+      {
+        id: 'seed-msg-003',
+        consultationId: consultInReview.id,
+        senderId: doctor.id,
+        senderRole: Role.CLINICIAN,
+        content: 'We noticed a flag on your file regarding GERD history. Could you let us know if you are currently on any medication for this?',
+        sentAt: daysAgo(5),
       },
     ],
   });
 
-  // ─── Consultation 4: HRT, approved 30 days ago with prescription ───────────
-  const consultation4 = await prisma.consultation.upsert({
-    where: { id: 'seed-consultation-4' },
-    update: { submittedAt: daysAgo(30) },
-    create: {
-      id: 'seed-consultation-4',
-      patientId: patient1.id,
-      clinicianId: alice.id,
-      kind: 'HRT',
-      status: 'APPROVED',
-      submittedAt: daysAgo(30),
-      quizAnswers: [
-        { questionId: 'active_cancer', question: 'Have you been diagnosed with any active cancer?', answer: 'no' },
-        { questionId: 'blood_clots_history', question: 'Do you have a history of blood clots?', answer: 'no' },
-        { questionId: 'main_symptoms', question: 'What are your main symptoms?', answer: 'Hot flushes' },
-        { questionId: 'last_period', question: 'When was your last period?', answer: 'More than 2 years ago' },
-      ],
-      prescription: {
-        create: {
-          medication: 'Estradiol',
-          dosage: '1mg daily',
-          instructions: 'Take one tablet daily at the same time each day. Review after 3 months.',
-        },
-      },
-    },
-  });
-
-  // ─── Audit log entries ────────────────────────────────────────────────────
-  await prisma.auditLogEntry.createMany({
-    skipDuplicates: true,
-    data: [
-      {
-        id: 'seed-audit-1',
-        actorId: patient1.id,
-        actorRole: 'PATIENT',
-        action: 'CONSULTATION_SUBMITTED',
-        resourceType: 'Consultation',
-        resourceId: consultation1.id,
-      },
-      {
-        id: 'seed-audit-2',
-        actorId: alice.id,
-        actorRole: 'CLINICIAN',
-        action: 'CONSULTATION_APPROVED',
-        resourceType: 'Consultation',
-        resourceId: consultation4.id,
-        metadata: { medication: 'Estradiol', dosage: '1mg daily' },
-      },
-      {
-        id: 'seed-audit-3',
-        actorId: bob.id,
-        actorRole: 'CLINICIAN',
-        action: 'CONSULTATION_MORE_INFO_REQUESTED',
-        resourceType: 'Consultation',
-        resourceId: consultation3.id,
-      },
-    ],
-  });
-
-  console.log('Seed complete.');
-  console.log('');
-  console.log('─── Clinician logins ───────────────────────────────');
-  console.log('  alice.smith@clinic.dev  /  Password123!');
-  console.log('  bob.jones@clinic.dev    /  Password123!');
-  console.log('─── What you get in the queue ──────────────────────');
-  console.log('  • Jane Doe      — HRT, SUBMITTED, warning flag');
-  console.log('  • Sarah Miller  — HRT, IN_REVIEW, CRITICAL flag (pinned top)');
-  console.log('  • Emily Clark   — HRT, MORE_INFO_REQUESTED, messages');
-  console.log('  • Jane Doe      — HRT, APPROVED (prior consultation)');
+  console.log('✓ Messages');
+  console.log('\n✅ Seed complete.\n');
+  console.log('Login credentials (all passwords: password123)');
+  console.log('─────────────────────────────────────────────');
+  console.log('  admin@clinic.dev     → Admin (full access)');
+  console.log('  doctor@clinic.dev    → Doctor (patients, review queue)');
+  console.log('  cx@clinic.dev        → CX Team (leads, patients)');
+  console.log('  provider@clinic.dev  → Provider (patients, orders)');
 }
 
 main()

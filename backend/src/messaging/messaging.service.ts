@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { SendMessageInput } from './dto/send-message.input';
+import { PostHogService } from '../posthog/posthog.service';
 
 const pubSub = new PubSub();
 
@@ -12,6 +13,7 @@ export class MessagingService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private posthog: PostHogService,
   ) {}
 
   async send(senderId: string, senderRole: UserRole, input: SendMessageInput) {
@@ -31,6 +33,12 @@ export class MessagingService {
       resourceType: 'Message',
       resourceId: message.id,
       metadata: { consultationId: input.consultationId },
+    });
+
+    this.posthog.capture(senderId, 'message_sent', {
+      consultation_id: input.consultationId,
+      message_id: message.id,
+      sender_role: senderRole,
     });
 
     pubSub.publish(`NEW_MESSAGE.${input.consultationId}`, { newMessage: message });
