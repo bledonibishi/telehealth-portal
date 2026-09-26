@@ -29,9 +29,16 @@ import { CheckInsModule } from './check-ins/check-ins.module';
     PostHogModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      // Vercel's serverless filesystem is read-only at runtime — writing to
+      // src/schema.gql (fine for local dev, where it's regenerated and
+      // committed) would crash on boot there. `true` keeps the schema
+      // in-memory only, which is all a running deployment needs.
+      autoSchemaFile: process.env.VERCEL ? true : join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
-      subscriptions: { 'graphql-ws': true },
+      // graphql-ws needs a persistent connection a serverless function
+      // can't hold open. Subscriptions are local-dev only until this runs
+      // somewhere with a long-lived process.
+      subscriptions: process.env.VERCEL ? undefined : { 'graphql-ws': true },
       context: ({ req }) => ({ req }),
     }),
     PrismaModule,
