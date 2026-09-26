@@ -14,7 +14,14 @@
     },
     "plugins": [
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to upload your ID, body, and prescription photos for clinical verification.",
+          "cameraPermission": "Used to take your ID, body, and prescription photos for clinical verification."
+        }
+      ]
     ]
   }
 }

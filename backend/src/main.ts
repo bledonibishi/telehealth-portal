@@ -1,17 +1,10 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { createApp } from './create-app';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    // Preserve raw body for Stripe webhook signature verification
-    rawBody: true,
-  });
+  const app = await createApp();
   const config = app.get(ConfigService);
-
-  const allowedOrigins = config.get<string>('ALLOWED_ORIGINS', 'http://localhost:3000').split(',');
-  app.enableCors({ origin: allowedOrigins, credentials: true });
 
   const port = config.get<number>('PORT', 4000);
   await app.listen(port);

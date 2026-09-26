@@ -13,8 +13,33 @@ type AuthResponse {
   accessToken: String
   clinician: Clinician
   mfaRequired: Boolean!
+  patient: Patient
   pendingToken: String
   refreshToken: String
+}
+
+type CheckIn {
+  answers: [QuizAnswer!]
+
+  """
+  The link the patient uses to complete their check-in. Only set while a check-in is SENT and awaiting a response.
+  """
+  checkInUrl: String
+  completedAt: DateTime
+  createdAt: DateTime!
+  dueAt: DateTime!
+  id: ID!
+  patientFirstName: String
+  sentAt: DateTime
+  status: CheckInStatus!
+  tokenExpiresAt: DateTime
+  wantsToReorder: Boolean
+}
+
+enum CheckInStatus {
+  COMPLETED
+  SCHEDULED
+  SENT
 }
 
 type Clinician {
@@ -72,6 +97,20 @@ input CreateLeadInput {
   stripeSessionId: String
 }
 
+type DashboardMetrics {
+  activePatients: Int!
+  approvedConsultations: Int!
+  conversionRate: Float!
+  dispatchedOrders: Int!
+  leadsThisWeek: Int!
+  newLeadsToday: Int!
+  newPatientsThisWeek: Int!
+  pendingConsultations: Int!
+  pendingOrders: Int!
+  totalLeads: Int!
+  totalPatients: Int!
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
@@ -117,20 +156,72 @@ type Mutation {
   approveConsultation(input: ApproveConsultationInput!): Consultation!
   createLead(input: CreateLeadInput!): Lead!
   declineConsultation(input: DeclineConsultationInput!): Consultation!
+  dispatchOrder(id: ID!, pharmacyRef: String!): Prescription!
   enableMfa(totpCode: String!): Boolean!
   loginClinician(input: LoginInput!): AuthResponse!
+  loginPatient(input: LoginInput!): AuthResponse!
+  markOrderDelivered(id: ID!): Prescription!
+  markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Prescription!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
   requestMoreInfo(consultationId: ID!): Consultation!
+
+  """
+  Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.
+  """
+  rescheduleCheckIn(dueAt: DateTime!, id: ID!): CheckIn!
+  reviewOnboarding(input: ReviewOnboardingInput!): OnboardingSubmission!
+  saveBodyPhotosStep(input: SaveBodyPhotosStepInput!): OnboardingSubmission!
+  saveIdentityStep(input: SaveIdentityStepInput!): OnboardingSubmission!
+  savePrescriptionProofStep(input: SavePrescriptionProofStepInput!): OnboardingSubmission!
+  savePriorMedicationUse(priorMedicationUse: Boolean!): OnboardingSubmission!
   sendMessage(input: SendMessageInput!): Message!
   setupMfa: MfaSetupResponse!
+  submitCheckIn(input: SubmitCheckInInput!, token: String!): CheckIn!
   submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
+  submitOnboarding: OnboardingSubmission!
   updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
   updatePatient(input: UpdatePatientInput!): Patient!
   verifyMfa(pendingToken: String!, totpCode: String!): AuthResponse!
 }
 
+type NotificationCounts {
+  newLeads: Int!
+  patientMessages: Int!
+  pendingConsultations: Int!
+  pendingOrders: Int!
+}
+
+enum OnboardingStatus {
+  APPROVED
+  IN_PROGRESS
+  PENDING_REVIEW
+  REJECTED
+}
+
+type OnboardingSubmission {
+  bodyPhotoFrontUrl: String
+  bodyPhotoSideUrl: String
+  createdAt: DateTime!
+  id: ID!
+  idDocumentUrl: String
+  patient: Patient
+  patientId: ID!
+  personaStatus: PersonaStatus!
+  photoReviewStatus: PhotoReviewStatus!
+  prescriptionProofType: PrescriptionProofType
+  prescriptionProofUrl: String
+  priorMedicationUse: Boolean
+  rejectionReason: String
+  reviewedAt: DateTime
+  selfieUrl: String
+  status: OnboardingStatus!
+  submittedAt: DateTime
+  updatedAt: DateTime!
+}
+
 type Patient {
   activatedAt: DateTime
+  checkIns: [CheckIn!]!
   consultations: [Consultation!]!
   createdAt: DateTime!
   dateOfBirth: DateTime!
@@ -141,18 +232,47 @@ type Patient {
   leadId: String
 }
 
+enum PersonaStatus {
+  FAILED
+  NOT_CONFIGURED
+  NOT_STARTED
+  PENDING
+  VERIFIED
+}
+
+enum PhotoReviewStatus {
+  APPROVED
+  NOT_STARTED
+  PENDING_REVIEW
+  REJECTED
+}
+
 type Prescription {
+  carrier: String
+  consultation: Consultation
   consultationId: String!
+  deliveredAt: DateTime
   dispatchedAt: DateTime
   dosage: String!
   id: ID!
   instructions: String!
   issuedAt: DateTime!
   medication: String!
+  outForDeliveryAt: DateTime
   pharmacyRef: String
+  trackingNumber: String
+  trackingUrl: String
+}
+
+enum PrescriptionProofType {
+  MEDICINE_BOX_LABEL
+  ORDER_CONFIRMATION
+  PHARMACY_RECORD
+  PRESCRIPTION_DOCUMENT
 }
 
 type Query {
+  checkInByToken(token: String!): CheckIn!
   clinicians: [Clinician!]!
   consultation(id: ID!): Consultation!
 
@@ -160,9 +280,21 @@ type Query {
   Review queue — critical red flags pinned first, then sorted by wait time
   """
   consultationQueue: [Consultation!]!
+  dashboardMetrics: DashboardMetrics!
   lead(id: ID!): Lead!
   leads: [Lead!]!
   messages(consultationId: ID!): [Message!]!
+
+  """A single consultation belonging to the authenticated patient"""
+  myConsultation(id: ID!): Consultation!
+
+  """The authenticated patient's own consultations"""
+  myConsultations: [Consultation!]!
+  myOnboarding: OnboardingSubmission!
+  notificationCounts: NotificationCounts!
+  onboardingQueue: [OnboardingSubmission!]!
+  onboardingSubmission(patientId: ID!): OnboardingSubmission
+  orders: [Prescription!]!
   patient(id: ID!): Patient
 
   """Prior consultations for a patient, newest first"""
@@ -194,6 +326,27 @@ enum RedFlagSeverity {
   WARNING
 }
 
+input ReviewOnboardingInput {
+  approve: Boolean!
+  patientId: ID!
+  rejectionReason: String
+}
+
+input SaveBodyPhotosStepInput {
+  bodyPhotoFrontFileId: ID!
+  bodyPhotoSideFileId: ID!
+}
+
+input SaveIdentityStepInput {
+  idDocumentFileId: ID!
+  selfieFileId: ID!
+}
+
+input SavePrescriptionProofStepInput {
+  prescriptionProofFileId: ID!
+  prescriptionProofType: PrescriptionProofType!
+}
+
 type RefreshResponse {
   accessToken: String!
   refreshToken: String!
@@ -202,6 +355,11 @@ type RefreshResponse {
 input SendMessageInput {
   consultationId: ID!
   content: String!
+}
+
+input SubmitCheckInInput {
+  answers: [QuizAnswerInput!]!
+  wantsToReorder: Boolean!
 }
 
 input SubmitIntakeQuizInput {

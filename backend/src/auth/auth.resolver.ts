@@ -1,26 +1,39 @@
-import { Resolver, Mutation, Args } from '@nestjs/graphql';
+import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { GqlAuthGuard } from './guards/gql-auth.guard';
+import { GqlThrottlerGuard } from './guards/gql-throttler.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+
+function loginAttempt(ctx: any): LoginAttempt {
+  return { ip: ctx.req?.ip, userAgent: ctx.req?.headers?.['user-agent'] };
+}
 
 @Resolver()
 export class AuthResolver {
   constructor(private authService: AuthService) {}
 
+  @UseGuards(GqlThrottlerGuard)
   @Mutation(() => AuthResponse)
-  loginClinician(@Args('input') input: LoginInput) {
-    return this.authService.loginClinician(input.email, input.password);
+  loginClinician(@Args('input') input: LoginInput, @Context() ctx: any) {
+    return this.authService.loginClinician(input.email, input.password, loginAttempt(ctx));
+  }
+
+  @UseGuards(GqlThrottlerGuard)
+  @Mutation(() => AuthResponse)
+  loginPatient(@Args('input') input: LoginInput) {
+    return this.authService.loginPatient(input.email, input.password);
   }
 
   @Mutation(() => AuthResponse)
   verifyMfa(
     @Args('pendingToken') pendingToken: string,
     @Args('totpCode') totpCode: string,
+    @Context() ctx: any,
   ) {
-    return this.authService.verifyMfa(pendingToken, totpCode);
+    return this.authService.verifyMfa(pendingToken, totpCode, loginAttempt(ctx));
   }
 
   @Mutation(() => RefreshResponse)

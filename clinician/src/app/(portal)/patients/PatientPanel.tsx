@@ -5,7 +5,18 @@ import { useQuery, useMutation } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE } from '@/graphql/messaging';
+import { DISPATCH_ORDER, MARK_ORDER_OUT_FOR_DELIVERY, MARK_ORDER_DELIVERED, GET_ORDERS } from '@/graphql/orders';
+import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING } from '@/graphql/onboarding';
+import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
+import AuthedImage from '@/components/AuthedImage';
 import { hasAccess } from '@/lib/role';
+
+const PROOF_TYPE_LABEL: Record<string, string> = {
+  MEDICINE_BOX_LABEL: 'Medicine box label',
+  PRESCRIPTION_DOCUMENT: 'Prescription document',
+  PHARMACY_RECORD: 'Pharmacy record',
+  ORDER_CONFIRMATION: 'Order confirmation',
+};
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -20,25 +31,83 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'messages' | 'checkin';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin';
+
+const ORDER_STAGES = ['Prescribed', 'Dispatched', 'Out for delivery', 'Delivered'] as const;
+
+function orderStageIndex(rx: any): number {
+  if (rx.deliveredAt) return 3;
+  if (rx.outForDeliveryAt) return 2;
+  if (rx.dispatchedAt) return 1;
+  return 0;
+}
+
+function OrderStageTracker({ rx }: { rx: any }) {
+  const current = orderStageIndex(rx);
+  return (
+    <div className="flex items-center">
+      {ORDER_STAGES.map((stage, i) => (
+        <div key={stage} className="flex items-center flex-1 last:flex-none">
+          <div className="flex flex-col items-center">
+            <div className={`w-2.5 h-2.5 rounded-full ${i <= current ? 'bg-brand-500' : 'bg-gray-200'} ${i === current ? 'ring-4 ring-brand-100' : ''}`} />
+            <span className={`text-[10px] mt-1 whitespace-nowrap ${i <= current ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>{stage}</span>
+          </div>
+          {i < ORDER_STAGES.length - 1 && (
+            <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-brand-500' : 'bg-gray-200'}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
+  const [dispatchingId, setDispatchingId] = useState<string | null>(null);
+  const [pharmacyRef, setPharmacyRef] = useState('');
+  const [shippingId, setShippingId] = useState<string | null>(null);
+  const [carrier, setCarrier] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
+  const [requestingChanges, setRequestingChanges] = useState(false);
+  const [changesReason, setChangesReason] = useState('');
+  const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
+  const [checkInDate, setCheckInDate] = useState('');
+  const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
 
   const isAdmin = hasAccess(['ADMIN']);
+  const canDispatch = hasAccess(['ADMIN', 'PROVIDER']);
+  const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
 
   const { data, loading } = useQuery(GET_PATIENT, { variables: { id: patientId } });
+  const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
   const [updatePatient, { loading: saving }] = useMutation(UPDATE_PATIENT, {
     refetchQueries: [{ query: GET_PATIENTS }],
   });
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
   });
+  const [dispatchOrder, { loading: dispatching }] = useMutation(DISPATCH_ORDER, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
+  });
+  const [markOutForDelivery, { loading: shipping }] = useMutation(MARK_ORDER_OUT_FOR_DELIVERY, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
+  });
+  const [markDelivered, { loading: delivering }] = useMutation(MARK_ORDER_DELIVERED, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
+  });
+  const [reviewOnboarding, { loading: reviewing }] = useMutation(REVIEW_ONBOARDING, {
+    refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
+  });
+  const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
+    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
+  });
 
   const p = data?.patient;
+  const onboarding = onboardingData?.onboardingSubmission;
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
@@ -49,12 +118,57 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const latestConsult = p.consultations?.[0];
   const allPrescriptions = p.consultations?.flatMap((c: any) => c.prescription ? [{ ...c.prescription, kind: c.kind }] : []) ?? [];
   const allMessages = p.consultations?.flatMap((c: any) => c.messages ?? []) ?? [];
+  const checkIns = p.checkIns ?? [];
   const latestConsultId = p.consultations?.[0]?.id;
 
   const handleReply = async () => {
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
+  };
+
+  const handleDispatch = async (id: string) => {
+    if (!pharmacyRef.trim()) return;
+    await dispatchOrder({ variables: { id, pharmacyRef: pharmacyRef.trim() } });
+    setDispatchingId(null);
+    setPharmacyRef('');
+  };
+
+  const handleMarkOutForDelivery = async (id: string) => {
+    await markOutForDelivery({
+      variables: {
+        id,
+        carrier: carrier.trim() || null,
+        trackingNumber: trackingNumber.trim() || null,
+        trackingUrl: trackingUrl.trim() || null,
+      },
+    });
+    setShippingId(null);
+    setCarrier('');
+    setTrackingNumber('');
+    setTrackingUrl('');
+  };
+
+  const handleMarkDelivered = async (id: string) => {
+    await markDelivered({ variables: { id } });
+  };
+
+  const handleApproveOnboarding = async () => {
+    await reviewOnboarding({ variables: { input: { patientId, approve: true } } });
+  };
+
+  const handleRequestChanges = async () => {
+    if (!changesReason.trim()) return;
+    await reviewOnboarding({ variables: { input: { patientId, approve: false, rejectionReason: changesReason.trim() } } });
+    setRequestingChanges(false);
+    setChangesReason('');
+  };
+
+  const handleRescheduleCheckIn = async (id: string) => {
+    if (!checkInDate) return;
+    await rescheduleCheckIn({ variables: { id, dueAt: new Date(checkInDate).toISOString() } });
+    setEditingCheckInId(null);
+    setCheckInDate('');
   };
 
   const handleSave = async () => {
@@ -89,9 +203,14 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     </div>
   );
 
+  const onboardingLabel =
+    onboarding?.status === 'PENDING_REVIEW' ? 'Onboarding ⚠️' : 'Onboarding';
+
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview',      label: 'Overview' },
+    { key: 'onboarding',    label: onboardingLabel },
     { key: 'prescriptions', label: `Prescriptions (${allPrescriptions.length})` },
+    { key: 'orders',        label: `Orders (${allPrescriptions.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
     { key: 'checkin',       label: 'Check-in' },
   ];
@@ -213,6 +332,134 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
           </div>
         )}
 
+        {/* ── Onboarding ── */}
+        {tab === 'onboarding' && (
+          <div className="p-5">
+            {!onboarding || onboarding.status === 'IN_PROGRESS' ? (
+              <div className="py-12 text-center text-sm text-gray-400">
+                {onboarding ? 'Patient hasn’t submitted onboarding yet.' : 'Patient hasn’t started onboarding yet.'}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                      onboarding.status === 'PENDING_REVIEW'
+                        ? 'bg-amber-50 text-amber-700'
+                        : onboarding.status === 'APPROVED'
+                          ? 'bg-green-50 text-green-700'
+                          : 'bg-red-50 text-red-700'
+                    }`}
+                  >
+                    {onboarding.status.replace(/_/g, ' ')}
+                  </span>
+                  {onboarding.submittedAt && (
+                    <span className="text-xs text-gray-400">
+                      Submitted {formatDistanceToNow(new Date(onboarding.submittedAt), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Identity check</p>
+                    <p className="text-sm text-gray-800">
+                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? 'Manual review' : onboarding.personaStatus.replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Photo compliance</p>
+                    <p className="text-sm text-gray-800">{onboarding.photoReviewStatus.replace(/_/g, ' ')}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ID document &amp; selfie</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <AuthedImage path={onboarding.idDocumentUrl} alt="ID document" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                    <AuthedImage path={onboarding.selfieUrl} alt="Selfie" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Full body photos</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt="Front-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                    <AuthedImage path={onboarding.bodyPhotoSideUrl} alt="Side-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Prior medication use</p>
+                  {onboarding.priorMedicationUse ? (
+                    <div>
+                      <p className="text-sm text-gray-800 mb-2">
+                        Yes — proof provided: {PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType}
+                      </p>
+                      <AuthedImage path={onboarding.prescriptionProofUrl} alt="Prescription proof" className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No — first time using this medication.</p>
+                  )}
+                </div>
+
+                {onboarding.status === 'REJECTED' && onboarding.rejectionReason && (
+                  <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl px-3 py-2.5 text-sm">
+                    <p className="font-medium">Changes requested</p>
+                    <p className="mt-1">{onboarding.rejectionReason}</p>
+                  </div>
+                )}
+
+                {canReviewOnboarding && onboarding.status === 'PENDING_REVIEW' && (
+                  <div className="border-t border-gray-100 pt-4">
+                    {requestingChanges ? (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={3}
+                          placeholder="What does the patient need to fix or add? e.g. retake the front body photo, provide clearer proof of prescription…"
+                          value={changesReason}
+                          onChange={(e) => setChangesReason(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleRequestChanges}
+                            disabled={!changesReason.trim() || reviewing}
+                            className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-40"
+                          >
+                            {reviewing ? '…' : 'Send request'}
+                          </button>
+                          <button onClick={() => setRequestingChanges(false)} className="text-sm text-gray-400 hover:text-gray-600">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleApproveOnboarding}
+                          disabled={reviewing}
+                          className="flex-1 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-40"
+                        >
+                          {reviewing ? '…' : 'Approve'}
+                        </button>
+                        <button
+                          onClick={() => setRequestingChanges(true)}
+                          disabled={reviewing}
+                          className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                        >
+                          Request changes
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Prescriptions ── */}
         {tab === 'prescriptions' && (
           <div className="p-5">
@@ -245,6 +492,157 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Orders ── */}
+        {tab === 'orders' && (
+          <div className="p-5">
+            {allPrescriptions.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-400">No orders yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {allPrescriptions.map((rx: any) => {
+                  const isDispatchingThis = dispatchingId === rx.id;
+                  const isShippingThis = shippingId === rx.id;
+                  const stage = orderStageIndex(rx);
+                  return (
+                    <div key={rx.id} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[rx.kind]}`}>{rx.kind}</span>
+                          <span className="text-xs text-gray-700 font-medium">{ORDER_STAGES[stage]}</span>
+                        </div>
+                      </div>
+
+                      <p className="font-semibold text-gray-900 text-sm mb-4">{rx.medication} · {rx.dosage}</p>
+
+                      <OrderStageTracker rx={rx} />
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-xs text-gray-400">
+                        <span>Prescribed {formatDistanceToNow(new Date(rx.issuedAt), { addSuffix: true })}</span>
+                        {rx.dispatchedAt && <span>Dispatched {format(new Date(rx.dispatchedAt), 'dd MMM yyyy')}</span>}
+                        {rx.outForDeliveryAt && <span>Out for delivery {format(new Date(rx.outForDeliveryAt), 'dd MMM yyyy')}</span>}
+                        {rx.deliveredAt && <span>Delivered {format(new Date(rx.deliveredAt), 'dd MMM yyyy')}</span>}
+                        {rx.pharmacyRef && (
+                          <span>Ref: <span className="font-mono text-gray-600">{rx.pharmacyRef}</span></span>
+                        )}
+                      </div>
+
+                      {(rx.carrier || rx.trackingNumber || rx.trackingUrl) && (
+                        <div className="mt-2 text-xs text-gray-500">
+                          {rx.carrier && <span>{rx.carrier} </span>}
+                          {rx.trackingNumber && <span className="font-mono">{rx.trackingNumber}</span>}
+                          {rx.trackingUrl && (
+                            <a href={rx.trackingUrl} target="_blank" rel="noreferrer" className="text-brand-500 hover:text-brand-900 ml-2">
+                              Track package →
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {canDispatch && !rx.dispatchedAt && !isDispatchingThis && (
+                        <button
+                          onClick={() => setDispatchingId(rx.id)}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100"
+                        >
+                          Mark dispatched
+                        </button>
+                      )}
+
+                      {isDispatchingThis && (
+                        <div className="mt-3 flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="Pharmacy / tracking reference…"
+                            value={pharmacyRef}
+                            onChange={(e) => setPharmacyRef(e.target.value)}
+                            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-64"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleDispatch(rx.id)}
+                            disabled={!pharmacyRef.trim() || dispatching}
+                            className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+                          >
+                            {dispatching ? '…' : 'Confirm dispatch'}
+                          </button>
+                          <button
+                            onClick={() => { setDispatchingId(null); setPharmacyRef(''); }}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+
+                      {canDispatch && rx.dispatchedAt && !rx.outForDeliveryAt && !isShippingThis && (
+                        <button
+                          onClick={() => setShippingId(rx.id)}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100"
+                        >
+                          Mark out for delivery
+                        </button>
+                      )}
+
+                      {isShippingThis && (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Carrier (e.g. Royal Mail)"
+                              value={carrier}
+                              onChange={(e) => setCarrier(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-40"
+                              autoFocus
+                            />
+                            <input
+                              type="text"
+                              placeholder="Tracking number"
+                              value={trackingNumber}
+                              onChange={(e) => setTrackingNumber(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 w-40"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Tracking URL (optional)"
+                              value={trackingUrl}
+                              onChange={(e) => setTrackingUrl(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 flex-1"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleMarkOutForDelivery(rx.id)}
+                              disabled={shipping}
+                              className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+                            >
+                              {shipping ? '…' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => { setShippingId(null); setCarrier(''); setTrackingNumber(''); setTrackingUrl(''); }}
+                              className="text-xs text-gray-400 hover:text-gray-600"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {canDispatch && rx.outForDeliveryAt && !rx.deliveredAt && (
+                        <button
+                          onClick={() => handleMarkDelivered(rx.id)}
+                          disabled={delivering}
+                          className="mt-3 px-3 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-40"
+                        >
+                          {delivering ? '…' : 'Mark delivered'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -317,36 +715,166 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
               <p className="text-sm font-semibold text-gray-800">Monthly check-in</p>
               <p className="text-xs text-gray-500 mt-1">
-                After 1 month of treatment, the patient will receive a check-in quiz to review progress and reorder their prescription.
+                Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.
               </p>
             </div>
 
-            {p.activatedAt ? (
-              (() => {
-                const activatedDate = new Date(p.activatedAt);
-                const nextCheckIn = new Date(activatedDate.getTime() + 30 * 86_400_000);
-                const overdue = nextCheckIn < new Date();
-                return (
-                  <div className="space-y-3">
-                    <div className="border border-gray-100 rounded-xl p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-700">Next check-in due</p>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${overdue ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
-                          {overdue ? 'Overdue' : formatDistanceToNow(nextCheckIn, { addSuffix: true })}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{format(nextCheckIn, 'dd MMM yyyy')}</p>
-                    </div>
-                    <div className="border border-gray-100 rounded-xl p-4 text-center">
-                      <p className="text-sm text-gray-500 mb-3">No check-ins completed yet</p>
-                      <p className="text-xs text-gray-400">The patient will complete check-ins through the patient app. Results will appear here.</p>
-                    </div>
-                  </div>
-                );
-              })()
-            ) : (
+            {!p.activatedAt ? (
               <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
                 Check-in schedule starts once the patient activates their account.
+              </div>
+            ) : checkIns.length === 0 ? (
+              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
+                First check-in hasn&rsquo;t been scheduled yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {checkIns.map((c: any) => {
+                  const dueDate = new Date(c.dueAt);
+                  const overdue = c.status !== 'COMPLETED' && dueDate < new Date();
+                  return (
+                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span
+                          className={`text-xs font-medium px-2 py-0.5 rounded ${
+                            c.status === 'COMPLETED'
+                              ? 'bg-green-50 text-green-700'
+                              : overdue
+                                ? 'bg-red-50 text-red-700'
+                                : c.status === 'SENT'
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {c.status === 'COMPLETED' ? 'Completed' : overdue ? 'Overdue' : c.status === 'SENT' ? 'Sent — awaiting response' : 'Scheduled'}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <p className="text-xs text-gray-400">Scheduled</p>
+                          <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.createdAt), 'dd MMM yyyy')}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-400">Due</p>
+                          <p className={`text-xs font-medium mt-0.5 ${overdue ? 'text-red-600' : 'text-gray-800'}`}>
+                            {format(dueDate, 'dd MMM yyyy')}
+                          </p>
+                        </div>
+                        {c.sentAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Sent</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">
+                              {formatDistanceToNow(new Date(c.sentAt), { addSuffix: true })}
+                            </p>
+                          </div>
+                        )}
+                        {c.status === 'SENT' && c.tokenExpiresAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Link expires</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.tokenExpiresAt), 'dd MMM yyyy')}</p>
+                          </div>
+                        )}
+                        {c.completedAt && (
+                          <div>
+                            <p className="text-xs text-gray-400">Completed</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">
+                              {formatDistanceToNow(new Date(c.completedAt), { addSuffix: true })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {c.status === 'SENT' && c.checkInUrl && (
+                        <div className="mb-3">
+                          <p className="text-xs text-gray-400 mb-1">Check-in link</p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              readOnly
+                              value={c.checkInUrl}
+                              onClick={(e) => e.currentTarget.select()}
+                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-gray-50 truncate"
+                            />
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(c.checkInUrl);
+                                setCopiedCheckInId(c.id);
+                                setTimeout(() => setCopiedCheckInId((cur) => (cur === c.id ? null : cur)), 2000);
+                              }}
+                              className="shrink-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-700"
+                            >
+                              {copiedCheckInId === c.id ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {c.status === 'COMPLETED' ? (
+                        <div className="space-y-2 mt-2">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-gray-400">Reorder prescription:</p>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.wantsToReorder ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {c.wantsToReorder ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                          {c.answers?.map((a: any) => (
+                            <div key={a.questionId} className="bg-gray-50 rounded-lg px-3 py-2">
+                              <p className="text-xs text-gray-400">{a.question}</p>
+                              <p className="text-xs font-medium text-gray-800 mt-0.5">{a.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-gray-400">
+                            {c.status === 'SENT' ? 'Waiting for the patient to complete their check-in.' : 'Will be emailed automatically once due.'}
+                          </p>
+                          {c.status === 'SCHEDULED' && canReviewOnboarding && (
+                            editingCheckInId === c.id ? (
+                              <div className="mt-2 flex items-center gap-2">
+                                <input
+                                  type="datetime-local"
+                                  value={checkInDate}
+                                  onChange={(e) => setCheckInDate(e.target.value)}
+                                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleRescheduleCheckIn(c.id)}
+                                  disabled={!checkInDate || rescheduling}
+                                  className="text-xs px-2.5 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40"
+                                >
+                                  {rescheduling ? '…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => { setEditingCheckInId(null); setCheckInDate(''); }}
+                                  className="text-xs text-gray-400 hover:text-gray-600"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingCheckInId(c.id);
+                                  const now = new Date();
+                                  const pad = (n: number) => String(n).padStart(2, '0');
+                                  setCheckInDate(
+                                    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`,
+                                  );
+                                }}
+                                className="mt-2 text-xs text-brand-500 hover:text-brand-900"
+                              >
+                                Edit due date
+                              </button>
+                            )
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

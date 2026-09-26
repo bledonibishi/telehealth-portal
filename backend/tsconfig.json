@@ -10,10 +10,11 @@
     "allowSyntheticDefaultImports": true,
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src",
     "baseUrl": "./",
-    "rootDir": "src",
     "incremental": false,
     "strictNullChecks": false,
     "noImplicitAny": false
-  }
+  },
+  "include": ["src"]
 }

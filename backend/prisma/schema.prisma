@@ -1,5 +1,9 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" for local dev; rhel-openssl-3.0.x is what Vercel's serverless
+  // functions run on — without it Prisma can't find a matching query engine
+  // binary at runtime, even though the build itself succeeds.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -38,6 +42,49 @@ enum ClinicianRole {
   PROVIDER
 }
 
+enum CheckInStatus {
+  SCHEDULED
+  SENT
+  COMPLETED
+}
+
+enum UploadKind {
+  ID_DOCUMENT
+  SELFIE
+  BODY_PHOTO_FRONT
+  BODY_PHOTO_SIDE
+  PRESCRIPTION_PROOF
+}
+
+enum OnboardingStatus {
+  IN_PROGRESS
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum PersonaStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+  NOT_CONFIGURED
+}
+
+enum PhotoReviewStatus {
+  NOT_STARTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum PrescriptionProofType {
+  MEDICINE_BOX_LABEL
+  PRESCRIPTION_DOCUMENT
+  PHARMACY_RECORD
+  ORDER_CONFIRMATION
+}
+
 model Clinician {
   id           String        @id @default(cuid())
   email        String        @unique
@@ -52,7 +99,8 @@ model Clinician {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  consultations Consultation[]
+  consultations       Consultation[]
+  reviewedOnboardings OnboardingSubmission[]
 
   @@map("clinicians")
 }
@@ -90,6 +138,9 @@ model Patient {
 
   lead          Lead?          @relation(fields: [leadId], references: [id])
   consultations Consultation[]
+  uploadedFiles UploadedFile[]
+  onboarding    OnboardingSubmission?
+  checkIns      CheckIn[]
 
   @@map("patients")
 }
@@ -126,14 +177,19 @@ model RedFlag {
 }
 
 model Prescription {
-  id             String    @id @default(cuid())
-  consultationId String    @unique @map("consultation_id")
-  medication     String
-  dosage         String
-  instructions   String
-  issuedAt       DateTime  @default(now()) @map("issued_at")
-  pharmacyRef    String?   @map("pharmacy_ref")
-  dispatchedAt   DateTime? @map("dispatched_at")
+  id                String    @id @default(cuid())
+  consultationId    String    @unique @map("consultation_id")
+  medication        String
+  dosage            String
+  instructions      String
+  issuedAt          DateTime  @default(now()) @map("issued_at")
+  pharmacyRef       String?   @map("pharmacy_ref")
+  dispatchedAt      DateTime? @map("dispatched_at")
+  carrier           String?   @map("carrier")
+  trackingNumber    String?   @map("tracking_number")
+  trackingUrl       String?   @map("tracking_url")
+  outForDeliveryAt  DateTime? @map("out_for_delivery_at")
+  deliveredAt       DateTime? @map("delivered_at")
 
   consultation Consultation @relation(fields: [consultationId], references: [id])
 
@@ -165,4 +221,63 @@ model AuditLogEntry {
   timestamp    DateTime @default(now())
 
   @@map("audit_log_entries")
+}
+
+model UploadedFile {
+  id         String     @id @default(cuid())
+  patientId  String     @map("patient_id")
+  kind       UploadKind
+  filename   String
+  mimeType   String     @map("mime_type")
+  storageKey String     @map("storage_key")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@map("uploaded_files")
+}
+
+model CheckIn {
+  id             String        @id @default(cuid())
+  patientId      String        @map("patient_id")
+  dueAt          DateTime      @map("due_at")
+  status         CheckInStatus @default(SCHEDULED)
+  token          String?       @unique
+  tokenExpiresAt DateTime?     @map("token_expires_at")
+  sentAt         DateTime?     @map("sent_at")
+  answers        Json?
+  wantsToReorder Boolean?      @map("wants_to_reorder")
+  completedAt    DateTime?     @map("completed_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@map("check_ins")
+}
+
+model OnboardingSubmission {
+  id                      String                  @id @default(cuid())
+  patientId               String                  @unique @map("patient_id")
+  idDocumentFileId        String?                 @map("id_document_file_id")
+  selfieFileId            String?                 @map("selfie_file_id")
+  personaStatus           PersonaStatus           @default(NOT_STARTED) @map("persona_status")
+  bodyPhotoFrontFileId    String?                 @map("body_photo_front_file_id")
+  bodyPhotoSideFileId     String?                 @map("body_photo_side_file_id")
+  photoReviewStatus       PhotoReviewStatus       @default(NOT_STARTED) @map("photo_review_status")
+  priorMedicationUse      Boolean?                @map("prior_medication_use")
+  prescriptionProofType   PrescriptionProofType?  @map("prescription_proof_type")
+  prescriptionProofFileId String?                 @map("prescription_proof_file_id")
+  status                  OnboardingStatus        @default(IN_PROGRESS) @map("status")
+  submittedAt             DateTime?               @map("submitted_at")
+  reviewedAt              DateTime?               @map("reviewed_at")
+  reviewedByClinicianId   String?                 @map("reviewed_by_clinician_id")
+  rejectionReason         String?                 @map("rejection_reason")
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+
+  patient             Patient    @relation(fields: [patientId], references: [id])
+  reviewedByClinician Clinician? @relation(fields: [reviewedByClinicianId], references: [id])
+
+  @@map("onboarding_submissions")
 }

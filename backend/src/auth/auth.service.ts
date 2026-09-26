@@ -9,6 +9,11 @@ import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
 import { AuthFailureReason, authFailure, reasonFromJwtError } from './auth-failure';
 
+export interface LoginAttempt {
+  ip?: string;
+  userAgent?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -19,9 +24,17 @@ export class AuthService {
     private config: ConfigService,
   ) {}
 
-  async loginClinician(email: string, password: string) {
+  async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
     const clinician = await this.prisma.clinician.findUnique({ where: { email } });
     if (!clinician || !(await bcrypt.compare(password, clinician.passwordHash))) {
+      await this.audit.log({
+        actorId: clinician?.id ?? 'anonymous',
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_LOGIN_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician?.id ?? 'unknown',
+        metadata: { email, reason: clinician ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', ...attempt },
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -54,7 +67,37 @@ export class AuthService {
     return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, UserRole.CLINICIAN), clinician };
   }
 
-  async verifyMfa(pendingToken: string, totpCode: string) {
+  async loginPatient(email: string, password: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { email } });
+    if (!patient || !(await bcrypt.compare(password, patient.passwordHash))) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!patient.activatedAt) {
+      throw new UnauthorizedException('Account not activated — check your email for the activation link');
+    }
+
+    await this.audit.log({
+      actorId: patient.id,
+      actorRole: UserRole.PATIENT,
+      action: 'AUTH_LOGIN_PASSWORD',
+      resourceType: 'Patient',
+      resourceId: patient.id,
+    });
+
+    const accessToken = this.jwtService.sign({ sub: patient.id, role: UserRole.PATIENT });
+    this.posthog.identify(patient.id, {
+      email: patient.email,
+      first_name: patient.firstName,
+      last_name: patient.lastName,
+      role: UserRole.PATIENT,
+    });
+    this.posthog.capture(patient.id, 'patient_logged_in', {
+      login_method: 'password',
+    });
+    return { mfaRequired: false, pendingToken: null, accessToken, patient };
+  }
+
+  async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {
     let payload: any;
     try {
       payload = this.jwtService.verify(pendingToken);
@@ -67,6 +110,14 @@ export class AuthService {
     if (!clinician?.mfaSecret) throw new UnauthorizedException('MFA not configured');
 
     if (!authenticator.verify({ token: totpCode, secret: clinician.mfaSecret })) {
+      await this.audit.log({
+        actorId: clinician.id,
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_MFA_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician.id,
+        metadata: { ...attempt },
+      });
       throw new UnauthorizedException('Invalid TOTP code');
     }
 

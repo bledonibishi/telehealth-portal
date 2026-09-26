@@ -1,5 +1,6 @@
 import { ObjectType, Field } from '@nestjs/graphql';
 import { ClinicianModel } from '../../clinicians/models/clinician.model';
+import { PatientModel } from '../../patients/models/patient.model';
 
 @ObjectType()
 export class AuthResponse {
@@ -17,6 +18,9 @@ export class AuthResponse {
 
   @Field(() => ClinicianModel, { nullable: true })
   clinician?: ClinicianModel;
+
+  @Field(() => PatientModel, { nullable: true })
+  patient?: PatientModel;
 }
 
 @ObjectType()

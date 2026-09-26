@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -17,16 +18,27 @@ import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
+import { CheckInsModule } from './check-ins/check-ins.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PostHogModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      // Vercel's serverless filesystem is read-only at runtime — writing to
+      // src/schema.gql (fine for local dev, where it's regenerated and
+      // committed) would crash on boot there. `true` keeps the schema
+      // in-memory only, which is all a running deployment needs.
+      autoSchemaFile: process.env.VERCEL ? true : join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
-      subscriptions: { 'graphql-ws': true },
+      // graphql-ws needs a persistent connection a serverless function
+      // can't hold open. Subscriptions are local-dev only until this runs
+      // somewhere with a long-lived process.
+      subscriptions: process.env.VERCEL ? undefined : { 'graphql-ws': true },
       context: ({ req }) => ({ req }),
     }),
     PrismaModule,
@@ -42,6 +54,9 @@ import { PostHogModule } from './posthog/posthog.module';
     EmailModule,
     NotificationsModule,
     DashboardModule,
+    UploadsModule,
+    OnboardingModule,
+    CheckInsModule,
   ],
 })
 export class AppModule {}
