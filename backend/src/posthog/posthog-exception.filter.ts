@@ -1,10 +1,10 @@
-import { ArgumentsHost, Catch, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExecutionContext, ExceptionFilter, UnauthorizedException, HttpException, HttpStatus } from '@nestjs/common';
 import { GqlExceptionFilter, GqlExecutionContext } from '@nestjs/graphql';
 import { ThrottlerException } from '@nestjs/throttler';
 import { PostHogService } from './posthog.service';
 
 @Catch()
-export class PostHogExceptionFilter implements GqlExceptionFilter {
+export class PostHogExceptionFilter implements GqlExceptionFilter, ExceptionFilter {
   constructor(private readonly posthog: PostHogService) {}
 
   catch(exception: unknown, host: ArgumentsHost) {

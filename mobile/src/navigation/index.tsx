@@ -7,8 +7,14 @@ import { SignUpScreen } from '../screens/auth/SignUpScreen';
 import { IntakeQuizScreen } from '../screens/intake/IntakeQuizScreen';
 import { ConsultationStatusScreen } from '../screens/consultation/ConsultationStatusScreen';
 import { MessagingScreen } from '../screens/messaging/MessagingScreen';
+import { OnboardingChecklistScreen } from '../screens/onboarding/OnboardingChecklistScreen';
+import { IdPhotoScreen } from '../screens/onboarding/IdPhotoScreen';
+import { BodyPhotoScreen } from '../screens/onboarding/BodyPhotoScreen';
+import { PrescriptionProofScreen } from '../screens/onboarding/PrescriptionProofScreen';
+import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
+const OnboardingStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function PatientTabs() {
@@ -21,12 +27,26 @@ function PatientTabs() {
   );
 }
 
+// A separate stack, not part of the tab bar — patients can't reach the rest
+// of the app (Status/Messages/etc.) from in here until a clinician approves it.
+function OnboardingFlow() {
+  return (
+    <OnboardingStack.Navigator screenOptions={{ headerTintColor: '#0ea5e9' }}>
+      <OnboardingStack.Screen name="Checklist" component={OnboardingChecklistScreen} options={{ title: 'Onboarding', headerShown: false }} />
+      <OnboardingStack.Screen name="IdPhoto" component={IdPhotoScreen} options={{ title: '' }} />
+      <OnboardingStack.Screen name="BodyPhoto" component={BodyPhotoScreen} options={{ title: '' }} />
+      <OnboardingStack.Screen name="PrescriptionProof" component={PrescriptionProofScreen} options={{ title: '' }} />
+    </OnboardingStack.Navigator>
+  );
+}
+
 export function AppNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="Onboarding" component={OnboardingFlow} />
         <Stack.Screen name="Main" component={PatientTabs} />
       </Stack.Navigator>
     </NavigationContainer>

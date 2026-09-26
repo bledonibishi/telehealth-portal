@@ -17,6 +17,8 @@ import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
+import { UploadsModule } from './uploads/uploads.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { PostHogModule } from './posthog/posthog.module';
     EmailModule,
     NotificationsModule,
     DashboardModule,
+    UploadsModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

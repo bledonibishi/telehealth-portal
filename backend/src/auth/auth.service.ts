@@ -65,6 +65,36 @@ export class AuthService {
     return { mfaRequired: false, pendingToken: null, accessToken, clinician };
   }
 
+  async loginPatient(email: string, password: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { email } });
+    if (!patient || !(await bcrypt.compare(password, patient.passwordHash))) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!patient.activatedAt) {
+      throw new UnauthorizedException('Account not activated — check your email for the activation link');
+    }
+
+    await this.audit.log({
+      actorId: patient.id,
+      actorRole: UserRole.PATIENT,
+      action: 'AUTH_LOGIN_PASSWORD',
+      resourceType: 'Patient',
+      resourceId: patient.id,
+    });
+
+    const accessToken = this.jwtService.sign({ sub: patient.id, role: UserRole.PATIENT });
+    this.posthog.identify(patient.id, {
+      email: patient.email,
+      first_name: patient.firstName,
+      last_name: patient.lastName,
+      role: UserRole.PATIENT,
+    });
+    this.posthog.capture(patient.id, 'patient_logged_in', {
+      login_method: 'password',
+    });
+    return { mfaRequired: false, pendingToken: null, accessToken, patient };
+  }
+
   async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {
     let payload: any;
     try {
