@@ -12,6 +12,7 @@ describe('AuthService', () => {
   let jwtService: { sign: jest.Mock; verify: jest.Mock };
   let audit: { log: jest.Mock };
   let posthog: { identify: jest.Mock; capture: jest.Mock };
+  let config: { get: jest.Mock };
   let service: AuthService;
 
   const CLINICIAN = {
@@ -42,7 +43,8 @@ describe('AuthService', () => {
     jwtService = { sign: jest.fn().mockReturnValue('signed-token'), verify: jest.fn() };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     posthog = { identify: jest.fn(), capture: jest.fn() };
-    service = new AuthService(prisma as any, jwtService as any, audit as any, posthog as any);
+    config = { get: jest.fn().mockReturnValue('7d') };
+    service = new AuthService(prisma as any, jwtService as any, audit as any, posthog as any, config as any);
     jest.clearAllMocks();
   });
 
@@ -144,6 +146,39 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('signed-token');
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_MFA_VERIFIED' }));
+    });
+  });
+
+  describe('refreshAccessToken', () => {
+    it('rejects an expired or invalid refresh token', async () => {
+      jwtService.verify.mockImplementation(() => {
+        throw new Error('jwt expired');
+      });
+
+      await expect(service.refreshAccessToken('bad-token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects a token that is not a refresh token', async () => {
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'access' });
+
+      await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects a refresh token for a clinician that no longer exists', async () => {
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      prisma.clinician.findUnique.mockResolvedValue(null);
+
+      await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('issues a new access + refresh token pair for a valid refresh token', async () => {
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      prisma.clinician.findUnique.mockResolvedValue(CLINICIAN);
+
+      const result = await service.refreshAccessToken('token');
+
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.refreshToken).toBe('signed-token');
     });
   });
 });
