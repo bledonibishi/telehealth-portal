@@ -15,6 +15,7 @@ type AuthResponse {
   mfaRequired: Boolean!
   patient: Patient
   pendingToken: String
+  refreshToken: String
 }
 
 type CheckIn {
@@ -161,6 +162,7 @@ type Mutation {
   loginPatient(input: LoginInput!): AuthResponse!
   markOrderDelivered(id: ID!): Prescription!
   markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Prescription!
+  refreshAccessToken(refreshToken: String!): RefreshResponse!
   requestMoreInfo(consultationId: ID!): Consultation!
 
   """
@@ -343,6 +345,11 @@ input SaveIdentityStepInput {
 input SavePrescriptionProofStepInput {
   prescriptionProofFileId: ID!
   prescriptionProofType: PrescriptionProofType!
+}
+
+type RefreshResponse {
+  accessToken: String!
+  refreshToken: String!
 }
 
 input SendMessageInput {

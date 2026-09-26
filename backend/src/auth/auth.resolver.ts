@@ -2,7 +2,7 @@ import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
-import { AuthResponse, MfaSetupResponse } from './dto/auth-response.type';
+import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { GqlAuthGuard } from './guards/gql-auth.guard';
 import { GqlThrottlerGuard } from './guards/gql-throttler.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -34,6 +34,11 @@ export class AuthResolver {
     @Context() ctx: any,
   ) {
     return this.authService.verifyMfa(pendingToken, totpCode, loginAttempt(ctx));
+  }
+
+  @Mutation(() => RefreshResponse)
+  refreshAccessToken(@Args('refreshToken') refreshToken: string) {
+    return this.authService.refreshAccessToken(refreshToken);
   }
 
   @UseGuards(GqlAuthGuard)

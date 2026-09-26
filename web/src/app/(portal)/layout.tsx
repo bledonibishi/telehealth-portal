@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
@@ -19,9 +19,13 @@ const ONBOARDING_EXEMPT_PATHS = ['/messages'];
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Hold back the pages until the browser confirms a token, so their queries never run
+  // during server rendering or before the redirect to /login.
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated()) router.replace('/login');
+    if (!isAuthenticated()) { router.replace('/login'); return; }
+    setAuthChecked(true);
   }, [router]);
 
   const { data: onboardingData, error: onboardingError } = useQuery(MY_ONBOARDING, {
@@ -100,7 +104,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto">{authChecked ? children : null}</main>
     </div>
   );
 }

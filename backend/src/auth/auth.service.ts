@@ -1,11 +1,13 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
+import { AuthFailureReason, authFailure, reasonFromJwtError } from './auth-failure';
 
 export interface LoginAttempt {
   ip?: string;
@@ -19,6 +21,7 @@ export class AuthService {
     private jwtService: JwtService,
     private audit: AuditService,
     private posthog: PostHogService,
+    private config: ConfigService,
   ) {}
 
   async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
@@ -51,7 +54,6 @@ export class AuthService {
       return { mfaRequired: true, pendingToken, accessToken: null, clinician: null };
     }
 
-    const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
     this.posthog.identify(clinician.id, {
       email: clinician.email,
       first_name: clinician.firstName,
@@ -62,7 +64,7 @@ export class AuthService {
       login_method: 'password',
       mfa_enabled: false,
     });
-    return { mfaRequired: false, pendingToken: null, accessToken, clinician };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, UserRole.CLINICIAN), clinician };
   }
 
   async loginPatient(email: string, password: string) {
@@ -127,7 +129,6 @@ export class AuthService {
       resourceId: clinician.id,
     });
 
-    const accessToken = this.jwtService.sign({ sub: clinician.id, role: clinician.role });
     this.posthog.identify(clinician.id, {
       email: clinician.email,
       first_name: clinician.firstName,
@@ -138,7 +139,36 @@ export class AuthService {
       login_method: 'password_and_mfa',
       mfa_enabled: true,
     });
-    return { mfaRequired: false, pendingToken: null, accessToken, clinician };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, UserRole.CLINICIAN), clinician };
+  }
+
+  async refreshAccessToken(refreshToken: string) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(refreshToken);
+    } catch (err) {
+      throw authFailure(reasonFromJwtError(err));
+    }
+    if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
+
+    // Only clinicians get refresh tokens today; patients have no login mutation yet.
+    const clinician =
+      payload.role === UserRole.CLINICIAN
+        ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
+        : null;
+    if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+
+    return this.issueTokens(clinician.id, UserRole.CLINICIAN);
+  }
+
+  private issueTokens(sub: string, role: UserRole) {
+    return {
+      accessToken: this.jwtService.sign({ sub, role }),
+      refreshToken: this.jwtService.sign(
+        { sub, role, type: 'refresh' },
+        { expiresIn: this.config.get<string>('JWT_REFRESH_EXPIRY', '7d') },
+      ),
+    };
   }
 
   async setupMfa(clinicianId: string) {

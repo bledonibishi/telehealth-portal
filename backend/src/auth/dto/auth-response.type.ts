@@ -8,6 +8,9 @@ export class AuthResponse {
   accessToken?: string;
 
   @Field({ nullable: true })
+  refreshToken?: string;
+
+  @Field({ nullable: true })
   pendingToken?: string;
 
   @Field()
@@ -27,4 +30,13 @@ export class MfaSetupResponse {
 
   @Field()
   otpauthUrl: string;
+}
+
+@ObjectType()
+export class RefreshResponse {
+  @Field()
+  accessToken: string;
+
+  @Field()
+  refreshToken: string;
 }
