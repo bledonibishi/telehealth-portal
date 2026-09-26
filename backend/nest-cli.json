@@ -4,7 +4,7 @@
   "sourceRoot": "src",
   "entryFile": "backend/src/main",
   "compilerOptions": {
-    "deleteOutDir": true,
+    "deleteOutDir": false,
     "plugins": [
       {
         "name": "@nestjs/graphql",
