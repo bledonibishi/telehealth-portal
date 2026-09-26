@@ -2,10 +2,11 @@
 // All values here are public by design (client-side URLs / a PostHog project key), never secrets.
 window.TELEHEALTH_CONFIG = {
   // This Next.js app's own deployment (Vercel) — hosts /api/checkout.
-  apiBase: 'https://your-vercel-subdomain.vercel.app',
+  apiBase: 'https://website.webmaverics.com',
 
-  // Backend GraphQL endpoint (createLead mutation).
-  graphqlUrl: 'https://your-backend-domain.example.com/graphql',
+  // Backend GraphQL endpoint (createLead mutation). Backend runs on EC2 —
+  // update this once that instance is up and api.webmaverics.com points at it.
+  graphqlUrl: 'https://api.webmaverics.com/graphql',
 
   // PostHog project key + host, same project the backend already reports to.
   // The project API key is safe to expose client-side (it is not a secret).
