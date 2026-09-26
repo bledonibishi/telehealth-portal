@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios",
-    "build": "eas build"
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
