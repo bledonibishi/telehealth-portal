@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -19,10 +20,12 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { CheckInsModule } from './check-ins/check-ins.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PostHogModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
@@ -46,6 +49,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     DashboardModule,
     UploadsModule,
     OnboardingModule,
+    CheckInsModule,
   ],
 })
 export class AppModule {}

@@ -58,6 +58,12 @@ export enum PrescriptionProofType {
   ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
 }
 
+export enum CheckInStatus {
+  SCHEDULED = 'SCHEDULED',
+  SENT = 'SENT',
+  COMPLETED = 'COMPLETED',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;

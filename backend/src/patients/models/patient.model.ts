@@ -1,5 +1,6 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
 import { ConsultationModel } from '../../consultations/models/consultation.model';
+import { CheckInModel } from '../../check-ins/models/check-in.model';
 
 @ObjectType('Patient')
 export class PatientModel {
@@ -29,4 +30,7 @@ export class PatientModel {
 
   @Field(() => [ConsultationModel])
   consultations: ConsultationModel[];
+
+  @Field(() => [CheckInModel])
+  checkIns: CheckInModel[];
 }
