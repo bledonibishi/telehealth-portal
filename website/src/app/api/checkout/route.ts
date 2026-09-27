@@ -26,32 +26,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Stripe is not configured.' }, { status: 500, headers: corsHeaders() });
   }
 
-  const { priceId, planName, customerEmail } = (await req.json()) as {
-    priceId: string;
-    planName: string;
-    customerEmail?: string;
-  };
+  const { priceId, planName } = (await req.json()) as { priceId: string; planName: string };
 
   if (!priceId) {
     return NextResponse.json({ error: 'Missing priceId.' }, { status: 400, headers: corsHeaders() });
   }
 
-  // Embedded Checkout renders the card form inside the Webflow checkout page
-  // (the data-th-stripe-mount element) instead of redirecting to a Stripe-hosted
-  // page. It's still a Checkout Session under the hood, so the existing
-  // checkout.session.completed webhook (backend/src/stripe/stripe-webhook.service.ts)
-  // handles patient activation exactly as it did for the old redirect flow —
-  // nothing there needed to change.
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
-    ui_mode: 'embedded',
     line_items: [{ price: priceId, quantity: 1 }],
-    // Real page slugs as built in Webflow — not "/checkout/success" (no such nested page exists).
-    return_url: `${ALLOWED_ORIGIN}/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
-    customer_email: customerEmail,
-    metadata: { planName: planName ?? '' },
+    success_url: `${ALLOWED_ORIGIN}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${ALLOWED_ORIGIN}/checkout/cancel`,
+    metadata: { planName },
     allow_promotion_codes: true,
   });
 
-  return NextResponse.json({ clientSecret: session.client_secret }, { headers: corsHeaders() });
+  return NextResponse.json({ url: session.url }, { headers: corsHeaders() });
 }

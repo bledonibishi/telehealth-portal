@@ -30,11 +30,6 @@ enum ConsultationKind {
   GLP1
 }
 
-enum PaymentMethod {
-  STRIPE
-  PAYSERA
-}
-
 enum RedFlagSeverity {
   CRITICAL
   WARNING
@@ -119,21 +114,8 @@ model Lead {
   quizAnswers     Json             @map("quiz_answers")
   stripeSessionId String?          @map("stripe_session_id")
   convertedAt     DateTime?        @map("converted_at")
-
-  // Set when the lead picks a plan on the Webflow checkout page, before payment
-  // completes. selectedPlanId matches a key in website/public/scripts/checkout.js's
-  // PLANS object (e.g. "hrt-starter"), not a Stripe price ID.
-  selectedPlanId   String?        @map("selected_plan_id")
-  selectedPlanName String?        @map("selected_plan_name")
-
-  // Paysera has no API integration yet (no merchant account) — "requesting" it
-  // just records intent and triggers a manual invoice email (see EmailService).
-  // Stripe leads don't set these; they convert via the checkout webhook instead.
-  paymentMethodRequested PaymentMethod? @map("payment_method_requested")
-  paymentRequestedAt     DateTime?      @map("payment_requested_at")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
 
   patient Patient?
 

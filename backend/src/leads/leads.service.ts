@@ -1,11 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PaymentMethod } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
-import { RequestManualInvoiceInput } from './dto/request-manual-invoice.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
-import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class LeadsService {
@@ -13,7 +10,6 @@ export class LeadsService {
     private prisma: PrismaService,
     private posthog: PostHogService,
     private posthogLogger: PostHogLoggerService,
-    private email: EmailService,
   ) {}
 
   findAll() {
@@ -75,36 +71,5 @@ export class LeadsService {
       where: { id },
       data: { convertedAt: new Date() },
     });
-  }
-
-  // Paysera has no API integration yet (no merchant account) — this just records
-  // the customer's intent and sends a manual invoice email to ops, who follow up
-  // with a payment link by hand. See EmailService for the actual email content.
-  async requestManualInvoice(input: RequestManualInvoiceInput) {
-    const lead = await this.prisma.lead.findUnique({ where: { id: input.leadId } });
-    if (!lead) throw new NotFoundException('Lead not found');
-
-    const updated = await this.prisma.lead.update({
-      where: { id: input.leadId },
-      data: {
-        selectedPlanId: input.planId,
-        selectedPlanName: input.planName,
-        paymentMethodRequested: PaymentMethod.PAYSERA,
-        paymentRequestedAt: new Date(),
-      },
-    });
-
-    this.posthog.capture(lead.id, 'manual_invoice_requested', {
-      plan_id: input.planId,
-      plan_name: input.planName,
-      payment_method: 'PAYSERA',
-    });
-
-    await Promise.all([
-      this.email.sendPayseraInvoiceOpsNotification(updated),
-      this.email.sendPayseraInvoiceCustomerConfirmation(updated.email, updated.firstName, input.planName),
-    ]);
-
-    return updated;
   }
 }
