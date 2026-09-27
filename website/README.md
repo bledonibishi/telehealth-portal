@@ -6,62 +6,81 @@ pages — it exists to host:
 1. `/api/checkout` — a server-side endpoint (needs the Stripe secret key, so it can't live in Webflow).
 2. `public/scripts/*.js` — the vanilla JS widgets and feature-flag logic Webflow loads via custom code.
 
-Deployed on Vercel at a subdomain (e.g. `api.yourdomain.com`), while the apex domain
-(`yourdomain.com`) points at Webflow.
+Deployed on Vercel (currently `https://telehealth-portal-website.vercel.app`), while the Webflow
+site owns the actual domain.
 
 ## Wiring it into Webflow
+
+`quiz.js` and `checkout.js` target markup that's already built in the Webflow Designer (the
+`data-th-*` attributes below) — there's no generic mount div to add. If you're building a new
+product/plan page from scratch, copy the attribute structure from an existing page rather than
+inventing new class/attribute names, since the scripts and the Designer's own CSS both key off them.
 
 In Webflow: **Site Settings → Custom Code → Footer Code** (runs before `</body>` on every page),
 add these script tags in this order:
 
 ```html
-<script src="https://api.yourdomain.com/scripts/config.js"></script>
-<script src="https://api.yourdomain.com/scripts/styles.js"></script>
-<script src="https://api.yourdomain.com/scripts/feature-flags.js"></script>
-<script src="https://api.yourdomain.com/scripts/quiz.js"></script>
-<script src="https://api.yourdomain.com/scripts/checkout.js"></script>
+<script src="https://telehealth-portal-website.vercel.app/scripts/config.js"></script>
+<script src="https://telehealth-portal-website.vercel.app/scripts/feature-flags.js"></script>
+<script src="https://telehealth-portal-website.vercel.app/scripts/quiz.js"></script>
+<script src="https://telehealth-portal-website.vercel.app/scripts/checkout.js"></script>
 ```
 
-`quiz.js` and `checkout.js` no-op on any page that doesn't have their mount element, so it's safe
-to load all of them site-wide rather than per-page.
+Don't load `styles.js` on these pages — the Designer already has real, polished CSS for every
+`th-*` class quiz.js/checkout.js render into (`th-quiz-option`, `th-plan-card`, etc.), matching the
+site's existing `th-card`/`th-btn-*` design system. `styles.js` predates that design system and
+would fight it (same class names, different rules); it's only useful if you're building a page from
+scratch that has no `th-*` styles of its own yet.
+
+Both scripts no-op on any page that doesn't have their mount markup, so it's safe to load them
+site-wide rather than per-page.
 
 First, edit [public/scripts/config.js](public/scripts/config.js) with your real API base URL,
-backend GraphQL URL, and PostHog project key/host.
+backend GraphQL URL, Stripe publishable key, and PostHog project key/host.
 
-### Quiz page
+### Quiz pages (`/hrt-eligibility`, `/glp1-eligibility`)
 
-Add a single empty div anywhere on the page, with a custom attribute set in the Webflow Designer
-(Settings panel → **Custom Attributes**):
+Each page has a `[data-th-quiz="HRT"]` or `[data-th-quiz="GLP1"]` mount div, and three sibling
+`[data-th-screen]` blocks the script shows/hides: `"quiz"`, `"ineligible"`, `"plans"`. quiz.js
+renders the question flow and the lead-capture form (first name / last name / email) inside the
+mount div, calls `createLead`, then reveals the `"plans"` screen — whose plan cards are real
+Designer content, not JS-rendered. Clicking a `[data-th-plan="HRT_STARTER"]` link stores the
+selection in `sessionStorage` and navigates to `/checkout`.
 
-```html
-<div id="th-quiz-app" data-product="hrt"></div>
-```
+The ineligible screen's reason text (`[data-th-reason]`) and its "review my answers" link
+(`[data-th-restart]`) are filled in / wired up by the script; everything else on that screen is
+static Designer content.
 
-Use `data-product="glp1"` on the GLP-1 quiz page. The widget renders the entire question flow,
-eligibility check, and the lead-capture form (first name / last name / email) inside that div,
-calling the backend's `createLead` mutation before redirecting to your plans page.
+### Checkout page (`/checkout`)
 
-Optional attributes on the same div (defaults shown):
-- `data-plans-url="/plans"` — where "Continue to plans" redirects to
-- `data-quiz-url-hrt="/quiz?product=hrt"` / `data-quiz-url-glp1="/quiz?product=glp1"` — used on the
-  ineligible screen's "try the other quiz" link
-- `data-home-url="/"`
+Has two `[data-th-screen]` states: `"nosession"` (shown if someone lands here without having
+picked a plan — e.g. a bookmark or back button) and `"checkout"` (the real flow). checkout.js reads
+the plan chosen on the quiz page from `sessionStorage`, fills in the order summary
+(`[data-th-sum="name"|"desc"|"price"]`), and handles the two payment methods
+(`[data-th-method="stripe"|"paysera"]` cards, `[data-th-panel]` for each one's detail view):
 
-### Plans page
-
-```html
-<div id="th-plans-app" data-product="hrt"></div>
-```
-
-Renders the plan cards and handles the "Select plan" → `/api/checkout` → Stripe redirect flow.
-**Edit the Stripe Price IDs directly in [public/scripts/checkout.js](public/scripts/checkout.js)**
-(the `PLANS` object) — this is a static file, it can't read environment variables at runtime.
+- **Stripe** — mounts Stripe's [Embedded Checkout](https://docs.stripe.com/checkout/embedded/quickstart)
+  into `[data-th-stripe-mount]`. This calls `/api/checkout`, which creates a Checkout Session in
+  `ui_mode: 'embedded'` mode and returns a `clientSecret`; the card form renders inside the page
+  instead of redirecting away. It's still a Checkout Session under the hood, so the existing
+  `checkout.session.completed` webhook (`backend/src/stripe/stripe-webhook.service.ts`) handles
+  patient activation exactly as before — nothing there needed to change.
+  **Edit the Stripe Price IDs directly in [public/scripts/checkout.js](public/scripts/checkout.js)**
+  (the `PLANS` object) — this is a static file, it can't read environment variables at runtime.
+- **Paysera** — there's no Paysera merchant account / API integration yet. Picking it and clicking
+  `[data-th-pay]` calls the backend's `requestManualInvoice` mutation, which emails ops
+  (`OPS_NOTIFICATION_EMAIL`) to follow up with a real payment link by hand, and emails the customer
+  a "we'll be in touch" confirmation. Revisit this once there's a Paysera account — see
+  `backend/src/leads/leads.service.ts`.
 
 ### Success / cancel pages
 
-These now live in Webflow (`/checkout/success`, `/checkout/cancel`) — Stripe redirects there
-directly. Nothing to wire up on your end; just build those two pages in Webflow. The redirect
-target is controlled by the `WEBFLOW_SITE_URL` env var on this app (see `.env.local.example`).
+`/checkout-success` and `/checkout-cancel` live in Webflow. Stripe's embedded flow redirects to
+`/checkout-success` on completion (see `return_url` in `src/app/api/checkout/route.ts`); the manual
+Paysera request redirects there too, since "check your email" is accurate either way. The redirect
+domain is controlled by the `WEBFLOW_SITE_URL` env var on this app (see `.env.local.example`).
+`/checkout-cancel` isn't used by the embedded flow (the customer never leaves the page), but keep
+it around for a "back" link or a future hosted-redirect fallback.
 
 ## Feature flags & experiments
 

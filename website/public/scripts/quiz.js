@@ -1,23 +1,26 @@
-// Eligibility quiz engine. Mounts into a single container element on the Webflow quiz page.
+// Eligibility quiz engine for the HRT / GLP-1 assessment pages built in Webflow.
 //
-// Usage in Webflow:
-//   <div id="th-quiz-app"
-//        data-product="hrt"                    (or "glp1" — falls back to ?product= query param)
-//        data-plans-url="/plans"                (optional, defaults shown)
-//        data-quiz-url-hrt="/quiz?product=hrt"  (optional, used on the "try the other quiz" link)
-//        data-quiz-url-glp1="/quiz?product=glp1"
-//        data-home-url="/">                     (optional)
-//   </div>
-// Load after config.js. Requires no other markup — the widget renders everything inside the div.
+// Targets the markup already built in the Webflow Designer (see website/README.md):
+//   [data-th-quiz="HRT"|"GLP1"]     mount point — quiz questions render inside it
+//   [data-th-screen="quiz|ineligible|plans"]   sibling screens, shown/hidden by this script
+//   [data-th-reason]                ineligible screen's reason text
+//   [data-th-restart]               ineligible screen's "review my answers" link
+//   [data-th-plan="HRT_STARTER"...] plan buttons on the pre-built plans screen
+//   [data-th-checkout-error]        error text shown if plan selection fails
+//
+// Load after config.js. No mount markup needed beyond what's already on the page —
+// this script only toggles screens and fills in the quiz questions themselves.
 (function () {
+  var NONE = 'none';
+
   var HRT_QUESTIONS = [
     {
       id: 'age', text: 'How old are you?', type: 'single',
       options: [
         { id: 'under18', label: 'Under 18', disqualifies: true },
-        { id: '18to45', label: '18 – 45', isPositive: true },
-        { id: '46to55', label: '46 – 55', isPositive: true },
-        { id: '56to65', label: '56 – 65', isPositive: true },
+        { id: '18to45', label: '18 – 45' },
+        { id: '46to55', label: '46 – 55' },
+        { id: '56to65', label: '56 – 65' },
         { id: 'over65', label: 'Over 65', disqualifies: true },
       ],
     },
@@ -31,7 +34,7 @@
         { id: 'libido', label: 'Low libido', isPositive: true },
         { id: 'sleep', label: 'Sleep disturbances', isPositive: true },
         { id: 'joint_pain', label: 'Joint pain or muscle aches', isPositive: true },
-        { id: 'none', label: 'None of the above', noneOfAbove: true, disqualifies: true },
+        { id: NONE, label: 'None of the above', noneOfAbove: true, disqualifies: true },
       ],
     },
     {
@@ -42,11 +45,11 @@
         { id: 'blood_clots', label: 'Blood clots (DVT or pulmonary embolism)', disqualifies: true },
         { id: 'stroke', label: 'Stroke or heart attack in the past 12 months', disqualifies: true },
         { id: 'undiagnosed_bleeding', label: 'Unexplained vaginal bleeding', disqualifies: true },
-        { id: 'none', label: 'None of the above', noneOfAbove: true },
+        { id: NONE, label: 'None of the above', noneOfAbove: true },
       ],
     },
     {
-      id: 'pregnancy', text: 'Are you currently pregnant or breastfeeding?', type: 'single',
+      id: 'pregnancy', text: 'Are you currently pregnant?', type: 'single',
       options: [
         { id: 'yes', label: 'Yes', disqualifies: true },
         { id: 'no', label: 'No' },
@@ -57,7 +60,6 @@
       options: [
         { id: 'yes', label: 'Yes', disqualifies: true },
         { id: 'no', label: 'No' },
-        { id: 'unknown', label: "I don't know" },
       ],
     },
   ];
@@ -67,19 +69,18 @@
       id: 'age', text: 'How old are you?', type: 'single',
       options: [
         { id: 'under18', label: 'Under 18', disqualifies: true },
-        { id: '18to75', label: '18 – 75', isPositive: true },
+        { id: '18to75', label: '18 – 75' },
         { id: 'over75', label: 'Over 75', disqualifies: true },
       ],
     },
     {
       id: 'bmi', text: 'What is your approximate BMI?',
-      subtext: 'GLP-1 treatment is suitable for a BMI of 30+ or 27–29 with a weight-related health condition.',
+      subtext: 'GLP-1 treatment is suitable for a BMI of 30+, or 27–29 with a weight-related health condition.',
       type: 'single', requiresPositive: true,
       options: [
         { id: 'under27', label: 'Under 27', disqualifies: true },
-        { id: '27to29_condition', label: '27 – 29, and I have a weight-related condition (e.g. type 2 diabetes, high blood pressure)', isPositive: true },
+        { id: '27to29_condition', label: '27 – 29, with a weight-related condition (e.g. type 2 diabetes, high blood pressure)', isPositive: true },
         { id: '30plus', label: '30 or above', isPositive: true },
-        { id: 'unknown', label: "I don't know my BMI" },
       ],
     },
     {
@@ -89,11 +90,11 @@
         { id: 'type1_diabetes', label: 'Type 1 diabetes', disqualifies: true },
         { id: 'mtc', label: 'Medullary thyroid carcinoma (MTC) or MEN2 syndrome', disqualifies: true },
         { id: 'pancreatitis', label: 'Pancreatitis', disqualifies: true },
-        { id: 'none', label: 'None of the above', noneOfAbove: true },
+        { id: NONE, label: 'None of the above', noneOfAbove: true },
       ],
     },
     {
-      id: 'pregnancy', text: 'Are you currently pregnant, breastfeeding, or planning to become pregnant in the next 6 months?', type: 'single',
+      id: 'pregnancy', text: 'Are you pregnant, breastfeeding, or planning a pregnancy in the next 6 months?', type: 'single',
       options: [
         { id: 'yes', label: 'Yes', disqualifies: true },
         { id: 'no', label: 'No' },
@@ -108,8 +109,7 @@
     },
   ];
 
-  var QUIZZES = { hrt: HRT_QUESTIONS, glp1: GLP1_QUESTIONS };
-  var PRODUCT_LABEL = { hrt: 'HRT', glp1: 'GLP-1' };
+  var QUIZZES = { HRT: HRT_QUESTIONS, GLP1: GLP1_QUESTIONS };
 
   function isDisqualified(question, selectedIds) {
     return question.options.some(function (o) { return o.disqualifies && selectedIds.indexOf(o.id) !== -1; });
@@ -118,16 +118,6 @@
   function hasPositiveSelection(question, selectedIds) {
     if (!question.requiresPositive) return true;
     return question.options.some(function (o) { return o.isPositive && selectedIds.indexOf(o.id) !== -1; });
-  }
-
-  function checkEligibility(questions, answers) {
-    for (var i = 0; i < questions.length; i++) {
-      var q = questions[i];
-      var selected = answers[q.id] || [];
-      if (isDisqualified(q, selected)) return 'ineligible';
-      if (q.requiresPositive && !hasPositiveSelection(q, selected)) return 'ineligible';
-    }
-    return 'eligible';
   }
 
   function el(tag, attrs, children) {
@@ -146,49 +136,42 @@
     return el(tag, { class: className, html: str });
   }
 
-  function createLead(input) {
-    var config = window.TELEHEALTH_CONFIG;
-    return fetch(config.graphqlUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: 'mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id } }',
-        variables: { input: input },
-      }),
-    }).then(function (res) { return res.json(); }).then(function (json) {
-      if (json.errors) throw new Error(json.errors[0].message);
-      return json.data.createLead;
-    });
-  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var mount = document.querySelector('[data-th-quiz]');
+    if (!mount) return;
 
-  function mount(root) {
-    var product = root.getAttribute('data-product') || new URLSearchParams(location.search).get('product');
-    if (product !== 'hrt' && product !== 'glp1') {
-      root.innerHTML = '<p>Missing or invalid product. Set data-product="hrt" or "glp1" on this element.</p>';
-      return;
-    }
-
-    var plansUrl = root.getAttribute('data-plans-url') || '/plans';
-    var quizUrlHrt = root.getAttribute('data-quiz-url-hrt') || '/quiz?product=hrt';
-    var quizUrlGlp1 = root.getAttribute('data-quiz-url-glp1') || '/quiz?product=glp1';
-    var homeUrl = root.getAttribute('data-home-url') || '/';
-
+    var product = mount.getAttribute('data-th-quiz'); // "HRT" or "GLP1"
     var questions = QUIZZES[product];
+    if (!questions) return;
+
+    var config = window.TELEHEALTH_CONFIG || {};
+    var reasonEl = document.querySelector('[data-th-reason]');
+    var restartLink = document.querySelector('[data-th-restart]');
+    var checkoutError = document.querySelector('[data-th-checkout-error]');
+
     var step = 0;
     var answers = {};
+    var lead = null; // set once createLead succeeds: { id, email, firstName, lastName }
+
+    function showScreen(name) {
+      document.querySelectorAll('[data-th-screen]').forEach(function (s) {
+        s.style.display = s.getAttribute('data-th-screen') === name ? '' : 'none';
+      });
+      window.scrollTo({ top: mount.getBoundingClientRect().top + window.scrollY - 24, behavior: 'smooth' });
+    }
 
     function render() {
-      root.innerHTML = '';
-      root.appendChild(renderProgress());
-      root.appendChild(renderQuestion());
+      mount.innerHTML = '';
+      mount.appendChild(renderProgress());
+      mount.appendChild(renderQuestion());
     }
 
     function renderProgress() {
-      var track = el('div', { class: 'th-quiz-progress-track' });
+      var wrap = el('div', { class: 'th-quiz-progress-track' });
       var bar = el('div', { class: 'th-quiz-progress-bar' });
       bar.style.width = (((step + 1) / questions.length) * 100) + '%';
-      track.appendChild(bar);
-      return track;
+      wrap.appendChild(bar);
+      return wrap;
     }
 
     function renderQuestion() {
@@ -201,15 +184,15 @@
       if (q.subtext) wrap.appendChild(text('p', 'th-quiz-subtext', q.subtext));
 
       var optionsWrap = el('div', { class: 'th-quiz-options' });
-      q.options.forEach(function (opt) {
-        var isSelected = selected.indexOf(opt.id) !== -1;
+      var buttons = q.options.map(function (opt) {
         var btn = el('button', {
           type: 'button',
-          class: 'th-quiz-option' + (isSelected ? ' th-quiz-option-selected' : ''),
+          class: 'th-quiz-option' + (selected.indexOf(opt.id) !== -1 ? ' th-quiz-option-selected' : ''),
           html: opt.label,
-          onclick: function () { toggleOption(q, opt, selected); },
         });
+        btn.addEventListener('click', function () { toggleOption(q, opt, btn, optionsWrap); });
         optionsWrap.appendChild(btn);
+        return btn;
       });
       wrap.appendChild(optionsWrap);
 
@@ -230,120 +213,143 @@
       wrap.appendChild(nav);
 
       return wrap;
-    }
 
-    function toggleOption(question, opt, selected) {
-      var next;
-      if (question.type === 'single') {
-        next = [opt.id];
-      } else if (opt.noneOfAbove) {
-        next = selected.indexOf(opt.id) !== -1 ? [] : [opt.id];
-      } else {
-        var withoutNone = selected.filter(function (id) {
-          var o = question.options.filter(function (o) { return o.id === id; })[0];
-          return !(o && o.noneOfAbove);
+      function toggleOption(question, opt, btn, wrapEl) {
+        var sel = answers[question.id] || [];
+        var next;
+        if (question.type === 'single') {
+          next = [opt.id];
+        } else if (opt.noneOfAbove) {
+          next = sel.indexOf(opt.id) !== -1 ? [] : [opt.id];
+        } else {
+          var withoutNone = sel.filter(function (id) { return id !== NONE; });
+          next = withoutNone.indexOf(opt.id) !== -1
+            ? withoutNone.filter(function (id) { return id !== opt.id; })
+            : withoutNone.concat([opt.id]);
+        }
+        answers[question.id] = next;
+        buttons.forEach(function (b, i) {
+          b.classList.toggle('th-quiz-option-selected', next.indexOf(q.options[i].id) !== -1);
         });
-        next = withoutNone.indexOf(opt.id) !== -1
-          ? withoutNone.filter(function (id) { return id !== opt.id; })
-          : withoutNone.concat([opt.id]);
+        nextBtn.toggleAttribute('disabled', next.length === 0);
       }
-      answers[question.id] = next;
-      render();
     }
 
     function handleNext() {
+      var q = questions[step];
+      var selected = answers[q.id] || [];
+      if (isDisqualified(q, selected) || !hasPositiveSelection(q, selected)) {
+        return showIneligible();
+      }
       if (step < questions.length - 1) {
         step += 1;
         render();
       } else {
-        var result = checkEligibility(questions, answers);
-        if (window.posthog) posthog.capture('quiz_completed', { product: product, result: result });
-        if (result === 'eligible') renderEligible();
-        else renderIneligible();
+        renderLeadForm();
       }
     }
 
-    function quizAnswersForLead() {
-      return questions.map(function (q) {
-        var selected = answers[q.id] || [];
-        var labels = selected.map(function (id) {
-          var o = q.options.filter(function (o) { return o.id === id; })[0];
-          return o ? o.label : id;
-        });
-        return { questionId: q.id, question: q.text, answer: labels.join(', ') };
-      });
+    function showIneligible() {
+      if (reasonEl) {
+        reasonEl.textContent = 'Based on your answers, ' + (product === 'HRT' ? 'HRT' : 'GLP-1') +
+          ' treatment does not look suitable for you right now. Please speak to your GP, who can discuss alternatives.';
+      }
+      showScreen('ineligible');
     }
 
-    function renderEligible() {
-      root.innerHTML = '';
-      var wrap = el('div', { class: 'th-quiz-result' });
-      wrap.appendChild(text('h2', 'th-quiz-title', 'Great news — you appear eligible!'));
-      wrap.appendChild(text('p', 'th-quiz-subtext',
-        'Based on your answers, ' + PRODUCT_LABEL[product] + ' treatment may be suitable for you. ' +
-        'Enter your details to continue — a clinician will review your case before issuing a prescription.'));
+    function renderLeadForm() {
+      mount.innerHTML = '';
+      mount.appendChild(text('h2', 'th-quiz-title', "You're eligible — where should we send your plan?"));
 
-      var form = el('form', { class: 'th-quiz-lead-form' });
-      var firstName = el('input', { type: 'text', placeholder: 'First name', required: 'true', class: 'th-quiz-input' });
-      var lastName = el('input', { type: 'text', placeholder: 'Last name', required: 'true', class: 'th-quiz-input' });
-      var email = el('input', { type: 'email', placeholder: 'Email address', required: 'true', class: 'th-quiz-input' });
+      var firstName = el('input', { type: 'text', placeholder: 'First name', class: 'th-quiz-input' });
+      var lastName = el('input', { type: 'text', placeholder: 'Last name', class: 'th-quiz-input' });
+      var email = el('input', { type: 'email', placeholder: 'Email address', class: 'th-quiz-input' });
       var errorMsg = el('p', { class: 'th-quiz-error' });
-      var submitBtn = el('button', { type: 'submit', class: 'th-quiz-next', html: 'Continue to plans →' });
+      var submitBtn = el('button', { type: 'button', class: 'th-quiz-next', html: 'Continue to plans →' });
 
-      form.appendChild(firstName);
-      form.appendChild(lastName);
-      form.appendChild(email);
-      form.appendChild(errorMsg);
-      form.appendChild(submitBtn);
+      [firstName, lastName, email].forEach(function (i) { mount.appendChild(i); });
+      mount.appendChild(errorMsg);
+      mount.appendChild(submitBtn);
 
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
+      submitBtn.addEventListener('click', function () {
+        var input = {
+          email: email.value.trim(),
+          firstName: firstName.value.trim(),
+          lastName: lastName.value.trim(),
+        };
+        if (!input.firstName || !input.lastName || !/^\S+@\S+\.\S+$/.test(input.email)) {
+          errorMsg.textContent = 'Please enter your name and a valid email.';
+          return;
+        }
+        if (!config.graphqlUrl) {
+          errorMsg.textContent = 'This page is not fully configured yet — please try again later.';
+          return;
+        }
+
         submitBtn.setAttribute('disabled', 'true');
-        submitBtn.innerHTML = 'Submitting…';
-        errorMsg.innerHTML = '';
+        submitBtn.textContent = 'Submitting…';
+        errorMsg.textContent = '';
 
-        createLead({
-          email: email.value,
-          firstName: firstName.value,
-          lastName: lastName.value,
-          productKind: product.toUpperCase(),
-          quizAnswers: quizAnswersForLead(),
-        }).then(function (lead) {
-          sessionStorage.setItem('th_lead', JSON.stringify({ id: lead.id, email: email.value, product: product }));
-          if (window.posthog) posthog.identify(email.value, { product: product });
-          location.href = plansUrl + (plansUrl.indexOf('?') === -1 ? '?' : '&') + 'product=' + product;
+        var quizAnswers = questions.map(function (q) {
+          var selected = answers[q.id] || [];
+          var labels = selected.map(function (id) {
+            var o = q.options.filter(function (o) { return o.id === id; })[0];
+            return o ? o.label : id;
+          });
+          return { questionId: q.id, question: q.text, answer: labels.join(', ') };
+        });
+
+        fetch(config.graphqlUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: 'mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id } }',
+            variables: { input: Object.assign({ productKind: product, quizAnswers: quizAnswers }, input) },
+          }),
+        }).then(function (res) { return res.json(); }).then(function (json) {
+          if (json.errors) throw new Error(json.errors[0].message);
+          lead = { id: json.data.createLead.id, email: input.email, firstName: input.firstName, lastName: input.lastName };
+          try {
+            sessionStorage.setItem('th_lead', JSON.stringify(Object.assign({ product: product }, lead)));
+          } catch (e) { /* private browsing etc. — checkout page falls back to "no session" screen */ }
+          if (window.posthog) window.posthog.identify(input.email, { product: product });
+          showScreen('plans');
         }).catch(function (err) {
-          errorMsg.innerHTML = err.message || 'Something went wrong. Please try again.';
+          errorMsg.textContent = err.message || 'Something went wrong. Please try again.';
           submitBtn.removeAttribute('disabled');
-          submitBtn.innerHTML = 'Continue to plans →';
+          submitBtn.textContent = 'Continue to plans →';
         });
       });
-
-      wrap.appendChild(form);
-      root.appendChild(wrap);
     }
 
-    function renderIneligible() {
-      root.innerHTML = '';
-      var otherProduct = product === 'hrt' ? 'glp1' : 'hrt';
-      var otherUrl = product === 'hrt' ? quizUrlGlp1 : quizUrlHrt;
-      var wrap = el('div', { class: 'th-quiz-result' });
-      wrap.appendChild(text('h2', 'th-quiz-title', 'Unfortunately, not right now'));
-      wrap.appendChild(text('p', 'th-quiz-subtext',
-        'Based on your answers, ' + PRODUCT_LABEL[product] + ' may not be suitable for you at this time. ' +
-        'We strongly recommend speaking to your GP who can discuss alternatives.'));
+    document.querySelectorAll('[data-th-plan]').forEach(function (link) {
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (checkoutError) checkoutError.textContent = '';
+        try {
+          var session = JSON.parse(sessionStorage.getItem('th_lead') || 'null');
+          if (!session) throw new Error('no session');
+          session.planId = link.getAttribute('data-th-plan');
+          sessionStorage.setItem('th_lead', JSON.stringify(session));
+        } catch (e) {
+          if (checkoutError) checkoutError.textContent = 'Something went wrong — please restart the assessment.';
+          return;
+        }
+        window.location.href = '/checkout';
+      });
+    });
 
-      var actions = el('div', { class: 'th-quiz-nav' });
-      actions.appendChild(el('a', { href: otherUrl, class: 'th-quiz-next', html: 'Try the ' + PRODUCT_LABEL[otherProduct] + ' quiz instead' }));
-      actions.appendChild(el('a', { href: homeUrl, class: 'th-quiz-back', html: 'Back to home' }));
-      wrap.appendChild(actions);
-      root.appendChild(wrap);
+    if (restartLink) {
+      restartLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        step = 0;
+        answers = {};
+        render();
+        showScreen('quiz');
+      });
     }
 
+    showScreen('quiz');
     render();
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    var root = document.getElementById('th-quiz-app');
-    if (root) mount(root);
   });
 })();

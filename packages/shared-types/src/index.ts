@@ -64,6 +64,11 @@ export enum CheckInStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum PaymentMethod {
+  STRIPE = 'STRIPE',
+  PAYSERA = 'PAYSERA',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;
