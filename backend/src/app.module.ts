@@ -14,6 +14,7 @@ import { PrescriptionsModule } from './prescriptions/prescriptions.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
 import { StripeModule } from './stripe/stripe.module';
+import { CheckoutModule } from './checkout/checkout.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -51,6 +52,7 @@ import { CheckInsModule } from './check-ins/check-ins.module';
     MessagingModule,
     LeadsModule,
     StripeModule,
+    CheckoutModule,
     EmailModule,
     NotificationsModule,
     DashboardModule,
