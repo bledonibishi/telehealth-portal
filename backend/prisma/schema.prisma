@@ -281,3 +281,11 @@ model OnboardingSubmission {
 
   @@map("onboarding_submissions")
 }
+
+model ThrottleCounter {
+  key       String   @id
+  hits      Int
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@map("throttle_counters")
+}

@@ -4,7 +4,7 @@ import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { GqlAuthGuard } from './guards/gql-auth.guard';
-import { GqlThrottlerGuard } from './guards/gql-throttler.guard';
+import { ThrottleLoginAttempts } from './guards/gql-throttler.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 function loginAttempt(ctx: any): LoginAttempt {
@@ -15,18 +15,19 @@ function loginAttempt(ctx: any): LoginAttempt {
 export class AuthResolver {
   constructor(private authService: AuthService) {}
 
-  @UseGuards(GqlThrottlerGuard)
+  @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
   loginClinician(@Args('input') input: LoginInput, @Context() ctx: any) {
     return this.authService.loginClinician(input.email, input.password, loginAttempt(ctx));
   }
 
-  @UseGuards(GqlThrottlerGuard)
+  @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
-  loginPatient(@Args('input') input: LoginInput) {
-    return this.authService.loginPatient(input.email, input.password);
+  loginPatient(@Args('input') input: LoginInput, @Context() ctx: any) {
+    return this.authService.loginPatient(input.email, input.password, loginAttempt(ctx));
   }
 
+  @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
   verifyMfa(
     @Args('pendingToken') pendingToken: string,
