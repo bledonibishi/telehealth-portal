@@ -1,0 +1,448 @@
+<!--
+  BACKUP ONLY — extracted verbatim on 2026-09-27 from the "Site Scripts" HtmlEmbed
+  component that is live on every page of the Webflow site (Telehealth /
+  telehealth-95c77b), via Webflow's Designer API (element id
+  b540d6ac-6e2d-8a19-ef74-bfc5d9f86e3a).
+
+  This file is NOT wired into any build and does NOT run anywhere by being in
+  this repo — it exists only so this code has a version-controlled backup and
+  a diffable history. It was never checked into git before this commit; it
+  lives only inside Webflow's own database. Edit it in Webflow (or via the
+  Webflow Designer API), then re-extract and update this file to keep it in
+  sync — this file does not push changes back to Webflow by itself.
+
+  Notable things this script assumes that don't exist elsewhere in this repo
+  as of this commit:
+    - CONFIG.API_BASE: a single origin expected to serve BOTH /graphql (the
+      NestJS backend) AND /api/checkout, /api/checkout/stripe-intent,
+      /api/checkout/paysera, /api/checkout/paysera/methods. Right now /graphql
+      lives on the NestJS backend and /api/checkout lives on the separate
+      website Vercel app (Next.js) — there is no single origin serving all of
+      these, and the three /api/checkout/* endpoints beyond the plain
+      /api/checkout redirect one don't exist in this codebase at all.
+    - A real Paysera merchant account / API integration (bank method tiles,
+      GET .../paysera/methods, POST .../paysera) — not present anywhere else
+      in this repo; git history has zero references to "paysera" outside this
+      embed.
+    - Real business contact details (email, phone numbers, WhatsApp) and a
+      medication-selection flow (Wegovy/Mounjaro/Ozempic via a `med` query
+      param) not documented in WEBSITE_BRIEF.md.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{background:#FFFFFF;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:#0E1A2B}
+html{scroll-behavior:smooth}
+#treatments,#how-it-works,#bmi{scroll-margin-top:84px}
+[data-th-screen]{display:none}
+[data-th-screen].is-active{display:block}
+[data-pv-img]{background-size:cover;background-repeat:no-repeat}
+[data-pv-icon] svg,.pv-feature-icon svg,.pv-feature-icon-blue svg,.pv-trust-ico svg{display:block}
+.pv-trust-ico{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.pv-contact-row{margin-top:4px}
+.pv-wa-btn{display:inline-flex;align-items:center;gap:8px;margin-top:10px;background:#16A34A;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:9px 14px;border-radius:999px;transition:background .2s,transform .2s}
+.pv-wa-btn:hover{background:#15803D;transform:translateY(-1px)}
+.pv-stat-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#EEF2F7}
+.pv-stat-fill{height:100%;width:0;background:linear-gradient(90deg,#1E4FD8,#4ADE80);transition:width 1.7s cubic-bezier(.2,.8,.2,1)}
+.pv-stat.is-counted .pv-stat-fill{width:100%}
+.thq-top{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.thq-arrow{flex-shrink:0;width:40px;height:40px;border-radius:999px;border:1px solid #E6ECF5;background:#fff;color:#0E1A2B;font-size:18px;cursor:pointer}
+.thq-arrow:hover{background:#F6F9FC}
+.thq-arrow:disabled{visibility:hidden}
+.thq-progress{flex:1;height:8px;background:#EEF2F7;border-radius:99px;overflow:hidden}
+.thq-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,#1E4FD8,#4ADE80);transition:width .55s cubic-bezier(.2,.8,.2,1)}
+.thq-count{flex-shrink:0;font-size:13px;font-weight:600;color:#334155;border:1px solid #E6ECF5;border-radius:999px;padding:7px 12px;white-space:nowrap;background:#fff}
+.thq-time{display:flex;align-items:center;justify-content:center;gap:6px;background:#EEF4FF;color:#1E4FD8;font-size:13px;font-weight:600;border-radius:12px;padding:10px 14px;margin-bottom:30px}
+.thq-in{animation:thqIn .4s cubic-bezier(.2,.8,.2,1)}
+@keyframes thqIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.thq-q{font-family:Manrope,Inter,sans-serif;font-size:30px;line-height:1.2;font-weight:800;letter-spacing:-.03em;color:#0E1A2B;margin:0 0 8px}
+.thq-help{font-size:15px;line-height:1.5;color:#52607A;margin:0 0 22px}
+.thq-spacer{height:16px}
+.thq-opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.thq-opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:17px 18px;background:#fff;border:1.5px solid #E6ECF5;border-radius:14px;font:inherit;font-size:16px;color:#0E1A2B;cursor:pointer;transition:border-color .18s,background .18s,box-shadow .18s}
+.thq-opt:hover{border-color:#9DB6F5;background:#FAFCFF}
+.thq-opt:focus-visible,[data-th-method]:focus-visible,.pvm-tile:focus-visible{outline:3px solid rgba(30,79,216,.25);outline-offset:2px}
+.thq-opt[aria-checked=true]{border-color:#1E4FD8;background:#EEF4FF;box-shadow:0 0 0 3px rgba(30,79,216,.10)}
+.thq-box,.thq-dot{flex-shrink:0;width:22px;height:22px;border:1.5px solid #B8C2D3;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;color:#fff;background:#fff}
+.thq-dot{border-radius:50%}
+.thq-opt[aria-checked=true] .thq-box{background:#1E4FD8;border-color:#1E4FD8}
+.thq-opt[aria-checked=true] .thq-dot{border:7px solid #1E4FD8}
+.thq-next{display:block;width:100%;margin-top:26px;background:#1E4FD8;color:#fff;border:0;border-radius:999px;padding:17px 28px;font:inherit;font-size:17px;font-weight:600;cursor:pointer;box-shadow:0 10px 24px rgba(30,79,216,.25);transition:background .2s,transform .2s}
+.thq-next:hover{background:#1741B8;transform:translateY(-1px)}
+.thq-next:disabled{opacity:.35;cursor:not-allowed;box-shadow:none;transform:none}
+.thq-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.thq-field,.thq-field-full{display:flex;flex-direction:column;gap:6px}
+.thq-field-full{grid-column:1/-1}
+.thq-field label,.thq-field-full label{font-size:14px;font-weight:600;color:#334155}
+.thq-field input,.thq-field-full input{padding:15px 16px;border:1.5px solid #E6ECF5;border-radius:12px;font:inherit;font-size:16px;color:#0E1A2B;background:#fff}
+.thq-field input:focus,.thq-field-full input:focus{outline:none;border-color:#1E4FD8;box-shadow:0 0 0 3px rgba(30,79,216,.12)}
+.thq-consent{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:14px;line-height:1.5;color:#52607A;cursor:pointer}
+.thq-consent input{margin-top:3px;accent-color:#1E4FD8}
+.thq-error{min-height:1em;margin-top:12px;font-size:14px;color:#B42318}
+[data-th-method].is-selected{border-color:#1E4FD8;background:#EEF4FF;border-bottom-left-radius:0;border-bottom-right-radius:0}
+[data-th-method].is-selected .th-method-dot{border:7px solid #1E4FD8}
+[data-th-pay][aria-disabled=true],[data-th-pay][aria-busy=true]{opacity:.45;pointer-events:none}
+[data-th-panel]{display:none}
+[data-th-panel].is-open{display:block;animation:thqIn .35s cubic-bezier(.2,.8,.2,1)}
+.pvm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
+.pvm-group{grid-column:1/-1;font-size:12px;font-weight:700;color:#8A94A6;text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+.pvm-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:76px;padding:12px;background:#fff;border:1.5px solid #E6ECF5;border-radius:12px;cursor:pointer;font:inherit;font-size:13px;font-weight:600;color:#0E1A2B;text-align:center}
+.pvm-tile:hover{border-color:#9DB6F5}
+.pvm-tile img{max-width:96px;max-height:30px;object-fit:contain}
+.pvm-tile[aria-pressed=true]{border-color:#1E4FD8;background:#EEF4FF;box-shadow:0 0 0 3px rgba(30,79,216,.10)}
+.pv-panel-note{font-size:14px;line-height:1.55;color:#52607A;margin:0}
+.pv-skel{height:44px;border-radius:10px;background:linear-gradient(90deg,#EEF2F7 0%,#F8FAFC 50%,#EEF2F7 100%);background-size:200% 100%;animation:pvSk 1.2s linear infinite;margin-bottom:10px}
+@keyframes pvSk{from{background-position:200% 0}to{background-position:-200% 0}}
+.pvb-field{margin-bottom:18px}
+.pvb-row{display:flex;justify-content:space-between;align-items:baseline;font-size:15px;font-weight:600;color:#334155}
+.pvb-row strong{font-family:Manrope,Inter,sans-serif;font-size:24px;font-weight:800;color:#0E1A2B}
+.pvb-range{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:99px;margin:14px 0 4px;background:linear-gradient(90deg,#1E4FD8 var(--p,50%),#E6ECF5 var(--p,50%));outline:none}
+.pvb-range::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid #1E4FD8;box-shadow:0 4px 12px rgba(30,79,216,.3);cursor:grab}
+.pvb-range::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid #1E4FD8;cursor:grab}
+.pvb-result{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #E6ECF5;border-radius:18px;padding:18px 22px;margin:8px 0 18px}
+.pvb-label{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#52607A}
+.pvb-num{font-family:Manrope,Inter,sans-serif;font-size:52px;line-height:1;font-weight:800;letter-spacing:-.04em;color:#0E1A2B}
+.pvb-status{font-size:13px;font-weight:600;border-radius:999px;padding:8px 12px;text-align:center}
+.pvb-result[data-tone=good] .pvb-num{color:#15803D}
+.pvb-result[data-tone=good] .pvb-status{background:#E8F8EF;color:#15803D}
+.pvb-result[data-tone=maybe] .pvb-num{color:#1E4FD8}
+.pvb-result[data-tone=maybe] .pvb-status{background:#EEF4FF;color:#1E4FD8}
+.pvb-result[data-tone=low] .pvb-status{background:#F1F5F9;color:#475569}
+.pvb-scale{position:relative;height:10px;margin-bottom:8px}
+.pvb-track{position:absolute;inset:0;border-radius:99px;background:linear-gradient(90deg,#C7D7FE 0 14%,#BBF7D0 14% 40%,#FDE68A 40% 60%,#FED7AA 60% 100%)}
+.pvb-marker{position:absolute;top:50%;width:20px;height:20px;margin-left:-10px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid #0E1A2B;transition:left .35s cubic-bezier(.2,.8,.2,1)}
+.pvb-ticks{position:relative;height:18px;font-size:12px;color:#8A94A6;margin-bottom:14px}
+.pvb-ticks span{position:absolute;transform:translateX(-50%)}
+.pvb-note{font-size:14px;line-height:1.6;color:#52607A;margin:0 0 20px}
+.pvb-cta{display:block;text-align:center;background:#1E4FD8;color:#fff;text-decoration:none;font-weight:600;font-size:16px;padding:16px;border-radius:999px;box-shadow:0 10px 24px rgba(30,79,216,.25)}
+.pvb-cta:hover{background:#1741B8}
+.pvb-small{text-align:center;font-size:13px;color:#8A94A6;margin-top:12px}
+.pv-anim{opacity:0;transform:translateY(28px);transition:opacity .75s ease,transform .75s cubic-bezier(.2,.8,.2,1)}
+.pv-anim.pv-in{opacity:1;transform:none}
+@media (prefers-reduced-motion:no-preference){.pv-float-a{animation:pvFloat 6s ease-in-out infinite}.pv-float-b,.pv-contact-float{animation:pvFloat 7s ease-in-out -2s infinite}.pv-float-c{animation:pvFloat 8s ease-in-out -4s infinite}.pv-chip-dot{animation:pvPulse 2.4s ease-in-out infinite}}
+@keyframes pvFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes pvPulse{0%,100%{box-shadow:0 0 0 4px rgba(22,163,74,.18)}50%{box-shadow:0 0 0 8px rgba(22,163,74,.06)}}
+[data-th-trustpilot]:empty{display:none}
+@media (max-width:600px){.thq-opts,.thq-fields{grid-template-columns:1fr}.thq-q{font-size:24px}.thq-count{font-size:12px;padding:6px 10px}.pvb-num{font-size:42px}}
+</style>
+<script>
+(function(){
+'use strict';
+// ================= CONFIG: edit before going live =================
+var CONFIG={
+API_BASE:'https://YOUR-BACKEND-DOMAIN', // HTTPS, no trailing slash
+STRIPE_PUBLISHABLE_KEY:'', // pk_live_... empty = Stripe hosted checkout
+ENDPOINTS:{stripe:'/api/checkout',stripeIntent:'/api/checkout/stripe-intent',paysera:'/api/checkout/paysera',payseraMethods:'/api/checkout/paysera/methods'},
+CONTACT:{
+email:'primaverahealthcare@gmail.com',
+phones:[{label:'Phone (Kosovo)',number:'+383 49 696 967'},{label:'Phone (Germany)',number:'+49 177 4014024'}],
+whatsapp:'+49 177 4014024'
+},
+PLANS:{
+HRT_STARTER:{product:'HRT',priceId:'price_REPLACE_HRT_STARTER',name:'HRT Starter',desc:'Estradiol gel 0.1%',price:'£49'},
+HRT_COMPLETE:{product:'HRT',priceId:'price_REPLACE_HRT_COMPLETE',name:'HRT Complete',desc:'Estradiol gel + micronised progesterone',price:'£79'},
+GLP1_STARTER:{product:'GLP1',priceId:'price_REPLACE_GLP1_STARTER',name:'GLP-1 Starter',desc:'Semaglutide 0.25 mg → 0.5 mg titration',price:'£149'},
+GLP1_ADVANCED:{product:'GLP1',priceId:'price_REPLACE_GLP1_ADVANCED',name:'GLP-1 Advanced',desc:'Semaglutide 1 mg maintenance',price:'£199'}
+},
+MEDICATIONS:{wegovy:'Wegovy',mounjaro:'Mounjaro',ozempic:'Ozempic'},
+IMAGES:{
+'hero':'https://images.unsplash.com/photo-1624486217002-846e654ac969?auto=format&fit=crop&w=1400&q=80',
+'bmi':'https://images.unsplash.com/photo-1534180477871-5d6cc81f3920?auto=format&fit=crop&w=1200&q=80',
+'products':'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=80',
+'contact':'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=1200&q=80',
+'p-hrt-starter':'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=800&q=80',
+'p-hrt-complete':'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=800&q=80',
+'p-wegovy':'https://images.unsplash.com/photo-1745939921744-ba8ef27940bf?auto=format&fit=crop&w=800&q=80',
+'p-mounjaro':'https://images.unsplash.com/photo-1745939912168-cc7333d65327?auto=format&fit=crop&w=800&q=80',
+'p-ozempic':'https://images.unsplash.com/photo-1745940369366-330f0159720d?auto=format&fit=crop&w=800&q=80'
+},
+IMAGE_POSITION:{'products':'50% 15%','contact':'50% 15%'},
+TRUSTPILOT_HTML:'' // paste your real Trustpilot TrustBox snippet here
+};
+// ===================================================================
+var ICONS={
+shield:"<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/><path d='m9 12 2 2 4-4'/>",
+truck:"<path d='M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2'/><path d='M15 18H9'/><path d='M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14'/><circle cx='17' cy='18' r='2'/><circle cx='7' cy='18' r='2'/>",
+stethoscope:"<path d='M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3'/><path d='M8 15v1a6 6 0 0 0 6 6 6 6 0 0 0 6-6v-4'/><circle cx='20' cy='10' r='2'/>",
+lock:"<rect x='3' y='11' width='18' height='11' rx='2' ry='2'/><path d='M7 11V7a5 5 0 0 1 10 0v4'/>",
+mail:"<rect x='2' y='4' width='20' height='16' rx='2'/><path d='m22 7-10 5L2 7'/>",
+alert:"<path d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/><path d='M12 9v4'/><path d='M12 17h.01'/>",
+chat:"<path d='M7.9 20A9 9 0 1 0 4 16.1L2 22Z'/>"
+};
+function svg(n,s){s=s||22;return "<svg xmlns='http://www.w3.org/2000/svg' width='"+s+"' height='"+s+"' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>"+ICONS[n]+'</svg>';}
+var NONE='None of the above';
+var HIST='Based on your medical history, it wouldn’t be safe for us to prescribe this treatment online.';
+var QUIZZES={
+HRT:[
+{id:'age',q:'What is your age?',type:'single',options:[{l:'Under 18',dq:'HRT through our service is only available to adults aged 18 to 65.'},{l:'18 to 39'},{l:'40 to 54'},{l:'55 to 65'},{l:'Over 65',dq:'HRT through our service is only available to adults aged 18 to 65. Your own doctor can advise on options after 65.'}]},
+{id:'symptoms',q:'Which symptoms are you experiencing?',help:'Select all that apply.',type:'multi',options:[{l:'Hot flushes or night sweats'},{l:'Mood changes or anxiety'},{l:'Brain fog'},{l:'Low libido'},{l:'Sleep disturbances'},{l:'Joint or muscle pain'},{l:NONE,x:true,dq:'HRT is prescribed to relieve menopause symptoms, so it isn’t the right treatment if you’re not experiencing any.'}]},
+{id:'medical_history',q:'Have you ever had any of the following?',help:'Select all that apply.',type:'multi',options:[{l:'Breast cancer',dq:HIST},{l:'Blood clots (DVT or PE)',dq:HIST},{l:'Stroke or heart attack in the past 12 months',dq:HIST},{l:'Unexplained vaginal bleeding',dq:HIST},{l:NONE,x:true}]},
+{id:'pregnancy',q:'Are you currently pregnant?',type:'single',options:[{l:'Yes',dq:'HRT can’t be prescribed during pregnancy.'},{l:'No'}]},
+{id:'blood_pressure',q:'Do you have uncontrolled high blood pressure (above 160/100)?',type:'single',options:[{l:'Yes',dq:'Uncontrolled high blood pressure needs to be treated and stable before HRT can be considered.'},{l:'No'}]}
+],
+GLP1:[
+{id:'age',q:'What is your age?',type:'single',options:[{l:'Under 18',dq:'GLP-1 treatment through our service is only available to adults aged 18 to 75.'},{l:'18 to 39'},{l:'40 to 59'},{l:'60 to 75'},{l:'Over 75',dq:'GLP-1 treatment through our service is only available to adults aged 18 to 75.'}]},
+{id:'bmi',q:'What is your BMI?',help:'Not sure? Choose “I don’t know” and we’ll work it out from your height and weight.',type:'single',options:[{l:'30 or above',band:'30+'},{l:'27 to 29.9',band:'27-29'},{l:'Under 27',dq:'GLP-1 treatment is only prescribed for a BMI of 27 or above.'},{l:'I don’t know',calc:true}]},
+{id:'weight_conditions',q:'Do you have either of these conditions?',help:'Required when your BMI is between 27 and 29.9. Select all that apply.',type:'multi',showIf:function(s){return s.bmiBand==='27-29';},options:[{l:'Type 2 diabetes or prediabetes'},{l:'High blood pressure'},{l:'Neither of these',x:true,dq:'With a BMI between 27 and 29.9, GLP-1 treatment requires a weight-related condition such as type 2 diabetes or high blood pressure.'}]},
+{id:'medical_history',q:'Have you ever had any of the following?',help:'Select all that apply.',type:'multi',options:[{l:'Type 1 diabetes',dq:HIST},{l:'Medullary thyroid carcinoma or MEN2',dq:HIST},{l:'Pancreatitis',dq:HIST},{l:NONE,x:true}]},
+{id:'pregnancy',q:'Are you pregnant, breastfeeding, or planning a pregnancy in the next 6 months?',type:'single',options:[{l:'Yes',dq:'GLP-1 medicines can’t be used during pregnancy or breastfeeding, or in the months before trying to conceive.'},{l:'No'}]},
+{id:'gi_disorders',q:'Do you have a severe gut condition, such as gastroparesis or IBD?',type:'single',options:[{l:'Yes',dq:'GLP-1 medicines can worsen severe gastrointestinal conditions, so we can’t prescribe them online.'},{l:'No'}]}
+]};
+var STORE='th_assessment';
+function load(){try{return JSON.parse(sessionStorage.getItem(STORE))||null;}catch(e){return null;}}
+function save(o){try{sessionStorage.setItem(STORE,JSON.stringify(o));}catch(e){}}
+function merge(o){var s=load()||{};for(var k in o)s[k]=o[k];save(s);return s;}
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function param(n){var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search);return m?decodeURIComponent(m[1]):null;}
+function screens(name){document.querySelectorAll('[data-th-screen]').forEach(function(el){el.classList.toggle('is-active',el.getAttribute('data-th-screen')===name);});}
+function post(path,body){return fetch(CONFIG.API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});}
+function get(path){return fetch(CONFIG.API_BASE+path).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});}
+var scriptCache={};
+function loadScript(src){if(!scriptCache[src])scriptCache[src]=new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.async=true;s.onload=res;s.onerror=function(){rej(new Error('Failed to load '+src));};document.head.appendChild(s);});return scriptCache[src];}
+function eligUrl(p){return p==='HRT'?'/hrt-eligibility':'/glp1-eligibility';}
+var reduceMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+var medParam=param('med');
+if(medParam&&CONFIG.MEDICATIONS[medParam])merge({med:medParam});
+// Photos
+document.querySelectorAll('[data-pv-img]').forEach(function(el){
+var k=el.getAttribute('data-pv-img'),src=CONFIG.IMAGES[k];if(!src)return;
+var img=new Image();img.onload=function(){el.style.backgroundImage='url('+src+')';if(CONFIG.IMAGE_POSITION[k])el.style.backgroundPosition=CONFIG.IMAGE_POSITION[k];};img.src=src;
+});
+// Icons
+document.querySelectorAll('[data-pv-icon]').forEach(function(el){var n=el.getAttribute('data-pv-icon');if(ICONS[n])el.innerHTML=svg(n,20);});
+var FEATURE_ORDER=['stethoscope','truck','shield','lock'];
+document.querySelectorAll('.pv-feature').forEach(function(card,i){var ic=card.querySelector('.pv-feature-icon, .pv-feature-icon-blue');var n=ic&&(ic.getAttribute('data-pv-icon')||FEATURE_ORDER[i]);if(ic&&ICONS[n])ic.innerHTML=svg(n,22);});
+var TRUST_ORDER=['stethoscope','shield','lock'];
+document.querySelectorAll('.th-trust-item').forEach(function(item,i){var n=TRUST_ORDER[i];if(!ICONS[n]||item.querySelector('.pv-trust-ico'))return;var d=document.createElement('div');d.className='pv-trust-ico';d.innerHTML=svg(n,20);item.insertBefore(d,item.firstChild);});
+// Contact details
+var direct=document.querySelector('[data-th-contact-direct]');
+if(direct){
+var lines=direct.querySelector('[data-th-contact-lines]'),c=CONFIG.CONTACT,added=0;
+var addLine=function(label,href,text){var row=document.createElement('div');row.className='pv-contact-row';row.appendChild(document.createTextNode(label+': '));var a=document.createElement('a');a.className='pv-info-link';a.href=href;a.textContent=text;row.appendChild(a);lines.appendChild(row);added++;};
+if(lines){
+lines.textContent='';
+if(c.email)addLine('Email','mailto:'+c.email,c.email);
+(c.phones||[]).forEach(function(p){if(p.number)addLine(p.label||'Phone','tel:'+p.number.replace(/[^\d+]/g,''),p.number);});
+if(c.whatsapp){var wa=document.createElement('a');wa.className='pv-wa-btn';wa.href='https://wa.me/'+c.whatsapp.replace(/\D/g,'');wa.target='_blank';wa.rel='noopener';wa.innerHTML=svg('chat',16);wa.appendChild(document.createTextNode(' Chat on WhatsApp'));var wr=document.createElement('div');wr.appendChild(wa);lines.appendChild(wr);added++;}
+}
+if(!added)direct.style.display='none';
+}
+// Trustpilot (real TrustBox only)
+var tpSlots=document.querySelectorAll('[data-th-trustpilot]');
+if(CONFIG.TRUSTPILOT_HTML&&tpSlots.length){tpSlots.forEach(function(s){s.innerHTML=CONFIG.TRUSTPILOT_HTML;});loadScript('https://widget.trustpilot.com/bootstrap/v5/tp.widget.bootstrap.min.js').then(function(){if(!window.Trustpilot)return;tpSlots.forEach(function(s){var w=s.querySelector('.trustpilot-widget');if(w)window.Trustpilot.loadFromElement(w);});}).catch(function(){});}
+// Scroll reveal
+if(!reduceMotion&&'IntersectionObserver' in window){
+var SEL='.pv-hero-copy,.pv-hero-visual,.pv-feature,.th-section-head,.th-product-card-hrt,.th-product-card-glp,.pv-bmi-shell,.th-step-card,.th-trust-band,.pv-page-head,.pv-stats-split,.pv-product,.pv-help-card,.pv-info-card,.pv-form-card,.pv-contact-photo-wrap';
+var io=new IntersectionObserver(function(es){es.forEach(function(en){if(!en.isIntersecting)return;var t=en.target;t.classList.add('pv-in');io.unobserve(t);setTimeout(function(){t.classList.remove('pv-anim','pv-in');t.style.transitionDelay='';},1300);});},{threshold:0.12,rootMargin:'0px 0px -40px 0px'});
+document.querySelectorAll(SEL).forEach(function(el,i){el.classList.add('pv-anim');el.style.transitionDelay=((i%4)*90)+'ms';io.observe(el);});
+}
+// Count-up numbers
+function countUp(el,delay){
+var raw=el.getAttribute('data-final')||el.textContent.trim();el.setAttribute('data-final',raw);
+var m=/^(\D*)(\d+(?:\.\d+)?)(.*)$/.exec(raw);if(!m)return;
+var pre=m[1],target=parseFloat(m[2]),suf=m[3],dec=(m[2].split('.')[1]||'').length,from=target===0?12:0;
+if(reduceMotion){el.textContent=raw;return;}
+el.textContent=pre+from.toFixed(dec)+suf;
+setTimeout(function(){var start=null,dur=1700;var step=function(t){if(!start)start=t;var p=Math.min(1,(t-start)/dur),e=1-Math.pow(1-p,3),v=from+(target-from)*e;el.textContent=pre+(dec?v.toFixed(dec):Math.round(v))+suf;if(p<1)requestAnimationFrame(step);else el.textContent=raw;};requestAnimationFrame(step);},delay||0);
+}
+var statCards=document.querySelectorAll('.pv-stat');
+statCards.forEach(function(card){if(!card.querySelector('.pv-stat-bar')){var b=document.createElement('div');b.className='pv-stat-bar';var f=document.createElement('div');f.className='pv-stat-fill';b.appendChild(f);card.appendChild(b);}});
+var countTargets=document.querySelectorAll('.pv-stat, .pv-float-a');
+if('IntersectionObserver' in window&&countTargets.length){
+var cio=new IntersectionObserver(function(es){es.forEach(function(en){if(!en.isIntersecting)return;var card=en.target;cio.unobserve(card);var idx=Array.prototype.indexOf.call(statCards,card),delay=idx>-1?idx*180:300;var num=card.querySelector('.pv-stat-num, .pv-float-big');if(num)countUp(num,delay);if(card.classList.contains('pv-stat')){var f=card.querySelector('.pv-stat-fill');if(f)f.style.transitionDelay=delay+'ms';requestAnimationFrame(function(){card.classList.add('is-counted');});}});},{threshold:0.4});
+countTargets.forEach(function(el){cio.observe(el);});
+}
+// BMI widget
+var bmiEl=document.querySelector('[data-th-bmi]');
+if(bmiEl){
+bmiEl.innerHTML='<div class=pvb-field><div class=pvb-row><span>Height</span><strong data-v=h></strong></div><input class=pvb-range type=range min=140 max=210 value=170 data-r=h aria-label=Height></div>'+
+'<div class=pvb-field><div class=pvb-row><span>Weight</span><strong data-v=w></strong></div><input class=pvb-range type=range min=45 max=200 value=92 data-r=w aria-label=Weight></div>'+
+'<div class=pvb-result data-tone=good><div><div class=pvb-label>Your BMI</div><div class=pvb-num data-v=bmi></div></div><div class=pvb-status data-v=status></div></div>'+
+'<div class=pvb-scale><div class=pvb-track></div><div class=pvb-marker data-v=marker></div></div>'+
+'<div class=pvb-ticks><span style=left:14%>18.5</span><span style=left:40%>25</span><span style=left:60%>30</span><span style=left:80%>35</span></div>'+
+'<p class=pvb-note data-v=note></p><a class=pvb-cta href=/glp1-eligibility>Check my eligibility →</a><div class=pvb-small>Takes about 2 minutes · Reviewed by a licensed doctor</div>';
+var q=function(s){return bmiEl.querySelector(s);},hR=q('[data-r=h]'),wR=q('[data-r=w]');
+var fillR=function(r){r.style.setProperty('--p',((r.value-r.min)/(r.max-r.min)*100)+'%');};
+var upd=function(){
+var h=+hR.value,w=+wR.value,bmi=Math.round(w/Math.pow(h/100,2)*10)/10;
+q('[data-v=h]').textContent=h+' cm';q('[data-v=w]').textContent=w+' kg';q('[data-v=bmi]').textContent=bmi.toFixed(1);
+q('[data-v=marker]').style.left=Math.max(0,Math.min(100,(bmi-15)/25*100))+'%';
+var tone,status,note;
+if(bmi>=30){tone='good';status='In the treatment range';note='A BMI of 30 or above is where GLP-1 treatment is usually considered. Your doctor will also review your age, medical history and current medication.';}
+else if(bmi>=27){tone='maybe';status='May qualify';note='Between 27 and 29.9, treatment may be considered if you also have a condition like type 2 diabetes or high blood pressure.';}
+else{tone='low';status='Below the range';note='GLP-1 treatment is generally only prescribed for a BMI of 27 or above.';}
+q('.pvb-result').setAttribute('data-tone',tone);q('[data-v=status]').textContent=status;q('[data-v=note]').textContent=note;fillR(hR);fillR(wR);
+};
+hR.addEventListener('input',upd);wR.addEventListener('input',upd);upd();
+}
+// Cancel page
+var resume=document.querySelector('[data-th-resume]');
+if(resume){var s0=load();if(s0&&s0.passed)resume.setAttribute('href',s0.plan?'/checkout?plan='+encodeURIComponent(s0.plan):eligUrl(s0.product)+'?resume=1');}
+// Checkout: Paysera (Kosovo) or Stripe (worldwide), inline
+if(document.querySelector('[data-th-screen=checkout]')){
+var cs=load(),key=param('plan')||(cs&&cs.plan),plan=key&&CONFIG.PLANS[key];
+if(!cs||!cs.passed||!plan||plan.product!==cs.product){screens('nosession');return;}
+merge({plan:key});screens('checkout');
+var medName=plan.product==='GLP1'&&cs.med?CONFIG.MEDICATIONS[cs.med]:null;
+var setText=function(k,v){var el=document.querySelector('[data-th-sum='+k+']');if(el)el.textContent=v;};
+setText('name',plan.name);setText('desc',plan.desc+(medName?' · Preferred medicine: '+medName+' (your doctor confirms the final prescription)':''));setText('price',plan.price);
+var change=document.querySelector('[data-th-change]');if(change)change.setAttribute('href',eligUrl(plan.product)+'?resume=1');
+var secure=document.querySelector('.th-co-secure');if(secure)secure.textContent='Payments are processed securely by Paysera and Stripe. We never see or store your card details.';
+var payBtn=document.querySelector('[data-th-pay]'),payErr=document.querySelector('[data-th-pay-error]'),methods=document.querySelectorAll('[data-th-method]');
+var LABELS={paysera:'Pay with Paysera',stripe:'Pay by card'};
+var P={chosen:null,stripe:{started:false,mode:null,complete:false,inst:null,elements:null,intentType:'payment'},paysera:{started:false,mode:null,method:null}};
+var err=function(m){if(payErr)payErr.textContent=m||'';};
+var canPay=function(){if(P.chosen==='stripe')return P.stripe.mode==='redirect'||(P.stripe.mode==='element'&&P.stripe.complete);if(P.chosen==='paysera')return P.paysera.mode==='redirect'||(P.paysera.mode==='list'&&!!P.paysera.method);return false;};
+var refreshPay=function(){if(!P.chosen){payBtn.setAttribute('aria-disabled','true');payBtn.textContent='Select a payment method';return;}payBtn.textContent=LABELS[P.chosen]+' · '+plan.price;if(canPay())payBtn.removeAttribute('aria-disabled');else payBtn.setAttribute('aria-disabled','true');};
+var payload=function(){return{planKey:key,planName:plan.name,priceId:plan.priceId,productKind:plan.product,email:cs.email||null,leadId:cs.leadId||null,medication:medName};};
+var stripeFallback=function(mount){P.stripe.mode='redirect';mount.innerHTML='<p class=pv-panel-note>You’ll enter your card details on Stripe’s secure checkout page in the next step.</p>';refreshPay();};
+var startStripe=function(){
+if(P.stripe.started)return;P.stripe.started=true;
+var mount=document.querySelector('[data-th-stripe-mount]');if(!mount)return;
+if(!CONFIG.STRIPE_PUBLISHABLE_KEY)return stripeFallback(mount);
+mount.innerHTML='<div class=pv-skel></div><div class=pv-skel></div><div class=pv-skel style=width:60%></div>';
+var p=payload();
+Promise.all([loadScript('https://js.stripe.com/v3/'),post(CONFIG.ENDPOINTS.stripeIntent,{priceId:p.priceId,planName:p.planName,email:p.email,leadId:p.leadId,medication:p.medication})]).then(function(r){
+var d=r[1];if(!d||!d.clientSecret||!window.Stripe)throw new Error('Missing client secret');
+P.stripe.intentType=d.intentType==='setup'?'setup':'payment';
+P.stripe.inst=window.Stripe(CONFIG.STRIPE_PUBLISHABLE_KEY);
+P.stripe.elements=P.stripe.inst.elements({clientSecret:d.clientSecret,appearance:{theme:'stripe',variables:{colorPrimary:'#1E4FD8',colorText:'#0E1A2B',borderRadius:'12px',fontFamily:'Inter, system-ui, sans-serif'}},fonts:[{cssSrc:'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap'}]});
+var pe=P.stripe.elements.create('payment',{layout:'tabs',defaultValues:{billingDetails:{email:p.email||''}}});
+mount.innerHTML='';pe.mount(mount);P.stripe.mode='element';
+pe.on('change',function(e){P.stripe.complete=!!e.complete;refreshPay();});refreshPay();
+}).catch(function(ex){console.warn('[primavera] inline Stripe unavailable:',ex);stripeFallback(mount);});
+};
+var payseraFallback=function(box){P.paysera.mode='redirect';box.innerHTML='<p class=pv-panel-note>You’ll choose your bank or card on Paysera’s secure page in the next step.</p>';refreshPay();};
+var startPaysera=function(){
+if(P.paysera.started)return;P.paysera.started=true;
+var box=document.querySelector('[data-th-paysera-methods]');if(!box)return;
+box.innerHTML='<div class=pv-skel></div><div class=pv-skel></div>';
+get(CONFIG.ENDPOINTS.payseraMethods+'?plan='+encodeURIComponent(key)).then(function(d){
+var list=(d&&d.methods)||[];if(!list.length)throw new Error('No methods');
+var grid=document.createElement('div');grid.className='pvm-grid';grid.setAttribute('role','radiogroup');grid.setAttribute('aria-label','Bank or payment method');
+var lastGroup=null;
+list.forEach(function(m){
+if(m.group&&m.group!==lastGroup){var g=document.createElement('div');g.className='pvm-group';g.textContent=m.group;grid.appendChild(g);lastGroup=m.group;}
+var b=document.createElement('button');b.type='button';b.className='pvm-tile';b.setAttribute('aria-pressed','false');b.setAttribute('data-pm',m.key);
+if(m.logo){var im=document.createElement('img');im.src=m.logo;im.alt='';im.loading='lazy';b.appendChild(im);}
+var t=document.createElement('span');t.textContent=m.title||m.key;b.appendChild(t);grid.appendChild(b);
+});
+grid.addEventListener('click',function(e){var b=e.target.closest('.pvm-tile');if(!b)return;grid.querySelectorAll('.pvm-tile').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});P.paysera.method=b.getAttribute('data-pm');merge({payseraMethod:P.paysera.method});err('');refreshPay();});
+box.innerHTML='';box.appendChild(grid);P.paysera.mode='list';
+if(cs.payseraMethod)grid.querySelectorAll('.pvm-tile').forEach(function(x){if(x.getAttribute('data-pm')===cs.payseraMethod)x.click();});
+refreshPay();
+}).catch(function(ex){console.warn('[primavera] Paysera methods unavailable:',ex);payseraFallback(box);});
+};
+var choose=function(m){
+P.chosen=m;
+methods.forEach(function(el){var on=el.getAttribute('data-th-method')===m;el.classList.toggle('is-selected',on);el.setAttribute('aria-checked',on);el.setAttribute('aria-expanded',on);});
+document.querySelectorAll('[data-th-panel]').forEach(function(p){p.classList.toggle('is-open',p.getAttribute('data-th-panel')===m);});
+err('');merge({method:m});if(m==='stripe')startStripe();else startPaysera();refreshPay();
+};
+methods.forEach(function(el){el.setAttribute('role','radio');el.setAttribute('tabindex','0');el.setAttribute('aria-checked','false');el.addEventListener('click',function(){choose(el.getAttribute('data-th-method'));});el.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();choose(el.getAttribute('data-th-method'));}});});
+refreshPay();if(cs.method&&LABELS[cs.method])choose(cs.method);
+var busy=function(on,label){if(on){payBtn.setAttribute('aria-busy','true');payBtn.textContent=label;}else{payBtn.removeAttribute('aria-busy');refreshPay();}};
+payBtn.addEventListener('click',function(e){
+e.preventDefault();if(!canPay())return;err('');var p=payload();
+if(P.chosen==='stripe'&&P.stripe.mode==='element'){
+busy(true,'Processing payment…');var s=P.stripe;
+var opts={elements:s.elements,confirmParams:{return_url:location.origin+'/checkout-success'}};
+var call=s.intentType==='setup'?s.inst.confirmSetup(opts):s.inst.confirmPayment(opts);
+call.then(function(r){if(r&&r.error){busy(false);err(r.error.message||'Your payment could not be completed. Please check your details.');}}).catch(function(){busy(false);err('Something went wrong. Please try again.');});
+return;
+}
+busy(true,'Redirecting to secure payment…');
+var req=P.chosen==='stripe'?post(CONFIG.ENDPOINTS.stripe,{priceId:p.priceId,planName:p.planName}):post(CONFIG.ENDPOINTS.paysera,{planKey:p.planKey,planName:p.planName,productKind:p.productKind,email:p.email,leadId:p.leadId,medication:p.medication,paymentMethod:P.paysera.method||null});
+req.then(function(d){if(!d||!d.url)throw new Error('No payment URL returned');window.location.href=d.url;}).catch(function(ex){console.error('[primavera] '+P.chosen+' checkout failed:',ex);busy(false);err('We couldn’t start the payment. Please try again, or choose the other payment method.');});
+});
+return;
+}
+// Eligibility quiz
+var root=document.querySelector('[data-th-quiz]');if(!root)return;
+var product=root.getAttribute('data-th-quiz'),questions=QUIZZES[product];if(!questions)return;
+var intro=document.querySelector('.th-quiz-intro');
+var st={idx:0,answers:{},bmiBand:null,view:'q',lastKey:null};
+function visible(){return questions.filter(function(q){return !q.showIf||q.showIf(st);});}
+function byId(id){for(var i=0;i<questions.length;i++)if(questions[i].id===id)return questions[i];}
+function setAns(q,sel){if(!sel.length){delete st.answers[q.id];return;}st.answers[q.id]={question:q.q,sel:sel};}
+function goTo(el){var t=el.getBoundingClientRect().top;if(t<80||t>window.innerHeight*0.6)window.scrollTo({top:Math.max(0,t+window.pageYOffset-110),behavior:'smooth'});}
+function show(name,quiet){screens(name);if(intro)intro.style.display=name==='plans'?'none':'';if(!quiet)window.scrollTo({top:0,behavior:'smooth'});}
+function head(done,total,label,canBack){return '<div class=thq-top><button type=button class=thq-arrow data-act=back aria-label=Back'+(canBack?'':' disabled')+'>←</button><div class=thq-progress><div class=thq-bar style=width:'+Math.max(5,Math.round(done/total*100))+'%></div></div><div class=thq-count>'+label+'</div></div><div class=thq-time>◷ Takes less than 2 minutes</div>';}
+function stage(k){var anim=st.lastKey!==k&&!reduceMotion;st.lastKey=k;return '<div'+(anim?' class=thq-in':'')+'>';}
+function render(){
+var vq=visible(),n=vq.length;
+if(st.view==='details')return renderDetails(n);
+if(st.view==='calc')return renderCalc(n);
+var q=vq[st.idx],multi=q.type==='multi',sel=st.answers[q.id]?st.answers[q.id].sel:[];
+var h=head(st.idx,n+1,'Question '+(st.idx+1)+' / '+n,st.idx>0)+stage(q.id);
+h+='<h2 class=thq-q>'+esc(q.q)+'</h2>';
+h+=q.help?'<p class=thq-help>'+esc(q.help)+'</p>':'<div class=thq-spacer></div>';
+h+='<div class=thq-opts role='+(multi?'group':'radiogroup')+'>';
+q.options.forEach(function(o,i){var on=sel.indexOf(o.l)>-1;h+='<button type=button class=thq-opt role='+(multi?'checkbox':'radio')+' aria-checked='+on+' data-i='+i+'><span class='+(multi?'thq-box':'thq-dot')+'>'+(on&&multi?'✓':'')+'</span>'+esc(o.l)+'</button>';});
+h+='</div><button type=button class=thq-next data-act=next'+(sel.length?'':' disabled')+'>Next</button></div>';
+root.innerHTML=h;
+}
+function renderCalc(n){
+root.innerHTML=head(st.idx,n+1,'Question '+(st.idx+1)+' / '+n,true)+stage('calc')+'<h2 class=thq-q>Let’s work out your BMI</h2><p class=thq-help>Enter your height and current weight.</p><div class=thq-fields><div class=thq-field><label for=thq-h>Height (cm)</label><input id=thq-h type=number inputmode=decimal min=120 max=230 placeholder=168></div><div class=thq-field><label for=thq-w>Weight (kg)</label><input id=thq-w type=number inputmode=decimal min=35 max=300 placeholder=92></div></div><div class=thq-error data-err></div><button type=button class=thq-next data-act=calc>Calculate my BMI</button></div>';
+}
+function doCalc(){
+var h=parseFloat(root.querySelector('#thq-h').value),w=parseFloat(root.querySelector('#thq-w').value),e=root.querySelector('[data-err]');
+if(!(h>=120&&h<=230)||!(w>=35&&w<=300)){e.textContent='Please enter a height between 120 and 230 cm and a weight between 35 and 300 kg.';return;}
+var bmi=Math.round(w/Math.pow(h/100,2)*10)/10,q=byId('bmi');
+setAns(q,['BMI '+bmi+' (calculated from '+h+' cm, '+w+' kg)']);st.view='q';
+if(bmi<27){st.bmiBand=null;return ineligible('Your BMI works out at '+bmi+'. GLP-1 treatment is only prescribed for a BMI of 27 or above.');}
+st.bmiBand=bmi>=30?'30+':'27-29';st.idx=visible().indexOf(q)+1;render();goTo(root);
+}
+function fld(name,label,type,ac,cls){return '<div class='+cls+'><label for=thq-'+name+'>'+label+'</label><input id=thq-'+name+' name='+name+' type='+type+' autocomplete='+ac+'></div>';}
+function renderDetails(n){
+root.innerHTML=head(n,n+1,'Last step',true)+stage('details')+'<h2 class=thq-q>Where should we send your results?</h2><p class=thq-help>Your doctor uses these details to review your assessment.</p><form class=thq-form novalidate><div class=thq-fields>'+fld('firstName','First name','text','given-name','thq-field')+fld('lastName','Last name','text','family-name','thq-field')+fld('email','Email','email','email','thq-field-full')+'</div><label class=thq-consent><input type=checkbox name=consent><span>I confirm my answers are accurate, and I consent to my health information being used to assess my eligibility.</span></label><div class=thq-error data-err></div><button type=submit class=thq-next>See my plans</button></form></div>';
+}
+function pick(q,o){
+if(q.type==='single'){if(o.calc){st.view='calc';render();return;}setAns(q,[o.l]);if(q.id==='bmi')st.bmiBand=o.band||null;render();return;}
+var cur=st.answers[q.id]?st.answers[q.id].sel.slice():[],at=cur.indexOf(o.l);
+if(at>-1)cur.splice(at,1);else if(o.x)cur=[o.l];else{cur=cur.filter(function(l){return !q.options.some(function(p){return p.l===l&&p.x;});});cur.push(o.l);}
+setAns(q,cur);render();
+}
+function advance(q){
+var a=st.answers[q.id];if(!a)return;
+for(var i=0;i<q.options.length;i++){var o=q.options[i];if(o.dq&&a.sel.indexOf(o.l)>-1)return ineligible(o.dq);}
+var vq=visible(),pos=vq.indexOf(q);if(pos<vq.length-1)st.idx=pos+1;else st.view='details';render();goTo(root);
+}
+function back(){if(st.view==='details'){st.view='q';st.idx=visible().length-1;}else if(st.view==='calc'){st.view='q';}else if(st.idx>0){st.idx--;}render();}
+function ineligible(msg){var r=document.querySelector('[data-th-reason]');if(r)r.textContent=msg;show('ineligible');}
+var MUTATION='mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id } }';
+function createLead(d){
+var answers=visible().filter(function(q){return st.answers[q.id];}).map(function(q){return{questionId:q.id,question:q.q,answer:st.answers[q.id].sel.join(', ')};});
+var s=load();
+if(product==='GLP1'&&s&&s.med&&CONFIG.MEDICATIONS[s.med])answers.push({questionId:'preferred_medication',question:'Preferred medicine (chosen on products page)',answer:CONFIG.MEDICATIONS[s.med]});
+return post('/graphql',{query:MUTATION,variables:{input:{email:d.email,firstName:d.firstName,lastName:d.lastName,productKind:product,quizAnswers:answers}}}).then(function(j){if(j.errors&&j.errors.length)throw new Error(j.errors[0].message);return j.data.createLead.id;});
+}
+root.addEventListener('click',function(e){
+var b=e.target.closest('button');if(!b||b.type==='submit')return;
+var q=visible()[st.idx],act=b.getAttribute('data-act');
+if(b.hasAttribute('data-i'))return pick(q,q.options[+b.getAttribute('data-i')]);
+if(act==='back')return back();if(act==='next')return advance(q);if(act==='calc')return doCalc();
+});
+root.addEventListener('submit',function(e){
+e.preventDefault();
+var f=e.target,el=f.elements,er=f.querySelector('[data-err]'),btn=f.querySelector('button[type=submit]');
+var d={firstName:el.firstName.value.trim(),lastName:el.lastName.value.trim(),email:el.email.value.trim()};
+if(!d.firstName||!d.lastName){er.textContent='Please enter your first and last name.';return;}
+if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)){er.textContent='Please enter a valid email address.';return;}
+if(!el.consent.checked){er.textContent='Please tick the box to confirm and continue.';return;}
+er.textContent='';btn.disabled=true;btn.textContent='Saving…';
+function finish(id){merge({product:product,passed:true,leadId:id,email:d.email,at:Date.now(),plan:null,method:null,payseraMethod:null});show('plans');}
+createLead(d).then(finish).catch(function(ex){console.error('[primavera] createLead failed:',ex);finish(null);});
+});
+document.addEventListener('click',function(e){
+var b=e.target.closest('[data-th-plan]');if(!b)return;e.preventDefault();
+var k=b.getAttribute('data-th-plan'),p=CONFIG.PLANS[k],s=load();
+if(!p||!s||!s.passed||p.product!==s.product)return;
+merge({plan:k});window.location.href='/checkout?plan='+encodeURIComponent(k);
+});
+document.addEventListener('click',function(e){if(!e.target.closest('[data-th-restart]'))return;e.preventDefault();show('quiz');render();});
+var saved=load();
+if(param('resume')==='1'&&saved&&saved.passed&&saved.product===product)show('plans',true);else show('quiz',true);
+render();
+})();
+</script>

@@ -21,29 +21,41 @@ export class StripeWebhookService {
 
   async handle(event: Stripe.Event) {
     switch (event.type) {
-      case 'checkout.session.completed':
-        await this.onCheckoutComplete(event.data.object as Stripe.Checkout.Session);
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const email = session.customer_details?.email ?? (session.metadata?.email as string);
+        await this.activatePatient(email, session.id);
         break;
+      }
+      case 'invoice.payment_succeeded': {
+        // Fires for the inline Stripe Payment Element flow (checkout.service.ts's
+        // createSubscriptionIntent) — that flow never creates a Checkout Session,
+        // so checkout.session.completed never fires for it. Also fires on every
+        // later monthly renewal invoice, but activatePatient's convertedAt check
+        // makes that a no-op.
+        const invoice = event.data.object as Stripe.Invoice;
+        await this.activatePatient(invoice.customer_email, invoice.id);
+        break;
+      }
       default:
         this.logger.debug(`Unhandled event type: ${event.type}`);
     }
   }
 
-  private async onCheckoutComplete(session: Stripe.Checkout.Session) {
-    const email = session.customer_details?.email ?? (session.metadata?.email as string);
+  private async activatePatient(email: string | null | undefined, stripeReferenceId: string) {
     if (!email) {
-      this.logger.warn(`checkout.session.completed has no email — session ${session.id}`);
+      this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
       return;
     }
 
     // Find the lead by email
     const lead = await this.prisma.lead.findUnique({ where: { email } });
     if (!lead) {
-      this.logger.warn(`No lead found for email ${email} — session ${session.id}`);
+      this.logger.warn(`No lead found for email ${email} — reference ${stripeReferenceId}`);
       return;
     }
 
-    // Idempotency: if already converted, skip
+    // Idempotency: if already converted, skip (also covers subscription renewal invoices)
     if (lead.convertedAt) {
       this.logger.log(`Lead ${lead.id} already converted — skipping`);
       return;
@@ -71,12 +83,13 @@ export class StripeWebhookService {
       },
     });
 
-    // Mark lead as converted with stripeSessionId
+    // Mark lead as converted with a Stripe reference (Checkout Session id, or
+    // invoice id for the inline Payment Element flow)
     await this.prisma.lead.update({
       where: { id: lead.id },
       data: {
         convertedAt: new Date(),
-        stripeSessionId: session.id,
+        stripeSessionId: stripeReferenceId,
       },
     });
 
