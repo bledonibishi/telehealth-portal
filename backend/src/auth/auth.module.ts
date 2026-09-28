@@ -7,18 +7,24 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthService } from './auth.service';
 import { AuthResolver } from './auth.resolver';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { accountTracker } from './guards/gql-throttler.guard';
+import { PrismaService } from '../prisma/prisma.service';
+import { ACCOUNT_THROTTLER } from './guards/gql-throttler.guard';
+import { PrismaThrottlerStorage } from './guards/prisma-throttler.storage';
 
 @Module({
   imports: [
     PassportModule,
     AuditModule,
-    ThrottlerModule.forRoot({
-      errorMessage: 'Too many login attempts. Try again later.',
-      throttlers: [
-        { name: 'ip', ttl: minutes(15), limit: 20 },
-        { name: 'account', ttl: minutes(15), limit: 5, getTracker: accountTracker },
-      ],
+    ThrottlerModule.forRootAsync({
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => ({
+        errorMessage: 'Too many login attempts. Try again later.',
+        storage: new PrismaThrottlerStorage(prisma),
+        throttlers: [
+          { name: 'ip', ttl: minutes(15), limit: 20 },
+          { name: ACCOUNT_THROTTLER, ttl: minutes(15), limit: 5 },
+        ],
+      }),
     }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
