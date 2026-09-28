@@ -6,8 +6,8 @@ pages — it exists to host:
 1. `/api/checkout` — a server-side endpoint (needs the Stripe secret key, so it can't live in Webflow).
 2. `public/scripts/*.js` — the vanilla JS widgets and feature-flag logic Webflow loads via custom code.
 
-Deployed on Vercel at a subdomain (e.g. `api.yourdomain.com`), while the apex domain
-(`yourdomain.com`) points at Webflow.
+Deployed on Vercel at `website.webmaverics.com`, while the apex domain (`webmaverics.com`) points
+at Webflow, and the backend (GraphQL API, on EC2) is at `api.webmaverics.com`.
 
 ## Wiring it into Webflow
 
@@ -15,11 +15,11 @@ In Webflow: **Site Settings → Custom Code → Footer Code** (runs before `</bo
 add these script tags in this order:
 
 ```html
-<script src="https://api.yourdomain.com/scripts/config.js"></script>
-<script src="https://api.yourdomain.com/scripts/styles.js"></script>
-<script src="https://api.yourdomain.com/scripts/feature-flags.js"></script>
-<script src="https://api.yourdomain.com/scripts/quiz.js"></script>
-<script src="https://api.yourdomain.com/scripts/checkout.js"></script>
+<script src="https://website.webmaverics.com/scripts/config.js"></script>
+<script src="https://website.webmaverics.com/scripts/styles.js"></script>
+<script src="https://website.webmaverics.com/scripts/feature-flags.js"></script>
+<script src="https://website.webmaverics.com/scripts/quiz.js"></script>
+<script src="https://website.webmaverics.com/scripts/checkout.js"></script>
 ```
 
 `quiz.js` and `checkout.js` no-op on any page that doesn't have their mount element, so it's safe
