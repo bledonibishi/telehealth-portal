@@ -30,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     const clinicianRoles = ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'];
 
-    if (clinicianRoles.includes(payload.role)) {
+    if (payload.role === UserRole.CLINICIAN || clinicianRoles.includes(payload.role)) {
       const clinician = await this.prisma.clinician.findUnique({ where: { id: payload.sub } });
       if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
       // role=CLINICIAN for DB writes (Role enum); clinicianRole for access control
