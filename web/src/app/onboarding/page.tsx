@@ -4,10 +4,12 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
+import { MY_CONSULTATIONS } from '@/graphql/consultations';
+import { ME_DELIVERY } from '@/graphql/patient';
 
-type StepKey = 'id-photo' | 'body-photo' | 'prescription-proof';
+type StepKey = 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof' | 'delivery';
 
-const STEP_REJECTION_KEY: Record<StepKey, string> = {
+const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   'id-photo': 'ID_PHOTO',
   'body-photo': 'BODY_PHOTO',
   'prescription-proof': 'PRESCRIPTION_PROOF',
@@ -16,6 +18,8 @@ const STEP_REJECTION_KEY: Record<StepKey, string> = {
 export default function OnboardingLandingPage() {
   const router = useRouter();
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
+  const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const { data: meData, loading: meLoading } = useQuery(ME_DELIVERY, { fetchPolicy: 'network-only' });
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
@@ -26,7 +30,7 @@ export default function OnboardingLandingPage() {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
   }, [o?.status, router]);
 
-  if (loading || !o) {
+  if (loading || consultationsLoading || meLoading || !o) {
     return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   }
 
@@ -35,9 +39,25 @@ export default function OnboardingLandingPage() {
   const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
-  const feedbackFor = (key: StepKey) => stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+  const feedbackFor = (key: StepKey) =>
+    key === 'medical-questionnaire'
+      ? questionnaireFeedback
+      : STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+
+  // The questionnaire creates the consultation a doctor reviews.
+  const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
+  const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
+  const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
+    ? 'A clinician has asked for more information — please review your answers'
+    : undefined;
 
   const baseSteps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
+    {
+      key: 'medical-questionnaire',
+      label: 'Medical questionnaire',
+      hint: 'Your health, medicines and measurements',
+      done: questionnaireDone,
+    },
     { key: 'id-photo', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
     { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
     {
@@ -45,6 +65,12 @@ export default function OnboardingLandingPage() {
       label: 'Proof of prescription',
       hint: 'Only if you’ve used this medication before',
       done: prescriptionProofDone,
+    },
+    {
+      key: 'delivery',
+      label: 'Delivery address',
+      hint: 'Where we send your treatment',
+      done: !!(meData?.me?.addressLine1 && meData?.me?.city && meData?.me?.postcode && meData?.me?.phone),
     },
   ];
 

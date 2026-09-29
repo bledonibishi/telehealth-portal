@@ -17,6 +17,8 @@ export default function DashboardPage() {
   const { data, loading, error } = useQuery(MY_CONSULTATIONS);
 
   const consultations = data?.myConsultations ?? [];
+  const needsInfo = consultations.some((c: any) => c.status === 'MORE_INFO_REQUESTED');
+  const hasActive = consultations.some((c: any) => c.status !== 'DECLINED');
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -28,9 +30,41 @@ export default function DashboardPage() {
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
       {error && <p className="text-sm text-danger-500">{error.message}</p>}
 
+      {!loading && needsInfo && (
+        <div className="mb-4 bg-orange-50 border border-orange-100 rounded-2xl p-5 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Your clinician needs more information</p>
+            <p className="text-xs text-slate-500 mt-0.5">Check your messages, then update your medical questionnaire.</p>
+          </div>
+          <Link href="/onboarding/medical-questionnaire?from=dashboard" className="flex-shrink-0 text-sm font-medium text-brand-600 hover:text-brand-700">
+            Update answers →
+          </Link>
+        </div>
+      )}
+
       {!loading && consultations.length === 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-          <p className="text-slate-400 text-sm">No consultations yet.</p>
+          <p className="text-slate-900 text-sm font-medium">Complete your medical questionnaire</p>
+          <p className="text-slate-400 text-sm mt-1">A doctor reviews your answers before prescribing.</p>
+          <Link
+            href="/onboarding/medical-questionnaire?from=dashboard"
+            className="inline-block mt-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl"
+          >
+            Start questionnaire
+          </Link>
+        </div>
+      )}
+
+      {/* Declined consultations are refunded, so starting over goes through support. */}
+      {!loading && consultations.length > 0 && !hasActive && (
+        <div className="mb-4 bg-white rounded-2xl border border-slate-100 p-6">
+          <p className="text-slate-900 text-sm font-medium">Your consultation was declined</p>
+          <p className="text-slate-500 text-sm mt-1">
+            Your clinician&rsquo;s message explains why. If you&rsquo;d like to talk it through, message us.
+          </p>
+          <Link href="/messages" className="inline-block mt-3 text-sm font-medium text-brand-600 hover:text-brand-700">
+            Go to messages →
+          </Link>
         </div>
       )}
 
