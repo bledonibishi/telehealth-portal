@@ -70,6 +70,52 @@ export enum CheckInStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum RefundStatus {
+  NOT_REQUIRED = 'NOT_REQUIRED',
+  REFUNDED = 'REFUNDED',
+  FAILED = 'FAILED',
+}
+
+export enum ProductCategory {
+  GLP1 = 'GLP1',
+  ESTROGEN = 'ESTROGEN',
+  PROGESTOGEN = 'PROGESTOGEN',
+}
+
+export enum ProductForm {
+  INJECTION_PEN = 'INJECTION_PEN',
+  GEL = 'GEL',
+  PATCH = 'PATCH',
+  TABLET = 'TABLET',
+  CAPSULE = 'CAPSULE',
+  SPRAY = 'SPRAY',
+}
+
+export enum PrescriptionStatus {
+  ACTIVE = 'ACTIVE',
+  SUPERSEDED = 'SUPERSEDED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  DISPATCHED = 'DISPATCHED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum CheckInOutcome {
+  REPEAT = 'REPEAT',
+  NEW_PRESCRIPTION = 'NEW_PRESCRIPTION',
+  HOLD = 'HOLD',
+  STOP = 'STOP',
+}
+
+export enum ConsentType {
+  TELEHEALTH = 'TELEHEALTH',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;
