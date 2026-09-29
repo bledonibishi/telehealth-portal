@@ -12,7 +12,7 @@ const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 };
 
 export function QueueRow({ consultation }: { consultation: any }) {
-  const { id, patient, kind, status, submittedAt, redFlags } = consultation;
+  const { id, patient, kind, status, submittedAt, redFlags, clinician } = consultation;
   const hasCritical = redFlags.some((f: any) => f.severity === 'CRITICAL');
   const hasWarning = redFlags.some((f: any) => f.severity === 'WARNING');
   const badge = STATUS_LABELS[status] ?? { label: status, cls: 'bg-gray-100 text-gray-600' };
@@ -33,6 +33,9 @@ export function QueueRow({ consultation }: { consultation: any }) {
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>
           {badge.label}
         </span>
+        {status === 'IN_REVIEW' && clinician && (
+          <div className="text-xs text-gray-400 mt-0.5">Dr {clinician.lastName}</div>
+        )}
       </td>
       <td className="px-6 py-3 text-gray-500 text-xs whitespace-nowrap">
         {formatDistanceToNow(new Date(submittedAt), { addSuffix: true })}

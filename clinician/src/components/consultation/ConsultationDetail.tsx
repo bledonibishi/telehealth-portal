@@ -7,6 +7,8 @@ import { RedFlagBanner } from './RedFlagBanner';
 import { DecisionPanel } from './DecisionPanel';
 import { MessageThread } from './MessageThread';
 import { PatientHistory } from './PatientHistory';
+import { PrescriptionCard } from './PrescriptionCard';
+import { OnboardingSummary } from './OnboardingSummary';
 import { getToken } from '@/lib/auth';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -16,6 +18,17 @@ function parseJwtPayload(token: string) {
   } catch {
     return null;
   }
+}
+
+// Answers carry the questionnaire they came from (website eligibility screen,
+// then the medical intake); older consultations have no section.
+function groupBySection(answers: any[]): [string, any[]][] {
+  const groups = new Map<string, any[]>();
+  for (const a of answers) {
+    const key = a.section ?? 'Quiz answers';
+    groups.set(key, [...(groups.get(key) ?? []), a]);
+  }
+  return [...groups.entries()];
 }
 
 export function ConsultationDetail({ id }: { id: string }) {
@@ -45,6 +58,7 @@ export function ConsultationDetail({ id }: { id: string }) {
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {c.kind} · submitted {formatDistanceToNow(new Date(c.submittedAt), { addSuffix: true })}
+            {c.questionnaireVersion && <span className="text-gray-400"> · {c.questionnaireVersion}</span>}
           </p>
         </div>
         <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-600">
@@ -56,21 +70,31 @@ export function ConsultationDetail({ id }: { id: string }) {
 
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-6">
-          <section className="bg-white rounded-lg border border-gray-200">
-            <div className="px-4 py-3 border-b border-gray-200">
-              <h2 className="text-sm font-semibold text-gray-900">Quiz answers</h2>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {(c.quizAnswers ?? []).map((a: any, i: number) => (
-                <div key={i} className="px-4 py-3">
-                  <p className="text-xs text-gray-500">{a.question}</p>
-                  <p className="text-sm text-gray-900 mt-1">{a.answer}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+          {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
+            <section key={section} className="bg-white rounded-lg border border-gray-200">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {answers.map((a: any) => (
+                  <div key={a.questionId} className="px-4 py-3">
+                    <p className="text-xs text-gray-500">{a.question}</p>
+                    <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{a.answer}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
 
-          <DecisionPanel consultationId={c.id} status={c.status} />
+          <DecisionPanel
+            consultationId={c.id}
+            kind={c.kind}
+            status={c.status}
+            declineReason={c.declineReason}
+            refundStatus={c.refundStatus}
+            clinician={c.clinician}
+            currentUserId={currentUserId}
+          />
 
           <MessageThread consultationId={c.id} currentUserId={currentUserId} />
         </div>
@@ -87,19 +111,9 @@ export function ConsultationDetail({ id }: { id: string }) {
             </dl>
           </div>
 
-          {c.prescription && (
-            <div className="bg-white rounded-lg border border-green-200 p-4">
-              <h3 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-3">Prescription issued</h3>
-              <dl className="space-y-2 text-sm">
-                <div><dt className="text-gray-500">Medication</dt><dd>{c.prescription.medication}</dd></div>
-                <div><dt className="text-gray-500">Dosage</dt><dd>{c.prescription.dosage}</dd></div>
-                <div><dt className="text-gray-500">Instructions</dt><dd>{c.prescription.instructions}</dd></div>
-                {c.prescription.pharmacyRef && (
-                  <div><dt className="text-gray-500">Pharmacy ref</dt><dd>{c.prescription.pharmacyRef}</dd></div>
-                )}
-              </dl>
-            </div>
-          )}
+          <OnboardingSummary patientId={c.patient.id} />
+
+          {c.prescription && <PrescriptionCard prescription={c.prescription} />}
 
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
