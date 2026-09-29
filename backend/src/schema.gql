@@ -169,7 +169,7 @@ type Mutation {
   Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.
   """
   rescheduleCheckIn(dueAt: DateTime!, id: ID!): CheckIn!
-  reviewOnboarding(input: ReviewOnboardingInput!): OnboardingSubmission!
+  reviewOnboardingStep(input: ReviewOnboardingStepInput!): OnboardingSubmission!
   saveBodyPhotosStep(input: SaveBodyPhotosStepInput!): OnboardingSubmission!
   saveIdentityStep(input: SaveIdentityStepInput!): OnboardingSubmission!
   savePrescriptionProofStep(input: SavePrescriptionProofStepInput!): OnboardingSubmission!
@@ -198,6 +198,18 @@ enum OnboardingStatus {
   REJECTED
 }
 
+type OnboardingStepFeedback {
+  approved: Boolean!
+  reason: String
+  step: OnboardingStepKey!
+}
+
+enum OnboardingStepKey {
+  BODY_PHOTO
+  ID_PHOTO
+  PRESCRIPTION_PROOF
+}
+
 type OnboardingSubmission {
   bodyPhotoFrontUrl: String
   bodyPhotoSideUrl: String
@@ -211,10 +223,10 @@ type OnboardingSubmission {
   prescriptionProofType: PrescriptionProofType
   prescriptionProofUrl: String
   priorMedicationUse: Boolean
-  rejectionReason: String
   reviewedAt: DateTime
   selfieUrl: String
   status: OnboardingStatus!
+  stepFeedback: [OnboardingStepFeedback!]!
   submittedAt: DateTime
   updatedAt: DateTime!
 }
@@ -326,10 +338,16 @@ enum RedFlagSeverity {
   WARNING
 }
 
-input ReviewOnboardingInput {
-  approve: Boolean!
+type RefreshResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+input ReviewOnboardingStepInput {
+  approved: Boolean!
   patientId: ID!
-  rejectionReason: String
+  reason: String
+  step: OnboardingStepKey!
 }
 
 input SaveBodyPhotosStepInput {
@@ -345,11 +363,6 @@ input SaveIdentityStepInput {
 input SavePrescriptionProofStepInput {
   prescriptionProofFileId: ID!
   prescriptionProofType: PrescriptionProofType!
-}
-
-type RefreshResponse {
-  accessToken: String!
-  refreshToken: String!
 }
 
 input SendMessageInput {

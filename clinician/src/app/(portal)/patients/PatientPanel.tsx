@@ -6,7 +6,7 @@ import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE } from '@/graphql/messaging';
 import { DISPATCH_ORDER, MARK_ORDER_OUT_FOR_DELIVERY, MARK_ORDER_DELIVERED, GET_ORDERS } from '@/graphql/orders';
-import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING } from '@/graphql/onboarding';
+import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING_STEP } from '@/graphql/onboarding';
 import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
 import { hasAccess } from '@/lib/role';
@@ -61,6 +61,110 @@ function OrderStageTracker({ rx }: { rx: any }) {
   );
 }
 
+function OnboardingStepSection({
+  title,
+  savedDecision,
+  reviewable = true,
+  inReview,
+  editing,
+  draftReason,
+  saving,
+  error,
+  onApprove,
+  onStartReject,
+  onCancelReject,
+  onDraftReasonChange,
+  onSaveRejection,
+  children,
+}: {
+  title: string;
+  savedDecision?: { approved: boolean; reason?: string };
+  reviewable?: boolean;
+  inReview: boolean;
+  editing: boolean;
+  draftReason: string;
+  saving: boolean;
+  error?: string;
+  onApprove: () => void;
+  onStartReject: () => void;
+  onCancelReject: () => void;
+  onDraftReasonChange: (reason: string) => void;
+  onSaveRejection: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</p>
+        {savedDecision && !savedDecision.approved && (
+          <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Changes requested</span>
+        )}
+        {savedDecision && savedDecision.approved && (
+          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Approved</span>
+        )}
+      </div>
+      {children}
+      {savedDecision && !savedDecision.approved && savedDecision.reason && (
+        <p className="mt-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{savedDecision.reason}</p>
+      )}
+      {inReview && reviewable && (
+        <div className="mt-2 space-y-2">
+          {editing ? (
+            <div className="space-y-2">
+              <textarea
+                rows={2}
+                autoFocus
+                placeholder={`What does the patient need to fix for ${title.toLowerCase()}?`}
+                value={draftReason}
+                onChange={(e) => onDraftReasonChange(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={onSaveRejection}
+                  disabled={!draftReason.trim() || saving}
+                  className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-400 hover:text-gray-600">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={onApprove}
+                disabled={saving}
+                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
+                  savedDecision?.approved
+                    ? 'bg-green-600 text-white border-green-600'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {saving ? 'Saving…' : 'Approve'}
+              </button>
+              <button
+                onClick={onStartReject}
+                disabled={saving}
+                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
+                  savedDecision && !savedDecision.approved
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Request changes
+              </button>
+            </div>
+          )}
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
@@ -72,8 +176,10 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [carrier, setCarrier] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [trackingUrl, setTrackingUrl] = useState('');
-  const [requestingChanges, setRequestingChanges] = useState(false);
-  const [changesReason, setChangesReason] = useState('');
+  const [editingSteps, setEditingSteps] = useState<Record<string, boolean>>({});
+  const [draftReasons, setDraftReasons] = useState<Record<string, string>>({});
+  const [savingStep, setSavingStep] = useState<string | null>(null);
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
   const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
   const [checkInDate, setCheckInDate] = useState('');
   const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
@@ -99,7 +205,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const [markDelivered, { loading: delivering }] = useMutation(MARK_ORDER_DELIVERED, {
     refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }, { query: GET_ORDERS }],
   });
-  const [reviewOnboarding, { loading: reviewing }] = useMutation(REVIEW_ONBOARDING, {
+  const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
   });
   const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
@@ -153,15 +259,33 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     await markDelivered({ variables: { id } });
   };
 
-  const handleApproveOnboarding = async () => {
-    await reviewOnboarding({ variables: { input: { patientId, approve: true } } });
+  const savedStepDecision = (step: string) =>
+    onboarding?.stepFeedback?.find((f: { step: string; approved: boolean; reason?: string }) => f.step === step);
+
+  const handleStartReject = (step: string) => {
+    setDraftReasons((prev) => ({ ...prev, [step]: '' }));
+    setEditingSteps((prev) => ({ ...prev, [step]: true }));
   };
 
-  const handleRequestChanges = async () => {
-    if (!changesReason.trim()) return;
-    await reviewOnboarding({ variables: { input: { patientId, approve: false, rejectionReason: changesReason.trim() } } });
-    setRequestingChanges(false);
-    setChangesReason('');
+  const handleCancelReject = (step: string) => {
+    setEditingSteps((prev) => ({ ...prev, [step]: false }));
+  };
+
+  const handleSaveStepDecision = async (step: string, approved: boolean) => {
+    const reason = draftReasons[step] ?? '';
+    if (!approved && !reason.trim()) return;
+    setSavingStep(step);
+    setStepErrors((prev) => ({ ...prev, [step]: '' }));
+    try {
+      await reviewOnboardingStep({
+        variables: { input: { patientId, step, approved, reason: approved ? null : reason.trim() } },
+      });
+      setEditingSteps((prev) => ({ ...prev, [step]: false }));
+    } catch (err: any) {
+      setStepErrors((prev) => ({ ...prev, [step]: err.message ?? 'Failed to save' }));
+    } finally {
+      setSavingStep(null);
+    }
   };
 
   const handleRescheduleCheckIn = async (id: string) => {
@@ -373,88 +497,65 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ID document &amp; selfie</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <AuthedImage path={onboarding.idDocumentUrl} alt="ID document" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                    <AuthedImage path={onboarding.selfieUrl} alt="Selfie" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                  </div>
-                </div>
+                {(() => {
+                  const inReview = canReviewOnboarding && onboarding.status === 'PENDING_REVIEW';
 
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Full body photos</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt="Front-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                    <AuthedImage path={onboarding.bodyPhotoSideUrl} alt="Side-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                  </div>
-                </div>
+                  const stepProps = (step: string) => ({
+                    savedDecision: savedStepDecision(step),
+                    inReview,
+                    editing: !!editingSteps[step],
+                    draftReason: draftReasons[step] ?? '',
+                    saving: savingStep === step,
+                    error: stepErrors[step],
+                    onApprove: () => handleSaveStepDecision(step, true),
+                    onStartReject: () => handleStartReject(step),
+                    onCancelReject: () => handleCancelReject(step),
+                    onDraftReasonChange: (reason: string) => setDraftReasons((prev) => ({ ...prev, [step]: reason })),
+                    onSaveRejection: () => handleSaveStepDecision(step, false),
+                  });
 
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Prior medication use</p>
-                  {onboarding.priorMedicationUse ? (
-                    <div>
-                      <p className="text-sm text-gray-800 mb-2">
-                        Yes — proof provided: {PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType}
-                      </p>
-                      <AuthedImage path={onboarding.prescriptionProofUrl} alt="Prescription proof" className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">No — first time using this medication.</p>
-                  )}
-                </div>
-
-                {onboarding.status === 'REJECTED' && onboarding.rejectionReason && (
-                  <div className="bg-red-50 border border-red-100 text-red-700 rounded-xl px-3 py-2.5 text-sm">
-                    <p className="font-medium">Changes requested</p>
-                    <p className="mt-1">{onboarding.rejectionReason}</p>
-                  </div>
-                )}
-
-                {canReviewOnboarding && onboarding.status === 'PENDING_REVIEW' && (
-                  <div className="border-t border-gray-100 pt-4">
-                    {requestingChanges ? (
-                      <div className="space-y-2">
-                        <textarea
-                          rows={3}
-                          placeholder="What does the patient need to fix or add? e.g. retake the front body photo, provide clearer proof of prescription…"
-                          value={changesReason}
-                          onChange={(e) => setChangesReason(e.target.value)}
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={handleRequestChanges}
-                            disabled={!changesReason.trim() || reviewing}
-                            className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 disabled:opacity-40"
-                          >
-                            {reviewing ? '…' : 'Send request'}
-                          </button>
-                          <button onClick={() => setRequestingChanges(false)} className="text-sm text-gray-400 hover:text-gray-600">
-                            Cancel
-                          </button>
+                  return (
+                    <>
+                      <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <AuthedImage path={onboarding.idDocumentUrl} alt="ID document" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.selfieUrl} alt="Selfie" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-3">
-                        <button
-                          onClick={handleApproveOnboarding}
-                          disabled={reviewing}
-                          className="flex-1 px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-40"
-                        >
-                          {reviewing ? '…' : 'Approve'}
-                        </button>
-                        <button
-                          onClick={() => setRequestingChanges(true)}
-                          disabled={reviewing}
-                          className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
-                        >
-                          Request changes
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      </OnboardingStepSection>
+
+                      <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt="Front-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.bodyPhotoSideUrl} alt="Side-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                        </div>
+                      </OnboardingStepSection>
+
+                      <OnboardingStepSection
+                        title="Prior medication use"
+                        reviewable={!!onboarding.priorMedicationUse}
+                        {...stepProps('PRESCRIPTION_PROOF')}
+                      >
+                        {onboarding.priorMedicationUse ? (
+                          <div>
+                            <p className="text-sm text-gray-800 mb-2">
+                              Yes — proof provided: {PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType}
+                            </p>
+                            <AuthedImage path={onboarding.prescriptionProofUrl} alt="Prescription proof" className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No — first time using this medication.</p>
+                        )}
+                      </OnboardingStepSection>
+
+                      {inReview && (
+                        <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
+                          Each step saves as soon as you approve it or send a change request. The patient moves to Approved or Rejected
+                          automatically once every step has a decision.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>

@@ -7,6 +7,12 @@ import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
 
 type StepKey = 'id-photo' | 'body-photo' | 'prescription-proof';
 
+const STEP_REJECTION_KEY: Record<StepKey, string> = {
+  'id-photo': 'ID_PHOTO',
+  'body-photo': 'BODY_PHOTO',
+  'prescription-proof': 'PRESCRIPTION_PROOF',
+};
+
 export default function OnboardingLandingPage() {
   const router = useRouter();
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
@@ -28,7 +34,10 @@ export default function OnboardingLandingPage() {
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
   const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
-  const steps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
+  const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
+  const feedbackFor = (key: StepKey) => stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+
+  const baseSteps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
     { key: 'id-photo', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
     { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
     {
@@ -39,7 +48,9 @@ export default function OnboardingLandingPage() {
     },
   ];
 
-  const firstIncomplete = steps.find((s) => !s.done);
+  const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
+
+  const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
 
   if (o.status === 'PENDING_REVIEW') {
@@ -63,7 +74,7 @@ export default function OnboardingLandingPage() {
       {o.status === 'REJECTED' && (
         <div className="mb-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">
           <p className="font-medium">Your submission needs another look</p>
-          {o.rejectionReason && <p className="mt-1 text-danger-500/90">{o.rejectionReason}</p>}
+          <p className="mt-1 text-danger-500/90">See the step below marked in red for what to fix.</p>
         </div>
       )}
 
@@ -93,14 +104,20 @@ export default function OnboardingLandingPage() {
           >
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
-                s.done ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'
+                s.needsChanges
+                  ? 'bg-danger-50 text-danger-500'
+                  : s.done
+                    ? 'bg-brand-50 text-brand-600'
+                    : 'bg-slate-100 text-slate-500'
               }`}
             >
-              {s.done ? '✓' : i + 2}
+              {s.needsChanges ? '!' : s.done ? '✓' : i + 2}
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-900">{s.label}</p>
-              <p className="text-xs text-slate-400">{s.hint}</p>
+              <p className={`text-xs ${s.needsChanges ? 'text-danger-500 font-medium' : 'text-slate-400'}`}>
+                {s.needsChanges ? s.rejectionReason : s.hint}
+              </p>
             </div>
             <span className="text-slate-300">›</span>
           </button>

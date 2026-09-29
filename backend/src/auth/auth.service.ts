@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { UserRole } from '../common/enums';
+import { UserRole, ClinicianRole } from '../common/enums';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
@@ -64,7 +64,7 @@ export class AuthService {
       login_method: 'password',
       mfa_enabled: false,
     });
-    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, UserRole.CLINICIAN), clinician };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, clinician.role), clinician };
   }
 
   async loginPatient(email: string, password: string) {
@@ -139,7 +139,7 @@ export class AuthService {
       login_method: 'password_and_mfa',
       mfa_enabled: true,
     });
-    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, UserRole.CLINICIAN), clinician };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, clinician.role), clinician };
   }
 
   async refreshAccessToken(refreshToken: string) {
@@ -152,16 +152,19 @@ export class AuthService {
     if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
 
     // Only clinicians get refresh tokens today; patients have no login mutation yet.
+    // Accept both the specific ClinicianRole values and the old generic UserRole.CLINICIAN
+    // shape, so refresh tokens issued before this rollout keep working.
+    const clinicianRoles = Object.values(ClinicianRole) as string[];
     const clinician =
-      payload.role === UserRole.CLINICIAN
+      payload.role === UserRole.CLINICIAN || clinicianRoles.includes(payload.role)
         ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
         : null;
     if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
 
-    return this.issueTokens(clinician.id, UserRole.CLINICIAN);
+    return this.issueTokens(clinician.id, clinician.role);
   }
 
-  private issueTokens(sub: string, role: UserRole) {
+  private issueTokens(sub: string, role: string) {
     return {
       accessToken: this.jwtService.sign({ sub, role }),
       refreshToken: this.jwtService.sign(
