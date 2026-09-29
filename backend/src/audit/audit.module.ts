@@ -1,8 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { AuditService } from './audit.service';
+import { AuditReadInterceptor } from './audit-read.interceptor';
 
+// Global: almost every module writes audit entries, and @AuditRead needs the
+// service wherever it's applied.
+@Global()
 @Module({
-  providers: [AuditService],
-  exports: [AuditService],
+  providers: [AuditService, AuditReadInterceptor],
+  exports: [AuditService, AuditReadInterceptor],
 })
 export class AuditModule {}
