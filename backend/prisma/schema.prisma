@@ -272,7 +272,7 @@ model OnboardingSubmission {
   submittedAt             DateTime?               @map("submitted_at")
   reviewedAt              DateTime?               @map("reviewed_at")
   reviewedByClinicianId   String?                 @map("reviewed_by_clinician_id")
-  rejectionReason         String?                 @map("rejection_reason")
+  stepFeedback            Json                    @default("[]") @map("step_feedback")
   createdAt               DateTime                @default(now()) @map("created_at")
   updatedAt               DateTime                @updatedAt @map("updated_at")
 

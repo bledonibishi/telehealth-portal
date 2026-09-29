@@ -5,6 +5,12 @@ import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '../../graphql/onboarding';
 
 type StepKey = 'IdPhoto' | 'BodyPhoto' | 'PrescriptionProof';
 
+const STEP_REJECTION_KEY: Record<StepKey, string> = {
+  IdPhoto: 'ID_PHOTO',
+  BodyPhoto: 'BODY_PHOTO',
+  PrescriptionProof: 'PRESCRIPTION_PROOF',
+};
+
 export function OnboardingChecklistScreen({ navigation }: any) {
   const { data, loading, error, refetch } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
@@ -32,13 +38,18 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
   const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
-  const steps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
+  const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
+  const feedbackFor = (key: StepKey) => stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+
+  const baseSteps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
     { key: 'IdPhoto', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
     { key: 'BodyPhoto', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
     { key: 'PrescriptionProof', label: 'Proof of prescription', hint: 'Only if you’ve used this medication before', done: prescriptionProofDone },
   ];
 
-  const firstIncomplete = steps.find((s) => !s.done);
+  const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
+
+  const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
 
   if (o.status === 'PENDING_REVIEW') {
@@ -60,7 +71,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
       {o.status === 'REJECTED' && (
         <View style={styles.rejectedBox}>
           <Text style={styles.rejectedTitle}>Your submission needs another look</Text>
-          {!!o.rejectionReason && <Text style={styles.rejectedBody}>{o.rejectionReason}</Text>}
+          <Text style={styles.rejectedBody}>See the step below marked in red for what to fix.</Text>
         </View>
       )}
 
@@ -90,12 +101,16 @@ export function OnboardingChecklistScreen({ navigation }: any) {
             style={[styles.row, i < steps.length - 1 && styles.rowBorder]}
             onPress={() => navigation.navigate(s.key)}
           >
-            <View style={[styles.stepIcon, s.done && styles.stepIconDone]}>
-              <Text style={[styles.stepIconText, !s.done && styles.stepIconTextPending]}>{s.done ? '✓' : i + 2}</Text>
+            <View style={[styles.stepIcon, s.done && styles.stepIconDone, s.needsChanges && styles.stepIconRejected]}>
+              <Text style={[styles.stepIconText, !s.done && styles.stepIconTextPending, s.needsChanges && styles.stepIconTextRejected]}>
+                {s.needsChanges ? '!' : s.done ? '✓' : i + 2}
+              </Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.stepLabel}>{s.label}</Text>
-              <Text style={styles.stepHint}>{s.hint}</Text>
+              <Text style={[styles.stepHint, s.needsChanges && styles.stepHintRejected]}>
+                {s.needsChanges ? s.rejectionReason : s.hint}
+              </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -138,10 +153,13 @@ const styles = StyleSheet.create({
   rowBorder: { borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
   stepIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
   stepIconDone: { backgroundColor: '#e0f2fe' },
+  stepIconRejected: { backgroundColor: '#fff1f2' },
   stepIconText: { fontSize: 13, fontWeight: '600', color: '#0369a1' },
   stepIconTextPending: { color: '#6b7280' },
+  stepIconTextRejected: { color: '#f43f5e' },
   stepLabel: { fontSize: 14, fontWeight: '500', color: '#111827' },
   stepHint: { fontSize: 12, color: '#9ca3af', marginTop: 2 },
+  stepHintRejected: { color: '#f43f5e', fontWeight: '600' },
   chevron: { fontSize: 20, color: '#d1d5db' },
   footnote: { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 20 },
   cta: { backgroundColor: '#0ea5e9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 28 },

@@ -58,6 +58,12 @@ export enum PrescriptionProofType {
   ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
 }
 
+export enum OnboardingStepKey {
+  ID_PHOTO = 'ID_PHOTO',
+  BODY_PHOTO = 'BODY_PHOTO',
+  PRESCRIPTION_PROOF = 'PRESCRIPTION_PROOF',
+}
+
 export enum CheckInStatus {
   SCHEDULED = 'SCHEDULED',
   SENT = 'SENT',

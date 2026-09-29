@@ -5,7 +5,7 @@ import { OnboardingSubmissionModel } from './models/onboarding-submission.model'
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
-import { ReviewOnboardingInput } from './dto/review-onboarding.input';
+import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
 import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -81,8 +81,8 @@ export class OnboardingResolver {
 
   @UseGuards(GqlAuthGuard)
   @Mutation(() => OnboardingSubmissionModel)
-  reviewOnboarding(@CurrentUser() user: AuthUser, @Args('input') input: ReviewOnboardingInput) {
+  reviewOnboardingStep(@CurrentUser() user: AuthUser, @Args('input') input: ReviewOnboardingStepInput) {
     requireClinician(user);
-    return this.onboardingService.review(user.id, input);
+    return this.onboardingService.reviewOnboardingStep(user.id, input);
   }
 }
