@@ -7,7 +7,9 @@ import { AuthFailureReason, authFailure, authFailureReason, reasonFromJwtError }
 export class GqlAuthGuard extends AuthGuard('jwt') {
   private readonly logger = new Logger(GqlAuthGuard.name);
 
+  // Also guards plain HTTP routes (e.g. document downloads) via @Authorized.
   getRequest(context: ExecutionContext) {
+    if (context.getType<string>() !== 'graphql') return context.switchToHttp().getRequest();
     const ctx = GqlExecutionContext.create(context);
     return ctx.getContext().req;
   }
@@ -19,7 +21,10 @@ export class GqlAuthGuard extends AuthGuard('jwt') {
     if (user && !err) return user;
 
     const failure: UnauthorizedException = err ?? authFailure(reasonFromPassportInfo(info));
-    const operation = GqlExecutionContext.create(context).getInfo()?.fieldName ?? 'request';
+    const operation =
+      context.getType<string>() === 'graphql'
+        ? (GqlExecutionContext.create(context).getInfo()?.fieldName ?? 'request')
+        : context.getHandler().name;
     this.logger.warn(`Rejected ${operation}: ${authFailureReason(failure)}`);
     throw failure;
   }

@@ -11,6 +11,9 @@ import { CliniciansModule } from './clinicians/clinicians.module';
 import { PatientsModule } from './patients/patients.module';
 import { ConsultationsModule } from './consultations/consultations.module';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { QuestionnairesModule } from './questionnaires/questionnaires.module';
+import { ConsentsModule } from './consents/consents.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
 import { StripeModule } from './stripe/stripe.module';
@@ -40,7 +43,10 @@ import { CheckInsModule } from './check-ins/check-ins.module';
       // can't hold open. Subscriptions are local-dev only until this runs
       // somewhere with a long-lived process.
       subscriptions: process.env.VERCEL ? undefined : { 'graphql-ws': true },
-      context: ({ req }) => ({ req }),
+      // Over graphql-ws there is no HTTP request: clients send their token in
+      // connectionParams instead, so shape it like one for GqlAuthGuard/passport.
+      context: ({ req, connectionParams }: { req?: any; connectionParams?: Record<string, unknown> }) =>
+        req ? { req } : { req: { headers: { authorization: connectionParams?.authorization } } },
     }),
     PrismaModule,
     AuditModule,
@@ -49,6 +55,9 @@ import { CheckInsModule } from './check-ins/check-ins.module';
     PatientsModule,
     ConsultationsModule,
     PrescriptionsModule,
+    CatalogModule,
+    QuestionnairesModule,
+    ConsentsModule,
     MessagingModule,
     LeadsModule,
     StripeModule,
