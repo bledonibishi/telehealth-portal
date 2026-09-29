@@ -1,6 +1,6 @@
 import { Resolver, Query } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
-import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { Authorized } from '../auth/decorators/authorized.decorator';
+import { ClinicianRole } from '../common/enums';
 import { DashboardService } from './dashboard.service';
 import { DashboardMetrics } from './dashboard.model';
 
@@ -9,7 +9,7 @@ export class DashboardResolver {
   constructor(private dashboardService: DashboardService) {}
 
   @Query(() => DashboardMetrics)
-  @UseGuards(GqlAuthGuard)
+  @Authorized(ClinicianRole.ADMIN)
   dashboardMetrics() {
     return this.dashboardService.getMetrics();
   }

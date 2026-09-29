@@ -1,14 +1,14 @@
 import { Resolver, Query } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { NotificationCounts } from './notifications.model';
-import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { Authorized } from '../auth/decorators/authorized.decorator';
+import { STAFF } from '../auth/access-roles';
 
 @Resolver()
 export class NotificationsResolver {
   constructor(private notificationsService: NotificationsService) {}
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Query(() => NotificationCounts)
   notificationCounts() {
     return this.notificationsService.getCounts();

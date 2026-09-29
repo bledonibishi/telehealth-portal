@@ -59,4 +59,26 @@ export class EmailService {
 
     await this.resend.emails.send({ from: this.from, to, subject: 'Your monthly check-in is ready', html });
   }
+
+  // Deliberately generic: email isn't a secure channel, so the clinical detail
+  // (decision, reasons, messages) stays behind the portal login.
+  async sendConsultationUpdateEmail(to: string, firstName: string, headline: string, portalUrl: string) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">${headline}</h2>
+        <p style="color:#475569">Hi ${firstName}, there's an update from our clinical team. Log in to your patient portal to see it.</p>
+        <a href="${portalUrl}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Open my portal
+        </a>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Consultation update email to ${to}: ${headline}`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: headline, html });
+  }
 }
