@@ -194,14 +194,14 @@ describe('AuthService', () => {
     });
 
     it('rejects a refresh token for a clinician that no longer exists', async () => {
-      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: CLINICIAN.role, type: 'refresh' });
       prisma.clinician.findUnique.mockResolvedValue(null);
 
       await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
     });
 
     it('issues a new access + refresh token pair for a valid refresh token', async () => {
-      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: CLINICIAN.role, type: 'refresh' });
       prisma.clinician.findUnique.mockResolvedValue(CLINICIAN);
 
       const result = await service.refreshAccessToken('token');
