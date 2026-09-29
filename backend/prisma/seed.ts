@@ -1,12 +1,14 @@
 import { PrismaClient, ConsultationStatus, ConsultationKind, RedFlagSeverity, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { seedCatalog } from './catalog';
 
 const prisma = new PrismaClient();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const hash = (pw: string) => bcrypt.hash(pw, 10);
-const dob = (year: number, month: number, day: number) => new Date(year, month - 1, day);
+// UTC midnight: a date of birth is a calendar date, not a moment in local time.
+const dob = (year: number, month: number, day: number) => new Date(Date.UTC(year, month - 1, day));
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 
 // ─── Quiz answers ─────────────────────────────────────────────────────────────
@@ -32,6 +34,9 @@ const GLP1_QUIZ = [
 async function main() {
   console.log('🌱 Seeding database…\n');
 
+  const productCount = await seedCatalog(prisma);
+  console.log(`✓ Catalog  ${productCount} products`);
+
   // ── Clinicians ──────────────────────────────────────────────────────────────
   const pw = await hash('password123');
 
@@ -44,7 +49,7 @@ async function main() {
     prisma.clinician.upsert({
       where: { email: 'doctor@clinic.dev' },
       update: {},
-      create: { email: 'doctor@clinic.dev', passwordHash: pw, firstName: 'David', lastName: 'Chen', role: 'DOCTOR', gmcNumber: 'GMC7654321' },
+      create: { email: 'doctor@clinic.dev', passwordHash: pw, firstName: 'David', lastName: 'Chen', role: 'DOCTOR', licenseNumber: 'KS-MED-7654321', licensingBody: 'Kosovo Chamber of Physicians', isVerified: true, verifiedAt: new Date() },
     }),
     prisma.clinician.upsert({
       where: { email: 'cx@clinic.dev' },
@@ -148,6 +153,11 @@ async function main() {
       dateOfBirth: dob(1978, 4, 14),
       leadId: leadEmma.id,
       activatedAt: daysAgo(9),
+      phone: '+383 44 123 456',
+      addressLine1: 'Rruga Nëna Terezë 12',
+      city: 'Prishtinë',
+      postcode: '10000',
+      country: 'Kosovo',
       createdAt: daysAgo(10),
     },
   });
@@ -169,7 +179,24 @@ async function main() {
     },
   });
 
-  console.log('✓ Patients  emma (activated) / james (pending activation)');
+  // Emma's identity checks are done, so her pending consultation can be prescribed.
+  // James has no onboarding yet — approving his consultation is blocked until he does.
+  await prisma.onboardingSubmission.upsert({
+    where: { patientId: patientEmma.id },
+    update: {},
+    create: {
+      patientId: patientEmma.id,
+      personaStatus: 'VERIFIED',
+      photoReviewStatus: 'APPROVED',
+      priorMedicationUse: false,
+      status: 'APPROVED',
+      submittedAt: daysAgo(9),
+      reviewedAt: daysAgo(8),
+      reviewedByClinicianId: doctor.id,
+    },
+  });
+
+  console.log('✓ Patients  emma (activated, onboarding approved) / james (pending activation)');
 
   // ── Consultations ───────────────────────────────────────────────────────────
   // Emma has 2 consultations in various states
@@ -241,8 +268,17 @@ async function main() {
       dosage: '1 sachet (1.25g) daily',
       instructions: 'Apply to inner arm or thigh, rotate sites daily. Review after 3 months.',
       issuedAt: daysAgo(7),
-      pharmacyRef: 'PH-2026-00123',
-      dispatchedAt: daysAgo(6),
+      patientId: patientEmma.id,
+      prescriberId: doctor.id,
+      orders: {
+        create: {
+          patientId: patientEmma.id,
+          sequence: 1,
+          status: 'DISPATCHED',
+          pharmacyRef: 'PH-2026-00123',
+          dispatchedAt: daysAgo(6),
+        },
+      },
     },
   });
 
