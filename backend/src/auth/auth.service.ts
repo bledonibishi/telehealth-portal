@@ -152,9 +152,11 @@ export class AuthService {
     if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
 
     // Only clinicians get refresh tokens today; patients have no login mutation yet.
+    // Accept both the specific ClinicianRole values and the old generic UserRole.CLINICIAN
+    // shape, so refresh tokens issued before this rollout keep working.
     const clinicianRoles = Object.values(ClinicianRole) as string[];
     const clinician =
-      clinicianRoles.includes(payload.role)
+      payload.role === UserRole.CLINICIAN || clinicianRoles.includes(payload.role)
         ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
         : null;
     if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
