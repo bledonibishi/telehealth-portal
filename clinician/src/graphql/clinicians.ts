@@ -7,9 +7,11 @@ export const GET_CLINICIANS = gql`
       email
       firstName
       lastName
-      gmcNumber
+      licenseNumber
+      licensingBody
       role
       isVerified
+      verifiedAt
       mfaEnabled
       createdAt
     }
@@ -21,6 +23,28 @@ export const UPDATE_CLINICIAN_ROLE = gql`
     updateClinicianRole(id: $id, role: $role) {
       id
       role
+    }
+  }
+`;
+
+export const VERIFY_CLINICIAN = gql`
+  mutation VerifyClinician($input: VerifyClinicianInput!) {
+    verifyClinician(input: $input) {
+      id
+      licenseNumber
+      licensingBody
+      isVerified
+      verifiedAt
+    }
+  }
+`;
+
+export const REVOKE_CLINICIAN_VERIFICATION = gql`
+  mutation RevokeClinicianVerification($id: ID!) {
+    revokeClinicianVerification(id: $id) {
+      id
+      isVerified
+      verifiedAt
     }
   }
 `;

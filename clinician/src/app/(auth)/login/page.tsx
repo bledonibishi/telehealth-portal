@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation } from '@apollo/client';
 import { LOGIN_CLINICIAN, VERIFY_MFA } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
+import { getCurrentRole, landingPathFor } from '@/lib/role';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,7 +22,9 @@ export default function LoginPage() {
         setPendingToken(pt);
       } else {
         setToken(accessToken, refreshToken);
-        router.push('/queue');
+        // A role's landing page is wherever it lands in NAV — e.g. Doctor
+        // sees the review queue, but CX/Provider can't, so they need somewhere else.
+        router.push(landingPathFor(getCurrentRole()));
       }
     },
     onError(err) {
@@ -32,7 +35,7 @@ export default function LoginPage() {
   const [verifyMfa, { loading: mfaLoading }] = useMutation(VERIFY_MFA, {
     onCompleted(data) {
       setToken(data.verifyMfa.accessToken, data.verifyMfa.refreshToken);
-      router.push('/queue');
+      router.push(landingPathFor(getCurrentRole()));
     },
     onError(err) {
       setError(err.message);

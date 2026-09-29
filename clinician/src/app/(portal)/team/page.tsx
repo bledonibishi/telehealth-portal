@@ -1,8 +1,57 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 import { formatDistanceToNow } from 'date-fns';
-import { GET_CLINICIANS, UPDATE_CLINICIAN_ROLE } from '@/graphql/clinicians';
+import {
+  GET_CLINICIANS,
+  UPDATE_CLINICIAN_ROLE,
+  VERIFY_CLINICIAN,
+  REVOKE_CLINICIAN_VERIFICATION,
+} from '@/graphql/clinicians';
+
+// Only these roles can prescribe, so only they need a checked licence.
+const PRESCRIBING_ROLES = ['ADMIN', 'DOCTOR'];
+
+function VerifyForm({ clinician, onDone }: { clinician: any; onDone: () => void }) {
+  const [licenseNumber, setLicenseNumber] = useState(clinician.licenseNumber ?? '');
+  const [licensingBody, setLicensingBody] = useState(clinician.licensingBody ?? '');
+  const [verify, { loading, error }] = useMutation(VERIFY_CLINICIAN, { onCompleted: onDone });
+
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        verify({ variables: { input: { clinicianId: clinician.id, licenseNumber, licensingBody } } });
+      }}
+    >
+      <input
+        value={licenseNumber}
+        onChange={(e) => setLicenseNumber(e.target.value)}
+        placeholder="Licence number"
+        required
+        className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-32 focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+      <input
+        value={licensingBody}
+        onChange={(e) => setLicensingBody(e.target.value)}
+        placeholder="Licensing body"
+        required
+        className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-brand-500"
+      />
+      <button
+        type="submit"
+        disabled={loading}
+        className="text-xs font-medium bg-brand-500 text-white px-2.5 py-1 rounded-lg disabled:opacity-50"
+      >
+        {loading ? 'Saving…' : 'Confirm verified'}
+      </button>
+      <button type="button" onClick={onDone} className="text-xs text-gray-500">Cancel</button>
+      {error && <p className="w-full text-xs text-red-500">{error.message}</p>}
+    </form>
+  );
+}
 
 const ROLES = ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'] as const;
 
@@ -15,9 +64,11 @@ const ROLE_META: Record<string, { label: string; cls: string; description: strin
 
 export default function TeamPage() {
   const { data, loading, error } = useQuery(GET_CLINICIANS);
-  const [updateRole, { loading: saving }] = useMutation(UPDATE_CLINICIAN_ROLE, {
+  const [updateRole, { loading: saving, error: roleError }] = useMutation(UPDATE_CLINICIAN_ROLE, {
     refetchQueries: [{ query: GET_CLINICIANS }],
   });
+  const [revoke] = useMutation(REVOKE_CLINICIAN_VERIFICATION);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   const clinicians = data?.clinicians ?? [];
   const byRole = ROLES.reduce((acc, r) => {
@@ -53,6 +104,11 @@ export default function TeamPage() {
 
       {loading && <p className="text-sm text-gray-400">Loading…</p>}
       {error && <p className="text-sm text-red-500">{error.message}</p>}
+      {roleError && <p className="text-sm text-red-500 mb-3">{roleError.message}</p>}
+
+      <p className="text-xs text-gray-500 mb-3">
+        Doctors and admins can only prescribe after you have checked their medical licence and marked them verified.
+      </p>
 
       {/* Clinicians table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -61,7 +117,7 @@ export default function TeamPage() {
             <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
               <th className="px-5 py-3">Name</th>
               <th className="px-5 py-3">Email</th>
-              <th className="px-5 py-3">GMC No.</th>
+              <th className="px-5 py-3">Licence</th>
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Joined</th>
@@ -79,7 +135,14 @@ export default function TeamPage() {
                   </div>
                 </td>
                 <td className="px-5 py-3 text-gray-500">{c.email}</td>
-                <td className="px-5 py-3 text-gray-400">{c.gmcNumber ?? '—'}</td>
+                <td className="px-5 py-3 text-gray-400">
+                  {c.licenseNumber ? (
+                    <>
+                      <div className="text-gray-700">{c.licenseNumber}</div>
+                      <div className="text-xs">{c.licensingBody}</div>
+                    </>
+                  ) : '—'}
+                </td>
                 <td className="px-5 py-3">
                   <select
                     value={c.role}
@@ -103,6 +166,31 @@ export default function TeamPage() {
                       <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded">MFA</span>
                     )}
                   </div>
+                  {PRESCRIBING_ROLES.includes(c.role) && verifyingId !== c.id && (
+                    <div className="mt-1.5">
+                      {c.isVerified ? (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Revoke ${c.firstName} ${c.lastName}'s verification? They will no longer be able to prescribe.`)) {
+                              revoke({ variables: { id: c.id } });
+                            }
+                          }}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          Revoke
+                        </button>
+                      ) : (
+                        <button onClick={() => setVerifyingId(c.id)} className="text-xs text-brand-500 hover:underline">
+                          Verify licence
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {verifyingId === c.id && (
+                    <div className="mt-1.5">
+                      <VerifyForm clinician={c} onDone={() => setVerifyingId(null)} />
+                    </div>
+                  )}
                 </td>
                 <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
                   {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}

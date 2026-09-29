@@ -1,15 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears } from 'date-fns';
 import { GET_PATIENTS } from '@/graphql/patients';
 import PatientPanel from './PatientPanel';
 
 export default function PatientsPage() {
+  return (
+    <Suspense>
+      <Patients />
+    </Suspense>
+  );
+}
+
+function Patients() {
   const { data, loading, error } = useQuery(GET_PATIENTS, { pollInterval: 60_000 });
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ?patient=<id> opens that patient directly (linked from a consultation).
+  const [selectedId, setSelectedId] = useState<string | null>(useSearchParams().get('patient'));
 
   const patients = (data?.patients ?? []).filter((p: any) => {
     if (!search) return true;
