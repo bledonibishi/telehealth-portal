@@ -108,5 +108,6 @@ describe('planFor', () => {
     expect(planFor('GLP1', [{ category: 'GLP1', titrationStep: 3 }])).toBe('GLP1_ADVANCED');
     expect(planFor('HRT', [{ category: 'ESTROGEN', titrationStep: null }])).toBe('HRT_STARTER');
     expect(planFor('HRT', [{ category: 'ESTROGEN', titrationStep: null }, { category: 'PROGESTOGEN', titrationStep: null }])).toBe('HRT_COMPLETE');
+    expect(planFor('TRT', [{ category: 'TESTOSTERONE', titrationStep: null }])).toBe('TRT_STANDARD');
   });
 });

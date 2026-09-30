@@ -55,7 +55,7 @@ export function DecisionPanel({
   consultationId, kind, status, declineReason, refundStatus, clinician, currentUserId,
 }: {
   consultationId: string;
-  kind: 'HRT' | 'GLP1';
+  kind: 'HRT' | 'GLP1' | 'TRT';
   status: string;
   declineReason?: string | null;
   refundStatus?: string | null;

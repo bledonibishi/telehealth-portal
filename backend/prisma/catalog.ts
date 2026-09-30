@@ -26,6 +26,10 @@ type ProductSeed = {
   doseIntervalDays?: number;
   directions: string;
   strengths: StrengthSeed[];
+  // Defaults to true. Set false for a product that isn't ready to prescribe
+  // yet (e.g. missing fulfilment logistics) — toggle it back on later with
+  // the setProductActive mutation rather than editing this file.
+  active?: boolean;
 };
 
 const WEEKLY_INJECTION =
@@ -121,6 +125,49 @@ export const CATALOG: ProductSeed[] = [
     directions: 'Take one capsule by mouth at bedtime every night (continuous regimen).',
     strengths: [{ label: '100 mg', pack: '30 capsules' }],
   },
+  {
+    slug: 'testosterone-gel-tostran',
+    name: 'Testosterone gel 2%',
+    brandName: 'Tostran',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.GEL,
+    doseIntervalDays: 1,
+    directions: 'Apply once daily in the morning to clean, dry skin on the abdomen or inner thighs, rotating the site. Let it dry before dressing; wash hands after application.',
+    // Pack size/actuation count intentionally omitted pending pharmacy
+    // confirmation — the manufacturer's priming instructions mean usable
+    // actuations per canister are fewer than a naive volume calculation.
+    strengths: [
+      { label: '20 mg (2 pumps)', pack: '60 g metered-dose pump' },
+      { label: '40 mg (4 pumps)', pack: '60 g metered-dose pump' },
+    ],
+  },
+  {
+    slug: 'testosterone-injection-sustanon',
+    name: 'Testosterone (mixed esters) 250 mg/mL',
+    brandName: 'Sustanon 250',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.INJECTION_VIAL,
+    doseIntervalDays: 21,
+    directions: 'Inject 1 mL into the muscle (gluteal or thigh) every 3 weeks, as shown by your clinician.',
+    strengths: [{ label: '250 mg/mL', pack: '1 mL ampoule' }],
+  },
+  {
+    // Implanted in clinic — no dose interval or self-administered directions apply.
+    slug: 'testosterone-pellets-testopel',
+    name: 'Testosterone pellets',
+    brandName: 'Testopel',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.PELLET,
+    directions: 'Implanted subcutaneously by a clinician every 3 to 6 months. No self-administration.',
+    strengths: [{ label: '75 mg pellet', pack: '6 pellets per implant procedure' }],
+    // Clinic-implanted, not shipped — orders/prescribing here assume a
+    // patient-administered or dispensed-and-shipped product. Inactive until
+    // there's a clinic-administration fulfilment path instead of shipping.
+    active: false,
+  },
 ];
 
 export async function seedCatalog(prisma: PrismaClient) {
@@ -139,7 +186,10 @@ export async function seedCatalog(prisma: PrismaClient) {
     const product = await prisma.product.upsert({
       where: { slug: p.slug },
       update: data,
-      create: { slug: p.slug, ...data },
+      // `active` is create-only: an admin may have withdrawn a product at
+      // runtime via setProductActive, and re-running this seed must not
+      // silently reactivate it.
+      create: { slug: p.slug, ...data, active: p.active ?? true },
     });
     for (const [i, s] of p.strengths.entries()) {
       const strength = {

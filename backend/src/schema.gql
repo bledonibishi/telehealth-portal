@@ -186,6 +186,7 @@ type Consultation {
 enum ConsultationKind {
   GLP1
   HRT
+  TRT
 }
 
 enum ConsultationStatus {
@@ -769,13 +770,16 @@ enum ProductCategory {
   ESTROGEN
   GLP1
   PROGESTOGEN
+  TESTOSTERONE
 }
 
 enum ProductForm {
   CAPSULE
   GEL
   INJECTION_PEN
+  INJECTION_VIAL
   PATCH
+  PELLET
   SPRAY
   TABLET
 }
