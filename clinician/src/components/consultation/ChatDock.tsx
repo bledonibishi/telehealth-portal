@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
-import { format, isToday, isYesterday } from 'date-fns';
+import { isToday, isYesterday } from 'date-fns';
 import { PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { ConversationWatchers } from './ConversationWatchers';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
 
@@ -32,12 +33,6 @@ const QUICK_REPLIES = [
 const initials = (name: string) =>
   name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
 
-function dayLabel(d: Date) {
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
-  return format(d, 'd MMM yyyy');
-}
-
 function ChatIcon({ className = 'w-5 h-5' }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor">
@@ -56,6 +51,8 @@ export function ChatDock({
   patientName: string;
   currentUserId: string | null;
 }) {
+  const { t, fmt } = useI18n();
+  const dayLabel = (d: Date) => (isToday(d) ? t('Today') : isYesterday(d) ? t('Yesterday') : fmt(d, 'd MMM yyyy'));
   const client = useApolloClient();
   const [open, setOpen] = useState(() => readStorage(OPEN_PREF_KEY) === '1');
   const [content, setContent] = useState('');
@@ -160,8 +157,8 @@ export function ChatDock({
         <button
           type="button"
           onClick={() => setOpenPersisted(true)}
-          aria-label={unread > 0 ? `Open messages, ${unread} new` : 'Open messages'}
-          title="Messages"
+          aria-label={unread > 0 ? t('Open messages, {n} new', { n: unread }) : t('Open messages')}
+          title={t('Messages')}
           className="relative w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-brand-50 hover:text-brand-900 transition-colors"
         >
           <ChatIcon />
@@ -189,7 +186,7 @@ export function ChatDock({
   });
 
   return (
-    <aside className="w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label="Secure messages">
+    <aside className="w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
       {watchers}
       <div className="h-16 shrink-0 px-4 flex items-center gap-3 border-b border-gray-200">
         <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-900 text-xs font-semibold flex items-center justify-center">
@@ -197,13 +194,13 @@ export function ChatDock({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900 truncate">{patientName}</p>
-          <p className="text-xs text-gray-500">Secure messages · {messages.length} {messages.length === 1 ? 'message' : 'messages'}</p>
+          <p className="text-xs text-gray-500">{t('Secure messages')} · {messages.length === 1 ? t('1 message') : t('{n} messages', { n: messages.length })}</p>
         </div>
         <button
           type="button"
           onClick={() => setOpenPersisted(false)}
-          aria-label="Minimise messages"
-          title="Minimise"
+          aria-label={t('Minimise messages')}
+          title={t('Minimise')}
           className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -213,12 +210,12 @@ export function ChatDock({
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-gray-50 space-y-1">
-        {loading && <p className="text-xs text-gray-400 text-center">Loading…</p>}
+        {loading && <p className="text-xs text-gray-400 text-center">{t('Loading…')}</p>}
         {!loading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 px-6">
             <ChatIcon className="w-8 h-8 mb-2" />
-            <p className="text-sm font-medium text-gray-600">No messages yet</p>
-            <p className="text-xs mt-1">Messages you send here go straight to the patient’s portal.</p>
+            <p className="text-sm font-medium text-gray-600">{t('No messages yet')}</p>
+            <p className="text-xs mt-1">{t('Messages you send here go straight to the patient’s portal.')}</p>
           </div>
         )}
         {rows.map((row) =>
@@ -232,7 +229,7 @@ export function ChatDock({
             <div key={row.m.id} className={`flex flex-col ${row.isMe ? 'items-end' : 'items-start'} ${row.showSender ? 'pt-2' : ''}`}>
               {row.showSender && (
                 <span className="text-[11px] font-medium text-gray-500 mb-1 px-1">
-                  {row.isMe ? 'You' : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : 'Care team'}
+                  {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : t('Care team')}
                 </span>
               )}
               <div
@@ -244,7 +241,7 @@ export function ChatDock({
               >
                 {row.m.content}
                 <span className={`block text-[10px] mt-1 text-right ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
-                  {format(new Date(row.m.sentAt), 'HH:mm')}
+                  {fmt(row.m.sentAt, 'HH:mm')}
                 </span>
               </div>
             </div>
@@ -261,7 +258,7 @@ export function ChatDock({
               onClick={() => insertQuickReply(q.text)}
               className="shrink-0 text-[11px] font-medium text-gray-600 border border-gray-200 rounded-full px-2.5 py-1 hover:border-brand-500 hover:text-brand-900 hover:bg-brand-50"
             >
-              {q.label}
+              {t(q.label)}
             </button>
           ))}
         </div>
@@ -273,7 +270,7 @@ export function ChatDock({
             ref={inputRef}
             rows={1}
             value={content}
-            placeholder="Write a message…"
+            placeholder={t('Write a message…')}
             onChange={(e) => setContent(e.target.value)}
             onInput={(e) => {
               const el = e.currentTarget;
@@ -288,7 +285,7 @@ export function ChatDock({
           <button
             type="submit"
             disabled={sending || !content.trim()}
-            aria-label="Send message"
+            aria-label={t('Send message')}
             className="w-8 h-8 rounded-lg bg-brand-500 text-white flex items-center justify-center disabled:bg-gray-200 disabled:text-gray-400"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
@@ -296,7 +293,7 @@ export function ChatDock({
             </svg>
           </button>
         </form>
-        <p className="text-[10px] text-gray-400 mt-1.5 px-1">Enter to send · Shift+Enter for a new line</p>
+        <p className="text-[10px] text-gray-400 mt-1.5 px-1">{t('Enter to send · Shift+Enter for a new line')}</p>
       </div>
     </aside>
   );

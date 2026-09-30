@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useSubscription } from '@apollo/client';
-import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
+import { differenceInYears } from 'date-fns';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE, NEW_MESSAGE_SUBSCRIPTION } from '@/graphql/messaging';
 import { realtime } from '@/lib/apollo';
@@ -20,6 +21,9 @@ import LabsPanel from '@/components/labs/LabsPanel';
 import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
 import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
+import PatientSnapshot, { currentMedications, treatmentStatusOf } from '@/components/patients/PatientSnapshot';
+import MedicationPill from '@/components/patients/MedicationPill';
+import { TREATMENT_STATUS } from '@/lib/patient-status';
 
 const PROOF_TYPE_LABEL: Record<string, string> = {
   MEDICINE_BOX_LABEL: 'Medicine box label',
@@ -41,7 +45,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
+export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
 
 function OnboardingStepSection({
   title,
@@ -74,15 +78,16 @@ function OnboardingStepSection({
   onSaveRejection: () => void;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t(title)}</p>
         {savedDecision && !savedDecision.approved && (
-          <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Changes requested</span>
+          <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">{t('Changes requested')}</span>
         )}
         {savedDecision && savedDecision.approved && (
-          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Approved</span>
+          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{t('Approved')}</span>
         )}
       </div>
       {children}
@@ -96,7 +101,7 @@ function OnboardingStepSection({
               <textarea
                 rows={2}
                 autoFocus
-                placeholder={`What does the patient need to fix for ${title.toLowerCase()}?`}
+                placeholder={t('What does the patient need to fix for {item}?', { item: t(title).toLowerCase() })}
                 value={draftReason}
                 onChange={(e) => onDraftReasonChange(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -107,10 +112,10 @@ function OnboardingStepSection({
                   disabled={!draftReason.trim() || saving}
                   className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
                 >
-                  {saving ? 'Saving…' : 'Save'}
+                  {saving ? t('Saving…') : t('Save')}
                 </button>
                 <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-400 hover:text-gray-600">
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
             </div>
@@ -125,7 +130,7 @@ function OnboardingStepSection({
                     : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {saving ? 'Saving…' : 'Approve'}
+                {saving ? t('Saving…') : t('Approve')}
               </button>
               <button
                 onClick={onStartReject}
@@ -136,7 +141,7 @@ function OnboardingStepSection({
                     : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                Request changes
+                {t('Request changes')}
               </button>
             </div>
           )}
@@ -154,8 +159,9 @@ function MessageWatcher({ consultationId, onMessage }: { consultationId: string;
   return null;
 }
 
-export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('overview');
+export default function PatientPanel({ patientId, onClose, initialTab = 'overview' }: { patientId: string; onClose: () => void; initialTab?: Tab }) {
+  const { t, timeAgo, fmt } = useI18n();
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
@@ -213,7 +219,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const symptomAssessments = symptomsData?.patientSymptomAssessments ?? [];
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
+    <div className="flex-1 flex items-center justify-center text-sm text-gray-400">{t('Loading…')}</div>
   );
   if (!p) return null;
 
@@ -227,6 +233,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   );
   const checkIns = p.checkIns ?? [];
   const latestConsultId = p.consultations?.[0]?.id;
+  const status = TREATMENT_STATUS[treatmentStatusOf(p, allPrescriptions)];
 
   const handleReply = async () => {
     if (!reply.trim() || !latestConsultId) return;
@@ -257,7 +264,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
       });
       setEditingSteps((prev) => ({ ...prev, [step]: false }));
     } catch (err: any) {
-      setStepErrors((prev) => ({ ...prev, [step]: err.message ?? 'Failed to save' }));
+      setStepErrors((prev) => ({ ...prev, [step]: err.message ?? t('Failed to save') }));
     } finally {
       setSavingStep(null);
     }
@@ -288,7 +295,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
   const field = (key: string, label: string, value: string, type = 'text') => (
     <div>
-      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
+      <p className="text-xs text-gray-400 mb-0.5">{t(label)}</p>
       {editing && isAdmin ? (
         <input
           type={type}
@@ -303,20 +310,20 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   );
 
   const onboardingLabel =
-    onboarding?.status === 'PENDING_REVIEW' ? 'Onboarding ⚠️' : 'Onboarding';
+    onboarding?.status === 'PENDING_REVIEW' ? `${t('Onboarding')} ⚠️` : t('Onboarding');
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'overview',      label: 'Overview' },
+    { key: 'overview',      label: t('Overview') },
     { key: 'onboarding',    label: onboardingLabel },
-    { key: 'prescriptions', label: `Prescriptions (${allPrescriptions.length})` },
-    { key: 'orders',        label: `Orders (${orders.length})` },
-    { key: 'messages',      label: `Messages (${allMessages.length})` },
-    { key: 'checkin',       label: 'Check-in' },
-    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: 'Labs' }] : []),
-    ...(weightJourney ? [{ key: 'weight' as Tab, label: 'Weight' }] : []),
+    { key: 'prescriptions', label: `${t('Prescriptions')} (${allPrescriptions.length})` },
+    { key: 'orders',        label: `${t('Orders')} (${orders.length})` },
+    { key: 'messages',      label: `${t('Messages')} (${allMessages.length})` },
+    { key: 'checkin',       label: t('Check-in') },
+    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: t('Labs') }] : []),
+    ...(weightJourney ? [{ key: 'weight' as Tab, label: t('Weight') }] : []),
     // Hormone programmes track symptoms instead of weight.
     ...(symptomAssessments.length > 0 || ['HRT', 'TRT'].includes(latestConsult?.kind)
-      ? [{ key: 'symptoms' as Tab, label: 'Symptoms' }]
+      ? [{ key: 'symptoms' as Tab, label: t('Symptoms') }]
       : []),
   ];
 
@@ -329,18 +336,18 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
       <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
         <div>
           <p className="font-semibold text-gray-900 text-base">{p.firstName} {p.lastName}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{p.email} · {age} yrs</p>
+          <p className="text-xs text-gray-400 mt-0.5">{p.email} · {t('{n} yrs', { n: age })}</p>
           <div className="flex gap-2 mt-2">
-            {p.activatedAt ? (
-              <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">✓ Active</span>
-            ) : (
-              <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Pending activation</span>
-            )}
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${status.cls}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+              {t(status.label)}
+            </span>
             {latestConsult && (
               <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[latestConsult.kind]}`}>
                 {latestConsult.kind}
               </span>
             )}
+            {currentMedications(allPrescriptions).map((m, i) => <MedicationPill key={i} label={m.label} dose={m.dose} solid />)}
           </div>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -369,18 +376,28 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {/* ── Overview ── */}
         {tab === 'overview' && (
           <div className="p-5 space-y-6">
+            <PatientSnapshot
+              patient={p}
+              journey={weightJourney ?? null}
+              prescriptions={allPrescriptions}
+              messages={allMessages}
+              canSeeAdherence={hasAccess(['ADMIN', 'DOCTOR'])}
+              canReviewLabs={canReviewOnboarding}
+              onOpenTab={setTab}
+            />
+
             {/* Basic details card */}
             <div className="bg-gray-50 rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Basic details</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Basic details')}</p>
                 {isAdmin && !editing && (
-                  <button onClick={() => setEditing(true)} className="text-xs text-brand-500 hover:text-brand-900">Edit</button>
+                  <button onClick={() => setEditing(true)} className="text-xs text-brand-500 hover:text-brand-900">{t('Edit')}</button>
                 )}
                 {editing && (
                   <div className="flex gap-2">
-                    <button onClick={() => { setEditing(false); setForm({}); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                    <button onClick={() => { setEditing(false); setForm({}); }} className="text-xs text-gray-400 hover:text-gray-600">{t('Cancel')}</button>
                     <button onClick={handleSave} disabled={saving} className="text-xs bg-brand-500 text-white px-2.5 py-1 rounded-md hover:bg-brand-600 disabled:opacity-50">
-                      {saving ? 'Saving…' : 'Save'}
+                      {saving ? t('Saving…') : t('Save')}
                     </button>
                   </div>
                 )}
@@ -389,14 +406,14 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                 {field('firstName', 'First name', p.firstName)}
                 {field('lastName', 'Last name', p.lastName)}
                 {field('email', 'Email', p.email, 'email')}
-                {field('dateOfBirth', 'Date of birth', format(new Date(p.dateOfBirth), 'yyyy-MM-dd'), 'date')}
+                {field('dateOfBirth', 'Date of birth', fmt(p.dateOfBirth, 'yyyy-MM-dd'), 'date')}
                 <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Age</p>
-                  <p className="text-sm text-gray-800 font-medium">{age} years</p>
+                  <p className="text-xs text-gray-400 mb-0.5">{t('Age')}</p>
+                  <p className="text-sm text-gray-800 font-medium">{t('{n} years', { n: age })}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 mb-0.5">Joined</p>
-                  <p className="text-sm text-gray-800 font-medium">{formatDistanceToNow(new Date(p.createdAt), { addSuffix: true })}</p>
+                  <p className="text-xs text-gray-400 mb-0.5">{t('Joined')}</p>
+                  <p className="text-sm text-gray-800 font-medium">{timeAgo(p.createdAt)}</p>
                 </div>
               </div>
             </div>
@@ -404,16 +421,16 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
             {/* Consultation history */}
             {p.consultations?.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Consultations</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Consultations')}</p>
                 <div className="space-y-3">
                   {p.consultations.map((c: any) => (
                     <div key={c.id} className="border border-gray-100 rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex gap-2">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[c.kind]}`}>{c.kind}</span>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[c.status]}`}>{c.status.replace(/_/g, ' ')}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[c.status]}`}>{t(c.status.replace(/_/g, ' '))}</span>
                         </div>
-                        <span className="text-xs text-gray-400">{formatDistanceToNow(new Date(c.submittedAt), { addSuffix: true })}</span>
+                        <span className="text-xs text-gray-400">{timeAgo(c.submittedAt)}</span>
                       </div>
                       {c.redFlags?.length > 0 && (
                         <div className="mb-3 space-y-1">
@@ -445,7 +462,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
           <div className="p-5">
             {!onboarding || onboarding.status === 'IN_PROGRESS' ? (
               <div className="py-12 text-center text-sm text-gray-400">
-                {onboarding ? 'Patient hasn’t submitted onboarding yet.' : 'Patient hasn’t started onboarding yet.'}
+                {onboarding ? t('Patient hasn’t submitted onboarding yet.') : t('Patient hasn’t started onboarding yet.')}
               </div>
             ) : (
               <div className="space-y-5">
@@ -459,25 +476,25 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                           : 'bg-red-50 text-red-700'
                     }`}
                   >
-                    {onboarding.status.replace(/_/g, ' ')}
+                    {t(onboarding.status.replace(/_/g, ' '))}
                   </span>
                   {onboarding.submittedAt && (
                     <span className="text-xs text-gray-400">
-                      Submitted {formatDistanceToNow(new Date(onboarding.submittedAt), { addSuffix: true })}
+                      {t('Submitted {when}', { when: timeAgo(onboarding.submittedAt) })}
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Identity check</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
                     <p className="text-sm text-gray-800">
-                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? 'Manual review' : onboarding.personaStatus.replace(/_/g, ' ')}
+                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Manual review') : t(onboarding.personaStatus.replace(/_/g, ' '))}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Photo compliance</p>
-                    <p className="text-sm text-gray-800">{onboarding.photoReviewStatus.replace(/_/g, ' ')}</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Photo compliance')}</p>
+                    <p className="text-sm text-gray-800">{t(onboarding.photoReviewStatus.replace(/_/g, ' '))}</p>
                   </div>
                 </div>
 
@@ -502,15 +519,15 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                     <>
                       <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
                         <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.idDocumentUrl} alt="ID document" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.selfieUrl} alt="Selfie" className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.idDocumentUrl} alt={t('ID document')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.selfieUrl} alt={t('Selfie')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
                         </div>
                       </OnboardingStepSection>
 
                       <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
                         <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt="Front-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.bodyPhotoSideUrl} alt="Side-facing" className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt={t('Front-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                          <AuthedImage path={onboarding.bodyPhotoSideUrl} alt={t('Side-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
                         </div>
                       </OnboardingStepSection>
 
@@ -522,19 +539,18 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                         {onboarding.priorMedicationUse ? (
                           <div>
                             <p className="text-sm text-gray-800 mb-2">
-                              Yes — proof provided: {PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType}
+                              {t('Yes — proof provided: {proof}', { proof: t(PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType) })}
                             </p>
-                            <AuthedImage path={onboarding.prescriptionProofUrl} alt="Prescription proof" className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
+                            <AuthedImage path={onboarding.prescriptionProofUrl} alt={t('Prescription proof')} className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500">No — first time using this medication.</p>
+                          <p className="text-sm text-gray-500">{t('No — first time using this medication.')}</p>
                         )}
                       </OnboardingStepSection>
 
                       {inReview && (
                         <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
-                          Each step saves as soon as you approve it or send a change request. The patient moves to Approved or Rejected
-                          automatically once every step has a decision.
+                          {t('Each step saves as soon as you approve it or send a change request. The patient moves to Approved or Rejected automatically once every step has a decision.')}
                         </p>
                       )}
                     </>
@@ -549,7 +565,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'prescriptions' && (
           <div className="p-5">
             {allPrescriptions.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-400">No prescriptions issued yet.</div>
+              <div className="py-12 text-center text-sm text-gray-400">{t('No prescriptions issued yet.')}</div>
             ) : (
               <div className="space-y-4">
                 {allPrescriptions.map((rx: any) => <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} />)}
@@ -562,7 +578,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'orders' && (
           <div className="py-2">
             {orders.length === 0 ? (
-              <div className="py-12 text-center text-sm text-gray-400">No orders yet.</div>
+              <div className="py-12 text-center text-sm text-gray-400">{t('No orders yet.')}</div>
             ) : (
               <div className="divide-y divide-gray-100">
                 {orders.map((order: any) => (
@@ -584,7 +600,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
             {/* Message thread */}
             <div ref={threadRef} className="flex-1 overflow-y-auto p-5 space-y-3">
               {allMessages.length === 0 ? (
-                <div className="py-12 text-center text-sm text-gray-400">No messages yet.</div>
+                <div className="py-12 text-center text-sm text-gray-400">{t('No messages yet.')}</div>
               ) : (
                 allMessages.map((msg: any) => {
                   const isPatient = msg.senderRole === 'PATIENT';
@@ -596,11 +612,11 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                           : 'bg-brand-500 text-white rounded-tr-sm'
                       }`}>
                         <p className={`text-xs mb-1 font-medium ${isPatient ? 'text-gray-500' : 'text-blue-100'}`}>
-                          {isPatient ? p.firstName : 'Clinician team'}
+                          {isPatient ? p.firstName : t('Clinician team')}
                         </p>
                         <p>{msg.content}</p>
                         <p className={`text-xs mt-1 ${isPatient ? 'text-gray-400' : 'text-blue-200'}`}>
-                          {formatDistanceToNow(new Date(msg.sentAt), { addSuffix: true })}
+                          {timeAgo(msg.sentAt)}
                         </p>
                       </div>
                     </div>
@@ -615,7 +631,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                 <div className="flex gap-2">
                   <textarea
                     rows={2}
-                    placeholder="Reply to patient…"
+                    placeholder={t('Reply to patient…')}
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
@@ -626,14 +642,14 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                     disabled={!reply.trim() || sending}
                     className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {sending ? '…' : 'Send'}
+                    {sending ? '…' : t('Send')}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1.5">Enter to send · Shift+Enter for new line</p>
+                <p className="text-xs text-gray-400 mt-1.5">{t('Enter to send · Shift+Enter for new line')}</p>
               </div>
             ) : (
               <div className="border-t border-gray-100 p-4 text-center text-xs text-gray-400">
-                No active consultation to message against.
+                {t('No active consultation to message against.')}
               </div>
             )}
           </div>
@@ -654,19 +670,19 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'checkin' && (
           <div className="p-5">
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">Monthly check-in</p>
+              <p className="text-sm font-semibold text-gray-800">{t('Monthly check-in')}</p>
               <p className="text-xs text-gray-500 mt-1">
-                Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.
+                {t('Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
               </p>
             </div>
 
             {!p.activatedAt ? (
               <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
-                Check-in schedule starts once the patient activates their account.
+                {t('Check-in schedule starts once the patient activates their account.')}
               </div>
             ) : checkIns.length === 0 ? (
               <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
-                First check-in hasn&rsquo;t been scheduled yet.
+                {t('First check-in hasn’t been scheduled yet.')}
               </div>
             ) : (
               <div className="space-y-3">
@@ -687,41 +703,41 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                                   : 'bg-gray-100 text-gray-600'
                           }`}
                         >
-                          {c.status === 'COMPLETED' ? 'Completed' : overdue ? 'Overdue' : c.status === 'SENT' ? 'Sent — awaiting response' : 'Scheduled'}
+                          {c.status === 'COMPLETED' ? t('Completed') : overdue ? t('Overdue') : c.status === 'SENT' ? t('Sent — awaiting response') : t('Scheduled')}
                         </span>
                         <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 mb-3">
                         <div>
-                          <p className="text-xs text-gray-400">Scheduled</p>
-                          <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.createdAt), 'dd MMM yyyy')}</p>
+                          <p className="text-xs text-gray-400">{t('Scheduled')}</p>
+                          <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.createdAt, 'dd MMM yyyy')}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-gray-400">Due</p>
+                          <p className="text-xs text-gray-400">{t('Due')}</p>
                           <p className={`text-xs font-medium mt-0.5 ${overdue ? 'text-red-600' : 'text-gray-800'}`}>
-                            {format(dueDate, 'dd MMM yyyy')}
+                            {fmt(dueDate, 'dd MMM yyyy')}
                           </p>
                         </div>
                         {c.sentAt && (
                           <div>
-                            <p className="text-xs text-gray-400">Sent</p>
+                            <p className="text-xs text-gray-400">{t('Sent')}</p>
                             <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {formatDistanceToNow(new Date(c.sentAt), { addSuffix: true })}
+                              {timeAgo(c.sentAt)}
                             </p>
                           </div>
                         )}
                         {c.status === 'SENT' && c.tokenExpiresAt && (
                           <div>
-                            <p className="text-xs text-gray-400">Link expires</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">{format(new Date(c.tokenExpiresAt), 'dd MMM yyyy')}</p>
+                            <p className="text-xs text-gray-400">{t('Link expires')}</p>
+                            <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.tokenExpiresAt, 'dd MMM yyyy')}</p>
                           </div>
                         )}
                         {c.completedAt && (
                           <div>
-                            <p className="text-xs text-gray-400">Completed</p>
+                            <p className="text-xs text-gray-400">{t('Completed')}</p>
                             <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {formatDistanceToNow(new Date(c.completedAt), { addSuffix: true })}
+                              {timeAgo(c.completedAt)}
                             </p>
                           </div>
                         )}
@@ -729,7 +745,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
                       {c.status === 'SENT' && c.checkInUrl && (
                         <div className="mb-3">
-                          <p className="text-xs text-gray-400 mb-1">Check-in link</p>
+                          <p className="text-xs text-gray-400 mb-1">{t('Check-in link')}</p>
                           <div className="flex items-center gap-2">
                             <input
                               readOnly
@@ -745,7 +761,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                               }}
                               className="shrink-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-700"
                             >
-                              {copiedCheckInId === c.id ? 'Copied!' : 'Copy'}
+                              {copiedCheckInId === c.id ? t('Copied!') : t('Copy')}
                             </button>
                           </div>
                         </div>
@@ -754,9 +770,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                       {c.status === 'COMPLETED' ? (
                         <div className="space-y-2 mt-2">
                           <div className="flex items-center gap-2">
-                            <p className="text-xs text-gray-400">Reorder prescription:</p>
+                            <p className="text-xs text-gray-400">{t('Reorder prescription:')}</p>
                             <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.wantsToReorder ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {c.wantsToReorder ? 'Yes' : 'No'}
+                              {c.wantsToReorder ? t('Yes') : t('No')}
                             </span>
                           </div>
                           {c.answers?.map((a: any) => (
@@ -769,7 +785,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                       ) : (
                         <>
                           <p className="text-xs text-gray-400">
-                            {c.status === 'SENT' ? 'Waiting for the patient to complete their check-in.' : 'Will be emailed automatically once due.'}
+                            {c.status === 'SENT' ? t('Waiting for the patient to complete their check-in.') : t('Will be emailed automatically once due.')}
                           </p>
                           {c.status === 'SCHEDULED' && canReviewOnboarding && (
                             editingCheckInId === c.id ? (
@@ -786,13 +802,13 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                                   disabled={!checkInDate || rescheduling}
                                   className="text-xs px-2.5 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40"
                                 >
-                                  {rescheduling ? '…' : 'Save'}
+                                  {rescheduling ? '…' : t('Save')}
                                 </button>
                                 <button
                                   onClick={() => { setEditingCheckInId(null); setCheckInDate(''); }}
                                   className="text-xs text-gray-400 hover:text-gray-600"
                                 >
-                                  Cancel
+                                  {t('Cancel')}
                                 </button>
                               </div>
                             ) : (
@@ -807,7 +823,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
                                 }}
                                 className="mt-2 text-xs text-brand-500 hover:text-brand-900"
                               >
-                                Edit due date
+                                {t('Edit due date')}
                               </button>
                             )
                           )}

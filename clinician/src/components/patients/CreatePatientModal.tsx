@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { CREATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { GET_QUESTIONNAIRE } from '@/graphql/questionnaires';
 import QuizQuestionsFields, { autofillAnswers, buildQuizAnswerInputs, QuizAnswers, Question } from './QuizQuestionsFields';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 const FIRST_NAMES = ['Amelia', 'Noah', 'Olivia', 'Liam', 'Ava', 'Elijah', 'Sophia', 'Lucas', 'Mia', 'Mason'];
 const LAST_NAMES = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Taylor'];
@@ -69,6 +70,7 @@ const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm f
 const labelCls = 'text-xs text-gray-400 mb-0.5 block';
 
 export default function CreatePatientModal({ onClose, onCreated }: { onClose: () => void; onCreated: (patientId: string) => void }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [quizAnswers, setQuizAnswers] = useState<QuizAnswers>({});
   const [priorMedicationUse, setPriorMedicationUse] = useState(false);
@@ -145,7 +147,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
         });
       }
     } catch (err: any) {
-      setError(err.message ?? 'Failed to create patient');
+      setError(err.message ?? t('Failed to create patient'));
     }
   };
 
@@ -172,15 +174,15 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
         <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-gray-900">Patient created</h2>
+            <h2 className="text-base font-semibold text-gray-900">{t('Patient created')}</h2>
           </div>
           <div className="px-6 py-4 space-y-4">
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>{t('Email')}</label>
               <p className="text-sm text-gray-900">{created.email}</p>
             </div>
             <div>
-              <label className={labelCls}>Temporary password</label>
+              <label className={labelCls}>{t('Temporary password')}</label>
               <div className="flex items-center gap-2">
                 <p className="flex-1 font-mono text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 select-all">
                   {created.temporaryPassword}
@@ -189,10 +191,10 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                   onClick={handleCopyPassword}
                   className="shrink-0 text-xs font-medium text-brand-500 border border-brand-200 rounded-lg px-3 py-1.5 hover:bg-brand-50"
                 >
-                  {copied ? 'Copied' : 'Copy'}
+                  {copied ? t('Copied') : t('Copy')}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-1">Shown once — it isn&apos;t saved anywhere. Copy it now if you need to log in as this patient.</p>
+              <p className="text-xs text-gray-400 mt-1">{t('Shown once — it isn\'t saved anywhere. Copy it now if you need to log in as this patient.')}</p>
             </div>
           </div>
           <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
@@ -200,7 +202,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
               onClick={() => onCreated(created.id)}
               className="px-4 py-1.5 text-xs font-medium rounded-lg bg-brand-500 text-white"
             >
-              Go to patient
+              {t('Go to patient')}
             </button>
           </div>
         </div>
@@ -212,7 +214,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">New patient</h2>
+          <h2 className="text-base font-semibold text-gray-900">{t('New patient')}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
         </div>
 
@@ -222,13 +224,13 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
               onClick={handleAutofill}
               className="text-xs font-medium text-brand-500 border border-brand-200 rounded-lg px-3 py-1.5 hover:bg-brand-50"
             >
-              Autofill
+              {t('Autofill')}
             </button>
           </div>
 
           {/* 1. Plan + medical questionnaire — mirrors the quiz a patient answers before checkout */}
           <div>
-            <p className={labelCls}>Plan</p>
+            <p className={labelCls}>{t('Plan')}</p>
             <div className="flex gap-2">
               {(['GLP1', 'HRT', 'TRT'] as const).map((kind) => (
                 <button
@@ -246,7 +248,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
 
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              {questionnaireData?.questionnaire?.title ?? 'Medical questionnaire'}
+              {questionnaireData?.questionnaire?.title ?? t('Medical questionnaire')}
             </p>
             {questions.length ? (
               <QuizQuestionsFields
@@ -255,7 +257,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                 onChange={(id, value) => setQuizAnswers((a) => ({ ...a, [id]: value }))}
               />
             ) : (
-              <p className="text-xs text-gray-400">Loading questions…</p>
+              <p className="text-xs text-gray-400">{t('Loading questions…')}</p>
             )}
           </div>
 
@@ -263,27 +265,27 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
           <div className="border-t border-gray-100 pt-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>First name</label>
+                <label className={labelCls}>{t('First name')}</label>
                 <input className={inputCls} value={form.firstName} onChange={set('firstName')} />
               </div>
               <div>
-                <label className={labelCls}>Last name</label>
+                <label className={labelCls}>{t('Last name')}</label>
                 <input className={inputCls} value={form.lastName} onChange={set('lastName')} />
               </div>
             </div>
 
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>{t('Email')}</label>
               <input className={inputCls} type="email" value={form.email} onChange={set('email')} />
             </div>
 
             <div>
-              <label className={labelCls}>Password</label>
+              <label className={labelCls}>{t('Password')}</label>
               <div className="flex items-center gap-2">
                 <input
                   className={`${inputCls} font-mono`}
                   type="text"
-                  placeholder="Leave blank to auto-generate"
+                  placeholder={t('Leave blank to auto-generate')}
                   value={form.password}
                   onChange={set('password')}
                 />
@@ -292,45 +294,45 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                   onClick={() => setForm((f) => ({ ...f, password: randomPassword() }))}
                   className="shrink-0 text-xs font-medium text-brand-500 border border-brand-200 rounded-lg px-3 py-1.5 hover:bg-brand-50"
                 >
-                  Generate
+                  {t('Generate')}
                 </button>
               </div>
               {form.password.trim() && form.password.trim().length < 8 && (
-                <p className="text-xs text-red-600 mt-1">Password must be at least 8 characters.</p>
+                <p className="text-xs text-red-600 mt-1">{t('Password must be at least 8 characters.')}</p>
               )}
             </div>
 
             <div>
-              <label className={labelCls}>Date of birth</label>
+              <label className={labelCls}>{t('Date of birth')}</label>
               <input className={inputCls} type="date" value={form.dateOfBirth} onChange={set('dateOfBirth')} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Phone</label>
+                <label className={labelCls}>{t('Phone')}</label>
                 <input className={inputCls} value={form.phone} onChange={set('phone')} />
               </div>
               <div>
-                <label className={labelCls}>Country</label>
+                <label className={labelCls}>{t('Country')}</label>
                 <input className={inputCls} value={form.country} onChange={set('country')} />
               </div>
             </div>
 
             <div>
-              <label className={labelCls}>Address line 1</label>
+              <label className={labelCls}>{t('Address line 1')}</label>
               <input className={inputCls} value={form.addressLine1} onChange={set('addressLine1')} />
             </div>
             <div>
-              <label className={labelCls}>Address line 2</label>
+              <label className={labelCls}>{t('Address line 2')}</label>
               <input className={inputCls} value={form.addressLine2} onChange={set('addressLine2')} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>City</label>
+                <label className={labelCls}>{t('City')}</label>
                 <input className={inputCls} value={form.city} onChange={set('city')} />
               </div>
               <div>
-                <label className={labelCls}>Postcode</label>
+                <label className={labelCls}>{t('Postcode')}</label>
                 <input className={inputCls} value={form.postcode} onChange={set('postcode')} />
               </div>
             </div>
@@ -338,7 +340,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
 
           {/* 3. Onboarding — mirrors what happens after checkout */}
           <div className="border-t border-gray-100 pt-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Onboarding</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Onboarding')}</p>
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -346,7 +348,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                 onChange={(e) => setForm((f) => ({ ...f, onboardingCompleted: e.target.checked }))}
                 className="rounded border-gray-300"
               />
-              Mark onboarding as completed (identity verified, starter prescription issued)
+              {t('Mark onboarding as completed (identity verified, starter prescription issued)')}
             </label>
 
             {form.onboardingCompleted && (
@@ -357,7 +359,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                   onChange={(e) => setPriorMedicationUse(e.target.checked)}
                   className="rounded border-gray-300"
                 />
-                Has used this treatment before (verified — affects GLP-1 starting-dose rules)
+                {t('Has used this treatment before (verified — affects GLP-1 starting-dose rules)')}
               </label>
             )}
           </div>
@@ -366,13 +368,13 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 shrink-0">
-          <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancel</button>
+          <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5">{t('Cancel')}</button>
           <button
             onClick={handleSubmit}
             disabled={!canSubmit || loading}
             className="px-4 py-1.5 text-xs font-medium rounded-lg bg-brand-500 text-white disabled:opacity-40"
           >
-            {loading ? 'Creating…' : 'Create patient'}
+            {loading ? t('Creating…') : t('Create patient')}
           </button>
         </div>
       </div>

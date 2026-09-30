@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_DASHBOARD_METRICS } from '@/graphql/dashboard';
 import { getCurrentRole } from '@/lib/role';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Metrics = {
   totalLeads: number;
@@ -28,6 +29,7 @@ type StatCardProps = {
 };
 
 function StatCard({ label, value, sub, href, accent = 'blue' }: StatCardProps) {
+  const { t } = useI18n();
   const accentMap = {
     blue:   { bar: 'bg-blue-500',   num: 'text-blue-700' },
     green:  { bar: 'bg-green-500',  num: 'text-green-700' },
@@ -41,8 +43,8 @@ function StatCard({ label, value, sub, href, accent = 'blue' }: StatCardProps) {
     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-2 hover:shadow-sm transition-shadow">
       <div className={`w-8 h-1 rounded-full ${bar}`} />
       <p className={`text-3xl font-bold ${num}`}>{value}</p>
-      <p className="text-sm font-medium text-gray-700">{label}</p>
-      {sub && <p className="text-xs text-gray-400">{sub}</p>}
+      <p className="text-sm font-medium text-gray-700">{t(label)}</p>
+      {sub && <p className="text-xs text-gray-400">{t(sub)}</p>}
     </div>
   );
 
@@ -52,9 +54,10 @@ function StatCard({ label, value, sub, href, accent = 'blue' }: StatCardProps) {
 
 type SectionProps = { title: string; children: React.ReactNode };
 function Section({ title, children }: SectionProps) {
+  const { t } = useI18n();
   return (
     <div>
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{title}</h2>
+      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t(title)}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{children}</div>
     </div>
   );
@@ -71,6 +74,7 @@ function SkeletonCard() {
 }
 
 export default function DashboardPage() {
+  const { t, fmt } = useI18n();
   const role = getCurrentRole();
   const { data, loading } = useQuery(GET_DASHBOARD_METRICS, {
     pollInterval: 60_000,
@@ -82,19 +86,17 @@ export default function DashboardPage() {
   if (role !== 'ADMIN') {
     return (
       <div className="p-8 text-center text-gray-400 text-sm">
-        Select a section from the sidebar to get started.
+        {t('Select a section from the sidebar to get started.')}
       </div>
     );
   }
 
-  const today = new Date().toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const today = fmt(new Date(), 'PPPP');
 
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-6xl">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Good morning</h1>
+        <h1 className="text-xl font-semibold text-gray-900">{t('Good morning')}</h1>
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
 

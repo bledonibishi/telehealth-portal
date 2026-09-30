@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@apollo/client';
 import { GET_ORDERS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 const FILTERS = [
   { key: 'pending', label: 'To dispatch', statuses: ['PENDING'] },
@@ -24,6 +25,7 @@ const EMPTY: Record<FilterKey, string> = {
 };
 
 export default function OrdersPage() {
+  const { t } = useI18n();
   const { data, loading, error } = useQuery(GET_ORDERS, { pollInterval: 60_000 });
   const [filter, setFilter] = useState<FilterKey>('pending');
 
@@ -37,21 +39,21 @@ export default function OrdersPage() {
     <div>
       <div className="px-6 py-5 border-b border-gray-200 bg-white flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Orders</h1>
-          <p className="text-xs text-gray-500 mt-0.5">Each supply of a prescription — first fills and repeats</p>
+          <h1 className="text-lg font-semibold text-gray-900">{t('Orders')}</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{t('Each supply of a prescription — first fills and repeats')}</p>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="text-center">
             <p className="font-semibold text-amber-600">{countFor(['PENDING'])}</p>
-            <p className="text-xs text-gray-400">To dispatch</p>
+            <p className="text-xs text-gray-400">{t('To dispatch')}</p>
           </div>
           <div className="text-center">
             <p className="font-semibold text-blue-600">{countFor(['DISPATCHED', 'OUT_FOR_DELIVERY'])}</p>
-            <p className="text-xs text-gray-400">In transit</p>
+            <p className="text-xs text-gray-400">{t('In transit')}</p>
           </div>
           <div className="text-center">
             <p className="font-semibold text-green-600">{countFor(['DELIVERED'])}</p>
-            <p className="text-xs text-gray-400">Delivered</p>
+            <p className="text-xs text-gray-400">{t('Delivered')}</p>
           </div>
         </div>
       </div>
@@ -65,19 +67,19 @@ export default function OrdersPage() {
               filter === f.key ? 'border-brand-500 text-brand-900 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {f.label}
+            {t(f.label)}
           </button>
         ))}
       </div>
 
-      {loading && <p className="p-6 text-sm text-gray-400">Loading…</p>}
+      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
 
       <div className="divide-y divide-gray-100">
         {orders.map((order) => (
           <OrderCard key={order.id} order={order} refetchQueries={[{ query: GET_ORDERS }]} />
         ))}
-        {!loading && orders.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{EMPTY[filter]}</div>}
+        {!loading && orders.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{t(EMPTY[filter])}</div>}
       </div>
     </div>
   );

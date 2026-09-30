@@ -16,6 +16,28 @@ export const GET_PATIENTS = gql`
       hasActivePrescription
       lastCheckInStatus
       lastCheckInDueAt
+      treatmentStatus
+      medications { label dose }
+      startingWeightKg
+      currentWeightKg
+      targetWeightKg
+      weightLostKg
+      progressPercentage
+      lastWeighedAt
+      awaitingReply
+      lastMessageAt
+    }
+  }
+`;
+
+export const PATIENT_ADHERENCE = gql`
+  query PatientDoseAdherence($patientId: ID!, $weeks: Int) {
+    doseAdherenceTrend(patientId: $patientId, weeks: $weeks) {
+      weekStart
+      taken
+      missed
+      skipped
+      adherencePct
     }
   }
 `;

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { formatDistanceToNow } from 'date-fns';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_LEADS } from '@/graphql/leads';
 
 const KIND_BADGE: Record<string, string> = {
@@ -11,6 +11,7 @@ const KIND_BADGE: Record<string, string> = {
 };
 
 export default function LeadsPage() {
+  const { t, timeAgo } = useI18n();
   const { data, loading, error } = useQuery(GET_LEADS, { pollInterval: 60_000 });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -33,23 +34,23 @@ export default function LeadsPage() {
       {/* Header */}
       <div className="px-6 py-5 border-b border-gray-200 bg-white flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Leads</h1>
+          <h1 className="text-lg font-semibold text-gray-900">{t('Leads')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Users who completed the eligibility quiz
+            {t('Users who completed the eligibility quiz')}
           </p>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="text-center">
             <p className="font-semibold text-gray-900">{leads.length}</p>
-            <p className="text-xs text-gray-400">Total</p>
+            <p className="text-xs text-gray-400">{t('Total')}</p>
           </div>
           <div className="text-center">
             <p className="font-semibold text-amber-600">{pending}</p>
-            <p className="text-xs text-gray-400">Not converted</p>
+            <p className="text-xs text-gray-400">{t('Not converted')}</p>
           </div>
           <div className="text-center">
             <p className="font-semibold text-green-600">{converted}</p>
-            <p className="text-xs text-gray-400">Converted</p>
+            <p className="text-xs text-gray-400">{t('Converted')}</p>
           </div>
         </div>
       </div>
@@ -58,24 +59,24 @@ export default function LeadsPage() {
       <div className="px-6 py-3 bg-white border-b border-gray-100">
         <input
           type="text"
-          placeholder="Search by name or email…"
+          placeholder={t('Search by name or email…')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
 
-      {loading && <p className="p-6 text-sm text-gray-400">Loading…</p>}
+      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
 
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
-            <th className="px-6 py-3">Name</th>
-            <th className="px-6 py-3">Email</th>
-            <th className="px-6 py-3">Product</th>
-            <th className="px-6 py-3">Status</th>
-            <th className="px-6 py-3">Submitted</th>
+            <th className="px-6 py-3">{t('Name')}</th>
+            <th className="px-6 py-3">{t('Email')}</th>
+            <th className="px-6 py-3">{t('Product')}</th>
+            <th className="px-6 py-3">{t('Status')}</th>
+            <th className="px-6 py-3">{t('Submitted')}</th>
             <th className="px-6 py-3"></th>
           </tr>
         </thead>
@@ -95,23 +96,23 @@ export default function LeadsPage() {
                 <td className="px-6 py-3">
                   {lead.convertedAt ? (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                      ✓ Patient
+                      ✓ {t('Patient')}
                     </span>
                   ) : (
                     <span className="inline-flex items-center text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                      Not paid
+                      {t('Not paid')}
                     </span>
                   )}
                 </td>
                 <td className="px-6 py-3 text-gray-400 text-xs whitespace-nowrap">
-                  {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true })}
+                  {timeAgo(lead.createdAt)}
                 </td>
                 <td className="px-6 py-3 text-right">
                   <button
                     onClick={() => setExpanded(expanded === lead.id ? null : lead.id)}
                     className="text-xs text-brand-500 hover:text-brand-900"
                   >
-                    {expanded === lead.id ? 'Hide quiz' : 'View quiz'}
+                    {expanded === lead.id ? t('Hide quiz') : t('View quiz')}
                   </button>
                 </td>
               </tr>
@@ -121,7 +122,7 @@ export default function LeadsPage() {
                 <tr key={`${lead.id}-quiz`}>
                   <td colSpan={6} className="px-6 py-4 bg-gray-50 border-b border-gray-100">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                      Quiz summary — {lead.productKind}
+                      {t('Quiz summary')} — {lead.productKind}
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       {(lead.quizAnswers ?? []).map((a: any, i: number) => (
@@ -140,7 +141,7 @@ export default function LeadsPage() {
       </table>
 
       {!loading && leads.length === 0 && (
-        <div className="p-12 text-center text-gray-400 text-sm">No leads yet.</div>
+        <div className="p-12 text-center text-gray-400 text-sm">{t('No leads yet.')}</div>
       )}
     </div>
   );

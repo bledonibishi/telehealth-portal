@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { format } from 'date-fns';
 import { PATIENT_LAB_RESULTS, PATIENT_TRT_MONITORING } from '@/graphql/labs';
 import { KIND_LABEL, type TrtMonitoring } from './labs-format';
 import { TrtMonitoringCard } from './TrtMonitoringCard';
 import { RecordLabResultForm } from './RecordLabResultForm';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type LabResult = {
   id: string;
@@ -32,6 +32,7 @@ function rangeText(low?: number | null, high?: number | null) {
 
 /** A patient's lab results, the testosterone monitoring schedule (TRT only), and entry of new results. */
 export default function LabsPanel({ patientId, canRecord }: { patientId: string; canRecord: boolean }) {
+  const { t, fmt } = useI18n();
   const [adding, setAdding] = useState(false);
   const { data } = useQuery(PATIENT_LAB_RESULTS, { variables: { patientId } });
   const { data: trtData } = useQuery(PATIENT_TRT_MONITORING, { variables: { patientId } });
@@ -44,13 +45,13 @@ export default function LabsPanel({ patientId, canRecord }: { patientId: string;
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Results</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Results')}</p>
           {canRecord && !adding && (
-            <button onClick={() => setAdding(true)} className="text-xs font-medium text-brand-500 hover:text-brand-900">+ Record result</button>
+            <button onClick={() => setAdding(true)} className="text-xs font-medium text-brand-500 hover:text-brand-900">{t('+ Record result')}</button>
           )}
         </div>
         {adding && <div className="mb-3"><RecordLabResultForm patientId={patientId} onDone={() => setAdding(false)} /></div>}
-        {results.length === 0 && !adding && <p className="text-sm text-gray-400">No lab results recorded yet.</p>}
+        {results.length === 0 && !adding && <p className="text-sm text-gray-400">{t('No lab results recorded yet.')}</p>}
         <ul className="divide-y divide-gray-100">
           {results.map((r) => {
             const range = rangeText(r.referenceRangeLow, r.referenceRangeHigh);
@@ -58,15 +59,15 @@ export default function LabsPanel({ patientId, canRecord }: { patientId: string;
               <li key={r.id} className="py-2 flex items-start justify-between gap-3 text-sm">
                 <div>
                   <p className="text-gray-800">
-                    {r.kind === 'OTHER' ? r.analyteName : KIND_LABEL[r.kind] ?? r.kind}{' '}
+                    {r.kind === 'OTHER' ? r.analyteName : t(KIND_LABEL[r.kind] ?? r.kind)}{' '}
                     <span className={r.flagged ? 'text-danger-500 font-semibold' : 'font-medium'}>{r.value} {r.unit}</span>
                     <span className="text-xs text-gray-400">{range}</span>
                   </p>
-                  {r.reviewNote && <p className="text-xs text-gray-500 mt-0.5">Review: {r.reviewNote}</p>}
+                  {r.reviewNote && <p className="text-xs text-gray-500 mt-0.5">{t('Review:')} {r.reviewNote}</p>}
                 </div>
                 <div className="text-right text-xs text-gray-400 flex-shrink-0">
-                  <p>{format(new Date(r.collectedAt), 'd MMM yyyy')}</p>
-                  {r.flagged && <p className={r.reviewedAt ? 'text-green-700' : 'text-danger-500'}>{r.reviewedAt ? 'Reviewed' : 'Out of range'}</p>}
+                  <p>{fmt(r.collectedAt, 'd MMM yyyy')}</p>
+                  {r.flagged && <p className={r.reviewedAt ? 'text-green-700' : 'text-danger-500'}>{r.reviewedAt ? t('Reviewed') : t('Out of range')}</p>}
                 </div>
               </li>
             );

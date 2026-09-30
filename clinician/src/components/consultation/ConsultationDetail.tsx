@@ -11,6 +11,7 @@ import { PrescriptionCard } from './PrescriptionCard';
 import { OnboardingSummary } from './OnboardingSummary';
 import { getToken } from '@/lib/auth';
 import { differenceInYears, formatDistanceToNow } from 'date-fns';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 function parseJwtPayload(token: string) {
   try {
@@ -42,9 +43,10 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
 
 export function ConsultationDetail({ id }: { id: string }) {
+  const { t, timeAgo, fmt } = useI18n();
   const { data, loading, error } = useQuery(GET_CONSULTATION, { variables: { id } });
 
-  if (loading) return <p className="p-6 text-sm text-gray-500">Loading…</p>;
+  if (loading) return <p className="p-6 text-sm text-gray-500">{t('Loading…')}</p>;
   if (error) return <p className="p-6 text-sm text-danger-500">{error.message}</p>;
 
   const c = data?.consultation;
@@ -63,7 +65,7 @@ export function ConsultationDetail({ id }: { id: string }) {
         <header className="shrink-0 bg-white border-b border-gray-200">
           <div className="px-6 pt-3 pb-3">
             <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
-              ← Review queue
+              {t('← Review queue')}
             </Link>
             <div className="mt-2 flex items-center gap-4">
               <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-900 font-semibold text-sm flex items-center justify-center shrink-0">
@@ -72,11 +74,10 @@ export function ConsultationDetail({ id }: { id: string }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="text-xl font-semibold text-gray-900 truncate">{fullName}</h1>
-                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${status.cls}`}>{status.label}</span>
+                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${status.cls}`}>{t(status.label)}</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  {differenceInYears(new Date(), dob)} yrs · {c.kind} · submitted{' '}
-                  {formatDistanceToNow(new Date(c.submittedAt), { addSuffix: true })}
+                  {t('{n} yrs', { n: differenceInYears(new Date(), dob) })} · {c.kind} · {t('submitted {when}', { when: timeAgo(c.submittedAt) })}
                   {c.questionnaireVersion && <span className="text-gray-400"> · {c.questionnaireVersion}</span>}
                 </p>
               </div>
@@ -102,8 +103,8 @@ export function ConsultationDetail({ id }: { id: string }) {
               {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
                 <section key={section} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
-                    <span className="text-xs text-gray-400">{answers.length} {answers.length === 1 ? 'answer' : 'answers'}</span>
+                    <h2 className="text-sm font-semibold text-gray-900">{t(section)}</h2>
+                    <span className="text-xs text-gray-400">{answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}</span>
                   </div>
                   <div className="divide-y divide-gray-100">
                     {answers.map((a: any, i: number) => (
@@ -122,17 +123,17 @@ export function ConsultationDetail({ id }: { id: string }) {
 
             <aside className="space-y-4 min-w-0">
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Patient</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Patient')}</h3>
                 <dl className="space-y-2.5 text-sm">
                   <div>
-                    <dt className="text-xs text-gray-500">Email</dt>
+                    <dt className="text-xs text-gray-500">{t('Email')}</dt>
                     <dd className="break-all">
                       <a href={`mailto:${c.patient.email}`} className="hover:text-brand-500">{c.patient.email}</a>
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-gray-500">Date of birth</dt>
-                    <dd>{dob.toLocaleDateString('en-GB')} <span className="text-gray-400">· {differenceInYears(new Date(), dob)} yrs</span></dd>
+                    <dt className="text-xs text-gray-500">{t('Date of birth')}</dt>
+                    <dd>{fmt(dob, 'dd/MM/yyyy')} <span className="text-gray-400">· {t('{n} yrs', { n: differenceInYears(new Date(), dob) })}</span></dd>
                   </div>
                 </dl>
               </div>
@@ -142,7 +143,7 @@ export function ConsultationDetail({ id }: { id: string }) {
               {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
 
               <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Prior consultations')}</h3>
                 <PatientHistory patientId={c.patient.id} excludeId={c.id} />
               </div>
             </aside>

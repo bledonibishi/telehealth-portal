@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useQuery } from '@apollo/client';
-import { format, formatDistanceToNow } from 'date-fns';
 import { MISSED_DOSE_ALERTS } from '@/graphql/checkins';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Alert = {
   patientId: string;
@@ -22,6 +22,7 @@ type Alert = {
  * An entry clears itself once the patient logs a dose or a new prescription is issued.
  */
 export function MissedDoseAlerts() {
+  const { t, timeAgo, fmt } = useI18n();
   const { data } = useQuery(MISSED_DOSE_ALERTS, { pollInterval: 5 * 60_000 });
   const alerts: Alert[] = data?.missedDoseAlerts ?? [];
   if (alerts.length === 0) return null;
@@ -29,8 +30,8 @@ export function MissedDoseAlerts() {
   return (
     <div className="border-b border-gray-200 bg-amber-50/60">
       <div className="px-5 pt-3 pb-1">
-        <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Missed doses · {alerts.length}</p>
-        <p className="text-xs text-amber-900/70 mt-0.5">Consider restarting at a lower dose before they continue.</p>
+        <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">{t('Missed doses')} · {alerts.length}</p>
+        <p className="text-xs text-amber-900/70 mt-0.5">{t('Consider restarting at a lower dose before they continue.')}</p>
       </div>
       <ul className="divide-y divide-amber-100">
         {alerts.map((a) => (
@@ -38,11 +39,11 @@ export function MissedDoseAlerts() {
             <Link href={`/patients?patient=${a.patientId}`} className="block px-5 py-2.5 hover:bg-amber-50">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-900">{a.patientName}</span>
-                <span className="text-xs font-semibold text-amber-900">{a.missedInARow} in a row</span>
+                <span className="text-xs font-semibold text-amber-900">{t('{n} in a row', { n: a.missedInARow })}</span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                {a.productName} {a.strengthLabel} (step {a.titrationStep}) · since {format(new Date(a.missedSince), 'd MMM')}
-                {a.lastTakenAt ? ` · last taken ${formatDistanceToNow(new Date(a.lastTakenAt), { addSuffix: true })}` : ''}
+                {a.productName} {a.strengthLabel} ({t('step {n}', { n: a.titrationStep })}) · {t('since {date}', { date: fmt(a.missedSince, 'd MMM') })}
+                {a.lastTakenAt ? ` · ${t('last taken {when}', { when: timeAgo(a.lastTakenAt) })}` : ''}
               </p>
             </Link>
           </li>

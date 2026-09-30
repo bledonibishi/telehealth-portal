@@ -1,8 +1,8 @@
 'use client';
 
 import { useQuery } from '@apollo/client';
-import { format } from 'date-fns';
 import { SYMPTOM_SCALE_DEFINITION } from '@/graphql/symptoms';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type DomainScore = { domain: string; label: string; score: number; min: number; max: number };
 export type SymptomAssessment = {
@@ -26,6 +26,7 @@ function Change({ now, before }: { now: number; before?: number }) {
 
 /** The patient’s self-reported symptom scores: history with changes, and the latest item-by-item answers. */
 export default function SymptomsPanel({ assessments: all }: { assessments: SymptomAssessment[] }) {
+  const { t, fmt } = useI18n();
   // Scores from different scales aren't comparable, so show the current (latest) one only.
   const latestScale = all[all.length - 1]?.scale;
   const assessments = all.filter((a) => a.scale === latestScale);
@@ -36,7 +37,7 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
   if (!latest) {
     return (
       <div className="p-5">
-        <p className="text-sm text-gray-400">The patient hasn’t recorded any symptom scores yet. They can do so from “Symptoms” in their portal.</p>
+        <p className="text-sm text-gray-400">{t('The patient hasn’t recorded any symptom scores yet. They can do so from “Symptoms” in their portal.')}</p>
       </div>
     );
   }
@@ -49,26 +50,26 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
     <div className="p-5 space-y-5">
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-          <p className="text-xs text-gray-400">Latest</p>
+          <p className="text-xs text-gray-400">{t('Latest')}</p>
           <p className="text-sm font-semibold text-gray-900 mt-0.5">{latest.totalScore} · {latest.severity}</p>
         </div>
         <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-          <p className="text-xs text-gray-400">First recorded</p>
+          <p className="text-xs text-gray-400">{t('First recorded')}</p>
           <p className="text-sm font-semibold text-gray-900 mt-0.5">{first.totalScore} · {first.severity}</p>
         </div>
         <div className="bg-gray-50 rounded-xl px-3 py-2.5">
-          <p className="text-xs text-gray-400">Range</p>
-          <p className="text-sm font-semibold text-gray-900 mt-0.5">{latest.minScore}–{latest.maxScore} <span className="font-normal text-gray-400">(lower is better)</span></p>
+          <p className="text-xs text-gray-400">{t('Range')}</p>
+          <p className="text-sm font-semibold text-gray-900 mt-0.5">{latest.minScore}–{latest.maxScore} <span className="font-normal text-gray-400">{t('(lower is better)')}</span></p>
         </div>
       </div>
 
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{SCALE_NAME[latest.scale]}</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t(SCALE_NAME[latest.scale])}</p>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-gray-400">
-              <th className="font-medium py-1">Date</th>
-              <th className="font-medium py-1">Total</th>
+              <th className="font-medium py-1">{t('Date')}</th>
+              <th className="font-medium py-1">{t('Total')}</th>
               {latest.domainScores.map((d) => <th key={d.domain} className="font-medium py-1">{d.label}</th>)}
             </tr>
           </thead>
@@ -77,7 +78,7 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
               const prev = newestFirst[i + 1];
               return (
                 <tr key={a.id} className="border-t border-gray-100">
-                  <td className="py-1.5 text-gray-600">{format(new Date(a.recordedAt), 'd MMM yyyy')}</td>
+                  <td className="py-1.5 text-gray-600">{fmt(a.recordedAt, 'd MMM yyyy')}</td>
                   <td className="py-1.5 font-medium text-gray-900">{a.totalScore}<Change now={a.totalScore} before={prev?.totalScore} /> <span className="text-xs font-normal text-gray-400">{a.severity}</span></td>
                   {a.domainScores.map((d) => (
                     <td key={d.domain} className="py-1.5 text-gray-700">
@@ -93,7 +94,7 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
 
       {scale && (
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Latest answers · {format(new Date(latest.recordedAt), 'd MMM yyyy')}</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Latest answers')} · {fmt(latest.recordedAt, 'd MMM yyyy')}</p>
           <ul className="divide-y divide-gray-100">
             {scale.items.map((item: { id: string; text: string }) => {
               const score = latest.answers.find((a) => a.itemId === item.id)?.score;

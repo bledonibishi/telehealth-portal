@@ -5,6 +5,7 @@ const WEIGHT_JOURNEY_FIELDS = gql`
     patientId
     startingWeightKg
     currentWeightKg
+    latestMeasurementAt
     targetWeightKg
     weightLostKg
     remainingKg
@@ -83,6 +84,23 @@ export const VOID_WEIGHT_ENTRY = gql`
   mutation VoidWeightEntry($entryId: ID!, $reason: String!) {
     voidWeightEntry(entryId: $entryId, reason: $reason) {
       ...WeightJourneyFields
+    }
+  }
+`;
+
+// What the patient detail chart plots: every weighing in the window, plus where the line starts and ends.
+export const GET_WEIGHT_CHART = gql`
+  query WeightChartForPatient($patientId: ID!, $from: DateTime!, $to: DateTime!, $limit: Int) {
+    weightTimelineForPatient(patientId: $patientId, from: $from, to: $to, limit: $limit) {
+      startingWeightKg
+      startingAt
+      targetWeightKg
+      measurements {
+        id
+        measuredAt
+        weightKg
+        kind
+      }
     }
   }
 `;
