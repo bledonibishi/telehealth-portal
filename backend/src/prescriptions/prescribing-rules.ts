@@ -84,5 +84,13 @@ export function checkPrescribingRules(ctx: RuleContext): RuleViolation[] {
     );
   }
 
+  const hasTestosterone = ctx.items.some((i) => i.product.category === ProductCategory.TESTOSTERONE);
+  if (hasTestosterone && answerOf(ctx, 'prostate_cancer_history') === 'yes') {
+    soft(
+      'TESTOSTERONE_PROSTATE_HISTORY',
+      'Testosterone is contraindicated with a history of prostate cancer without specialist sign-off. Confirm oncology clearance, or do not proceed.',
+    );
+  }
+
   return violations;
 }

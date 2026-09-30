@@ -19,6 +19,7 @@ const codes = (c: RuleContext) => checkPrescribingRules(c).map((v) => `${v.code}
 
 const estradiol = product({ id: 'e2', name: 'Estradiol', kind: 'HRT', category: 'ESTROGEN' });
 const progesterone = product({ id: 'p4', name: 'Progesterone', kind: 'HRT', category: 'PROGESTOGEN' });
+const testosterone = product({ id: 't1', name: 'Testosterone', kind: 'TRT', category: 'TESTOSTERONE' });
 
 describe('checkPrescribingRules', () => {
   it('requires at least one item', () => {
@@ -77,6 +78,23 @@ describe('checkPrescribingRules', () => {
 
     it('accepts estrogen with a progestogen', () => {
       expect(codes(ctx({ kind: 'HRT', items: [e2, p4], answers: [{ questionId: 'has_uterus', answer: 'yes' }] }))).toEqual([]);
+    });
+  });
+
+  describe('testosterone', () => {
+    const t1 = item(null, { product: testosterone, strength: { label: '250 mg', titrationStep: null, active: true, productId: 't1' } });
+
+    it('flags testosterone with a history of prostate cancer', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'prostate_cancer_history', answer: 'Yes' }] })))
+        .toEqual(['TESTOSTERONE_PROSTATE_HISTORY:soft']);
+    });
+
+    it('accepts testosterone with no prostate cancer history', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'prostate_cancer_history', answer: 'no' }] }))).toEqual([]);
+    });
+
+    it('accepts testosterone when the question was never asked', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1] }))).toEqual([]);
     });
   });
 });

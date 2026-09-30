@@ -28,6 +28,7 @@ enum ConsultationStatus {
 enum ConsultationKind {
   HRT
   GLP1
+  TRT
 }
 
 enum RedFlagSeverity {
@@ -88,15 +89,18 @@ enum ProductCategory {
   GLP1
   ESTROGEN
   PROGESTOGEN
+  TESTOSTERONE
 }
 
 enum ProductForm {
   INJECTION_PEN
+  INJECTION_VIAL
   GEL
   PATCH
   TABLET
   CAPSULE
   SPRAY
+  PELLET
 }
 
 enum PrescriptionStatus {
