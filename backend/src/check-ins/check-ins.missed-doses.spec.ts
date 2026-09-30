@@ -42,7 +42,7 @@ describe('CheckInsService.submit — missed GLP-1 doses', () => {
     ]);
     await service.submit('tok', { answers, wantsToReorder: true, feeling: 'GOOD' as any });
 
-    expect(prisma.doseEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { prescriptionItemId: 'item-1', status: { not: 'SCHEDULED' } } }));
+    expect(prisma.doseEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { prescriptionItemId: 'item-1', status: { not: 'SCHEDULED' }, scheduledFor: { lte: expect.any(Date) } } }));
     expect(savedFlags(prisma)).toEqual([expect.objectContaining({ severity: 'WARNING', description: expect.stringMatching(/^2 doses in a row not taken/) })]);
   });
 

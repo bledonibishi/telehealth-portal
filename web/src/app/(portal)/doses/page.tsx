@@ -9,7 +9,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction';
 import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
 import { differenceInCalendarDays, format, formatDistanceToNow, isPast, isToday } from 'date-fns';
-import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, UNMARK_DOSE } from '@/graphql/dosing';
+import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '@/graphql/dosing';
 import '@/styles/dose-calendar.css';
 
 type DoseEvent = {
@@ -44,31 +44,17 @@ const shortStrength = (label: string) => label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?.
 // product's licence (semaglutide: within 5 days; otherwise skip to the next one).
 // Products not listed get "ask your clinician" rather than a guess.
 const LATE_DOSE_WINDOW_DAYS: Record<string, number> = { Semaglutide: 5 };
-// Mirrors the backend: 2+ doses in a row not taken on a stepped-up dose needs a clinician's decision.
-const MISSED_IN_A_ROW_THRESHOLD = 2;
-
-function missedDoseAdvice(d: DoseEvent): string | null {
+function missedDoseAdvice(d: DoseEvent, needsClinician: boolean): string | null {
   if (d.product.category !== 'GLP1') return null;
   const daysLate = differenceInCalendarDays(new Date(), new Date(d.scheduledFor));
   if (daysLate < 1) return null;
+  // After several missed in a row, restarting at this dose is the clinician's call.
+  if (needsClinician) return 'You’ve missed several doses in a row — please message your clinician before taking this or your next dose.';
   const window = LATE_DOSE_WINDOW_DAYS[d.product.name];
   if (window === undefined) return 'Missed this dose? Message your clinician for advice before taking it late.';
   return daysLate <= window
     ? `Missed it? You can still take it today — it’s within ${window} days of the scheduled day. Then carry on with your usual day.`
     : `It’s more than ${window} days since this dose was due, so skip it and take your next one on your usual day. Never take two doses to catch up.`;
-}
-
-/** GLP-1 doses in a row not taken (missed or skipped), counting back from the latest logged one. */
-function glp1MissedInARow(doses: DoseEvent[]): { count: number; step: number | null } {
-  const logged = doses
-    .filter((d) => d.product.category === 'GLP1' && d.status !== 'SCHEDULED')
-    .sort((a, b) => b.scheduledFor.localeCompare(a.scheduledFor));
-  let count = 0;
-  for (const d of logged) {
-    if (d.status === 'TAKEN') break;
-    count++;
-  }
-  return { count, step: logged[0]?.strength.titrationStep ?? null };
 }
 
 function visualStatus(d: DoseEvent): keyof typeof COLORS {
@@ -93,16 +79,16 @@ function DoseChip(arg: EventContentArg) {
   );
 }
 
-function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }) {
+function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needsClinician: boolean; onClose: () => void }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
-  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
+  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
   const [markSkipped, { loading: skipping }] = useMutation(MARK_DOSE_SKIPPED, opts);
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
   const status = visualStatus(dose);
   const c = COLORS[status];
-  const advice = missedDoseAdvice(dose);
+  const advice = missedDoseAdvice(dose, needsClinician);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5">
@@ -173,8 +159,10 @@ export default function DosesPage() {
     [doses],
   );
 
-  const missed = useMemo(() => glp1MissedInARow(doses), [doses]);
-  const needsClinician = missed.count >= MISSED_IN_A_ROW_THRESHOLD && (missed.step ?? 0) > 1;
+  // Worked out by the backend on the active prescription only, so misses on a replaced one don't count.
+  const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
+  const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
+  const needsClinician: boolean = missed.needsClinician;
 
   const events: EventInput[] = doses.map((d) => {
     const c = COLORS[visualStatus(d)];
@@ -221,7 +209,7 @@ export default function DosesPage() {
         <>
           {needsClinician && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6" role="alert">
-              <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.count} doses in a row</p>
+              <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.missedInARow} doses in a row</p>
               <p className="text-sm text-amber-900/80 mt-1">
                 Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
                 strong side effects, so they may restart you on a lower one.
@@ -276,7 +264,7 @@ export default function DosesPage() {
 
             <div>
               {selected ? (
-                <DetailPanel dose={selected} onClose={() => setSelectedId(null)} />
+                <DetailPanel dose={selected} needsClinician={needsClinician} onClose={() => setSelectedId(null)} />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-100 p-5 text-sm text-slate-400">
                   Click a dose on the calendar to log it or see the details.

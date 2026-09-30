@@ -52,3 +52,12 @@ export const UNMARK_DOSE = gql`
     }
   }
 `;
+
+export const MY_MISSED_DOSE_STATUS = gql`
+  query MyMissedDoseStatus {
+    myMissedDoseStatus {
+      missedInARow
+      needsClinician
+    }
+  }
+`;

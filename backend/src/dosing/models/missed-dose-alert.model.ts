@@ -26,3 +26,12 @@ export class MissedDoseAlertModel {
   @Field({ nullable: true })
   lastTakenAt?: Date;
 }
+
+@ObjectType('MissedDoseStatus', { description: 'The signed-in patient’s own run of GLP-1 doses not taken, on their active prescription' })
+export class MissedDoseStatusModel {
+  @Field(() => Int)
+  missedInARow: number;
+
+  @Field({ description: 'They should talk to their clinician before the next injection' })
+  needsClinician: boolean;
+}

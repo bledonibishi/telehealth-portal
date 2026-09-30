@@ -11,12 +11,13 @@ export type MissedStreak = { count: number; since: Date | null; lastTakenAt: Dat
 /**
  * How many of the most recent logged doses in a row were not taken (missed,
  * or deliberately skipped — either way no drug went in), counting back from
- * the latest until one that was taken. Doses still scheduled (not yet due, or
- * inside the grace period) are ignored.
+ * the latest until one that was taken. Doses still scheduled (inside the
+ * grace period) are ignored, and so is anything scheduled after `now` — a
+ * future dose marked early can't cut short a run of missed ones.
  */
-export function missedStreak(events: { scheduledFor: Date; status: string; takenAt?: Date | null }[]): MissedStreak {
+export function missedStreak(events: { scheduledFor: Date; status: string; takenAt?: Date | null }[], now = new Date()): MissedStreak {
   const past = events
-    .filter((e) => e.status !== DoseStatus.SCHEDULED)
+    .filter((e) => e.status !== DoseStatus.SCHEDULED && e.scheduledFor.getTime() <= now.getTime())
     .sort((a, b) => b.scheduledFor.getTime() - a.scheduledFor.getTime());
   let count = 0;
   let since: Date | null = null;

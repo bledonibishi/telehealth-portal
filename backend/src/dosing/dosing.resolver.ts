@@ -6,7 +6,7 @@ import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
-import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
+import { MissedDoseAlertModel, MissedDoseStatusModel } from './models/missed-dose-alert.model';
 
 type ParentEvent = { prescriptionItem?: { product: ProductModel; strength: ProductStrengthModel } };
 
@@ -33,6 +33,12 @@ export class DosingResolver {
     @Args('toDays', { type: () => Int, nullable: true }) toDays?: number,
   ) {
     return this.dosing.calendarFor(patientId, { fromDays, toDays });
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => MissedDoseStatusModel, { description: 'Whether the signed-in patient should talk to their clinician before their next GLP-1 dose' })
+  myMissedDoseStatus(@CurrentUser() user: AuthUser) {
+    return this.dosing.missedDoseStatusFor(user.id);
   }
 
   @Authorized(...PRESCRIBERS)

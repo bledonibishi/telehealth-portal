@@ -359,6 +359,16 @@ type MissedDoseAlert {
   titrationStep: Int!
 }
 
+"""
+The signed-in patient’s own run of GLP-1 doses not taken, on their active prescription
+"""
+type MissedDoseStatus {
+  missedInARow: Int!
+
+  """They should talk to their clinician before the next injection"""
+  needsClinician: Boolean!
+}
+
 enum MonthlyCheckInState {
   COMPLETED
   READY
@@ -802,6 +812,11 @@ type Query {
   The authenticated patient's dose calendar — recent history plus what's ahead
   """
   myDoseCalendar(fromDays: Int, toDays: Int): [DoseEvent!]!
+
+  """
+  Whether the signed-in patient should talk to their clinician before their next GLP-1 dose
+  """
+  myMissedDoseStatus: MissedDoseStatus!
   myOnboarding: OnboardingSubmission!
   myOrders: [Order!]!
   myPrescriptions: [Prescription!]!

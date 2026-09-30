@@ -13,6 +13,12 @@ describe('missedStreak', () => {
     expect(missedStreak([ev('2026-09-01', 'MISSED'), ev('2026-09-08', 'MISSED'), ev('2026-09-15', 'TAKEN')]).count).toBe(0);
   });
 
+  it('ignores doses scheduled in the future, even if already marked', () => {
+    const now = d('2026-09-20');
+    const streak = missedStreak([ev('2026-09-01', 'TAKEN'), ev('2026-09-08', 'MISSED'), ev('2026-09-15', 'MISSED'), ev('2026-09-22', 'TAKEN')], now);
+    expect(streak.count).toBe(2);
+  });
+
   it('handles unsorted input and a patient who has never taken a dose', () => {
     const streak = missedStreak([ev('2026-09-15', 'MISSED'), ev('2026-09-08', 'MISSED')]);
     expect(streak).toEqual({ count: 2, since: d('2026-09-08'), lastTakenAt: null });

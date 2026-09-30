@@ -117,9 +117,8 @@ export class CheckInsService {
     const item = items.find((i) => i.product.category === ProductCategory.GLP1);
     if (!item) return null;
     const events = await this.prisma.doseEvent.findMany({
-      where: { prescriptionItemId: item.id, status: { not: DoseStatus.SCHEDULED } },
+      where: { prescriptionItemId: item.id, status: { not: DoseStatus.SCHEDULED }, scheduledFor: { lte: new Date() } },
       orderBy: { scheduledFor: 'desc' },
-      take: 12,
     });
     const streak = missedStreak(events);
     return needsRetitrationReview(streak, item.strength.titrationStep) ? retitrationFlag(streak, item.strength.label) : null;
