@@ -116,6 +116,13 @@ export enum ConsentType {
   TELEHEALTH = 'TELEHEALTH',
 }
 
+export enum DoseStatus {
+  SCHEDULED = 'SCHEDULED',
+  TAKEN = 'TAKEN',
+  MISSED = 'MISSED',
+  SKIPPED = 'SKIPPED',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;

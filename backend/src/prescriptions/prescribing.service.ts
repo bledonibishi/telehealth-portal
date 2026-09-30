@@ -7,6 +7,7 @@ import { ConsultationKind, OnboardingStatus, PrescriptionStatus, ProductCategory
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { RuleItem, RuleViolation, checkPrescribingRules } from './prescribing-rules';
 import { OrdersService } from './orders.service';
+import { DosingService } from '../dosing/dosing.service';
 
 export const DEFAULT_VALIDITY_DAYS = 180;
 const MAX_VALIDITY_DAYS = 365;
@@ -35,6 +36,7 @@ export class PrescribingService {
   constructor(
     private prisma: PrismaService,
     private orders: OrdersService,
+    private dosing: DosingService,
     private config: ConfigService,
   ) {}
 
@@ -104,6 +106,8 @@ export class PrescribingService {
       });
       // Anything not yet dispatched on the old prescription is replaced by the new one's first order.
       await this.orders.cancelPendingFor(input.supersedesId, 'Superseded by a new prescription', db);
+      // Its remaining scheduled doses no longer apply — the new item(s) get their own calendar below.
+      await this.dosing.cancelForPrescription(input.supersedesId, db);
     }
 
     const created = await db.prescription.create({
@@ -133,6 +137,11 @@ export class PrescribingService {
 
     // The first supply goes to the pharmacy queue straight away.
     await this.orders.createInitial(created, db);
+
+    // A calendar entry per scheduled dose, for whichever items have a fixed interval.
+    for (const item of created.items) {
+      await this.dosing.generateForItem(item, input.patientId, issuedAt, db);
+    }
 
     return db.prescription.update({
       where: { id: created.id },

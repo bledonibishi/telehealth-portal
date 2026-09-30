@@ -26,6 +26,7 @@ export const PRESCRIPTION_FRAGMENT = gql`
         id
         name
         brandName
+        kind
         requiresColdChain
       }
       strength {
@@ -185,6 +186,15 @@ export const CANCEL_PRESCRIPTION = gql`
       status
       cancelledAt
       cancelReason
+    }
+  }
+`;
+
+export const CHANGE_DOSE = gql`
+  ${PRESCRIPTION_FRAGMENT}
+  mutation ChangeDose($input: ChangeDoseInput!) {
+    changeDose(input: $input) {
+      ...PrescriptionFields
     }
   }
 `;

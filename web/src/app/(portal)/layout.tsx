@@ -10,6 +10,7 @@ import { MY_ONBOARDING } from '@/graphql/onboarding';
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
   { href: '/consultations', label: 'My consultations', icon: '📋' },
+  { href: '/doses', label: 'My doses', icon: '📅' },
   { href: '/messages', label: 'Messages', icon: '💬' },
   { href: '/prescription', label: 'Prescriptions', icon: '💊' },
 ];

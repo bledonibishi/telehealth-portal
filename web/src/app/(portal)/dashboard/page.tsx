@@ -32,6 +32,7 @@ function OrderTracker({ current }: { current: number }) {
 
 const QUICK_LINKS = [
   { href: '/consultations', icon: '📋', label: 'My consultations', hint: 'See the status of your treatment requests' },
+  { href: '/doses', icon: '📅', label: 'My doses', hint: 'When each dose is due, and what you’ve taken' },
   { href: '/messages', icon: '💬', label: 'Messages', hint: 'Talk to your clinical team' },
   { href: '/prescription', icon: '💊', label: 'Prescriptions & orders', hint: 'Full history and delivery tracking' },
 ];
@@ -133,7 +134,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {QUICK_LINKS.map((l) => (
           <Link
             key={l.href}

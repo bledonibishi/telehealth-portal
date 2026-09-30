@@ -113,7 +113,7 @@ export function ConsultationDetail({ id }: { id: string }) {
 
           <OnboardingSummary patientId={c.patient.id} />
 
-          {c.prescription && <PrescriptionCard prescription={c.prescription} />}
+          {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
 
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
