@@ -2,19 +2,22 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation } from '@apollo/client';
+import { useApolloClient, useMutation } from '@apollo/client';
 import { LOGIN_PATIENT } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
+  const apollo = useApolloClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const [loginPatient, { loading }] = useMutation(LOGIN_PATIENT, {
-    onCompleted(data) {
+    async onCompleted(data) {
       setToken(data.loginPatient.accessToken, data.loginPatient.refreshToken);
+      // Nothing cached for a previous session may render under this identity.
+      await apollo.clearStore();
       router.push('/dashboard');
     },
     onError(err) {

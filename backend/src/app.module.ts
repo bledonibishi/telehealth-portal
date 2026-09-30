@@ -27,6 +27,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { WeightJourneyModule } from './weight-journey/weight-journey.module';
 import { DosingModule } from './dosing/dosing.module';
+import { SymptomsModule } from './symptoms/symptoms.module';
 import { TrendsModule } from './trends/trends.module';
 import { LabsModule } from './labs/labs.module';
 
@@ -74,6 +75,7 @@ import { LabsModule } from './labs/labs.module';
     CheckInsModule,
     WeightJourneyModule,
     DosingModule,
+    SymptomsModule,
     TrendsModule,
     LabsModule
   ],

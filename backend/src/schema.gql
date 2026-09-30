@@ -480,6 +480,10 @@ type Mutation {
 
   """Enter a new lab result for a patient"""
   recordLabResult(input: RecordLabResultInput!): LabResult!
+  """
+  Save a filled-in symptom questionnaire. Replaces one saved in the last 24 hours.
+  """
+  recordMySymptoms(input: RecordSymptomsInput!): SymptomAssessment!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
 
   """Hand a claimed consultation back to the queue"""
@@ -895,6 +899,16 @@ type Query {
   """The programme the patient signed up for on the website"""
   myProductKind: ConsultationKind
 
+  """
+  The signed-in patient’s symptom scores on their current programme’s scale, oldest first
+  """
+  mySymptomAssessments: [SymptomAssessment!]!
+
+  """
+  The symptom questionnaire for the signed-in patient’s programme. Null when it has none.
+  """
+  mySymptomScale: SymptomScaleDefinition
+
   """The signed-in patient’s own journey. Null for programmes without one."""
   myWeightJourney: WeightJourney
 
@@ -920,6 +934,9 @@ type Query {
 
   """A patient's prescriptions, newest first, including superseded ones"""
   patientPrescriptions(patientId: ID!): [Prescription!]!
+
+  """A patient’s symptom scores, oldest first"""
+  patientSymptomAssessments(patientId: ID!): [SymptomAssessment!]!
   patients: [PatientListItem!]!
 
   """
@@ -931,6 +948,11 @@ type Query {
   """Prescribable medicines; inactive ones only when asked"""
   products(includeInactive: Boolean = false, kind: ConsultationKind): [Product!]!
   questionnaire(kind: ConsultationKind!, stage: QuestionnaireStage!): Questionnaire!
+
+  """
+  A symptom questionnaire’s wording, for showing a patient’s item-by-item answers
+  """
+  symptomScaleDefinition(scale: SymptomScale!): SymptomScaleDefinition!
   weightJourneyForPatient(patientId: ID!): WeightJourney
   weightTimelineForPatient(from: DateTime!, limit: Int, patientId: ID!, to: DateTime!): WeightTimeline!
 }
@@ -1021,6 +1043,11 @@ input RecordLabResultInput {
   referenceRangeLow: Float
   unit: String!
   value: Float!
+}
+
+input RecordSymptomsInput {
+  """One answer per item of the patient’s scale"""
+  answers: [SymptomAnswerInput!]!
 }
 
 type RedFlag {
@@ -1116,6 +1143,71 @@ type Subscription {
   newMessage(consultationId: ID!): Message!
 }
 
+type SymptomAnswer {
+  itemId: String!
+  score: Int!
+}
+
+input SymptomAnswerInput {
+  itemId: String!
+  score: Int!
+}
+
+type SymptomAssessment {
+  answers: [SymptomAnswer!]!
+  domainScores: [SymptomDomainScore!]!
+  id: ID!
+  maxScore: Int!
+  minScore: Int!
+  recordedAt: DateTime!
+  scale: SymptomScale!
+
+  """e.g. "Mild", from the scale’s published bands"""
+  severity: String!
+  totalScore: Int!
+}
+
+type SymptomDomainScore {
+  domain: String!
+  label: String!
+  max: Int!
+  min: Int!
+  score: Int!
+}
+
+enum SymptomScale {
+  AMS
+  MRS
+}
+
+"""A symptom questionnaire, for rendering the form"""
+type SymptomScaleDefinition {
+  domains: [SymptomScaleDomain!]!
+  id: SymptomScale!
+  intro: String!
+  items: [SymptomScaleItem!]!
+  maxScore: Int!
+  minScore: Int!
+  name: String!
+
+  """Answer choices, lowest (no symptom) first"""
+  options: [SymptomScaleOption!]!
+}
+
+type SymptomScaleDomain {
+  id: String!
+  label: String!
+}
+
+type SymptomScaleItem {
+  domain: String!
+  id: String!
+  text: String!
+}
+
+type SymptomScaleOption {
+  label: String!
+  score: Int!
 type TrendPoint {
   checkInId: ID!
   date: DateTime!

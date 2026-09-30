@@ -240,6 +240,7 @@ model Patient {
   weightGoal    WeightGoal?
   weightEntries WeightEntry[]
   doseEvents    DoseEvent[]
+  symptomAssessments SymptomAssessment[]
   labResults    LabResult[]
 
   @@map("patients")
@@ -650,4 +651,29 @@ model Consent {
 
   @@index([patientId, type])
   @@map("consents")
+}
+
+enum SymptomScale {
+  MRS
+  AMS
+}
+
+// One filled-in symptom questionnaire (see src/symptoms/symptom-scales.ts):
+// the Menopause Rating Scale for HRT, the Aging Males' Symptoms scale for
+// TRT. Charted over time so patient and clinician can see which symptoms
+// treatment is actually helping.
+model SymptomAssessment {
+  id         String       @id @default(cuid())
+  patientId  String       @map("patient_id")
+  scale      SymptomScale
+  // [{ itemId, score }] exactly as answered; domain scores are derived on read.
+  answers    Json
+  totalScore Int          @map("total_score")
+  recordedAt DateTime     @default(now()) @map("recorded_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, recordedAt])
+  @@map("symptom_assessments")
 }
