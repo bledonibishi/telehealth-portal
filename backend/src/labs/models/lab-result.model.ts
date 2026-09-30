@@ -14,6 +14,9 @@ export class LabResultModel {
   @Field(() => LabResultKind)
   kind: LabResultKind;
 
+  @Field({ nullable: true, description: 'What was measured — required when kind is OTHER' })
+  analyteName?: string;
+
   @Field(() => Float)
   value: number;
 

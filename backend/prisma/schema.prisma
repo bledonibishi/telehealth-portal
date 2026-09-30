@@ -410,6 +410,8 @@ model LabResult {
   id                 String         @id @default(cuid())
   patientId          String         @map("patient_id")
   kind               LabResultKind
+  // Required when kind is OTHER, since that kind alone doesn't say what was measured.
+  analyteName        String?        @map("analyte_name")
   value              Float
   unit               String
   referenceRangeLow  Float?         @map("reference_range_low")
@@ -430,7 +432,11 @@ model LabResult {
   enteredBy  Clinician? @relation("LabResultEnteredBy", fields: [enteredById], references: [id])
   reviewedBy Clinician? @relation("LabResultReviewedBy", fields: [reviewedById], references: [id])
 
-  @@index([patientId, kind, collectedAt])
+  // History queries filter by patient and sort by collection date across all
+  // kinds; the flagged-queue query filters flagged+unreviewed and sorts by
+  // collection date.
+  @@index([patientId, collectedAt])
+  @@index([flagged, reviewedAt, collectedAt])
   @@map("lab_results")
 }
 

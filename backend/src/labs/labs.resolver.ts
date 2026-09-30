@@ -15,7 +15,7 @@ export class LabsResolver {
   @Authorized('PATIENT')
   @Query(() => [LabResultModel], { description: "The authenticated patient's own lab history, most recent first" })
   myLabResults(@CurrentUser() user: AuthUser) {
-    return this.labs.listForPatient(user.id);
+    return this.labs.listForPatientSelf(user.id);
   }
 
   @Authorized(...PRESCRIBERS)

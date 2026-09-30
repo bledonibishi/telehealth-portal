@@ -266,6 +266,8 @@ enum DoseStatus {
 }
 
 type LabResult {
+  """What was measured — required when kind is OTHER"""
+  analyteName: String
   collectedAt: DateTime!
   createdAt: DateTime!
   enteredBy: Clinician
@@ -856,6 +858,9 @@ input QuizAnswerInput {
 }
 
 input RecordLabResultInput {
+  """What was measured — required when kind is OTHER"""
+  analyteName: String
+
   """When the specimen was collected, not when it was entered"""
   collectedAt: DateTime!
   kind: LabResultKind!
