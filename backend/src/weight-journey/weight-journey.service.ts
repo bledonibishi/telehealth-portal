@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CheckInsService } from '../check-ins/check-ins.service';
@@ -16,6 +17,15 @@ export const MAX_WEIGHT_KG = 300;
 // How long after finishing a check-in the dashboard keeps saying it's done,
 // before switching to the countdown to the next one.
 const COMPLETED_BANNER_DAYS = 14;
+
+const JOURNEY_INCLUDE = {
+  lead: { select: { productKind: true } },
+  weightGoal: true,
+  consultations: { orderBy: { submittedAt: 'asc' }, select: { kind: true, quizAnswers: true, submittedAt: true } },
+  checkIns: { orderBy: { createdAt: 'asc' } },
+  // Only the newest is needed for "current weight"; the full series is read through the timeline query.
+  weightEntries: { where: { voidedAt: null }, orderBy: { measuredAt: 'desc' }, take: 1 },
+} satisfies Prisma.PatientInclude;
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
@@ -127,18 +137,18 @@ export class WeightJourneyService {
 
   // ── internals ─────────────────────────────────────────────────────────────
 
+  /**
+   * Journeys for many patients at once (the patients list), built by the same code as the
+   * patient's own dashboard so the two always agree. Patients without a journey are skipped.
+   */
+  async summariesFor(patientIds: string[]): Promise<Map<string, WeightJourneyModel>> {
+    if (patientIds.length === 0) return new Map();
+    const patients = await this.prisma.patient.findMany({ where: { id: { in: patientIds } }, include: JOURNEY_INCLUDE });
+    return new Map(patients.filter((p) => this.kindOf(p) === ConsultationKind.GLP1).map((p) => [p.id, this.build(p)]));
+  }
+
   private load(patientId: string) {
-    return this.prisma.patient.findUnique({
-      where: { id: patientId },
-      include: {
-        lead: { select: { productKind: true } },
-        weightGoal: true,
-        consultations: { orderBy: { submittedAt: 'asc' }, select: { kind: true, quizAnswers: true, submittedAt: true } },
-        checkIns: { orderBy: { createdAt: 'asc' } },
-        // Only the newest is needed for "current weight"; the full series is read through the timeline query.
-        weightEntries: { where: { voidedAt: null }, orderBy: { measuredAt: 'desc' }, take: 1 },
-      },
-    });
+    return this.prisma.patient.findUnique({ where: { id: patientId }, include: JOURNEY_INCLUDE });
   }
 
   /** The loaded patient, or an error if they aren't on the weight-management programme. */

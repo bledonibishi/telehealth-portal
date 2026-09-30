@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLazyQuery, useQuery } from '@apollo/client';
 import { PRODUCTS } from '@/graphql/catalog';
 import { PRESCRIBING_CHECK } from '@/graphql/consultations';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Strength = { id: string; label: string; packDescription?: string | null; titrationStep?: number | null; defaultQuantity: number };
 type Product = {
@@ -43,6 +44,7 @@ export function PrescriptionForm({
   // …moving titrated ones to the next step of their protocol.
   stepUp?: boolean;
 }) {
+  const { t } = useI18n();
   const { data, loading } = useQuery(PRODUCTS, { variables: { kind } });
   const products: Product[] = data?.products ?? [];
 
@@ -114,8 +116,8 @@ export function PrescriptionForm({
     });
   };
 
-  if (loading) return <p className="text-sm text-gray-500">Loading medicines…</p>;
-  if (!products.length) return <p className="text-sm text-danger-500">No {kind} medicines are available to prescribe. An admin needs to add them to the catalog.</p>;
+  if (loading) return <p className="text-sm text-gray-500">{t('Loading medicines…')}</p>;
+  if (!products.length) return <p className="text-sm text-danger-500">{t('No {kind} medicines are available to prescribe. An admin needs to add them to the catalog.', { kind })}</p>;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -126,25 +128,25 @@ export function PrescriptionForm({
         return (
           <div key={i} className="border border-gray-200 rounded p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Medicine {i + 1}</span>
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Medicine {n}', { n: i + 1 })}</span>
               {rows.length > 1 && (
                 <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} className="text-xs text-gray-400 hover:text-danger-500">
-                  Remove
+                  {t('Remove')}
                 </button>
               )}
             </div>
             <div className="grid grid-cols-3 gap-3">
               <label className="col-span-2 block">
-                <span className="block text-xs font-medium text-gray-700 mb-1">Product</span>
+                <span className="block text-xs font-medium text-gray-700 mb-1">{t('Product')}</span>
                 <select required value={row.productId} onChange={(e) => chooseProduct(i, e.target.value)} className={inputCls}>
-                  <option value="">Select…</option>
+                  <option value="">{t('Select…')}</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id} disabled={chosenElsewhere.has(p.id)}>{productLabel(p)}</option>
                   ))}
                 </select>
               </label>
               <label className="block">
-                <span className="block text-xs font-medium text-gray-700 mb-1">Strength</span>
+                <span className="block text-xs font-medium text-gray-700 mb-1">{t('Strength')}</span>
                 <select required value={row.strengthId} disabled={!product} onChange={(e) => update(i, { strengthId: e.target.value })} className={inputCls}>
                   {product?.strengths.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -162,11 +164,11 @@ export function PrescriptionForm({
             )}
             <div className="grid grid-cols-4 gap-3">
               <label className="block">
-                <span className="block text-xs font-medium text-gray-700 mb-1">Packs</span>
+                <span className="block text-xs font-medium text-gray-700 mb-1">{t('Packs')}</span>
                 <input type="number" min={1} max={12} required value={row.quantity} onChange={(e) => update(i, { quantity: Number(e.target.value) })} className={inputCls} />
               </label>
               <label className="col-span-3 block">
-                <span className="block text-xs font-medium text-gray-700 mb-1">Directions (printed on the label)</span>
+                <span className="block text-xs font-medium text-gray-700 mb-1">{t('Directions (printed on the label)')}</span>
                 <textarea rows={2} required value={row.directions} onChange={(e) => update(i, { directions: e.target.value })} className={inputCls} />
               </label>
             </div>
@@ -176,25 +178,25 @@ export function PrescriptionForm({
 
       {kind === 'HRT' && rows.length < products.length && (
         <button type="button" onClick={() => setRows((rs) => [...rs, EMPTY_ROW])} className="text-sm text-brand-500 hover:underline">
-          + Add another medicine
+          {t('+ Add another medicine')}
         </button>
       )}
 
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="block text-xs font-medium text-gray-700 mb-1">Valid for</span>
+          <span className="block text-xs font-medium text-gray-700 mb-1">{t('Valid for')}</span>
           <select value={validityDays} onChange={(e) => setValidityDays(Number(e.target.value))} className={inputCls}>
-            {VALIDITY_OPTIONS.map((d) => <option key={d} value={d}>{d} days</option>)}
+            {VALIDITY_OPTIONS.map((d) => <option key={d} value={d}>{t('{n} days', { n: d })}</option>)}
           </select>
         </label>
         <label className="block">
-          <span className="block text-xs font-medium text-gray-700 mb-1">Repeats</span>
+          <span className="block text-xs font-medium text-gray-700 mb-1">{t('Repeats')}</span>
           <input type="number" min={0} max={11} value={refillsAllowed} onChange={(e) => setRefillsAllowed(Number(e.target.value))} className={inputCls} />
         </label>
       </div>
 
       <label className="block">
-        <span className="block text-xs font-medium text-gray-700 mb-1">Additional instructions (optional)</span>
+        <span className="block text-xs font-medium text-gray-700 mb-1">{t('Additional instructions (optional)')}</span>
         <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} />
       </label>
 
@@ -208,7 +210,7 @@ export function PrescriptionForm({
         <div className="bg-warn-50 border border-warn-500 rounded p-3 space-y-2">
           {needsReason.map((v) => <p key={v.code} className="text-sm text-gray-800">{v.message}</p>)}
           <label className="block">
-            <span className="block text-xs font-medium text-gray-700 mb-1">Clinical reason to proceed (recorded on the prescription)</span>
+            <span className="block text-xs font-medium text-gray-700 mb-1">{t('Clinical reason to proceed (recorded on the prescription)')}</span>
             <textarea rows={2} required value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} className={inputCls} />
           </label>
         </div>
@@ -216,9 +218,9 @@ export function PrescriptionForm({
 
       <div className="flex gap-2">
         <button type="submit" disabled={!canSubmit} className="bg-green-600 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
-          {submitting ? 'Issuing…' : submitLabel}
+          {submitting ? t('Issuing…') : t(submitLabel)}
         </button>
-        <button type="button" onClick={onCancel} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+        <button type="button" onClick={onCancel} className="text-sm text-gray-500 px-4 py-2">{t('Cancel')}</button>
       </div>
     </form>
   );

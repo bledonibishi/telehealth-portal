@@ -1,3 +1,4 @@
+import { useI18n } from '@/lib/i18n/I18nProvider';
 export type QuestionOption = { value: string; label: string; exclusive: boolean };
 export type Question = {
   id: string;
@@ -95,6 +96,7 @@ export default function QuizQuestionsFields({
   answers: QuizAnswers;
   onChange: (questionId: string, value: QuizAnswerValue) => void;
 }) {
+  const { t } = useI18n();
   const toggleMulti = (q: Question, value: string) => {
     const current = (answers[q.id] as string[]) ?? [];
     const option = q.options?.find((o) => o.value === value);
@@ -119,7 +121,7 @@ export default function QuizQuestionsFields({
 
           {q.type === 'single' && (
             <select className={inputCls} value={(answers[q.id] as string) ?? ''} onChange={(e) => onChange(q.id, e.target.value)}>
-              <option value="">Select…</option>
+              <option value="">{t('Select…')}</option>
               {q.options?.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
