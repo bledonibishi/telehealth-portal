@@ -26,6 +26,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { DosingModule } from './dosing/dosing.module';
+import { TrendsModule } from './trends/trends.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { DosingModule } from './dosing/dosing.module';
     OnboardingModule,
     CheckInsModule,
     DosingModule,
+    TrendsModule,
   ],
 })
 export class AppModule {}
