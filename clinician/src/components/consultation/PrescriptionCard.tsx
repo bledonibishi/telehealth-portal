@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@apollo/client';
-import { CANCEL_PRESCRIPTION } from '@/graphql/consultations';
+import { useMutation, useQuery } from '@apollo/client';
+import { CANCEL_PRESCRIPTION, CHANGE_DOSE, PATIENT_HISTORY } from '@/graphql/consultations';
 import { CREATE_REPEAT_ORDER, GET_ORDERS } from '@/graphql/orders';
 import { openAuthedDocument } from '@/lib/documents';
 import { hasAccess } from '@/lib/role';
+import { PrescriptionForm, PrescriptionSubmission, Row } from './PrescriptionForm';
 
 const STATUS_STYLE: Record<string, { label: string; border: string; text: string }> = {
   ACTIVE: { label: 'Prescription issued', border: 'border-green-200', text: 'text-green-700' },
@@ -15,8 +16,89 @@ const STATUS_STYLE: Record<string, { label: string; border: string; text: string
 
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 
-export function PrescriptionCard({ prescription: rx }: { prescription: any }) {
+function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: string; kind: 'HRT' | 'GLP1'; onDone: () => void }) {
+  const { data: history } = useQuery(PATIENT_HISTORY, { variables: { patientId } });
+  // The prescribing rules re-check the patient's intake answers, which live on a consultation of this kind.
+  const consultationId = history?.patientHistory?.find((c: any) => c.kind === kind)?.id;
+
+  const [reasonForChange, setReasonForChange] = useState('');
+  const [messageToPatient, setMessageToPatient] = useState('');
+  const [error, setError] = useState('');
+  const [changeDose, { loading }] = useMutation(CHANGE_DOSE, {
+    refetchQueries: [{ query: GET_ORDERS }],
+    onCompleted: onDone,
+    onError: (e) => setError(e.message),
+  });
+
+  const currentItems: Row[] = (rx.items ?? []).map((i: any) => ({
+    productId: i.product.id,
+    strengthId: i.strength.id,
+    quantity: i.quantity,
+    directions: i.directions,
+  }));
+
+  if (!consultationId) {
+    return <p className="text-xs text-gray-500">Can’t find this patient’s {kind} consultation to check the prescribing rules against.</p>;
+  }
+
+  return (
+    <div className="space-y-3 border-t border-gray-100 pt-3">
+      <label className="block">
+        <span className="block text-xs font-medium text-gray-700 mb-1">Reason for changing the dose (required)</span>
+        <textarea
+          rows={2}
+          required
+          value={reasonForChange}
+          onChange={(e) => setReasonForChange(e.target.value)}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+      </label>
+      <label className="block">
+        <span className="block text-xs font-medium text-gray-700 mb-1">Message to the patient (optional)</span>
+        <textarea
+          rows={2}
+          value={messageToPatient}
+          onChange={(e) => setMessageToPatient(e.target.value)}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+        />
+      </label>
+
+      {error && <p className="text-xs text-danger-500">{error}</p>}
+
+      <PrescriptionForm
+        consultationId={consultationId}
+        kind={kind}
+        submitting={loading}
+        submitLabel="Confirm dose change"
+        initialItems={currentItems}
+        stepUp={kind === 'GLP1'}
+        onCancel={onDone}
+        onSubmit={(input: PrescriptionSubmission) => {
+          if (!reasonForChange.trim()) return setError('A reason for the change is required');
+          setError('');
+          changeDose({
+            variables: {
+              input: {
+                prescriptionId: rx.id,
+                items: input.items,
+                reasonForChange: reasonForChange.trim(),
+                messageToPatient: messageToPatient.trim() || undefined,
+                notes: input.notes,
+                validityDays: input.validityDays,
+                refillsAllowed: input.refillsAllowed,
+                overrideReason: input.overrideReason,
+              },
+            },
+          });
+        }}
+      />
+    </div>
+  );
+}
+
+export function PrescriptionCard({ prescription: rx, patientId }: { prescription: any; patientId?: string }) {
   const [cancelling, setCancelling] = useState(false);
+  const [changingDose, setChangingDose] = useState(false);
   const [reason, setReason] = useState('');
   const [repeatMessage, setRepeatMessage] = useState('');
   const [cancel, { loading, error }] = useMutation(CANCEL_PRESCRIPTION, { onCompleted: () => setCancelling(false) });
@@ -30,6 +112,8 @@ export function PrescriptionCard({ prescription: rx }: { prescription: any }) {
   const canCancel = rx.status === 'ACTIVE' && isPrescriber;
   const expired = rx.validUntil && new Date(rx.validUntil) < new Date();
   const canRepeat = rx.status === 'ACTIVE' && !expired && isPrescriber && (rx.repeatsRemaining ?? 0) > 0;
+  const kind = rx.items?.[0]?.product?.kind as 'HRT' | 'GLP1' | undefined;
+  const canChangeDose = rx.status === 'ACTIVE' && !expired && isPrescriber && !!patientId && !!kind;
 
   return (
     <div className={`bg-white rounded-lg border ${style.border} p-4 space-y-3`}>
@@ -81,25 +165,36 @@ export function PrescriptionCard({ prescription: rx }: { prescription: any }) {
       {expired && rx.status === 'ACTIVE' && <p className="text-xs text-danger-500">Expired — a new prescription is needed.</p>}
       {repeatMessage && <p className="text-xs text-gray-600">{repeatMessage}</p>}
 
-      <div className="flex gap-3">
-        <button onClick={() => openAuthedDocument(rx.documentUrl)} className="text-xs font-medium text-brand-500 hover:underline">
-          View PDF
-        </button>
-        {canRepeat && (
-          <button
-            onClick={() => { setRepeatMessage(''); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
-            disabled={ordering}
-            className="text-xs font-medium text-brand-500 hover:underline disabled:opacity-50"
-          >
-            {ordering ? 'Ordering…' : 'Order repeat'}
+      {!changingDose && (
+        <div className="flex gap-3">
+          <button onClick={() => openAuthedDocument(rx.documentUrl)} className="text-xs font-medium text-brand-500 hover:underline">
+            View PDF
           </button>
-        )}
-        {canCancel && !cancelling && (
-          <button onClick={() => setCancelling(true)} className="text-xs text-danger-500 hover:underline">
-            Cancel prescription
-          </button>
-        )}
-      </div>
+          {canRepeat && (
+            <button
+              onClick={() => { setRepeatMessage(''); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
+              disabled={ordering}
+              className="text-xs font-medium text-brand-500 hover:underline disabled:opacity-50"
+            >
+              {ordering ? 'Ordering…' : 'Order repeat'}
+            </button>
+          )}
+          {canChangeDose && !cancelling && (
+            <button onClick={() => setChangingDose(true)} className="text-xs font-medium text-brand-500 hover:underline">
+              Change dose
+            </button>
+          )}
+          {canCancel && !cancelling && (
+            <button onClick={() => setCancelling(true)} className="text-xs text-danger-500 hover:underline">
+              Cancel prescription
+            </button>
+          )}
+        </div>
+      )}
+
+      {changingDose && kind && (
+        <ChangeDoseForm rx={rx} patientId={patientId!} kind={kind} onDone={() => setChangingDose(false)} />
+      )}
 
       {cancelling && (
         <form

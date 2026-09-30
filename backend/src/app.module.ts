@@ -26,6 +26,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { WeightJourneyModule } from './weight-journey/weight-journey.module';
+import { DosingModule } from './dosing/dosing.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { WeightJourneyModule } from './weight-journey/weight-journey.module';
     OnboardingModule,
     CheckInsModule,
     WeightJourneyModule,
+    DosingModule,
   ],
 })
 export class AppModule {}

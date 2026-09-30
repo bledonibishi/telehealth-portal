@@ -19,6 +19,11 @@ type ProductSeed = {
   form: ProductForm;
   coldChain?: boolean;
   weeksPerStep?: number;
+  // Days between doses, for the patient's dose calendar — only set where the
+  // regimen is a clean fixed interval (e.g. weekly, daily). Left unset for
+  // irregular regimens (e.g. twice-weekly patches) rather than showing an
+  // inaccurate schedule.
+  doseIntervalDays?: number;
   directions: string;
   strengths: StrengthSeed[];
 };
@@ -36,6 +41,7 @@ export const CATALOG: ProductSeed[] = [
     form: ProductForm.INJECTION_PEN,
     coldChain: true,
     weeksPerStep: 4,
+    doseIntervalDays: 7,
     directions: WEEKLY_INJECTION,
     strengths: [
       { label: '0.25 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 1 },
@@ -55,6 +61,7 @@ export const CATALOG: ProductSeed[] = [
     form: ProductForm.INJECTION_PEN,
     coldChain: true,
     weeksPerStep: 4,
+    doseIntervalDays: 7,
     directions: WEEKLY_INJECTION,
     strengths: [
       { label: '0.25 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 1 },
@@ -70,6 +77,7 @@ export const CATALOG: ProductSeed[] = [
     kind: ConsultationKind.HRT,
     category: ProductCategory.ESTROGEN,
     form: ProductForm.GEL,
+    doseIntervalDays: 1,
     directions: 'Apply 2 pumps once daily to the outer arm or inner thigh. Let it dry before dressing; do not apply to the breasts.',
     strengths: [{ label: '0.75 mg per pump', pack: '80 g pump dispenser (64 pumps)' }],
   },
@@ -80,6 +88,7 @@ export const CATALOG: ProductSeed[] = [
     kind: ConsultationKind.HRT,
     category: ProductCategory.ESTROGEN,
     form: ProductForm.GEL,
+    doseIntervalDays: 1,
     directions: 'Apply the contents of one sachet once daily to the lower trunk or thigh, alternating sides. Let it dry before dressing.',
     strengths: [
       { label: '0.5 mg sachet', pack: '28 sachets' },
@@ -108,6 +117,7 @@ export const CATALOG: ProductSeed[] = [
     kind: ConsultationKind.HRT,
     category: ProductCategory.PROGESTOGEN,
     form: ProductForm.CAPSULE,
+    doseIntervalDays: 1,
     directions: 'Take one capsule by mouth at bedtime every night (continuous regimen).',
     strengths: [{ label: '100 mg', pack: '30 capsules' }],
   },
@@ -123,6 +133,7 @@ export async function seedCatalog(prisma: PrismaClient) {
       form: p.form,
       requiresColdChain: p.coldChain ?? false,
       weeksPerStep: p.weeksPerStep ?? null,
+      doseIntervalDays: p.doseIntervalDays ?? null,
       defaultDirections: p.directions,
     };
     const product = await prisma.product.upsert({

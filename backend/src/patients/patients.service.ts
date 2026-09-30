@@ -1,10 +1,41 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
 import { UpdatePatientInput } from './dto/update-patient.input';
+import { CreatePatientInput } from './dto/create-patient.input';
 import { PrismaService } from '../prisma/prisma.service';
-import { PrescriptionStatus } from '../common/enums';
+import { AuditService } from '../audit/audit.service';
+import { PostHogService } from '../posthog/posthog.service';
+import { ConsentsService } from '../consents/consents.service';
+import { PrescribingService } from '../prescriptions/prescribing.service';
+import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
+import { evaluateAnswers } from '../questionnaires/evaluate';
+import {
+  ConsultationKind,
+  ConsultationStatus,
+  ConsentType,
+  OnboardingStatus,
+  PersonaStatus,
+  PhotoReviewStatus,
+  PrescriptionStatus,
+  UserRole,
+} from '../common/enums';
 
 const MIN_AGE = 18;
+
+// Default starter item(s) for a fast-tracked plan, keyed by the seeded
+// product slug(s) in backend/prisma/catalog.ts. HRT bundles an estrogen and
+// a progestogen together so the prescribing rules don't flag
+// ESTROGEN_WITHOUT_PROGESTOGEN and need an override reason.
+const STARTER_ITEMS: Record<ConsultationKind, Array<{ slug: string; label: string }>> = {
+  [ConsultationKind.GLP1]: [{ slug: 'semaglutide-wegovy', label: '0.25 mg' }],
+  [ConsultationKind.HRT]: [
+    { slug: 'estradiol-gel-oestrogel', label: '0.75 mg per pump' },
+    { slug: 'progesterone-utrogestan', label: '100 mg' },
+  ],
+};
 
 function ageInYears(dob: Date, now = new Date()): number {
   let age = now.getFullYear() - dob.getFullYear();
@@ -13,9 +44,24 @@ function ageInYears(dob: Date, now = new Date()): number {
   return age;
 }
 
+// Excludes visually-ambiguous characters (0/O, 1/l/I) since an admin has to
+// read and type this one.
+const TEMP_PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+function generateTempPassword(length = 12): string {
+  let password = '';
+  for (let i = 0; i < length; i++) password += TEMP_PASSWORD_CHARS[crypto.randomInt(TEMP_PASSWORD_CHARS.length)];
+  return password;
+}
+
 @Injectable()
 export class PatientsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+    private posthog: PostHogService,
+    private consents: ConsentsService,
+    private prescribing: PrescribingService,
+  ) {}
 
   // One query per relation (batched across all patients, not per row) so the
   // list can filter/sort by programme, review status and treatment status
@@ -99,5 +145,169 @@ export class PatientsService {
 
   findByEmail(email: string) {
     return this.prisma.patient.findUnique({ where: { email } });
+  }
+
+  // Admin fast-track: creates a patient with personal info, a programme
+  // (Lead.productKind — the list/detail views read the programme from the
+  // lead, not the consultation), and optionally a fully-approved onboarding
+  // plus an issued starter prescription. Bypasses the normal
+  // licence/MFA/identity-verification gates deliberately — this is a
+  // shortcut for setting up test/demo patients, not a clinical decision.
+  async createByStaff(actorId: string, input: CreatePatientInput) {
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    if (!firstName || !lastName) throw new BadRequestException('Please enter a first and last name');
+
+    const email = input.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Please enter a valid email address');
+
+    if (input.password !== undefined && input.password.trim().length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
+    }
+
+    const dateOfBirth = new Date(input.dateOfBirth);
+    if (Number.isNaN(dateOfBirth.getTime()) || dateOfBirth > new Date()) {
+      throw new BadRequestException('Please enter a valid date of birth');
+    }
+    if (ageInYears(dateOfBirth) < MIN_AGE) {
+      throw new BadRequestException(`The patient must be at least ${MIN_AGE}`);
+    }
+
+    const [existingPatient, existingLead] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { email } }),
+      this.prisma.lead.findUnique({ where: { email } }),
+    ]);
+    if (existingPatient || existingLead) throw new ConflictException('A patient with this email already exists');
+
+    // Onboarding "completed" means a real, approved consultation — so its
+    // intake questionnaire answers are validated the same way a patient's own
+    // submission would be (see ConsultationsService.submitIntakeQuiz).
+    let quizAnswers: ReturnType<typeof evaluateAnswers>['answers'] = [];
+    let quizFlags: ReturnType<typeof evaluateAnswers>['flags'] = [];
+    let questionnaireVersion: string | undefined;
+    if (input.onboardingCompleted) {
+      const intake = findQuestionnaire(input.plan, 'INTAKE');
+      const evaluation = evaluateAnswers(intake, input.quizAnswers ?? [], true);
+      if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+      quizAnswers = evaluation.answers;
+      quizFlags = evaluation.flags;
+      questionnaireVersion = versionTag(intake);
+    }
+
+    // An admin can set the password directly; otherwise generate a readable
+    // one (not a 32-char hex blob) since they need to actually type it to log
+    // in as this test patient. Either way it's returned once, below, and
+    // never stored anywhere but its bcrypt hash.
+    const password = input.password?.trim() || generateTempPassword();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const now = new Date();
+
+    const patient = await this.prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.create({
+        data: { email, firstName, lastName, productKind: input.plan, quizAnswers: [], convertedAt: now },
+      });
+
+      const created = await tx.patient.create({
+        data: {
+          email,
+          passwordHash,
+          firstName,
+          lastName,
+          dateOfBirth,
+          leadId: lead.id,
+          activatedAt: now,
+          phone: input.phone?.trim() || null,
+          addressLine1: input.addressLine1?.trim() || null,
+          addressLine2: input.addressLine2?.trim() || null,
+          city: input.city?.trim() || null,
+          postcode: input.postcode?.trim() || null,
+          country: input.country?.trim() || null,
+        },
+      });
+
+      if (input.onboardingCompleted) {
+        await tx.onboardingSubmission.create({
+          data: {
+            patientId: created.id,
+            status: OnboardingStatus.APPROVED,
+            personaStatus: PersonaStatus.VERIFIED,
+            photoReviewStatus: PhotoReviewStatus.APPROVED,
+            priorMedicationUse: input.priorMedicationUse ?? false,
+            submittedAt: now,
+            reviewedAt: now,
+            reviewedByClinicianId: actorId,
+          },
+        });
+
+        await this.consents.record(
+          created.id,
+          ConsentType.TELEHEALTH,
+          this.consents.current(ConsentType.TELEHEALTH).version,
+          {},
+          tx,
+        );
+
+        const consultation = await tx.consultation.create({
+          data: {
+            patientId: created.id,
+            clinicianId: actorId,
+            kind: input.plan,
+            status: ConsultationStatus.APPROVED,
+            quizAnswers: quizAnswers as any,
+            questionnaireVersion,
+            redFlags: { create: quizFlags as any },
+          },
+        });
+
+        const items = await this.resolveStarterItems(input.plan, tx);
+        await this.prescribing.issue(
+          {
+            consultationId: consultation.id,
+            patientId: created.id,
+            prescriberId: actorId,
+            kind: input.plan,
+            answers: quizAnswers,
+            items,
+            notes: 'Created via admin fast-track',
+          },
+          tx,
+        );
+      }
+
+      return created;
+    });
+
+    await this.audit.log({
+      actorId,
+      actorRole: UserRole.CLINICIAN,
+      action: 'PATIENT_CREATED_BY_STAFF',
+      resourceType: 'Patient',
+      resourceId: patient.id,
+      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted },
+    });
+    this.posthog.capture(actorId, 'patient_created_by_staff', {
+      plan: input.plan,
+      onboarding_completed: input.onboardingCompleted,
+    });
+
+    const record = await this.findById(patient.id);
+    return { ...record, temporaryPassword: password };
+  }
+
+  private async resolveStarterItems(kind: ConsultationKind, tx: Prisma.TransactionClient) {
+    const specs = STARTER_ITEMS[kind];
+    const items: Array<{ productId: string; strengthId: string; quantity: number; directions: string }> = [];
+    for (const spec of specs) {
+      const product = await tx.product.findUnique({ where: { slug: spec.slug }, include: { strengths: true } });
+      const strength = product?.strengths.find((s) => s.label === spec.label);
+      if (!product || !strength) throw new BadRequestException(`Starter product ${spec.slug} (${spec.label}) is not in the catalog`);
+      items.push({
+        productId: product.id,
+        strengthId: strength.id,
+        quantity: strength.defaultQuantity,
+        directions: product.defaultDirections ?? 'Follow the instructions provided with your medicine.',
+      });
+    }
+    return items;
   }
 }

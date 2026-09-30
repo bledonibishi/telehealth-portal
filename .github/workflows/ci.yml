@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+# Least-privilege default: nothing here pushes, comments, or otherwise
+# writes to the repo, so the token only needs to read it.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same branch/PR so pushes don't queue up stale checks.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides which package jobs actually need to run. Every job below is
+  # skipped (not un-triggered) when its inputs didn't change — a skipped job
+  # still reports a "skipped" conclusion to the Checks API, which the
+  # ci-gate job (and GitHub's required-status-check rule pointed at it)
+  # treats the same as success. A change to a shared root file (lockfile,
+  # turbo/workspace config, this workflow) runs everything, since any of
+  # those can affect every package.
+  detect:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      shared_types: ${{ steps.filter.outputs.shared_types == 'true' || steps.filter.outputs.root == 'true' }}
+      backend: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.root == 'true' }}
+      web: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.root == 'true' }}
+      clinician: ${{ steps.filter.outputs.clinician == 'true' || steps.filter.outputs.root == 'true' }}
+      website: ${{ steps.filter.outputs.website == 'true' || steps.filter.outputs.root == 'true' }}
+      mobile: ${{ steps.filter.outputs.mobile == 'true' || steps.filter.outputs.root == 'true' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: filter
+        with:
+          filters: |
+            shared_types:
+              - 'packages/shared-types/**'
+            backend:
+              - 'backend/**'
+              - 'packages/shared-types/**'
+            web:
+              - 'web/**'
+              - 'packages/shared-types/**'
+            clinician:
+              - 'clinician/**'
+              - 'packages/shared-types/**'
+            website:
+              - 'website/**'
+            mobile:
+              - 'mobile/**'
+              - 'packages/shared-types/**'
+            root:
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig.base.json'
+              - 'package.json'
+              - '.nvmrc'
+              - '.github/workflows/ci.yml'
+
+  shared-types:
+    name: shared-types / build
+    needs: detect
+    if: needs.detect.outputs.shared_types == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/shared-types
+
+  backend:
+    name: backend / build + test
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: telehealth
+          POSTGRES_PASSWORD: telehealth_dev
+          POSTGRES_DB: telehealth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U telehealth"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://telehealth:telehealth_dev@localhost:5432/telehealth
+      JWT_SECRET: ci-test-secret
+      JWT_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      PORT: 4000
+      ALLOWED_ORIGINS: http://localhost:3000
+      PRESCRIBER_MFA_REQUIRED: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/backend
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+      - run: pnpm exec turbo run test --filter=@telehealth/backend
+
+  web:
+    name: web / build
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/web
+
+  clinician:
+    name: clinician / build
+    needs: detect
+    if: needs.detect.outputs.clinician == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/clinician
+
+  website:
+    name: website / build
+    needs: detect
+    if: needs.detect.outputs.website == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/website
+
+  mobile:
+    name: mobile / typecheck
+    needs: detect
+    if: needs.detect.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @telehealth/mobile exec tsc --noEmit
+
+  # The single required status check. Individual package jobs above are
+  # skipped when not affected, and a skipped job still reports here as
+  # "skipped" (not "failure") — so this only fails when a job that actually
+  # ran, failed. Point branch protection's required check at this job, not
+  # at the individual package jobs, since those can legitimately not run.
+  ci-gate:
+    name: CI required checks
+    needs: [detect, shared-types, backend, web, clinician, website, mobile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        run: |
+          echo '${{ toJSON(needs) }}' > needs.json
+          fail=0
+          for job in shared-types backend web clinician website mobile; do
+            r=$(jq -r ".\"$job\".result" needs.json)
+            echo "$job: $r"
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              fail=1
+            fi
+          done
+          if [ "$fail" = "1" ]; then
+            echo "One or more required jobs failed."
+            exit 1
+          fi
+          echo "All required jobs passed or were not affected."

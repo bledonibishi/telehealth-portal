@@ -42,6 +42,27 @@ type AuthResponse {
   refreshToken: String
 }
 
+input ChangeDoseInput {
+  items: [PrescriptionItemInput!]!
+
+  """Sent to the patient as a message"""
+  messageToPatient: String
+
+  """Extra instructions printed on the new prescription"""
+  notes: String
+
+  """Required when the change goes against an overridable prescribing rule"""
+  overrideReason: String
+
+  """The current active prescription being replaced"""
+  prescriptionId: ID!
+
+  """Clinical reason for the change, kept on the audit log"""
+  reasonForChange: String!
+  refillsAllowed: Int
+  validityDays: Int
+}
+
 type CheckIn {
   answers: [QuizAnswer!]
 
@@ -200,6 +221,40 @@ input CreateLeadInput {
   stripeSessionId: String
 }
 
+input CreatePatientInput {
+  addressLine1: String
+  addressLine2: String
+  city: String
+  country: String
+  dateOfBirth: DateTime!
+  email: String!
+  firstName: String!
+  lastName: String!
+
+  """Mark onboarding and identity verification as fully approved"""
+  onboardingCompleted: Boolean! = true
+
+  """
+  Login password. Left blank, a random one is generated and returned in temporaryPassword
+  """
+  password: String
+  phone: String
+
+  """Programme to enrol the patient in"""
+  plan: ConsultationKind!
+  postcode: String
+
+  """
+  Onboarding question: has the patient used this treatment before? Affects GLP-1 starting-dose rules
+  """
+  priorMedicationUse: Boolean
+
+  """
+  Answers to the plan's medical intake questionnaire — required when onboardingCompleted is true
+  """
+  quizAnswers: [QuizAnswerInput!]
+}
+
 type DashboardMetrics {
   activePatients: Int!
   approvedConsultations: Int!
@@ -237,6 +292,24 @@ type DeliveryAddress {
   name: String!
   phone: String
   postcode: String!
+}
+
+type DoseEvent {
+  id: ID!
+  note: String
+  prescriptionItemId: ID!
+  product: Product
+  scheduledFor: DateTime!
+  status: DoseStatus!
+  strength: ProductStrength
+  takenAt: DateTime
+}
+
+enum DoseStatus {
+  MISSED
+  SCHEDULED
+  SKIPPED
+  TAKEN
 }
 
 type Lead {
@@ -290,6 +363,11 @@ type Mutation {
   cancelPrescription(id: ID!, reason: String!): Prescription!
 
   """
+  Change a patient's dose directly — supersedes the current active prescription with a new one, any time (not just at a monthly check-in)
+  """
+  changeDose(input: ChangeDoseInput!): Prescription!
+
+  """
   Take ownership of a consultation so no other doctor decides it at the same time
   """
   claimConsultation(id: ID!): Consultation!
@@ -308,6 +386,11 @@ type Mutation {
   correctWeightGoal(input: CorrectWeightGoalInput!): WeightJourney!
   createLead(input: CreateLeadInput!): Lead!
 
+  """
+  Fast-track: create a patient with personal info, a plan, and optionally fully-approved onboarding
+  """
+  createPatient(input: CreatePatientInput!): Patient!
+
   """Queue another supply against the prescription's repeats"""
   createRepeatOrder(prescriptionId: ID!): Order!
   declineConsultation(input: DeclineConsultationInput!): Consultation!
@@ -315,6 +398,12 @@ type Mutation {
   enableMfa(totpCode: String!): Boolean!
   loginClinician(input: LoginInput!): AuthResponse!
   loginPatient(input: LoginInput!): AuthResponse!
+
+  """
+  Deliberately not taking this dose (e.g. paused by a clinician), as opposed to forgetting it
+  """
+  markDoseSkipped(id: ID!, note: String): DoseEvent!
+  markDoseTaken(id: ID!): DoseEvent!
   markOrderDelivered(id: ID!): Order!
   markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Order!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
@@ -353,6 +442,9 @@ type Mutation {
   submitCheckIn(input: SubmitCheckInInput!, token: String!): CheckIn!
   submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
   submitOnboarding: OnboardingSubmission!
+
+  """Undo a taken/skipped mark"""
+  unmarkDose(id: ID!): DoseEvent!
   updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
 
   """
@@ -470,6 +562,11 @@ type Patient {
   leadId: String
   phone: String
   postcode: String
+
+  """
+  Only set once, in the response to createPatient — never stored or returned afterwards
+  """
+  temporaryPassword: String
 }
 
 type PatientListItem {
@@ -502,6 +599,11 @@ type PatientListItem {
 
   """The programme this patient signed up for"""
   productKind: ConsultationKind
+
+  """
+  Only set once, in the response to createPatient — never stored or returned afterwards
+  """
+  temporaryPassword: String
 }
 
 enum PersonaStatus {
@@ -598,6 +700,11 @@ type Product {
   brandName: String
   category: ProductCategory!
   defaultDirections: String
+
+  """
+  Days between doses, e.g. 7 for weekly — null when there is no dose calendar for this product
+  """
+  doseIntervalDays: Int
   form: ProductForm!
   id: ID!
   kind: ConsultationKind!
@@ -665,6 +772,11 @@ type Query {
 
   """The authenticated patient's own consultations"""
   myConsultations: [Consultation!]!
+
+  """
+  The authenticated patient's dose calendar — recent history plus what's ahead
+  """
+  myDoseCalendar(fromDays: Int, toDays: Int): [DoseEvent!]!
   myOnboarding: OnboardingSubmission!
   myOrders: [Order!]!
   myPrescriptions: [Prescription!]!
@@ -684,6 +796,9 @@ type Query {
   """Pharmacy fulfilment queue, newest first"""
   orders(status: OrderStatus): [Order!]!
   patient(id: ID!): Patient
+
+  """A patient's dose calendar"""
+  patientDoseCalendar(fromDays: Int, patientId: ID!, toDays: Int): [DoseEvent!]!
 
   """Prior consultations for a patient, newest first"""
   patientHistory(patientId: ID!): [Consultation!]!

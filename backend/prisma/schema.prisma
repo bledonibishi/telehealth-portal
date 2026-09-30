@@ -219,6 +219,7 @@ model Patient {
   consents      Consent[]
   weightGoal    WeightGoal?
   weightEntries WeightEntry[]
+  doseEvents    DoseEvent[]
 
   @@map("patients")
 }
@@ -338,6 +339,7 @@ model PrescriptionItem {
   prescription Prescription    @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
   product      Product         @relation(fields: [productId], references: [id])
   strength     ProductStrength @relation(fields: [strengthId], references: [id])
+  doseEvents   DoseEvent[]
 
   @@map("prescription_items")
 }
@@ -355,6 +357,10 @@ model Product {
   requiresColdChain Boolean          @default(false) @map("requires_cold_chain")
   // Minimum weeks on a titration step before stepping up.
   weeksPerStep      Int?             @map("weeks_per_step")
+  // Days between doses, e.g. 7 for a weekly GLP-1 injection, 1 for a daily
+  // gel/capsule. Null when the product has no clean fixed interval (e.g.
+  // twice-weekly patches) — no dose calendar is generated for those.
+  doseIntervalDays  Int?             @map("dose_interval_days")
   defaultDirections String?          @map("default_directions")
   active            Boolean          @default(true)
   createdAt         DateTime         @default(now()) @map("created_at")
@@ -364,6 +370,35 @@ model Product {
   prescriptionItems PrescriptionItem[]
 
   @@map("products")
+}
+
+enum DoseStatus {
+  SCHEDULED
+  TAKEN
+  MISSED
+  SKIPPED
+}
+
+// One scheduled occurrence of a medicine within a prescription item, e.g. a
+// single weekly GLP-1 injection. Generated ahead of time on a rolling window
+// (see DosingService) so the patient always has upcoming dates to see.
+model DoseEvent {
+  id                 String     @id @default(cuid())
+  prescriptionItemId String     @map("prescription_item_id")
+  patientId          String     @map("patient_id")
+  scheduledFor       DateTime   @map("scheduled_for")
+  status             DoseStatus @default(SCHEDULED)
+  takenAt            DateTime?  @map("taken_at")
+  note               String?
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Cascade)
+  patient          Patient          @relation(fields: [patientId], references: [id])
+
+  @@unique([prescriptionItemId, scheduledFor])
+  @@index([patientId, scheduledFor])
+  @@map("dose_events")
 }
 
 model ProductStrength {

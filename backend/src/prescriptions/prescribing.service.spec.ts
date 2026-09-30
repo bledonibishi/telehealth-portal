@@ -53,7 +53,7 @@ describe('PrescribingService checks', () => {
       onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }) },
     };
     config = { get: jest.fn((_k: string, fallback: string) => fallback) };
-    service = new PrescribingService(prisma, {} as any, config as any);
+    service = new PrescribingService(prisma, {} as any, {} as any, config as any);
   });
 
   it('accepts a verified, licensed prescriber with MFA', async () => {
@@ -84,13 +84,14 @@ describe('PrescribingService checks', () => {
 });
 
 describe('PrescribingService.issue', () => {
-  it('supersedes the old prescription and cancels its undispatched orders', async () => {
-    const strength = { id: 'str-2', label: '0.5 mg', titrationStep: 2, active: true, productId: 'sema', packDescription: null,
-      product: { id: 'sema', name: 'Semaglutide', brandName: 'Wegovy', kind: 'GLP1', category: 'GLP1', active: true } };
+  const strength = { id: 'str-2', label: '0.5 mg', titrationStep: 2, active: true, productId: 'sema', packDescription: null,
+    product: { id: 'sema', name: 'Semaglutide', brandName: 'Wegovy', kind: 'GLP1', category: 'GLP1', active: true } };
+
+  function setup(items: any[]) {
     const created = {
       id: 'rx-2', issuedAt: new Date(), validUntil: new Date(), refillsAllowed: 0, instructions: 'x',
       patient: { id: 'p-1', firstName: 'A', lastName: 'B', dateOfBirth: new Date('1980-01-01') },
-      prescriber: null, items: [],
+      prescriber: null, items,
     };
     const db: any = {
       productStrength: { findMany: jest.fn().mockResolvedValue([strength]) },
@@ -99,7 +100,13 @@ describe('PrescribingService.issue', () => {
       prescription: { update: jest.fn().mockResolvedValue(created), create: jest.fn().mockResolvedValue(created) },
     };
     const orders = { createInitial: jest.fn(), cancelPendingFor: jest.fn() };
-    const service = new PrescribingService(db, orders as any, { get: jest.fn() } as any);
+    const dosing = { generateForItem: jest.fn(), cancelForPrescription: jest.fn() };
+    const service = new PrescribingService(db, orders as any, dosing as any, { get: jest.fn() } as any);
+    return { db, orders, dosing, service, created };
+  }
+
+  it('supersedes the old prescription and cancels its undispatched orders and scheduled doses', async () => {
+    const { db, orders, dosing, service, created } = setup([]);
 
     await service.issue(
       {
@@ -111,6 +118,22 @@ describe('PrescribingService.issue', () => {
 
     expect(db.prescription.update).toHaveBeenCalledWith({ where: { id: 'rx-1' }, data: { status: 'SUPERSEDED' } });
     expect(orders.cancelPendingFor).toHaveBeenCalledWith('rx-1', 'Superseded by a new prescription', db);
+    expect(dosing.cancelForPrescription).toHaveBeenCalledWith('rx-1', db);
     expect(orders.createInitial).toHaveBeenCalledWith(created, db);
+  });
+
+  it('generates a dose calendar for each item of the new prescription', async () => {
+    const item = { id: 'item-1', prescriptionId: 'rx-2', productId: 'sema', quantity: 1, directions: 'Weekly', product: strength.product, strength };
+    const { db, dosing, service } = setup([item]);
+
+    await service.issue(
+      {
+        patientId: 'p-1', prescriberId: 'd-1', kind: 'GLP1' as any, answers: [],
+        items: [{ productId: 'sema', strengthId: 'str-2', quantity: 1, directions: 'Weekly' }],
+      },
+      db,
+    );
+
+    expect(dosing.generateForItem).toHaveBeenCalledWith(item, 'p-1', expect.any(Date), db);
   });
 });

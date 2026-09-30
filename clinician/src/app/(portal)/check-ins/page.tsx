@@ -257,7 +257,7 @@ export default function CheckInsPage() {
               <aside className="space-y-4">
                 <WeightTrend patientId={selected.patient.id} />
                 {selected.prescription ? (
-                  <PrescriptionCard prescription={selected.prescription} />
+                  <PrescriptionCard prescription={selected.prescription} patientId={selected.patient.id} />
                 ) : (
                   <p className="text-xs text-gray-500 bg-white rounded-lg border border-gray-200 p-4">No active prescription on file.</p>
                 )}

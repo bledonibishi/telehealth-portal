@@ -19,6 +19,7 @@ import {
   OrderStatus,
   CheckInOutcome,
   ConsentType,
+  DoseStatus,
 } from '@telehealth/shared-types';
 
 registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
@@ -40,6 +41,7 @@ registerEnumType(PrescriptionStatus, { name: 'PrescriptionStatus' });
 registerEnumType(OrderStatus, { name: 'OrderStatus' });
 registerEnumType(CheckInOutcome, { name: 'CheckInOutcome' });
 registerEnumType(ConsentType, { name: 'ConsentType' });
+registerEnumType(DoseStatus, { name: 'DoseStatus' });
 
 export {
   ConsultationStatus,
@@ -61,4 +63,5 @@ export {
   OrderStatus,
   CheckInOutcome,
   ConsentType,
+  DoseStatus,
 };
