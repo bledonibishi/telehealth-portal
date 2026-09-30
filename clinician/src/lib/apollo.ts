@@ -104,5 +104,12 @@ const splitLink =
 
 export const apolloClient = new ApolloClient({
   link: splitLink,
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      // Symptom questionnaire items and domains share ids across scales (e.g. "sleep"
+      // is in both MRS and AMS), so they are stored inside their scale, not by id.
+      SymptomScaleItem: { keyFields: false },
+      SymptomScaleDomain: { keyFields: false },
+    },
+  }),
 });

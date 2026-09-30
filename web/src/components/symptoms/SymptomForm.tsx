@@ -11,7 +11,8 @@ import type { SymptomAssessment, SymptomScale } from './types';
  */
 export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; previous?: SymptomAssessment | null; onDone: () => void }) {
   const [answers, setAnswers] = useState<Record<string, number>>(() =>
-    Object.fromEntries((previous?.answers ?? []).map((a) => [a.itemId, a.score])),
+    // Only from an assessment on this same questionnaire — the other scale reuses some item ids.
+    Object.fromEntries((previous?.scale === scale.id ? previous.answers : []).map((a) => [a.itemId, a.score])),
   );
   const [problem, setProblem] = useState<string | null>(null);
   const [save, { loading }] = useMutation(RECORD_MY_SYMPTOMS, { refetchQueries: [{ query: MY_SYMPTOM_ASSESSMENTS }], awaitRefetchQueries: true });

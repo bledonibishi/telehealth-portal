@@ -25,7 +25,10 @@ function Change({ now, before }: { now: number; before?: number }) {
 }
 
 /** The patient’s self-reported symptom scores: history with changes, and the latest item-by-item answers. */
-export default function SymptomsPanel({ assessments }: { assessments: SymptomAssessment[] }) {
+export default function SymptomsPanel({ assessments: all }: { assessments: SymptomAssessment[] }) {
+  // Scores from different scales aren't comparable, so show the current (latest) one only.
+  const latestScale = all[all.length - 1]?.scale;
+  const assessments = all.filter((a) => a.scale === latestScale);
   const latest = assessments[assessments.length - 1];
   const { data } = useQuery(SYMPTOM_SCALE_DEFINITION, { variables: { scale: latest?.scale }, skip: !latest });
   const scale = data?.symptomScaleDefinition;

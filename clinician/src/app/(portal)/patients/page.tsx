@@ -328,6 +328,7 @@ function Patients() {
       {selectedId && (
         <div className="flex-1 overflow-hidden flex flex-col">
           <PatientPanel
+            key={selectedId}
             patientId={selectedId}
             onClose={() => setSelectedId(null)}
           />

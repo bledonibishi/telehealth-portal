@@ -835,7 +835,9 @@ type Query {
   """The programme the patient signed up for on the website"""
   myProductKind: ConsultationKind
 
-  """The signed-in patient’s symptom scores, oldest first"""
+  """
+  The signed-in patient’s symptom scores on their current programme’s scale, oldest first
+  """
   mySymptomAssessments: [SymptomAssessment!]!
 
   """

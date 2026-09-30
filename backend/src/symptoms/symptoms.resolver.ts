@@ -19,9 +19,9 @@ export class SymptomsResolver {
   }
 
   @Authorized('PATIENT')
-  @Query(() => [SymptomAssessmentModel], { description: 'The signed-in patient’s symptom scores, oldest first' })
+  @Query(() => [SymptomAssessmentModel], { description: 'The signed-in patient’s symptom scores on their current programme’s scale, oldest first' })
   mySymptomAssessments(@CurrentUser() user: AuthUser) {
-    return this.symptoms.history(user.id);
+    return this.symptoms.ownHistory(user.id);
   }
 
   @Authorized('PATIENT')

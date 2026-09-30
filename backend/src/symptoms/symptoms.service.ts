@@ -23,10 +23,19 @@ export class SymptomsService {
     return this.toScaleModel(SCALES[scale]);
   }
 
-  /** The patient’s assessments, oldest first. */
-  async history(patientId: string): Promise<SymptomAssessmentModel[]> {
-    const rows = await this.prisma.symptomAssessment.findMany({ where: { patientId }, orderBy: { recordedAt: 'asc' } });
+  /** The patient’s assessments, oldest first — all of them, or only those on one scale. */
+  async history(patientId: string, scale?: SymptomScale): Promise<SymptomAssessmentModel[]> {
+    const rows = await this.prisma.symptomAssessment.findMany({ where: { patientId, ...(scale && { scale }) }, orderBy: { recordedAt: 'asc' } });
     return rows.map((r) => this.toAssessmentModel(r));
+  }
+
+  /**
+   * The patient’s own history on their current programme’s scale, so a chart never
+   * mixes MRS (0–44) and AMS (17–85) scores after a change of programme.
+   */
+  async ownHistory(patientId: string): Promise<SymptomAssessmentModel[]> {
+    const scale = await this.patientScale(patientId);
+    return scale ? this.history(patientId, scale.id) : [];
   }
 
   async record(patientId: string, answers: ScoredAnswer[]): Promise<SymptomAssessmentModel> {
@@ -41,13 +50,18 @@ export class SymptomsService {
       totalScore: checked.answers.reduce((sum, a) => sum + a.score, 0),
     };
 
-    const recent = await this.prisma.symptomAssessment.findFirst({
-      where: { patientId, scale: scale.id, recordedAt: { gte: new Date(Date.now() - REPLACE_WITHIN_HOURS * 3_600_000) } },
-      orderBy: { recordedAt: 'desc' },
+    const row = await this.prisma.$transaction(async (tx) => {
+      // Serialise saves per patient and scale, so two at once can't both miss the
+      // recent one and add two chart points; the lock ends with the transaction.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`symptoms:${patientId}:${scale.id}`}))`;
+      const recent = await tx.symptomAssessment.findFirst({
+        where: { patientId, scale: scale.id, recordedAt: { gte: new Date(Date.now() - REPLACE_WITHIN_HOURS * 3_600_000) } },
+        orderBy: { recordedAt: 'desc' },
+      });
+      return recent
+        ? tx.symptomAssessment.update({ where: { id: recent.id }, data })
+        : tx.symptomAssessment.create({ data: { patientId, ...data } });
     });
-    const row = recent
-      ? await this.prisma.symptomAssessment.update({ where: { id: recent.id }, data })
-      : await this.prisma.symptomAssessment.create({ data: { patientId, ...data } });
     return this.toAssessmentModel(row);
   }
 
@@ -57,8 +71,9 @@ export class SymptomsService {
       include: { lead: { select: { productKind: true } }, consultations: { orderBy: { submittedAt: 'asc' }, select: { kind: true } } },
     });
     if (!patient) return null;
-    // Same programme resolution as the Weight Journey.
-    const kind = patient.lead?.productKind ?? patient.consultations[patient.consultations.length - 1]?.kind ?? null;
+    // The latest consultation says which programme they're on now; the lead only
+    // says what they first signed up for, so it's the fallback.
+    const kind = patient.consultations[patient.consultations.length - 1]?.kind ?? patient.lead?.productKind ?? null;
     return scaleForKind(kind);
   }
 

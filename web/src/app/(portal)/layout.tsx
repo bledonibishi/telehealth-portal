@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useQuery } from '@apollo/client';
+import { useApolloClient, useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
@@ -57,8 +57,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     ...(scaleData?.mySymptomScale ? [SYMPTOMS_NAV] : []),
   ];
 
+  const apollo = useApolloClient();
   const handleLogout = () => {
     clearToken();
+    // Patient-scoped queries are cached without the patient in their key, so the
+    // next person to sign in on this browser must not be shown this one's data.
+    apollo.clearStore();
     router.replace('/login');
   };
 

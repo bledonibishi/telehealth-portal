@@ -13,6 +13,7 @@ export type DomainScore = { domain: string; label: string; score: number; min: n
 
 export type SymptomAssessment = {
   id: string;
+  scale: 'MRS' | 'AMS';
   recordedAt: string;
   totalScore: number;
   minScore: number;
