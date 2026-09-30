@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 
 type Prescription = {
+  issuedAt?: string | null;
   dispatchedAt?: string | null;
   outForDeliveryAt?: string | null;
   deliveredAt?: string | null;
@@ -20,7 +21,9 @@ export function trackerSteps(
   const steps: Step[] = [
     { label: 'Request sent', when: submittedAt },
     { label: 'Clinician review' },
-    { label: decisionLabel, when: status === 'APPROVED' || status === 'DECLINED' ? updatedAt : null },
+    // Approval issues the prescription, so its issue date is when it was approved — updatedAt
+    // moves on any later change to the consultation (and would show approval after dispatch).
+    { label: decisionLabel, when: status === 'APPROVED' ? prescription?.issuedAt ?? updatedAt : status === 'DECLINED' ? updatedAt : null },
     { label: 'Dispatched', when: prescription?.dispatchedAt },
     { label: 'Delivered', when: prescription?.deliveredAt },
   ];

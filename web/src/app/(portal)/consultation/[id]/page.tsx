@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -73,6 +74,13 @@ export default function ConsultationPage({ params }: { params: { id: string } })
 
   const chat = useConversationChat({ currentUserId });
   const messages = chat.messages;
+
+  // Links like "Message my clinician" land here with ?chat=open, straight into the conversation.
+  // Only on arrival — the dock's setter changes every render, and closing it must stick.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('chat') === 'open') chat.setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) return <Skeleton />;
   if (error) return <div className="p-8 text-sm text-danger-500">{error.message}</div>;
