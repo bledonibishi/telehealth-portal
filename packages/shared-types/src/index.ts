@@ -70,6 +70,12 @@ export enum CheckInStatus {
   COMPLETED = 'COMPLETED',
 }
 
+/** Validated symptom questionnaires: Menopause Rating Scale (HRT), Aging Males' Symptoms scale (TRT). */
+export enum SymptomScale {
+  MRS = 'MRS',
+  AMS = 'AMS',
+}
+
 export enum CheckInFeeling {
   GREAT = 'GREAT',
   GOOD = 'GOOD',
