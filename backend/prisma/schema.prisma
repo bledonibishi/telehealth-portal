@@ -48,6 +48,19 @@ enum CheckInStatus {
   COMPLETED
 }
 
+enum CheckInFeeling {
+  GREAT
+  GOOD
+  OKAY
+  DIFFICULTIES
+  NOT_WELL
+}
+
+enum WeightEntrySource {
+  PATIENT
+  STAFF
+}
+
 enum UploadKind {
   ID_DOCUMENT
   SELFIE
@@ -204,6 +217,8 @@ model Patient {
   prescriptions Prescription[]
   orders        Order[]
   consents      Consent[]
+  weightGoal    WeightGoal?
+  weightEntries WeightEntry[]
   doseEvents    DoseEvent[]
 
   @@map("patients")
@@ -455,6 +470,10 @@ model CheckIn {
   sentAt               DateTime?         @map("sent_at")
   answers              Json?
   wantsToReorder       Boolean?          @map("wants_to_reorder")
+  // Weight Journey: the weight and mood reported on submission, typed so the
+  // journey can chart them. The full answer set stays in `answers`.
+  weightKg             Decimal?          @map("weight_kg") @db.Decimal(4, 1)
+  feeling              CheckInFeeling?
   // Captured on submission: the programme, questionnaire wording, the flags the
   // answers raised, and the prescription the patient was on at the time.
   kind                 ConsultationKind? @map("kind")
@@ -478,7 +497,54 @@ model CheckIn {
   prescription Prescription? @relation("CheckInPrescription", fields: [prescriptionId], references: [id])
   reviewedBy   Clinician?    @relation(fields: [reviewedById], references: [id])
 
+  // The Weight Journey reads a patient's completed check-ins by date.
+  @@index([patientId, completedAt])
   @@map("check_ins")
+}
+
+// A patient's Weight Journey endpoints. The starting weight is snapshotted from
+// the intake questionnaire when the goal is created, so re-answering intake
+// later doesn't rewrite the baseline progress is measured against.
+model WeightGoal {
+  id               String   @id @default(cuid())
+  patientId        String   @unique @map("patient_id")
+  startingWeightKg Decimal  @map("starting_weight_kg") @db.Decimal(4, 1)
+  targetWeightKg   Decimal  @map("target_weight_kg") @db.Decimal(4, 1)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@map("weight_goals")
+}
+
+// A weight the patient recorded at a moment of their choosing — separate from the
+// monthly check-in (whose weight stays on `check_ins`). Append-only: an entry is never
+// edited or deleted; a mistake is voided, and staff fix one by voiding it and adding a
+// replacement that points back at it. A trigger enforces this for every client.
+model WeightEntry {
+  id              String            @id @default(cuid())
+  patientId       String            @map("patient_id")
+  weightKg        Decimal           @map("weight_kg") @db.Decimal(4, 1)
+  // When the weighing happened (chosen by the patient, default now) vs. when it was saved.
+  measuredAt      DateTime          @map("measured_at")
+  recordedAt      DateTime          @default(now()) @map("recorded_at")
+  source          WeightEntrySource @default(PATIENT)
+  note            String?
+  // Client-generated id so a double tap or retry can't record the same weighing twice.
+  clientRequestId String?           @map("client_request_id")
+  correctsId      String?           @unique @map("corrects_id")
+  voidedAt        DateTime?         @map("voided_at")
+  voidedById      String?           @map("voided_by_id")
+  voidReason      String?           @map("void_reason")
+
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  corrects    WeightEntry? @relation("WeightEntryCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
+  correctedBy WeightEntry? @relation("WeightEntryCorrection")
+
+  @@unique([patientId, clientRequestId])
+  @@index([patientId, measuredAt])
+  @@map("weight_entries")
 }
 
 model OnboardingSubmission {

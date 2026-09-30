@@ -70,6 +70,14 @@ export enum CheckInStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum CheckInFeeling {
+  GREAT = 'GREAT',
+  GOOD = 'GOOD',
+  OKAY = 'OKAY',
+  DIFFICULTIES = 'DIFFICULTIES',
+  NOT_WELL = 'NOT_WELL',
+}
+
 export enum RefundStatus {
   NOT_REQUIRED = 'NOT_REQUIRED',
   REFUNDED = 'REFUNDED',
