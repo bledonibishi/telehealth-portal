@@ -101,6 +101,26 @@ describe('CheckInReviewService.review', () => {
   });
 });
 
+describe('CheckInReviewService.queue', () => {
+  it('orders critical first, then warning, then unflagged, keeping completedAt order within each group', async () => {
+    const prisma = {
+      checkIn: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'unflagged-1', redFlags: [] },
+          { id: 'warning-1', redFlags: [{ severity: 'WARNING', description: 'Titration step-up with severe side effects' }] },
+          { id: 'unflagged-2', redFlags: [] },
+          { id: 'critical-1', redFlags: [{ severity: 'CRITICAL', description: 'Possible pancreatitis' }] },
+        ]),
+      },
+    };
+    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+
+    const queue = await service.queue();
+
+    expect(queue.map((c: any) => c.id)).toEqual(['critical-1', 'warning-1', 'unflagged-1', 'unflagged-2']);
+  });
+});
+
 describe('planFor', () => {
   it('maps GLP-1 titration steps and HRT combinations to the website plans', () => {
     expect(planFor('GLP1', [{ category: 'GLP1', titrationStep: 1 }])).toBe('GLP1_STARTER');
