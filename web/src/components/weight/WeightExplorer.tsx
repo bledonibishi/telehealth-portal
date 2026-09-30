@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
 import { MY_WEIGHT_JOURNEY, VOID_MY_WEIGHT } from '@/graphql/weight';
 import { useWeightTimeline } from '@/lib/useWeightTimeline';
@@ -109,8 +109,13 @@ export function WeightExplorer() {
     catch (e: any) { setVoidError(e?.message ?? 'Couldn’t remove that entry.'); }
   };
 
-  const target = meta?.targetWeightKg ?? null;
-  const startPoint = meta?.startingWeightKg != null && meta.startingAt != null ? { t: meta.startingAt, w: meta.startingWeightKg } : null;
+  // The target and starting weight come from the same journey query the card above refreshes when a
+  // target is saved, so the chart's line follows immediately (the timeline query only supplies the start *date*).
+  const { data: journeyData } = useQuery(MY_WEIGHT_JOURNEY);
+  const journey = journeyData?.myWeightJourney;
+  const target = journey ? journey.targetWeightKg ?? null : meta?.targetWeightKg ?? null;
+  const startKg = journey ? journey.startingWeightKg ?? null : meta?.startingWeightKg ?? null;
+  const startPoint = startKg !== null && meta?.startingAt != null ? { t: meta.startingAt, w: startKg } : null;
   const ready = key !== null && view !== null;
   const cur = key !== null ? fromMonthKey(key) : null;
   const monthLabel = cur ? `${MONTH_NAMES[cur.month]} ${cur.year}` : '';

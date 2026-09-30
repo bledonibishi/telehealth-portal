@@ -74,18 +74,24 @@ export class WeightJourneyService {
     assertValidWeight(target, 'Target weight');
     if (target >= starting) throw new BadRequestException('Target weight must be below the starting weight');
 
-    await this.prisma.weightGoal.upsert({
-      where: { patientId: input.patientId },
-      create: { patientId: input.patientId, startingWeightKg: starting, targetWeightKg: target },
-      update: { startingWeightKg: starting, targetWeightKg: target },
-    });
-    await this.audit.log({
-      actorId: staffId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'WEIGHT_GOAL_CORRECTED',
-      resourceType: 'WeightJourney',
-      resourceId: input.patientId,
-      metadata: { before, after: { startingWeightKg: starting, targetWeightKg: target }, reason: input.reason ?? null },
+    // The change and its audit row commit together, or not at all.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.weightGoal.upsert({
+        where: { patientId: input.patientId },
+        create: { patientId: input.patientId, startingWeightKg: starting, targetWeightKg: target },
+        update: { startingWeightKg: starting, targetWeightKg: target },
+      });
+      await this.audit.log(
+        {
+          actorId: staffId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'WEIGHT_GOAL_CORRECTED',
+          resourceType: 'WeightJourney',
+          resourceId: input.patientId,
+          metadata: { before, after: { startingWeightKg: starting, targetWeightKg: target }, reason: input.reason ?? null },
+        },
+        tx,
+      );
     });
     return this.forPatient(input.patientId) as Promise<WeightJourneyModel>;
   }
@@ -95,17 +101,26 @@ export class WeightJourneyService {
     if (!checkIn) throw new NotFoundException('Check-in not found');
     if (checkIn.status !== CheckInStatus.COMPLETED) throw new BadRequestException('Only a completed check-in has a weight to correct');
 
+    // Weight Journey corrections apply to weight-management patients only (same guard as every other journey action).
+    await this.requireGlp1(checkIn.patientId);
+
     const weight = round1(input.weightKg);
     assertValidWeight(weight, 'Weight');
 
-    await this.prisma.checkIn.update({ where: { id: checkIn.id }, data: { weightKg: weight } });
-    await this.audit.log({
-      actorId: staffId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CHECK_IN_WEIGHT_CORRECTED',
-      resourceType: 'CheckIn',
-      resourceId: checkIn.id,
-      metadata: { before: num(checkIn.weightKg), after: weight, reason: input.reason ?? null },
+    // The change and its audit row commit together, or not at all.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.checkIn.update({ where: { id: checkIn.id }, data: { weightKg: weight } });
+      await this.audit.log(
+        {
+          actorId: staffId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CHECK_IN_WEIGHT_CORRECTED',
+          resourceType: 'CheckIn',
+          resourceId: checkIn.id,
+          metadata: { before: num(checkIn.weightKg), after: weight, reason: input.reason ?? null },
+        },
+        tx,
+      );
     });
     return this.forPatient(checkIn.patientId) as Promise<WeightJourneyModel>;
   }

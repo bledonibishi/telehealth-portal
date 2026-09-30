@@ -14,6 +14,7 @@ const done = (id: string, daysAgo: number, kg: number, feeling = 'GOOD', notes?:
 describe('WeightJourneyService', () => {
   let patient: any;
   let prisma: any;
+  let tx: any;
   let audit: { log: jest.Mock };
   let service: WeightJourneyService;
 
@@ -30,7 +31,10 @@ describe('WeightJourneyService', () => {
       patient: { findUnique: jest.fn().mockImplementation(() => Promise.resolve(patient)) },
       weightGoal: { upsert: jest.fn().mockResolvedValue({}) },
       checkIn: { findUnique: jest.fn(), update: jest.fn() },
+      // Corrections run in a transaction: writes and the audit row must go through this `tx`, not `prisma`.
+      $transaction: jest.fn((fn: (t: any) => unknown) => fn(tx)),
     };
+    tx = { checkIn: { update: jest.fn() }, weightGoal: { upsert: jest.fn().mockResolvedValue({}) } };
     audit = { log: jest.fn() };
     service = new WeightJourneyService(prisma, audit as any, { buildUrl: (t: string) => `http://app/checkin?token=${t}` } as any);
   });
@@ -122,13 +126,22 @@ describe('WeightJourneyService', () => {
   });
 
   describe('staff corrections', () => {
-    it('corrects a check-in weight and audits the original', async () => {
+    it('corrects a check-in weight and audits the original — inside one transaction', async () => {
       prisma.checkIn.findUnique.mockResolvedValue({ id: 'ci-1', patientId: 'p-1', status: 'COMPLETED', weightKg: 150 });
       await service.correctCheckInWeight('doc-1', { checkInId: 'ci-1', weightKg: 105.04, reason: 'typo' });
-      expect(prisma.checkIn.update).toHaveBeenCalledWith({ where: { id: 'ci-1' }, data: { weightKg: 105 } });
+      expect(tx.checkIn.update).toHaveBeenCalledWith({ where: { id: 'ci-1' }, data: { weightKg: 105 } });
+      expect(prisma.checkIn.update).not.toHaveBeenCalled(); // never outside the transaction
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'CHECK_IN_WEIGHT_CORRECTED', resourceId: 'ci-1', metadata: { before: 150, after: 105, reason: 'typo' } }),
+        tx, // the audit row joins the same transaction
       );
+    });
+
+    it('rolls the correction back when the audit write fails (the error propagates out of the transaction)', async () => {
+      prisma.checkIn.findUnique.mockResolvedValue({ id: 'ci-1', patientId: 'p-1', status: 'COMPLETED', weightKg: 150 });
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(service.correctCheckInWeight('doc-1', { checkInId: 'ci-1', weightKg: 105, reason: 'x' })).rejects.toThrow('Audit log write failed');
+      expect(prisma.checkIn.update).not.toHaveBeenCalled();
     });
 
     it('refuses to correct a check-in that was never completed', async () => {
@@ -137,13 +150,30 @@ describe('WeightJourneyService', () => {
       expect(audit.log).not.toHaveBeenCalled();
     });
 
-    it('corrects the goal and audits before/after', async () => {
+    it('refuses to correct a check-in belonging to a patient outside the weight-management programme', async () => {
+      patient.lead.productKind = 'HRT';
+      patient.consultations = [{ kind: 'HRT', quizAnswers: [], submittedAt: new Date() }];
+      prisma.checkIn.findUnique.mockResolvedValue({ id: 'ci-9', patientId: 'p-1', status: 'COMPLETED', weightKg: 70 });
+      await expect(service.correctCheckInWeight('doc-1', { checkInId: 'ci-9', weightKg: 65, reason: 'x' })).rejects.toThrow(/weight-management/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.checkIn.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('corrects the goal and audits before/after — inside one transaction', async () => {
       patient.weightGoal = { startingWeightKg: 120, targetWeightKg: 90 };
       await service.correctGoal('doc-1', { patientId: 'p-1', targetWeightKg: 95 });
-      expect(prisma.weightGoal.upsert.mock.calls[0][0].update).toEqual({ startingWeightKg: 120, targetWeightKg: 95 });
+      expect(tx.weightGoal.upsert.mock.calls[0][0].update).toEqual({ startingWeightKg: 120, targetWeightKg: 95 });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'WEIGHT_GOAL_CORRECTED', metadata: expect.objectContaining({ before: { startingWeightKg: 120, targetWeightKg: 90 } }) }),
+        tx,
       );
+    });
+
+    it('does not save a goal correction when the audit write fails', async () => {
+      patient.weightGoal = { startingWeightKg: 120, targetWeightKg: 90 };
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(service.correctGoal('doc-1', { patientId: 'p-1', targetWeightKg: 95 })).rejects.toThrow('Audit log write failed');
     });
   });
 });

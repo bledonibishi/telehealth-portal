@@ -37,6 +37,8 @@ export function useWeightTimeline() {
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const requested = useRef(new Set<number>());
+  // Years whose last request failed, so Retry reloads those (not just the current year).
+  const failed = useRef(new Set<number>());
 
   const fetchYear = useCallback(
     async (year: number, fresh: boolean) => {
@@ -57,9 +59,11 @@ export function useWeightTimeline() {
           latestAt: ms(tl.latestAt),
         });
         if (tl.truncated) setTruncated(true);
-        setError(null);
+        failed.current.delete(year);
+        setError((e) => (failed.current.size === 0 ? null : e)); // stay in error while another year is still failing
       } catch (e: any) {
         requested.current.delete(year); // let a retry ask again
+        failed.current.add(year);
         setError(e?.message ?? 'Couldn’t load your weights');
       } finally {
         setPending((n) => n - 1);
@@ -88,9 +92,13 @@ export function useWeightTimeline() {
 
   const retry = useCallback(() => {
     setError(null);
-    for (const y of [...requested.current]) if (!(y in chunks)) requested.current.delete(y);
-    ensureRange(Date.now(), Date.now());
-  }, [chunks, ensureRange]);
+    const years = new Set(failed.current);
+    if (years.size === 0) years.add(new Date().getFullYear()); // nothing recorded as failed: redo the first (current-year) load
+    for (const y of years) {
+      requested.current.add(y);
+      void fetchYear(y, true);
+    }
+  }, [fetchYear]);
 
   useEffect(() => {
     ensureRange(Date.now(), Date.now()); // the current year first: it also tells us the earliest/latest dates

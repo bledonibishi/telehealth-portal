@@ -69,19 +69,24 @@ export class WeightMeasurementsService {
     if (!entry || entry.voidedAt) throw new NotFoundException('That weight entry wasn’t found');
     if (entry.source !== 'PATIENT') throw new BadRequestException('This entry was corrected by your care team and can’t be removed here');
 
-    const { count } = await this.prisma.weightEntry.updateMany({
-      where: { id: entryId, patientId, voidedAt: null },
-      data: { voidedAt: new Date(), voidedById: patientId, voidReason: reason?.trim() || null },
-    });
-    if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
-
-    await this.audit.log({
-      actorId: patientId,
-      actorRole: UserRole.PATIENT,
-      action: 'WEIGHT_ENTRY_VOIDED',
-      resourceType: 'WeightEntry',
-      resourceId: entryId,
-      metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null },
+    // The void and its audit row commit together, or not at all.
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.weightEntry.updateMany({
+        where: { id: entryId, patientId, voidedAt: null },
+        data: { voidedAt: new Date(), voidedById: patientId, voidReason: reason?.trim() || null },
+      });
+      if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
+      await this.audit.log(
+        {
+          actorId: patientId,
+          actorRole: UserRole.PATIENT,
+          action: 'WEIGHT_ENTRY_VOIDED',
+          resourceType: 'WeightEntry',
+          resourceId: entryId,
+          metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null },
+        },
+        tx,
+      );
     });
     return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
   }
@@ -98,25 +103,29 @@ export class WeightMeasurementsService {
     const entry = await this.prisma.weightEntry.findUnique({ where: { id: input.entryId } });
     if (!entry) throw new NotFoundException('Weight entry not found');
     if (entry.voidedAt) throw new BadRequestException('That entry has already been voided or corrected');
+    await this.journey.requireGlp1(entry.patientId); // weight-management patients only
 
-    const replacement = await this.prisma.$transaction(async (tx) => {
+    // Void, replacement and audit row commit together, or not at all.
+    await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.weightEntry.updateMany({
         where: { id: entry.id, voidedAt: null },
         data: { voidedAt: new Date(), voidedById: staffId, voidReason: reason },
       });
       if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
-      return tx.weightEntry.create({
+      const replacement = await tx.weightEntry.create({
         data: { patientId: entry.patientId, weightKg, measuredAt: entry.measuredAt, note: entry.note, source: 'STAFF', correctsId: entry.id },
       });
-    });
-
-    await this.audit.log({
-      actorId: staffId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'WEIGHT_ENTRY_CORRECTED',
-      resourceType: 'WeightEntry',
-      resourceId: entry.id,
-      metadata: { before: num(entry.weightKg), after: weightKg, reason, replacementId: replacement.id, patientId: entry.patientId },
+      await this.audit.log(
+        {
+          actorId: staffId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'WEIGHT_ENTRY_CORRECTED',
+          resourceType: 'WeightEntry',
+          resourceId: entry.id,
+          metadata: { before: num(entry.weightKg), after: weightKg, reason, replacementId: replacement.id, patientId: entry.patientId },
+        },
+        tx,
+      );
     });
     return this.journey.forPatient(entry.patientId) as Promise<WeightJourneyModel>;
   }
@@ -126,20 +135,26 @@ export class WeightMeasurementsService {
     if (!why) throw new BadRequestException('Please give a reason');
     const entry = await this.prisma.weightEntry.findUnique({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Weight entry not found');
+    await this.journey.requireGlp1(entry.patientId); // weight-management patients only
 
-    const { count } = await this.prisma.weightEntry.updateMany({
-      where: { id: entryId, voidedAt: null },
-      data: { voidedAt: new Date(), voidedById: staffId, voidReason: why },
-    });
-    if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
-
-    await this.audit.log({
-      actorId: staffId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'WEIGHT_ENTRY_VOIDED',
-      resourceType: 'WeightEntry',
-      resourceId: entryId,
-      metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: why, patientId: entry.patientId },
+    // The void and its audit row commit together, or not at all.
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.weightEntry.updateMany({
+        where: { id: entryId, voidedAt: null },
+        data: { voidedAt: new Date(), voidedById: staffId, voidReason: why },
+      });
+      if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
+      await this.audit.log(
+        {
+          actorId: staffId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'WEIGHT_ENTRY_VOIDED',
+          resourceType: 'WeightEntry',
+          resourceId: entryId,
+          metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: why, patientId: entry.patientId },
+        },
+        tx,
+      );
     });
     return this.journey.forPatient(entry.patientId) as Promise<WeightJourneyModel>;
   }

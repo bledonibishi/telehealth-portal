@@ -100,7 +100,7 @@ describe('WeightMeasurementsService', () => {
         where: { id: 'w-1', patientId: 'p-1', voidedAt: null },
         data: expect.objectContaining({ voidedById: 'p-1', voidReason: 'typo', voidedAt: expect.any(Date) }),
       });
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'PATIENT', resourceId: 'w-1' }));
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'PATIENT', resourceId: 'w-1' }), prisma); // prisma doubles as `tx` here
     });
 
     it('looks the entry up scoped to the patient, so another patient’s id is simply not found', async () => {
@@ -136,7 +136,10 @@ describe('WeightMeasurementsService', () => {
       expect(prisma.weightEntry.create).toHaveBeenCalledWith({
         data: { patientId: 'p-1', weightKg: 109, measuredAt: entry.measuredAt, note: 'n', source: 'STAFF', correctsId: 'w-1' },
       });
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_CORRECTED', metadata: expect.objectContaining({ before: 190, after: 109, reason: 'typo', replacementId: 'w-2' }) }));
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'WEIGHT_ENTRY_CORRECTED', metadata: expect.objectContaining({ before: 190, after: 109, reason: 'typo', replacementId: 'w-2' }) }),
+        prisma, // the audit row is written inside the same transaction as the void + replacement
+      );
     });
 
     it('needs a reason and a valid weight, and cannot correct twice', async () => {
@@ -158,7 +161,32 @@ describe('WeightMeasurementsService', () => {
       prisma.weightEntry.findUnique.mockResolvedValue(entry);
       await expect(service.voidByStaff('doc-1', 'w-1', '')).rejects.toThrow(/reason/);
       await service.voidByStaff('doc-1', 'w-1', 'duplicate');
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'CLINICIAN' }));
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'CLINICIAN' }), prisma);
+    });
+  });
+
+  describe('audit failure and programme guard', () => {
+    const entry = { id: 'w-1', patientId: 'p-1', source: 'PATIENT', voidedAt: null, weightKg: 190, measuredAt: new Date('2026-09-29T07:51:00Z'), note: null };
+
+    it.each([
+      ['a patient voiding their own entry', () => { prisma.weightEntry.findFirst.mockResolvedValue(entry); return service.voidOwn('p-1', 'w-1'); }],
+      ['staff correcting an entry', () => { prisma.weightEntry.findUnique.mockResolvedValue(entry); return service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'typo' }); }],
+      ['staff voiding an entry', () => { prisma.weightEntry.findUnique.mockResolvedValue(entry); return service.voidByStaff('doc-1', 'w-1', 'duplicate'); }],
+    ])('fails as a whole when the audit write fails (%s)', async (_name, run) => {
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(run()).rejects.toThrow('Audit log write failed'); // thrown inside $transaction → the change rolls back
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it.each([
+      ['correct', () => service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'typo' })],
+      ['void', () => service.voidByStaff('doc-1', 'w-1', 'duplicate')],
+    ])('staff %s is refused for a patient outside the weight-management programme', async (_n, run) => {
+      prisma.weightEntry.findUnique.mockResolvedValue(entry);
+      journey.requireGlp1.mockRejectedValue(new BadRequestException('Weight Journey is only available on weight-management programmes'));
+      await expect(run()).rejects.toThrow(/weight-management/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
     });
   });
 
