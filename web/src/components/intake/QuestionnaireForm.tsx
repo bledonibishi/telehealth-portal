@@ -87,9 +87,9 @@ export function QuestionnaireForm({
 
             <div className="mt-3">
               {q.type === 'single' && (
-                <div className="space-y-2">
+                <div className="space-y-0.5">
                   {q.options?.map((o) => (
-                    <label key={o.value} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer">
+                    <label key={o.value} className="flex items-center gap-2.5 py-2 text-sm text-slate-700 cursor-pointer">
                       <input type="radio" name={q.id} checked={selected[0] === o.value} onChange={() => set(q.id, [o.value])} className="accent-brand-600" />
                       {o.label}
                     </label>
@@ -98,10 +98,10 @@ export function QuestionnaireForm({
               )}
 
               {q.type === 'multi' && (
-                <div className="space-y-2">
-                  <p className="text-xs text-slate-400">Select all that apply.</p>
+                <div className="space-y-0.5">
+                  <p className="text-xs text-slate-400 mb-1">Select all that apply.</p>
                   {q.options?.map((o) => (
-                    <label key={o.value} className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer">
+                    <label key={o.value} className="flex items-center gap-2.5 py-2 text-sm text-slate-700 cursor-pointer">
                       <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(q, o.value)} className="accent-brand-600" />
                       {o.label}
                     </label>

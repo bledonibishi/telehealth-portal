@@ -25,6 +25,7 @@ import { PostHogModule } from './posthog/posthog.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
+import { WeightJourneyModule } from './weight-journey/weight-journey.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { CheckInsModule } from './check-ins/check-ins.module';
     UploadsModule,
     OnboardingModule,
     CheckInsModule,
+    WeightJourneyModule,
   ],
 })
 export class AppModule {}

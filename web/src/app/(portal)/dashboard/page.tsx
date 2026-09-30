@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { MY_ORDERS } from '@/graphql/orders';
 import { ME_NAME } from '@/graphql/patient';
+import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
+import { WeightJourneyCard } from '@/components/weight/WeightJourneyCard';
 
 const STAGES = ['Prescribed', 'Dispatched', 'Out for delivery', 'Delivered'] as const;
 const STAGE_OF: Record<string, number> = { PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
@@ -40,6 +42,9 @@ export default function DashboardPage() {
   const { data: nameData } = useQuery(ME_NAME);
   const { data: consultData, loading: consultLoading } = useQuery(MY_CONSULTATIONS);
   const { data: ordersData, loading: ordersLoading } = useQuery(MY_ORDERS);
+  // Refetched on every visit, so a check-in just completed shows up straight away.
+  const { data: journeyData } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
+  const journey = journeyData?.myWeightJourney;
 
   const consultations = consultData?.myConsultations ?? [];
   const needsInfo = consultations.some((c: any) => c.status === 'MORE_INFO_REQUESTED');
@@ -53,11 +58,13 @@ export default function DashboardPage() {
   const firstName = nameData?.me?.firstName;
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
+      <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl font-bold text-slate-900">{firstName ? `Welcome back, ${firstName}` : 'Welcome back'}</h1>
         <p className="text-sm text-slate-500 mt-1">Here&rsquo;s where things stand with your treatment.</p>
       </div>
+
+      {journey && <WeightJourneyCard journey={journey} />}
 
       {!loading && needsInfo && (
         <div className="mb-4 bg-orange-50 border border-orange-100 rounded-2xl p-5 flex items-center justify-between gap-4">

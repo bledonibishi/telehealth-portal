@@ -1,0 +1,232 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { WeightMeasurementsService } from './weight-measurements.service';
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+
+describe('WeightMeasurementsService', () => {
+  let prisma: any;
+  let audit: { log: jest.Mock };
+  let journey: any;
+  let service: WeightMeasurementsService;
+
+  beforeEach(() => {
+    prisma = {
+      weightEntry: {
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn().mockResolvedValue({ id: 'w-new' }),
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        aggregate: jest.fn().mockResolvedValue({ _min: { measuredAt: null }, _max: { measuredAt: null } }),
+      },
+      checkIn: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        aggregate: jest.fn().mockResolvedValue({ _min: { completedAt: null }, _max: { completedAt: null } }),
+      },
+      $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
+    };
+    audit = { log: jest.fn() };
+    journey = {
+      requireGlp1: jest.fn().mockResolvedValue({ weightGoal: { targetWeightKg: 90 } }),
+      startingPoint: jest.fn().mockReturnValue({ kg: 120, at: new Date('2026-06-01T00:00:00Z') }),
+      forPatient: jest.fn().mockResolvedValue({ patientId: 'p-1' }),
+    };
+    service = new WeightMeasurementsService(prisma, audit as any, journey);
+  });
+
+  describe('add', () => {
+    it('saves the exact instant and rounds to one decimal', async () => {
+      const at = new Date(Date.now() - 2 * HOUR);
+      await service.add('p-1', { weightKg: 109.04, measuredAt: at, note: '  after run  ', clientRequestId: 'req-12345678' });
+      expect(prisma.weightEntry.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', weightKg: 109, measuredAt: at, note: 'after run', clientRequestId: 'req-12345678' } });
+    });
+
+    it('defaults to now, and allows several entries on the same day (nothing is unique per day)', async () => {
+      const before = Date.now();
+      await service.add('p-1', { weightKg: 109 });
+      await service.add('p-1', { weightKg: 108.6 });
+      expect(prisma.weightEntry.create).toHaveBeenCalledTimes(2);
+      const at = prisma.weightEntry.create.mock.calls[0][0].data.measuredAt.getTime();
+      expect(at).toBeGreaterThanOrEqual(before);
+    });
+
+    it.each([[0], [-1], [29.9], [300.1], [NaN], [Infinity]])('rejects weight %s', async (kg) => {
+      await expect(service.add('p-1', { weightKg: kg })).rejects.toThrow(BadRequestException);
+      expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects the future (beyond clock slack) and dates over five years back', async () => {
+      await expect(service.add('p-1', { weightKg: 100, measuredAt: new Date(Date.now() + HOUR) })).rejects.toThrow(/future/);
+      await expect(service.add('p-1', { weightKg: 100, measuredAt: new Date(Date.now() + 60_000) })).resolves.toBeDefined();
+      await expect(service.add('p-1', { weightKg: 100, measuredAt: new Date(Date.now() - 6 * 365 * DAY) })).rejects.toThrow(/years ago/);
+      await expect(service.add('p-1', { weightKg: 100, measuredAt: new Date('nope') })).rejects.toThrow(/valid date/);
+    });
+
+    it('rejects an over-long note and a runaway number of entries', async () => {
+      await expect(service.add('p-1', { weightKg: 100, note: 'x'.repeat(501) })).rejects.toThrow(/500/);
+      prisma.weightEntry.count.mockResolvedValue(200);
+      await expect(service.add('p-1', { weightKg: 100 })).rejects.toThrow(/lot of weights/);
+    });
+
+    it('treats a repeated client request id as already saved', async () => {
+      prisma.weightEntry.create.mockRejectedValue({ code: 'P2002' });
+      await expect(service.add('p-1', { weightKg: 100, clientRequestId: 'req-12345678' })).resolves.toEqual({ patientId: 'p-1' });
+    });
+
+    it('still surfaces a unique-violation it cannot explain, and other errors', async () => {
+      prisma.weightEntry.create.mockRejectedValue({ code: 'P2002' });
+      await expect(service.add('p-1', { weightKg: 100 })).rejects.toEqual({ code: 'P2002' });
+      prisma.weightEntry.create.mockRejectedValue(new Error('db down'));
+      await expect(service.add('p-1', { weightKg: 100, clientRequestId: 'req-12345678' })).rejects.toThrow('db down');
+    });
+
+    it('is refused for patients outside the programme', async () => {
+      journey.requireGlp1.mockRejectedValue(new BadRequestException('only weight-management'));
+      await expect(service.add('p-1', { weightKg: 100 })).rejects.toThrow(/weight-management/);
+      expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('voidOwn', () => {
+    const entry = { id: 'w-1', patientId: 'p-1', source: 'PATIENT', voidedAt: null, weightKg: 109, measuredAt: new Date() };
+
+    it('voids (never deletes) the patient’s own entry and audits it', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue(entry);
+      await service.voidOwn('p-1', 'w-1', 'typo');
+      expect(prisma.weightEntry.updateMany).toHaveBeenCalledWith({
+        where: { id: 'w-1', patientId: 'p-1', voidedAt: null },
+        data: expect.objectContaining({ voidedById: 'p-1', voidReason: 'typo', voidedAt: expect.any(Date) }),
+      });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'PATIENT', resourceId: 'w-1' }));
+    });
+
+    it('looks the entry up scoped to the patient, so another patient’s id is simply not found', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue(null);
+      await expect(service.voidOwn('p-2', 'w-1')).rejects.toThrow(NotFoundException);
+      expect(prisma.weightEntry.findFirst).toHaveBeenCalledWith({ where: { id: 'w-1', patientId: 'p-2' } });
+      expect(prisma.weightEntry.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses an already-voided entry and one corrected by staff', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue({ ...entry, voidedAt: new Date() });
+      await expect(service.voidOwn('p-1', 'w-1')).rejects.toThrow(NotFoundException);
+      prisma.weightEntry.findFirst.mockResolvedValue({ ...entry, source: 'STAFF' });
+      await expect(service.voidOwn('p-1', 'w-1')).rejects.toThrow(/care team/);
+    });
+
+    it('loses a race cleanly (voided between the read and the write)', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue(entry);
+      prisma.weightEntry.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.voidOwn('p-1', 'w-1')).rejects.toThrow(NotFoundException);
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('staff correction', () => {
+    const entry = { id: 'w-1', patientId: 'p-1', voidedAt: null, weightKg: 190, measuredAt: new Date('2026-09-29T07:51:00Z'), note: 'n' };
+
+    it('voids the original and adds a replacement at the same instant, in one transaction, with an audit trail', async () => {
+      prisma.weightEntry.findUnique.mockResolvedValue(entry);
+      prisma.weightEntry.create.mockResolvedValue({ id: 'w-2' });
+      await service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'typo' });
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.weightEntry.create).toHaveBeenCalledWith({
+        data: { patientId: 'p-1', weightKg: 109, measuredAt: entry.measuredAt, note: 'n', source: 'STAFF', correctsId: 'w-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_CORRECTED', metadata: expect.objectContaining({ before: 190, after: 109, reason: 'typo', replacementId: 'w-2' }) }));
+    });
+
+    it('needs a reason and a valid weight, and cannot correct twice', async () => {
+      await expect(service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: '  ' })).rejects.toThrow(/reason/);
+      await expect(service.correct('doc-1', { entryId: 'w-1', weightKg: 500, reason: 'x' })).rejects.toThrow(/between/);
+      prisma.weightEntry.findUnique.mockResolvedValue({ ...entry, voidedAt: new Date() });
+      await expect(service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'x' })).rejects.toThrow(/already/);
+      expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('creates no replacement when the void loses a race', async () => {
+      prisma.weightEntry.findUnique.mockResolvedValue(entry);
+      prisma.weightEntry.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'x' })).rejects.toThrow(/already/);
+      expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+    });
+
+    it('staff void needs a reason and audits', async () => {
+      prisma.weightEntry.findUnique.mockResolvedValue(entry);
+      await expect(service.voidByStaff('doc-1', 'w-1', '')).rejects.toThrow(/reason/);
+      await service.voidByStaff('doc-1', 'w-1', 'duplicate');
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'CLINICIAN' }));
+    });
+  });
+
+  describe('timeline', () => {
+    const from = new Date('2026-09-01T00:00:00Z');
+    const to = new Date('2026-09-30T23:59:59Z');
+    const e = (id: string, iso: string, kg: number) => ({ id, measuredAt: new Date(iso), weightKg: kg, note: null });
+
+    it('merges daily entries and check-ins oldest first, with change from the previous weighing', async () => {
+      prisma.weightEntry.findMany.mockResolvedValue([e('d2', '2026-09-29T07:51:00Z', 109), e('d1', '2026-09-28T08:32:00Z', 109.4)]);
+      prisma.checkIn.findMany.mockResolvedValue([{ id: 'c1', completedAt: new Date('2026-09-10T09:00:00Z'), weightKg: 111, feeling: 'GOOD' }]);
+      prisma.weightEntry.findFirst.mockResolvedValue(e('old', '2026-08-30T08:00:00Z', 112));
+      const t = await service.timeline('p-1', from, to);
+      expect(t.measurements.map((x) => [x.id, x.weightKg, x.kind, x.changeKg])).toEqual([
+        ['c1', 111, 'CHECK_IN', -1],
+        ['d1', 109.4, 'DAILY', -1.6],
+        ['d2', 109, 'DAILY', -0.4],
+      ]);
+      expect(t.measurements[0].feeling).toBe('GOOD');
+      expect(t.truncated).toBe(false);
+      expect(t.startingWeightKg).toBe(120);
+      expect(t.targetWeightKg).toBe(90);
+    });
+
+    it('compares the very first weighing with the starting weight', async () => {
+      prisma.weightEntry.findMany.mockResolvedValue([e('d1', '2026-09-28T08:32:00Z', 118.5)]);
+      expect((await service.timeline('p-1', from, to)).measurements[0].changeKg).toBe(-1.5);
+    });
+
+    it('reports the earliest and latest measurement across both sources for navigation', async () => {
+      prisma.weightEntry.aggregate.mockResolvedValue({ _min: { measuredAt: new Date('2026-07-05T00:00:00Z') }, _max: { measuredAt: new Date('2026-09-29T00:00:00Z') } });
+      prisma.checkIn.aggregate.mockResolvedValue({ _min: { completedAt: new Date('2026-06-20T00:00:00Z') }, _max: { completedAt: new Date('2026-09-10T00:00:00Z') } });
+      const t = await service.timeline('p-1', from, to);
+      expect([t.earliestAt, t.latestAt]).toEqual([new Date('2026-06-20T00:00:00Z'), new Date('2026-09-29T00:00:00Z')]);
+    });
+
+    it('is bounded: keeps the newest `limit` rows, flags truncation, and diffs against the dropped row', async () => {
+      // findMany is asked for limit+1 (newest first); here limit = 2 → 3 rows come back.
+      prisma.weightEntry.findMany.mockResolvedValue([e('d3', '2026-09-03T00:00:00Z', 108), e('d2', '2026-09-02T00:00:00Z', 109), e('d1', '2026-09-01T12:00:00Z', 110)]);
+      const t = await service.timeline('p-1', from, to, 2);
+      expect(prisma.weightEntry.findMany.mock.calls[0][0].take).toBe(3);
+      expect(t.truncated).toBe(true);
+      expect(t.measurements.map((x) => [x.id, x.changeKg])).toEqual([['d2', -1], ['d3', -1]]);
+    });
+
+    it('clamps the limit to the hard maximum', async () => {
+      await service.timeline('p-1', from, to, 10_000_000);
+      expect(prisma.weightEntry.findMany.mock.calls[0][0].take).toBe(5001);
+    });
+
+    it('rejects nonsense ranges', async () => {
+      await expect(service.timeline('p-1', to, from)).rejects.toThrow(/before/);
+      await expect(service.timeline('p-1', new Date('nope'), to)).rejects.toThrow(/valid/);
+      await expect(service.timeline('p-1', new Date('2000-01-01'), new Date('2026-01-01'))).rejects.toThrow(/years/);
+    });
+
+    it('never reads other patients’ rows: every query is scoped to the requested patient', async () => {
+      await service.timeline('p-7', from, to);
+      for (const call of [prisma.weightEntry.findMany, prisma.weightEntry.findFirst, prisma.weightEntry.aggregate, prisma.checkIn.findMany, prisma.checkIn.findFirst, prisma.checkIn.aggregate]) {
+        expect(call.mock.calls[0][0].where.patientId).toBe('p-7');
+      }
+    });
+
+    it('excludes voided entries from every read', async () => {
+      await service.timeline('p-1', from, to);
+      for (const call of [prisma.weightEntry.findMany, prisma.weightEntry.findFirst, prisma.weightEntry.aggregate]) {
+        expect(call.mock.calls[0][0].where.voidedAt).toBeNull();
+      }
+    });
+  });
+});

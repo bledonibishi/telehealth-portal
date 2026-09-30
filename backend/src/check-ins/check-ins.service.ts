@@ -136,8 +136,17 @@ export class CheckInsService {
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
 
-    const updated = await this.prisma.checkIn.update({
-      where: { token },
+    // The weight is asked in the questionnaire; keep a typed copy for the Weight Journey.
+    const weightAnswer = evaluation.answers.find((a) => a.questionId === 'weight_kg');
+    const weightKg = weightAnswer ? Math.round(Number(weightAnswer.value) * 10) / 10 : null;
+    if (kind === ConsultationKind.GLP1 && !(weightKg && weightKg > 0)) {
+      throw new BadRequestException('Please enter your weight');
+    }
+
+    // Conditional on the token still being live, so a double-tap or two open tabs
+    // can only ever complete the check-in once.
+    const { count } = await this.prisma.checkIn.updateMany({
+      where: { token, status: { not: CheckInStatus.COMPLETED } },
       data: {
         status: CheckInStatus.COMPLETED,
         completedAt: new Date(),
@@ -147,11 +156,15 @@ export class CheckInsService {
         questionnaireVersion: versionTag(questionnaire),
         prescriptionId: prescription?.id ?? null,
         wantsToReorder: input.wantsToReorder,
+        weightKg,
+        feeling: input.feeling,
         token: null,
         tokenExpiresAt: null,
       },
-      include: { patient: true },
     });
+    if (count === 0) throw new BadRequestException('This check-in has already been completed');
+
+    const updated = await this.prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id }, include: { patient: true } });
     return this.toModel(updated);
   }
 }

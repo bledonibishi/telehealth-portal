@@ -12,5 +12,6 @@ import { CheckInReviewService } from './check-in-review.service';
 @Module({
   imports: [PrismaModule, EmailModule, AuditModule, StripeModule, MessagingModule, PrescriptionsModule],
   providers: [CheckInsService, CheckInsResolver, CheckInReviewService],
+  exports: [CheckInsService],
 })
 export class CheckInsModule {}

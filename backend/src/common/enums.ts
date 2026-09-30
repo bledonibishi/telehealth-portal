@@ -11,6 +11,7 @@ import {
   PrescriptionProofType,
   OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
   RefundStatus,
   ProductCategory,
   ProductForm,
@@ -31,6 +32,7 @@ registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
 registerEnumType(OnboardingStepKey, { name: 'OnboardingStepKey' });
 registerEnumType(CheckInStatus, { name: 'CheckInStatus' });
+registerEnumType(CheckInFeeling, { name: 'CheckInFeeling' });
 registerEnumType(RefundStatus, { name: 'RefundStatus' });
 registerEnumType(ProductCategory, { name: 'ProductCategory' });
 registerEnumType(ProductForm, { name: 'ProductForm' });
@@ -51,6 +53,7 @@ export {
   PrescriptionProofType,
   OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
   RefundStatus,
   ProductCategory,
   ProductForm,

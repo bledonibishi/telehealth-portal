@@ -1,0 +1,221 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { CheckInStatus, UserRole } from '../common/enums';
+import { CheckInFeeling } from '../common/enums';
+import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
+import { WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel } from './models/weight-journey.model';
+import { assertValidWeight, WeightJourneyService } from './weight-journey.service';
+import { latestOf, RawMeasurement, sortMeasurements, withChanges } from './weight-timeline';
+import { round1 } from './weight-math';
+
+// A weighing can be back-dated (forgot to log it) but not made up in advance; a little
+// slack covers a phone clock running slightly ahead of the server's.
+const FUTURE_SLACK_MS = 5 * 60_000;
+const MAX_BACKDATE_YEARS = 5;
+const MAX_NOTE_LENGTH = 500;
+// Per patient per rolling 24h — far above real use, a guard against a runaway client.
+const MAX_ENTRIES_PER_DAY = 200;
+
+export const TIMELINE_MAX_LIMIT = 5000;
+const TIMELINE_MAX_SPAN_YEARS = 20;
+
+const num = (v: unknown): number => Number(v);
+
+@Injectable()
+export class WeightMeasurementsService {
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+    private journey: WeightJourneyService,
+  ) {}
+
+  // ── patient ───────────────────────────────────────────────────────────────
+
+  async add(patientId: string, input: AddWeightInput): Promise<WeightJourneyModel> {
+    await this.journey.requireGlp1(patientId);
+
+    const weightKg = round1(input.weightKg);
+    assertValidWeight(weightKg, 'Weight');
+
+    const now = Date.now();
+    const measuredAt = input.measuredAt ? new Date(input.measuredAt) : new Date(now);
+    if (Number.isNaN(measuredAt.getTime())) throw new BadRequestException('Please enter a valid date and time');
+    if (measuredAt.getTime() > now + FUTURE_SLACK_MS) throw new BadRequestException('The date and time can’t be in the future');
+    if (measuredAt.getTime() < now - MAX_BACKDATE_YEARS * 365 * 86_400_000) {
+      throw new BadRequestException(`The date can’t be more than ${MAX_BACKDATE_YEARS} years ago`);
+    }
+
+    const note = input.note?.trim() || null;
+    if (note && note.length > MAX_NOTE_LENGTH) throw new BadRequestException(`Notes can be up to ${MAX_NOTE_LENGTH} characters`);
+    const clientRequestId = input.clientRequestId?.trim() || null;
+    if (clientRequestId && clientRequestId.length > 100) throw new BadRequestException('Invalid request id');
+
+    const recent = await this.prisma.weightEntry.count({ where: { patientId, recordedAt: { gte: new Date(now - 86_400_000) } } });
+    if (recent >= MAX_ENTRIES_PER_DAY) throw new BadRequestException('You’ve recorded a lot of weights today — please try again tomorrow');
+
+    try {
+      await this.prisma.weightEntry.create({ data: { patientId, weightKg, measuredAt, note, clientRequestId } });
+    } catch (e: any) {
+      // The same submission arriving twice (double tap, retry): it's already saved, so succeed quietly.
+      if (!(e?.code === 'P2002' && clientRequestId)) throw e;
+    }
+    return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
+  }
+
+  /** A patient removes their own mistaken entry. It's voided, not deleted, and the change is audited. */
+  async voidOwn(patientId: string, entryId: string, reason?: string): Promise<WeightJourneyModel> {
+    const entry = await this.prisma.weightEntry.findFirst({ where: { id: entryId, patientId } });
+    if (!entry || entry.voidedAt) throw new NotFoundException('That weight entry wasn’t found');
+    if (entry.source !== 'PATIENT') throw new BadRequestException('This entry was corrected by your care team and can’t be removed here');
+
+    const { count } = await this.prisma.weightEntry.updateMany({
+      where: { id: entryId, patientId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedById: patientId, voidReason: reason?.trim() || null },
+    });
+    if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
+
+    await this.audit.log({
+      actorId: patientId,
+      actorRole: UserRole.PATIENT,
+      action: 'WEIGHT_ENTRY_VOIDED',
+      resourceType: 'WeightEntry',
+      resourceId: entryId,
+      metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null },
+    });
+    return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
+  }
+
+  // ── staff ─────────────────────────────────────────────────────────────────
+
+  /** Void the wrong entry and add a replacement at the same moment that points back at it. */
+  async correct(staffId: string, input: CorrectWeightEntryInput): Promise<WeightJourneyModel> {
+    const reason = input.reason?.trim();
+    if (!reason) throw new BadRequestException('Please give a reason for the correction');
+    const weightKg = round1(input.weightKg);
+    assertValidWeight(weightKg, 'Weight');
+
+    const entry = await this.prisma.weightEntry.findUnique({ where: { id: input.entryId } });
+    if (!entry) throw new NotFoundException('Weight entry not found');
+    if (entry.voidedAt) throw new BadRequestException('That entry has already been voided or corrected');
+
+    const replacement = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.weightEntry.updateMany({
+        where: { id: entry.id, voidedAt: null },
+        data: { voidedAt: new Date(), voidedById: staffId, voidReason: reason },
+      });
+      if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
+      return tx.weightEntry.create({
+        data: { patientId: entry.patientId, weightKg, measuredAt: entry.measuredAt, note: entry.note, source: 'STAFF', correctsId: entry.id },
+      });
+    });
+
+    await this.audit.log({
+      actorId: staffId,
+      actorRole: UserRole.CLINICIAN,
+      action: 'WEIGHT_ENTRY_CORRECTED',
+      resourceType: 'WeightEntry',
+      resourceId: entry.id,
+      metadata: { before: num(entry.weightKg), after: weightKg, reason, replacementId: replacement.id, patientId: entry.patientId },
+    });
+    return this.journey.forPatient(entry.patientId) as Promise<WeightJourneyModel>;
+  }
+
+  async voidByStaff(staffId: string, entryId: string, reason: string): Promise<WeightJourneyModel> {
+    const why = reason?.trim();
+    if (!why) throw new BadRequestException('Please give a reason');
+    const entry = await this.prisma.weightEntry.findUnique({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Weight entry not found');
+
+    const { count } = await this.prisma.weightEntry.updateMany({
+      where: { id: entryId, voidedAt: null },
+      data: { voidedAt: new Date(), voidedById: staffId, voidReason: why },
+    });
+    if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
+
+    await this.audit.log({
+      actorId: staffId,
+      actorRole: UserRole.CLINICIAN,
+      action: 'WEIGHT_ENTRY_VOIDED',
+      resourceType: 'WeightEntry',
+      resourceId: entryId,
+      metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: why, patientId: entry.patientId },
+    });
+    return this.journey.forPatient(entry.patientId) as Promise<WeightJourneyModel>;
+  }
+
+  // ── reading ───────────────────────────────────────────────────────────────
+
+  /**
+   * Every weighing — daily entries and monthly check-ins — in [from, to], oldest first, each
+   * with its change from the one before (even when that one lies outside the window). Bounded:
+   * at most `limit` rows, keeping the newest, with `truncated` set if there were more.
+   */
+  async timeline(patientId: string, from: Date, to: Date, limit?: number | null): Promise<WeightTimelineModel> {
+    if (!(from instanceof Date) || !(to instanceof Date) || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('Please give a valid date range');
+    }
+    if (from >= to) throw new BadRequestException('The start of the range must be before its end');
+    if (to.getTime() - from.getTime() > TIMELINE_MAX_SPAN_YEARS * 365 * 86_400_000) {
+      throw new BadRequestException(`Please ask for at most ${TIMELINE_MAX_SPAN_YEARS} years at a time`);
+    }
+    const max = Math.min(Math.max(Math.floor(limit ?? TIMELINE_MAX_LIMIT), 1), TIMELINE_MAX_LIMIT);
+
+    const patient = await this.journey.requireGlp1(patientId);
+    const start = this.journey.startingPoint(patient);
+
+    const entryWhere = { patientId, voidedAt: null };
+    const checkInWhere = { patientId, status: CheckInStatus.COMPLETED, weightKg: { not: null } };
+    const [entries, checkIns, prevEntry, prevCheckIn, entryBounds, checkInBounds] = await Promise.all([
+      this.prisma.weightEntry.findMany({
+        where: { ...entryWhere, measuredAt: { gte: from, lte: to } },
+        orderBy: { measuredAt: 'desc' },
+        take: max + 1,
+      }),
+      this.prisma.checkIn.findMany({
+        where: { ...checkInWhere, completedAt: { gte: from, lte: to } },
+        orderBy: { completedAt: 'desc' },
+        take: max + 1,
+      }),
+      this.prisma.weightEntry.findFirst({ where: { ...entryWhere, measuredAt: { lt: from } }, orderBy: { measuredAt: 'desc' } }),
+      this.prisma.checkIn.findFirst({ where: { ...checkInWhere, completedAt: { lt: from } }, orderBy: { completedAt: 'desc' } }),
+      this.prisma.weightEntry.aggregate({ where: entryWhere, _min: { measuredAt: true }, _max: { measuredAt: true } }),
+      this.prisma.checkIn.aggregate({ where: { ...checkInWhere, completedAt: { not: null } }, _min: { completedAt: true }, _max: { completedAt: true } }),
+    ]);
+
+    const raw: RawMeasurement[] = [
+      ...entries.map((e) => ({ id: e.id, measuredAt: e.measuredAt, weightKg: num(e.weightKg), kind: 'DAILY' as const, note: e.note ?? undefined })),
+      ...checkIns.map((c) => ({
+        id: c.id,
+        measuredAt: c.completedAt!,
+        weightKg: num(c.weightKg),
+        kind: 'CHECK_IN' as const,
+        feeling: (c.feeling as CheckInFeeling | null) ?? undefined,
+      })),
+    ];
+    const sorted = sortMeasurements(raw);
+    const truncated = sorted.length > max;
+    const dropped = truncated ? sorted.slice(0, sorted.length - max) : [];
+    const kept = truncated ? sorted.slice(sorted.length - max) : sorted;
+
+    // What the first returned point is compared against: the item just before it.
+    const prior = latestOf(
+      prevEntry ? { id: prevEntry.id, measuredAt: prevEntry.measuredAt, weightKg: num(prevEntry.weightKg), kind: 'DAILY' } : null,
+      prevCheckIn ? { id: prevCheckIn.id, measuredAt: prevCheckIn.completedAt!, weightKg: num(prevCheckIn.weightKg), kind: 'CHECK_IN' } : null,
+    );
+    const before = dropped.length ? dropped[dropped.length - 1].weightKg : prior?.weightKg ?? start?.kg ?? null;
+
+    const dates = [entryBounds._min.measuredAt, checkInBounds._min.completedAt].filter(Boolean) as Date[];
+    const latest = [entryBounds._max.measuredAt, checkInBounds._max.completedAt].filter(Boolean) as Date[];
+
+    return {
+      measurements: withChanges(kept, before).map((m) => ({ ...m, kind: m.kind as WeightMeasurementKind, feeling: m.feeling as CheckInFeeling | undefined })),
+      startingWeightKg: start?.kg,
+      startingAt: start?.at,
+      targetWeightKg: patient.weightGoal ? num(patient.weightGoal.targetWeightKg) : undefined,
+      earliestAt: dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : undefined,
+      latestAt: latest.length ? new Date(Math.max(...latest.map((d) => d.getTime()))) : undefined,
+      truncated,
+    };
+  }
+}

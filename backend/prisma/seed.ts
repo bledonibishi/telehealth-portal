@@ -198,6 +198,185 @@ async function main() {
 
   console.log('✓ Patients  emma (activated, onboarding approved) / james (pending activation)');
 
+  // ── Sofia — weight-management (GLP-1) patient with a Weight Journey ─────────
+  // Fully set up: paid, activated, onboarding approved, consultation approved with an
+  // intake weight, an active prescription, a goal, and two completed monthly check-ins.
+  // Journey: start 120 kg → 114 → 109 kg at the monthly check-ins, then daily weights down to 107.6 kg
+  // (target 90 kg). Her next check-in is
+  // due in ~10 days — reschedule it in the clinician portal (Patients → Check-in) to test.
+  const leadSofia = await prisma.lead.upsert({
+    where: { email: 'sofia.meyer@example.com' },
+    update: {},
+    create: {
+      email: 'sofia.meyer@example.com',
+      firstName: 'Sofia',
+      lastName: 'Meyer',
+      productKind: ConsultationKind.GLP1,
+      quizAnswers: GLP1_QUIZ,
+      stripeSessionId: 'cs_test_paid_003',
+      convertedAt: daysAgo(80),
+      createdAt: daysAgo(82),
+    },
+  });
+
+  const patientSofia = await prisma.patient.upsert({
+    where: { email: 'sofia.meyer@example.com' },
+    update: {},
+    create: {
+      email: 'sofia.meyer@example.com',
+      passwordHash: pw,
+      firstName: 'Sofia',
+      lastName: 'Meyer',
+      dateOfBirth: dob(1988, 11, 22),
+      leadId: leadSofia.id,
+      activatedAt: daysAgo(79),
+      phone: '+383 44 987 654',
+      addressLine1: 'Rruga Agim Ramadani 5',
+      city: 'Prishtinë',
+      postcode: '10000',
+      country: 'Kosovo',
+      createdAt: daysAgo(80),
+    },
+  });
+
+  await prisma.onboardingSubmission.upsert({
+    where: { patientId: patientSofia.id },
+    update: {},
+    create: {
+      patientId: patientSofia.id,
+      personaStatus: 'VERIFIED',
+      photoReviewStatus: 'APPROVED',
+      priorMedicationUse: false,
+      status: 'APPROVED',
+      submittedAt: daysAgo(79),
+      reviewedAt: daysAgo(78),
+      reviewedByClinicianId: doctor.id,
+    },
+  });
+
+  const consultSofia = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-sofia-approved' },
+    update: {},
+    create: {
+      id: 'seed-consult-sofia-approved',
+      patientId: patientSofia.id,
+      clinicianId: doctor.id,
+      kind: ConsultationKind.GLP1,
+      status: ConsultationStatus.APPROVED,
+      quizAnswers: [
+        ...GLP1_QUIZ,
+        // Medical-intake answers, in the shape the questionnaire engine stores them.
+        { questionId: 'height_cm', question: 'What is your height?', answer: '170 cm', value: '170', section: 'Weight management medical questionnaire' },
+        { questionId: 'weight_kg', question: 'What is your current weight?', answer: '120 kg', value: '120', section: 'Weight management medical questionnaire' },
+      ],
+      submittedAt: daysAgo(78),
+    },
+  });
+
+  // Prescribe the starting-dose strength of a catalogue GLP-1 product, when the catalogue is seeded.
+  const glp1Product = await prisma.product.findFirst({
+    where: { kind: ConsultationKind.GLP1, active: true },
+    orderBy: { slug: 'desc' },
+    include: { strengths: { where: { active: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
+  });
+  const sofiaRx = await prisma.prescription.upsert({
+    where: { consultationId: consultSofia.id },
+    update: {},
+    create: {
+      consultationId: consultSofia.id,
+      patientId: patientSofia.id,
+      prescriberId: doctor.id,
+      medication: glp1Product ? `${glp1Product.name} ${glp1Product.strengths[0]?.label ?? ''}`.trim() : 'Semaglutide (Wegovy) 0.25 mg',
+      dosage: '0.25 mg once weekly',
+      instructions: 'Inject subcutaneously once a week on the same day. Review dose after 4 weeks.',
+      issuedAt: daysAgo(77),
+      refillsAllowed: 5,
+      ...(glp1Product?.strengths[0] && {
+        items: {
+          create: {
+            productId: glp1Product.id,
+            strengthId: glp1Product.strengths[0].id,
+            quantity: 1,
+            directions: 'Inject 0.25 mg subcutaneously once a week.',
+          },
+        },
+      }),
+      orders: {
+        create: {
+          patientId: patientSofia.id,
+          sequence: 1,
+          status: 'DELIVERED',
+          pharmacyRef: 'PH-2026-00456',
+          dispatchedAt: daysAgo(75),
+          deliveredAt: daysAgo(73),
+        },
+      },
+    },
+  });
+
+  // Weight Journey: the goal, and two completed (already reviewed) monthly check-ins.
+  await prisma.weightGoal.upsert({
+    where: { patientId: patientSofia.id },
+    update: {},
+    create: { patientId: patientSofia.id, startingWeightKg: 120, targetWeightKg: 90 },
+  });
+
+  const sofiaCheckIns = [
+    { id: 'seed-checkin-sofia-1', daysAgo: 50, weightKg: 114, feeling: 'GREAT' as const, note: undefined },
+    { id: 'seed-checkin-sofia-2', daysAgo: 20, weightKg: 109, feeling: 'GOOD' as const, note: 'A bit tired in the first week, much better now.' },
+  ];
+  for (const c of sofiaCheckIns) {
+    const at = daysAgo(c.daysAgo);
+    await prisma.checkIn.upsert({
+      where: { id: c.id },
+      update: {},
+      create: {
+        id: c.id,
+        patientId: patientSofia.id,
+        prescriptionId: sofiaRx.id,
+        dueAt: at,
+        status: 'COMPLETED',
+        sentAt: at,
+        completedAt: at,
+        kind: ConsultationKind.GLP1,
+        questionnaireVersion: 'GLP1-checkin@1',
+        answers: [
+          { questionId: 'weight_kg', question: 'What is your weight today?', answer: `${c.weightKg} kg`, value: String(c.weightKg), section: 'Monthly check-in' },
+          ...(c.note ? [{ questionId: 'notes', question: 'Anything else you’d like your clinician to know?', answer: c.note, value: null, section: 'Monthly check-in' }] : []),
+        ],
+        weightKg: c.weightKg,
+        feeling: c.feeling,
+        wantsToReorder: true,
+        reviewedAt: at,
+        reviewedById: doctor.id,
+        outcome: 'REPEAT',
+        reviewNote: 'Good progress — continue current dose.',
+        createdAt: at,
+      },
+    });
+  }
+
+  // Daily weights over the last two weeks — several on some days — so the chart, month history and
+  // "current weight" have something to show. Fixed ids keep re-seeding from duplicating them.
+  const dailyWeights: Array<[number, number, number, string?]> = [
+    // [days ago, hour, kg, note]
+    [13, 8, 109.0], [12, 8, 108.9], [11, 8, 108.9], [10, 8, 108.6], [9, 8, 108.7], [8, 7, 108.4],
+    [7, 8, 108.5], [6, 8, 108.2], [5, 8, 108.3], [4, 8, 108.0], [3, 8, 107.9, 'Feeling lighter this week'],
+    [2, 8, 108.1], [2, 20, 107.8], [1, 8, 107.7], [0, 7, 107.6],
+  ];
+  for (const [i, [ago, hour, kg, note]] of dailyWeights.entries()) {
+    const at = daysAgo(ago);
+    at.setUTCHours(hour, 15 + i, 0, 0);
+    if (at.getTime() > Date.now()) at.setTime(Date.now() - 60_000); // "today" entries can't be in the future
+    await prisma.weightEntry.upsert({
+      where: { id: `seed-weight-sofia-${i + 1}` },
+      update: {},
+      create: { id: `seed-weight-sofia-${i + 1}`, patientId: patientSofia.id, weightKg: kg, measuredAt: at, note: note ?? null },
+    });
+  }
+
+  console.log('✓ Sofia  GLP-1 patient (activated, onboarding approved, weight journey: 120 → 107.6 kg, target 90 kg, 15 daily weights)');
+
   // ── Consultations ───────────────────────────────────────────────────────────
   // Emma has 2 consultations in various states
   const consultApproved = await prisma.consultation.upsert({
@@ -323,6 +502,10 @@ async function main() {
   console.log('  doctor@clinic.dev    → Doctor (patients, review queue)');
   console.log('  cx@clinic.dev        → CX Team (leads, patients)');
   console.log('  provider@clinic.dev  → Provider (patients, orders)');
+  console.log('');
+  console.log('Patients (patient portal)');
+  console.log('  sofia.meyer@example.com  → GLP-1, onboarding done, Weight Journey with history');
+  console.log('  emma.white@example.com   → HRT, onboarding done');
 }
 
 main()

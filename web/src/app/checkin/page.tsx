@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { CHECK_IN_BY_TOKEN, SUBMIT_CHECK_IN } from '@/graphql/checkin';
 import { QUESTIONNAIRE } from '@/graphql/intake';
 import { QuestionnaireForm, SubmittedAnswer } from '@/components/intake/QuestionnaireForm';
+import { FEELINGS } from '@/lib/weight';
 
 function CheckInForm({ token }: { token: string }) {
   const { data, loading, error } = useQuery(CHECK_IN_BY_TOKEN, { variables: { token } });
@@ -13,6 +14,7 @@ function CheckInForm({ token }: { token: string }) {
   const { data: qData, loading: qLoading } = useQuery(QUESTIONNAIRE, { variables: { kind, stage: 'CHECKIN' }, skip: !kind });
   const [submitCheckIn, { loading: submitting, error: submitError, data: submitData }] = useMutation(SUBMIT_CHECK_IN);
   const [wantsToReorder, setWantsToReorder] = useState<boolean | null>(null);
+  const [feeling, setFeeling] = useState<string | null>(null);
 
   if (loading || qLoading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
 
@@ -44,7 +46,7 @@ function CheckInForm({ token }: { token: string }) {
   const questions = qData?.questionnaire?.questions ?? [];
 
   const handleSubmit = (answers: SubmittedAnswer[]) => {
-    submitCheckIn({ variables: { token, input: { answers, wantsToReorder } } });
+    submitCheckIn({ variables: { token, input: { answers, wantsToReorder, feeling } } });
   };
 
   return (
@@ -63,8 +65,29 @@ function CheckInForm({ token }: { token: string }) {
         submitting={submitting}
         error={submitError?.message}
         onSubmit={handleSubmit}
-        ready={wantsToReorder !== null}
+        ready={wantsToReorder !== null && feeling !== null}
         footer={
+          <>
+          <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+            <legend className="sr-only">How are you feeling?</legend>
+            <p className="text-sm font-medium text-slate-900">How are you feeling?</p>
+            <div className="space-y-2 mt-3">
+              {FEELINGS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  aria-pressed={feeling === f.value}
+                  onClick={() => setFeeling(f.value)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm text-left transition-colors ${
+                    feeling === f.value ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="text-xl" aria-hidden>{f.emoji}</span>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
             <p className="text-sm font-medium text-slate-900">Would you like to continue your treatment next month?</p>
             <div className="flex gap-2 mt-3">
@@ -82,6 +105,7 @@ function CheckInForm({ token }: { token: string }) {
               ))}
             </div>
           </fieldset>
+          </>
         }
       />
     </div>
