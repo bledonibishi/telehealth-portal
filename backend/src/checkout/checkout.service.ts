@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { PrismaService } from '../prisma/prisma.service';
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
 // which posts here directly rather than through GraphQL. Two Stripe flows:
@@ -19,7 +20,10 @@ export class CheckoutService {
   private stripeConfigured: boolean;
   private webflowSiteUrl: string;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+  ) {
     const secretKey = config.get<string>('STRIPE_SECRET_KEY');
     this.stripeConfigured = Boolean(secretKey);
     this.stripe = new Stripe(secretKey ?? '', { apiVersion: '2023-10-16' as any });
@@ -30,13 +34,18 @@ export class CheckoutService {
     this.assertConfigured();
     if (!input.priceId) throw new BadRequestException('Missing priceId.');
 
+    const referralCoupon = await this.referralCouponFor(input.leadId);
+
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: input.priceId, quantity: 1 }],
       success_url: `${this.webflowSiteUrl}/checkout-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.webflowSiteUrl}/checkout-cancel`,
       metadata: { planName: input.planName ?? '', leadId: input.leadId ?? '' },
-      allow_promotion_codes: true,
+      // Stripe rejects setting both allow_promotion_codes and discounts on the
+      // same session — a referred friend's discount is attached automatically,
+      // so they don't also get a promo-code box to type one into.
+      ...(referralCoupon ? { discounts: [{ coupon: referralCoupon }] } : { allow_promotion_codes: true }),
     });
 
     return { url: session.url };
@@ -54,6 +63,7 @@ export class CheckoutService {
     if (!input.email) throw new BadRequestException('Missing email.');
 
     const customerId = await this.findOrCreateCustomer(input.email);
+    const referralCoupon = await this.referralCouponFor(input.leadId);
 
     const subscription = await this.stripe.subscriptions.create({
       customer: customerId,
@@ -61,6 +71,7 @@ export class CheckoutService {
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],
+      ...(referralCoupon ? { discounts: [{ coupon: referralCoupon }] } : {}),
       metadata: {
         planName: input.planName ?? '',
         leadId: input.leadId ?? '',
@@ -79,6 +90,21 @@ export class CheckoutService {
     }
 
     return { clientSecret: paymentIntent.client_secret, intentType: 'payment' };
+  }
+
+  // Returns the referral-friend coupon id when this lead arrived via a still-
+  // unconverted referral, so their first checkout shows the $20 off automatically.
+  private async referralCouponFor(leadId: string | undefined): Promise<string | undefined> {
+    if (!leadId) return undefined;
+    const referral = await this.prisma.referral.findUnique({ where: { referredLeadId: leadId }, select: { status: true } });
+    if (!referral || referral.status !== 'PENDING') return undefined;
+
+    const couponId = this.config.get<string>('STRIPE_REFERRAL_FRIEND_COUPON_ID');
+    if (!couponId) {
+      this.logger.warn(`Lead ${leadId} has a pending referral but STRIPE_REFERRAL_FRIEND_COUPON_ID is not set`);
+      return undefined;
+    }
+    return couponId;
   }
 
   private async findOrCreateCustomer(email: string): Promise<string> {

@@ -22,6 +22,9 @@ import {
   DoseStatus,
   SymptomScale,
   LabResultKind,
+  ReferralStatus,
+  VoucherKind,
+  VoucherStatus,
 } from '@telehealth/shared-types';
 
 registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
@@ -46,6 +49,9 @@ registerEnumType(ConsentType, { name: 'ConsentType' });
 registerEnumType(DoseStatus, { name: 'DoseStatus' });
 registerEnumType(SymptomScale, { name: 'SymptomScale' });
 registerEnumType(LabResultKind, { name: 'LabResultKind' });
+registerEnumType(ReferralStatus, { name: 'ReferralStatus' });
+registerEnumType(VoucherKind, { name: 'VoucherKind' });
+registerEnumType(VoucherStatus, { name: 'VoucherStatus' });
 
 export {
   ConsultationStatus,
@@ -70,4 +76,7 @@ export {
   DoseStatus,
   SymptomScale,
   LabResultKind,
+  ReferralStatus,
+  VoucherKind,
+  VoucherStatus,
 };

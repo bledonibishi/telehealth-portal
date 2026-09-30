@@ -15,6 +15,7 @@ const NAV = [
   { href: '/doses', label: 'My doses', icon: '📅' },
   { href: '/messages', label: 'Messages', icon: '💬' },
   { href: '/prescription', label: 'Prescriptions', icon: '💊' },
+  { href: '/rewards', label: 'Refer & earn', icon: '🎁' },
 ];
 
 // Only weight-management patients have a journey (the API returns null otherwise).
