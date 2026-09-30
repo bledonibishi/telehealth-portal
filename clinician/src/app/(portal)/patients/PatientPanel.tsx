@@ -12,6 +12,8 @@ import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
 import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING_STEP } from '@/graphql/onboarding';
 import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
+import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
+import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { hasAccess } from '@/lib/role';
 
 const PROOF_TYPE_LABEL: Record<string, string> = {
@@ -34,7 +36,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight';
 
 function OnboardingStepSection({
   title,
@@ -166,6 +168,8 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   });
   const { data: ordersData } = useQuery(PATIENT_ORDERS, { variables: { patientId } });
   const { data: prescriptionsData } = useQuery(PATIENT_PRESCRIPTIONS, { variables: { patientId } });
+  // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
+  const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId } });
   const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
   });
@@ -175,6 +179,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
   const p = data?.patient;
   const onboarding = onboardingData?.onboardingSubmission;
+  const weightJourney = weightData?.weightJourneyForPatient;
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
@@ -274,6 +279,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'orders',        label: `Orders (${orders.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
     { key: 'checkin',       label: 'Check-in' },
+    ...(weightJourney ? [{ key: 'weight' as Tab, label: 'Weight' }] : []),
   ];
 
   return (
@@ -590,6 +596,11 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Weight ── */}
+        {tab === 'weight' && weightJourney && (
+          <WeightJourneyPanel journey={weightJourney} patientId={patientId} canCorrect={hasAccess(['ADMIN', 'DOCTOR'])} />
         )}
 
         {/* ── Check-in ── */}

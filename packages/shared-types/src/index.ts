@@ -70,6 +70,14 @@ export enum CheckInStatus {
   COMPLETED = 'COMPLETED',
 }
 
+export enum CheckInFeeling {
+  GREAT = 'GREAT',
+  GOOD = 'GOOD',
+  OKAY = 'OKAY',
+  DIFFICULTIES = 'DIFFICULTIES',
+  NOT_WELL = 'NOT_WELL',
+}
+
 export enum RefundStatus {
   NOT_REQUIRED = 'NOT_REQUIRED',
   REFUNDED = 'REFUNDED',
@@ -121,6 +129,20 @@ export enum DoseStatus {
   TAKEN = 'TAKEN',
   MISSED = 'MISSED',
   SKIPPED = 'SKIPPED',
+}
+
+export enum LabResultKind {
+  ESTRADIOL = 'ESTRADIOL',
+  TESTOSTERONE = 'TESTOSTERONE',
+  FSH = 'FSH',
+  LH = 'LH',
+  SHBG = 'SHBG',
+  PSA = 'PSA',
+  HEMATOCRIT = 'HEMATOCRIT',
+  LIPID_PANEL = 'LIPID_PANEL',
+  HBA1C = 'HBA1C',
+  LIVER_FUNCTION = 'LIVER_FUNCTION',
+  OTHER = 'OTHER',
 }
 
 export interface QuizAnswer {

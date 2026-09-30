@@ -11,6 +11,7 @@ import {
   PrescriptionProofType,
   OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
   RefundStatus,
   ProductCategory,
   ProductForm,
@@ -19,6 +20,7 @@ import {
   CheckInOutcome,
   ConsentType,
   DoseStatus,
+  LabResultKind,
 } from '@telehealth/shared-types';
 
 registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
@@ -32,6 +34,7 @@ registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
 registerEnumType(OnboardingStepKey, { name: 'OnboardingStepKey' });
 registerEnumType(CheckInStatus, { name: 'CheckInStatus' });
+registerEnumType(CheckInFeeling, { name: 'CheckInFeeling' });
 registerEnumType(RefundStatus, { name: 'RefundStatus' });
 registerEnumType(ProductCategory, { name: 'ProductCategory' });
 registerEnumType(ProductForm, { name: 'ProductForm' });
@@ -40,6 +43,7 @@ registerEnumType(OrderStatus, { name: 'OrderStatus' });
 registerEnumType(CheckInOutcome, { name: 'CheckInOutcome' });
 registerEnumType(ConsentType, { name: 'ConsentType' });
 registerEnumType(DoseStatus, { name: 'DoseStatus' });
+registerEnumType(LabResultKind, { name: 'LabResultKind' });
 
 export {
   ConsultationStatus,
@@ -53,6 +57,7 @@ export {
   PrescriptionProofType,
   OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
   RefundStatus,
   ProductCategory,
   ProductForm,
@@ -61,4 +66,5 @@ export {
   CheckInOutcome,
   ConsentType,
   DoseStatus,
+  LabResultKind,
 };

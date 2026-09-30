@@ -43,7 +43,7 @@ export class EmailService {
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#1e293b">Time for your monthly check-in, ${firstName}</h2>
-        <p style="color:#475569">Let us know how your treatment is going so we can keep your prescription on track.</p>
+        <p style="color:#475569">Share your weight and how you’re feeling — it takes about 2 minutes, and helps us keep your treatment on track.</p>
         <a href="${checkInUrl}"
           style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
           Start my check-in
