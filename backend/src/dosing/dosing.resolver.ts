@@ -5,7 +5,8 @@ import { ProductModel, ProductStrengthModel } from '../catalog/models/product.mo
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
 
 type ParentEvent = { prescriptionItem?: { product: ProductModel; strength: ProductStrengthModel } };
 
@@ -32,6 +33,12 @@ export class DosingResolver {
     @Args('toDays', { type: () => Int, nullable: true }) toDays?: number,
   ) {
     return this.dosing.calendarFor(patientId, { fromDays, toDays });
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Query(() => [MissedDoseAlertModel], { description: 'GLP-1 patients on a stepped-up dose who have not taken several doses in a row — consider re-titrating' })
+  missedDoseAlerts() {
+    return this.dosing.missedDoseAlerts();
   }
 
   @Authorized('PATIENT')

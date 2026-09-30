@@ -343,6 +343,22 @@ type MfaSetupResponse {
   secret: String!
 }
 
+"""
+A patient on a stepped-up GLP-1 dose who has not taken several doses in a row
+"""
+type MissedDoseAlert {
+  lastTakenAt: DateTime
+  missedInARow: Int!
+
+  """The first dose of the current run not taken"""
+  missedSince: DateTime!
+  patientId: ID!
+  patientName: String!
+  productName: String!
+  strengthLabel: String!
+  titrationStep: Int!
+}
+
 enum MonthlyCheckInState {
   COMPLETED
   READY
@@ -467,6 +483,10 @@ type Mutation {
 }
 
 type NotificationCounts {
+  """
+  GLP-1 patients who have not taken several doses in a row (see missedDoseAlerts)
+  """
+  missedDoseAlerts: Int!
   newLeads: Int!
   patientMessages: Int!
   pendingConsultations: Int!
@@ -766,6 +786,11 @@ type Query {
   """The authenticated patient's own record"""
   me: Patient!
   messages(consultationId: ID!): [Message!]!
+
+  """
+  GLP-1 patients on a stepped-up dose who have not taken several doses in a row — consider re-titrating
+  """
+  missedDoseAlerts: [MissedDoseAlert!]!
 
   """A single consultation belonging to the authenticated patient"""
   myConsultation(id: ID!): Consultation!

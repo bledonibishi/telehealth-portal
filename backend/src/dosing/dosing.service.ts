@@ -2,7 +2,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { DoseStatus, PrescriptionStatus } from '../common/enums';
+import { DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { missedStreak, needsRetitrationReview } from './missed-doses';
+import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -94,6 +96,45 @@ export class DosingService {
       include: { prescriptionItem: { include: { product: true, strength: true } } },
       orderBy: { scheduledFor: 'asc' },
     });
+  }
+
+  /**
+   * GLP-1 patients on a stepped-up dose who haven't taken the last few doses
+   * in a row — a clinician should decide whether to restart them lower.
+   * Clears itself once the patient logs a dose or a new prescription starts.
+   */
+  async missedDoseAlerts(): Promise<MissedDoseAlertModel[]> {
+    const items = await this.prisma.prescriptionItem.findMany({
+      where: {
+        prescription: { status: PrescriptionStatus.ACTIVE },
+        product: { category: ProductCategory.GLP1 },
+        strength: { titrationStep: { gt: 1 } },
+      },
+      include: {
+        product: true,
+        strength: true,
+        prescription: { select: { patient: { select: { id: true, firstName: true, lastName: true } } } },
+        doseEvents: { where: { status: { not: DoseStatus.SCHEDULED } }, orderBy: { scheduledFor: 'desc' }, take: 12 },
+      },
+    });
+
+    const alerts: MissedDoseAlertModel[] = [];
+    for (const item of items) {
+      const streak = missedStreak(item.doseEvents);
+      if (!needsRetitrationReview(streak, item.strength.titrationStep)) continue;
+      const patient = item.prescription.patient;
+      alerts.push({
+        patientId: patient.id,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        productName: item.product.brandName ?? item.product.name,
+        strengthLabel: item.strength.label,
+        titrationStep: item.strength.titrationStep!,
+        missedInARow: streak.count,
+        missedSince: streak.since!,
+        lastTakenAt: streak.lastTakenAt ?? undefined,
+      });
+    }
+    return alerts.sort((a, b) => b.missedInARow - a.missedInARow || a.missedSince.getTime() - b.missedSince.getTime());
   }
 
   /**

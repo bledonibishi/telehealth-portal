@@ -4,10 +4,11 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, PrescriptionStatus } from '../common/enums';
+import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
+import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
 
 const CHECK_IN_INTERVAL_DAYS = 30;
 const TOKEN_EXPIRY_DAYS = 14;
@@ -105,11 +106,23 @@ export class CheckInsService {
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, strength: true } } },
     });
     const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
     const kind = (rx?.items[0]?.product.kind ?? patient?.lead?.productKind ?? null) as ConsultationKind | null;
     return { prescription: rx, kind };
+  }
+
+  private async missedDoseFlag(items: Array<{ id: string; product: { category: string }; strength: { label: string; titrationStep: number | null } }>) {
+    const item = items.find((i) => i.product.category === ProductCategory.GLP1);
+    if (!item) return null;
+    const events = await this.prisma.doseEvent.findMany({
+      where: { prescriptionItemId: item.id, status: { not: DoseStatus.SCHEDULED } },
+      orderBy: { scheduledFor: 'desc' },
+      take: 12,
+    });
+    const streak = missedStreak(events);
+    return needsRetitrationReview(streak, item.strength.titrationStep) ? retitrationFlag(streak, item.strength.label) : null;
   }
 
   async findByToken(token: string) {
@@ -135,6 +148,13 @@ export class CheckInsService {
     const questionnaire = findQuestionnaire(kind, 'CHECKIN');
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+
+    // The patient's self-reported "doses missed" is one answer; the dose log says
+    // for certain whether they've gone long enough without to need re-titrating.
+    if (kind === ConsultationKind.GLP1 && prescription) {
+      const flag = await this.missedDoseFlag(prescription.items);
+      if (flag) evaluation.flags.push(flag);
+    }
 
     // The weight is asked in the questionnaire; keep a typed copy for the Weight Journey.
     const weightAnswer = evaluation.answers.find((a) => a.questionId === 'weight_kg');

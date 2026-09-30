@@ -1,14 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { DosingService } from '../dosing/dosing.service';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private dosing: DosingService,
+  ) {}
 
   async getCounts() {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages] =
+    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, missedDoseAlerts] =
       await Promise.all([
         // Leads created in the last 24h
         this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
@@ -33,12 +37,15 @@ export class NotificationsService {
             },
           },
         }),
+
+        // GLP-1 patients who may need re-titrating after missed doses
+        this.dosing.missedDoseAlerts(),
       ]);
 
     const patientMessages = consultationsWithMessages.filter(
       (c) => c.messages[0]?.senderRole === 'PATIENT',
     ).length;
 
-    return { newLeads, pendingConsultations, patientMessages, pendingOrders };
+    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts: missedDoseAlerts.length };
   }
 }

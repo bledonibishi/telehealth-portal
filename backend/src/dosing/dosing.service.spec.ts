@@ -175,3 +175,32 @@ describe('DosingService.houseKeeping', () => {
     expect(prisma.doseEvent.upsert).not.toHaveBeenCalled();
   });
 });
+
+describe('DosingService.missedDoseAlerts', () => {
+  const item = (step: number, statuses: string[]) => ({
+    product: { name: 'Semaglutide', brandName: 'Wegovy' },
+    strength: { label: '1 mg', titrationStep: step },
+    prescription: { patient: { id: `p-${step}-${statuses.join('')}`, firstName: 'Sofia', lastName: 'Meyer' } },
+    // newest first, as the query orders them
+    doseEvents: statuses.map((status, i) => ({ scheduledFor: new Date(Date.UTC(2026, 8, 29 - 7 * i)), status, takenAt: null })),
+  });
+
+  it('lists stepped-up GLP-1 patients with 2+ doses not taken in a row', async () => {
+    const prisma = makePrisma();
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      item(3, ['MISSED', 'MISSED', 'TAKEN']),
+      item(3, ['MISSED', 'TAKEN']), // only one
+      item(3, ['TAKEN', 'MISSED', 'MISSED']), // back on track
+    ]);
+    const alerts = await new DosingService(prisma as any).missedDoseAlerts();
+
+    expect(alerts).toEqual([
+      expect.objectContaining({ patientName: 'Sofia Meyer', productName: 'Wegovy', strengthLabel: '1 mg', titrationStep: 3, missedInARow: 2 }),
+    ]);
+    expect(prisma.prescriptionItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { prescription: { status: 'ACTIVE' }, product: { category: 'GLP1' }, strength: { titrationStep: { gt: 1 } } },
+      }),
+    );
+  });
+});
