@@ -121,6 +121,42 @@ export const CATALOG: ProductSeed[] = [
     directions: 'Take one capsule by mouth at bedtime every night (continuous regimen).',
     strengths: [{ label: '100 mg', pack: '30 capsules' }],
   },
+  {
+    slug: 'testosterone-gel-tostran',
+    name: 'Testosterone gel 2%',
+    brandName: 'Tostran',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.GEL,
+    doseIntervalDays: 1,
+    directions: 'Apply once daily in the morning to clean, dry skin on the abdomen or inner thighs, rotating the site. Let it dry before dressing; wash hands after application.',
+    strengths: [
+      { label: '20 mg (2 pumps)', pack: '60 g metered-dose pump (60 actuations)' },
+      { label: '40 mg (4 pumps)', pack: '60 g metered-dose pump (60 actuations)' },
+    ],
+  },
+  {
+    slug: 'testosterone-injection-sustanon',
+    name: 'Testosterone (mixed esters) 250 mg/mL',
+    brandName: 'Sustanon 250',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.INJECTION_VIAL,
+    doseIntervalDays: 21,
+    directions: 'Inject 1 mL into the muscle (gluteal or thigh) every 3 weeks, as shown by your clinician.',
+    strengths: [{ label: '250 mg/mL', pack: '1 mL ampoule' }],
+  },
+  {
+    // Implanted in clinic — no dose interval or self-administered directions apply.
+    slug: 'testosterone-pellets-testopel',
+    name: 'Testosterone pellets',
+    brandName: 'Testopel',
+    kind: ConsultationKind.TRT,
+    category: ProductCategory.TESTOSTERONE,
+    form: ProductForm.PELLET,
+    directions: 'Implanted subcutaneously by a clinician every 3 to 6 months. No self-administration.',
+    strengths: [{ label: '75 mg pellet', pack: '6 pellets per implant procedure' }],
+  },
 ];
 
 export async function seedCatalog(prisma: PrismaClient) {
