@@ -4,8 +4,10 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { DoseStatus, PrescriptionStatus } from '../common/enums';
+import { DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
 import { DosePattern, dosePattern, nextDoseDates } from './dose-pattern';
+import { missedStreak, needsRetitrationReview } from './missed-doses';
+import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -108,6 +110,68 @@ export class DosingService {
       include: { prescriptionItem: { include: { product: true, strength: true } } },
       orderBy: { scheduledFor: 'asc' },
     });
+  }
+
+  /**
+   * GLP-1 patients on a stepped-up dose who haven't taken the last few doses
+   * in a row — a clinician should decide whether to restart them lower.
+   * Clears itself once the patient logs a dose or a new prescription starts.
+   */
+  async missedDoseAlerts(): Promise<MissedDoseAlertModel[]> {
+    const alerts: MissedDoseAlertModel[] = [];
+    for (const { item, streak } of await this.activeGlp1Streaks({ strength: { titrationStep: { gt: 1 } } })) {
+      if (!needsRetitrationReview(streak, item.strength.titrationStep)) continue;
+      const patient = item.prescription.patient;
+      alerts.push({
+        patientId: patient.id,
+        patientName: `${patient.firstName} ${patient.lastName}`,
+        productName: item.product.brandName ?? item.product.name,
+        strengthLabel: item.strength.label,
+        titrationStep: item.strength.titrationStep!,
+        missedInARow: streak.count,
+        missedSince: streak.since!,
+        lastTakenAt: streak.lastTakenAt ?? undefined,
+      });
+    }
+    return alerts.sort((a, b) => b.missedInARow - a.missedInARow || a.missedSince.getTime() - b.missedSince.getTime());
+  }
+
+  /**
+   * The patient's own view of the same check, on their active GLP-1
+   * prescription only — so doses missed on a prescription that has since
+   * been replaced or stopped no longer count.
+   */
+  async missedDoseStatusFor(patientId: string): Promise<{ missedInARow: number; needsClinician: boolean }> {
+    const items = (await this.activeGlp1Streaks({ prescription: { patientId } })).map(({ item, streak }) => ({
+      missedInARow: streak.count,
+      needsClinician: needsRetitrationReview(streak, item.strength.titrationStep),
+    }));
+    // An item that needs the clinician wins; otherwise the longest run.
+    items.sort((a, b) => Number(b.needsClinician) - Number(a.needsClinician) || b.missedInARow - a.missedInARow);
+    return items[0] ?? { missedInARow: 0, needsClinician: false };
+  }
+
+  /**
+   * Each active GLP-1 prescription item with its current run of doses not
+   * taken. Reads the whole logged history up to now (a weekly dose is ~52
+   * rows a year), so a long run is counted in full.
+   */
+  private async activeGlp1Streaks(where: Prisma.PrescriptionItemWhereInput) {
+    const now = new Date();
+    const items = await this.prisma.prescriptionItem.findMany({
+      where: {
+        ...where,
+        prescription: { ...(where.prescription as object), status: PrescriptionStatus.ACTIVE },
+        product: { category: ProductCategory.GLP1 },
+      },
+      include: {
+        product: true,
+        strength: true,
+        prescription: { select: { patient: { select: { id: true, firstName: true, lastName: true } } } },
+        doseEvents: { where: { status: { not: DoseStatus.SCHEDULED }, scheduledFor: { lte: now } }, orderBy: { scheduledFor: 'desc' } },
+      },
+    });
+    return items.map((item) => ({ item, streak: missedStreak(item.doseEvents, now) }));
   }
 
   /**

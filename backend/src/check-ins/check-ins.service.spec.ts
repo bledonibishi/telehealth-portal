@@ -27,6 +27,8 @@ function makePrisma(prescription: any) {
     },
     prescription: { findFirst: jest.fn().mockResolvedValue(prescription) },
     patient: { findUnique: jest.fn().mockResolvedValue(PATIENT) },
+    // No dose log, so the missed-dose flag (check-ins.missed-doses.spec.ts) stays out of these.
+    doseEvent: { findMany: jest.fn().mockResolvedValue([]) },
   };
 }
 

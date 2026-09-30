@@ -4,10 +4,11 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
+import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
+import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
 
 const CHECK_IN_INTERVAL_DAYS = 30;
 const TOKEN_EXPIRY_DAYS = 14;
@@ -155,6 +156,17 @@ export class CheckInsService {
     };
   }
 
+  private async missedDoseFlag(items: Array<{ id: string; product: { category: string }; strength: { label: string; titrationStep: number | null } }>) {
+    const item = items.find((i) => i.product.category === ProductCategory.GLP1);
+    if (!item) return null;
+    const events = await this.prisma.doseEvent.findMany({
+      where: { prescriptionItemId: item.id, status: { not: DoseStatus.SCHEDULED }, scheduledFor: { lte: new Date() } },
+      orderBy: { scheduledFor: 'desc' },
+    });
+    const streak = missedStreak(events);
+    return needsRetitrationReview(streak, item.strength.titrationStep) ? retitrationFlag(streak, item.strength.label) : null;
+  }
+
   async findByToken(token: string) {
     const checkIn = await this.prisma.checkIn.findUnique({ where: { token }, include: { patient: true } });
     if (!checkIn) throw new NotFoundException('This check-in link is invalid');
@@ -182,6 +194,10 @@ export class CheckInsService {
     if (kind === ConsultationKind.GLP1 && prescription) {
       const titrationFlag = this.glp1TitrationRiskFlag(prescription, evaluation.answers);
       if (titrationFlag) evaluation.flags.push(titrationFlag);
+      // The patient's self-reported "doses missed" is one answer; the dose log says
+      // for certain whether they've gone long enough without to need re-titrating.
+      const missedFlag = await this.missedDoseFlag(prescription.items);
+      if (missedFlag) evaluation.flags.push(missedFlag);
     }
 
     // The weight is asked in the questionnaire; keep a typed copy for the Weight Journey.
