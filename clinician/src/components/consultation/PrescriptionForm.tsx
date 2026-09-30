@@ -33,7 +33,7 @@ export function PrescriptionForm({
   submitLabel = 'Approve and issue prescription', initialItems, stepUp = false,
 }: {
   consultationId: string;
-  kind: 'HRT' | 'GLP1';
+  kind: 'HRT' | 'GLP1' | 'TRT';
   submitting: boolean;
   onSubmit: (input: PrescriptionSubmission) => void;
   onCancel: () => void;

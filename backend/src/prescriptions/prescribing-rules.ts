@@ -32,6 +32,18 @@ function answerOf(ctx: RuleContext, questionId: string): string | null {
   return found ? (found.value ?? found.answer).trim().toLowerCase() : null;
 }
 
+// A multi-select's stored value is '|'-joined option values (see evaluate.ts).
+// `answers` holds both the ELIGIBILITY and INTAKE answers for the consultation
+// (see ConsultationsService.submitIntakeQuiz), and both stages ask
+// `medical_history` — so this also catches a patient who selected an option
+// at eligibility but later answered a related intake yes/no question
+// inconsistently.
+function multiSelectIncludes(ctx: RuleContext, questionId: string, option: string): boolean {
+  const found = ctx.answers.find((a) => a.questionId === questionId);
+  const raw = (found?.value ?? found?.answer ?? '').toLowerCase();
+  return raw.split('|').some((v) => v.trim() === option);
+}
+
 export function checkPrescribingRules(ctx: RuleContext): RuleViolation[] {
   const violations: RuleViolation[] = [];
   const hard = (code: string, message: string) => violations.push({ code, message, overridable: false });
@@ -85,11 +97,29 @@ export function checkPrescribingRules(ctx: RuleContext): RuleViolation[] {
   }
 
   const hasTestosterone = ctx.items.some((i) => i.product.category === ProductCategory.TESTOSTERONE);
-  if (hasTestosterone && answerOf(ctx, 'prostate_cancer_history') === 'yes') {
-    soft(
-      'TESTOSTERONE_PROSTATE_HISTORY',
-      'Testosterone is contraindicated with a history of prostate cancer without specialist sign-off. Confirm oncology clearance, or do not proceed.',
-    );
+  if (hasTestosterone) {
+    const reportedProstateCancer = answerOf(ctx, 'prostate_cancer_history') === 'yes' || multiSelectIncludes(ctx, 'medical_history', 'prostate_cancer');
+    if (reportedProstateCancer) {
+      soft(
+        'TESTOSTERONE_PROSTATE_HISTORY',
+        'Testosterone is contraindicated with a history of prostate cancer without specialist sign-off. Confirm oncology clearance, or do not proceed.',
+      );
+    }
+
+    const reportedBreastCancer = answerOf(ctx, 'breast_cancer_history') === 'yes' || multiSelectIncludes(ctx, 'medical_history', 'breast_cancer');
+    if (reportedBreastCancer) {
+      soft(
+        'TESTOSTERONE_BREAST_CANCER_HISTORY',
+        'Testosterone is contraindicated with a history of breast cancer without specialist sign-off. Confirm oncology clearance, or do not proceed.',
+      );
+    }
+
+    if (answerOf(ctx, 'baseline_diagnosis') === 'no') {
+      soft(
+        'TESTOSTERONE_NO_BASELINE_DIAGNOSIS',
+        'No confirmed baseline diagnosis of low testosterone is on file. Arrange blood tests or record a clinician diagnostic attestation before prescribing.',
+      );
+    }
   }
 
   return violations;

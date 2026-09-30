@@ -16,7 +16,7 @@ const STATUS_STYLE: Record<string, { label: string; border: string; text: string
 
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 
-function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: string; kind: 'HRT' | 'GLP1'; onDone: () => void }) {
+function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: string; kind: 'HRT' | 'GLP1' | 'TRT'; onDone: () => void }) {
   const { data: history } = useQuery(PATIENT_HISTORY, { variables: { patientId } });
   // The prescribing rules re-check the patient's intake answers, which live on a consultation of this kind.
   const consultationId = history?.patientHistory?.find((c: any) => c.kind === kind)?.id;
@@ -112,7 +112,7 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
   const canCancel = rx.status === 'ACTIVE' && isPrescriber;
   const expired = rx.validUntil && new Date(rx.validUntil) < new Date();
   const canRepeat = rx.status === 'ACTIVE' && !expired && isPrescriber && (rx.repeatsRemaining ?? 0) > 0;
-  const kind = rx.items?.[0]?.product?.kind as 'HRT' | 'GLP1' | undefined;
+  const kind = rx.items?.[0]?.product?.kind as 'HRT' | 'GLP1' | 'TRT' | undefined;
   const canChangeDose = rx.status === 'ACTIVE' && !expired && isPrescriber && !!patientId && !!kind;
 
   return (

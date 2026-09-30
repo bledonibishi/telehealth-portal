@@ -60,6 +60,7 @@ GraphQL endpoint: `POST http://[backend-url]/graphql`
 | HRT Complete | Estradiol gel + micronised progesterone | £79/mo | `STRIPE_PRICE_HRT_COMPLETE` |
 | GLP-1 Starter | Semaglutide 0.25→0.5 mg titration | £149/mo | `STRIPE_PRICE_GLP1_STARTER` |
 | GLP-1 Advanced | Semaglutide 1 mg maintenance | £199/mo | `STRIPE_PRICE_GLP1_ADVANCED` |
+| TRT Standard | Testosterone gel, injectable, or pellets | TBD — pricing not yet set | `STRIPE_PRICE_TRT_STANDARD` |
 
 ---
 

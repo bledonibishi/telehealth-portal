@@ -411,6 +411,9 @@ model DoseEvent {
   status             DoseStatus @default(SCHEDULED)
   takenAt            DateTime?  @map("taken_at")
   note               String?
+  // Set once a reminder email has gone out, so the cron doesn't resend one
+  // every time it runs while the dose is still upcoming.
+  reminderSentAt     DateTime?  @map("reminder_sent_at")
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
 
