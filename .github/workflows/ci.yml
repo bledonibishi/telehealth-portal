@@ -12,8 +12,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides which package jobs actually need to run. Every job below is
+  # skipped (not un-triggered) when its inputs didn't change — a skipped job
+  # still reports a "skipped" conclusion to the Checks API, which the
+  # ci-gate job (and GitHub's required-status-check rule pointed at it)
+  # treats the same as success. A change to a shared root file (lockfile,
+  # turbo/workspace config, this workflow) runs everything, since any of
+  # those can affect every package.
+  detect:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      shared_types: ${{ steps.filter.outputs.shared_types == 'true' || steps.filter.outputs.root == 'true' }}
+      backend: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.root == 'true' }}
+      web: ${{ steps.filter.outputs.web == 'true' || steps.filter.outputs.root == 'true' }}
+      clinician: ${{ steps.filter.outputs.clinician == 'true' || steps.filter.outputs.root == 'true' }}
+      website: ${{ steps.filter.outputs.website == 'true' || steps.filter.outputs.root == 'true' }}
+      mobile: ${{ steps.filter.outputs.mobile == 'true' || steps.filter.outputs.root == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared_types:
+              - 'packages/shared-types/**'
+            backend:
+              - 'backend/**'
+              - 'packages/shared-types/**'
+            web:
+              - 'web/**'
+              - 'packages/shared-types/**'
+            clinician:
+              - 'clinician/**'
+              - 'packages/shared-types/**'
+            website:
+              - 'website/**'
+            mobile:
+              - 'mobile/**'
+              - 'packages/shared-types/**'
+            root:
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+              - 'tsconfig.base.json'
+              - 'package.json'
+              - '.nvmrc'
+              - '.github/workflows/ci.yml'
+
   shared-types:
     name: shared-types / build
+    needs: detect
+    if: needs.detect.outputs.shared_types == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +77,8 @@ jobs:
 
   backend:
     name: backend / build + test
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -66,6 +118,8 @@ jobs:
 
   web:
     name: web / build
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +133,8 @@ jobs:
 
   clinician:
     name: clinician / build
+    needs: detect
+    if: needs.detect.outputs.clinician == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +148,8 @@ jobs:
 
   website:
     name: website / build
+    needs: detect
+    if: needs.detect.outputs.website == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,6 +163,8 @@ jobs:
 
   mobile:
     name: mobile / typecheck
+    needs: detect
+    if: needs.detect.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,3 +175,31 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @telehealth/mobile exec tsc --noEmit
+
+  # The single required status check. Individual package jobs above are
+  # skipped when not affected, and a skipped job still reports here as
+  # "skipped" (not "failure") — so this only fails when a job that actually
+  # ran, failed. Point branch protection's required check at this job, not
+  # at the individual package jobs, since those can legitimately not run.
+  ci-gate:
+    name: CI required checks
+    needs: [detect, shared-types, backend, web, clinician, website, mobile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        run: |
+          echo '${{ toJSON(needs) }}' > needs.json
+          fail=0
+          for job in shared-types backend web clinician website mobile; do
+            r=$(jq -r ".\"$job\".result" needs.json)
+            echo "$job: $r"
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              fail=1
+            fi
+          done
+          if [ "$fail" = "1" ]; then
+            echo "One or more required jobs failed."
+            exit 1
+          fi
+          echo "All required jobs passed or were not affected."
