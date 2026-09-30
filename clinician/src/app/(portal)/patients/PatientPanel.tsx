@@ -505,7 +505,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
               <div className="py-12 text-center text-sm text-gray-400">No prescriptions issued yet.</div>
             ) : (
               <div className="space-y-4">
-                {allPrescriptions.map((rx: any) => <PrescriptionCard key={rx.id} prescription={rx} />)}
+                {allPrescriptions.map((rx: any) => <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} />)}
               </div>
             )}
           </div>

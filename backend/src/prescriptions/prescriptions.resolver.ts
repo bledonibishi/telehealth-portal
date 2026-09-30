@@ -9,6 +9,7 @@ import { PrescribingViolationModel } from './models/prescribing-check.model';
 import { OrderModel } from './models/order.model';
 import { OrdersService } from './orders.service';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
+import { ChangeDoseInput } from './dto/change-dose.input';
 import { ConsultationKind, OrderStatus } from '../common/enums';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -71,6 +72,14 @@ export class PrescriptionsResolver {
     @Args('reason') reason: string,
   ) {
     return this.prescriptionsService.cancel(user.id, id, reason);
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Mutation(() => PrescriptionModel, {
+    description: "Change a patient's dose directly — supersedes the current active prescription with a new one, any time (not just at a monthly check-in)",
+  })
+  changeDose(@CurrentUser() user: AuthUser, @Args('input') input: ChangeDoseInput) {
+    return this.prescriptionsService.changeDose(user.id, input);
   }
 
   // ── Orders ────────────────────────────────────────────────────────────────

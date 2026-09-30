@@ -259,17 +259,45 @@ async function main() {
   console.log('✓ Red flags');
 
   // ── Prescription ────────────────────────────────────────────────────────────
-  await prisma.prescription.upsert({
+  // Structured (a real PrescriptionItem, not just the free-text medication/dosage
+  // summary) so it drives a dose calendar, repeats, and everything else built on
+  // top of prescribing — not just a display-only legacy row.
+  const oestrogel = await prisma.product.findUniqueOrThrow({ where: { slug: 'estradiol-gel-oestrogel' } });
+  const oestrogelStrength = await prisma.productStrength.findFirstOrThrow({
+    where: { productId: oestrogel.id, label: '0.75 mg per pump' },
+  });
+
+  // A prescription seeded before structured prescribing existed has no items —
+  // `update: {}` below leaves an existing row untouched, so replace that legacy
+  // shape once rather than leaving it stuck with no dose calendar forever.
+  const existingRx = await prisma.prescription.findUnique({ where: { consultationId: consultApproved.id }, include: { items: true } });
+  if (existingRx && existingRx.items.length === 0) {
+    await prisma.order.deleteMany({ where: { prescriptionId: existingRx.id } });
+    await prisma.prescription.delete({ where: { id: existingRx.id } });
+  }
+
+  const rxIssuedAt = daysAgo(7);
+  const emmaPrescription = await prisma.prescription.upsert({
     where: { consultationId: consultApproved.id },
     update: {},
     create: {
       consultationId: consultApproved.id,
-      medication: 'Oestraclin Gel 0.06%',
-      dosage: '1 sachet (1.25g) daily',
-      instructions: 'Apply to inner arm or thigh, rotate sites daily. Review after 3 months.',
-      issuedAt: daysAgo(7),
+      medication: 'Estradiol gel 0.06% (Oestrogel)',
+      dosage: '0.75 mg per pump × 1',
+      instructions: 'Apply 2 pumps once daily to the outer arm or inner thigh. Let it dry before dressing; do not apply to the breasts.\nReview after 3 months.',
+      issuedAt: rxIssuedAt,
+      validUntil: new Date(rxIssuedAt.getTime() + 180 * 86_400_000),
+      refillsAllowed: 5,
       patientId: patientEmma.id,
       prescriberId: doctor.id,
+      items: {
+        create: {
+          productId: oestrogel.id,
+          strengthId: oestrogelStrength.id,
+          quantity: 1,
+          directions: 'Apply 2 pumps once daily to the outer arm or inner thigh.',
+        },
+      },
       orders: {
         create: {
           patientId: patientEmma.id,
@@ -280,7 +308,30 @@ async function main() {
         },
       },
     },
+    include: { items: true },
   });
+
+  // Daily dose calendar: the last week mostly logged (one missed, for
+  // realism), today's still open, and a week ahead scheduled — so "My doses"
+  // has something to show immediately rather than an empty state.
+  const emmaItem = emmaPrescription.items[0];
+  if (emmaItem) {
+    const doseDates = Array.from({ length: 15 }, (_, i) => new Date(rxIssuedAt.getTime() + i * 86_400_000));
+    await prisma.doseEvent.createMany({
+      skipDuplicates: true,
+      data: doseDates.map((scheduledFor, i) => {
+        const daysFromToday = Math.round((scheduledFor.getTime() - Date.now()) / 86_400_000);
+        const status = daysFromToday > 0 ? 'SCHEDULED' : i === 2 ? 'MISSED' : daysFromToday === 0 ? 'SCHEDULED' : 'TAKEN';
+        return {
+          prescriptionItemId: emmaItem.id,
+          patientId: patientEmma.id,
+          scheduledFor,
+          status,
+          takenAt: status === 'TAKEN' ? new Date(scheduledFor.getTime() + 30 * 60_000) : null,
+        };
+      }),
+    });
+  }
 
   console.log('✓ Prescriptions');
 
