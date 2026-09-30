@@ -19,6 +19,7 @@ const codes = (c: RuleContext) => checkPrescribingRules(c).map((v) => `${v.code}
 
 const estradiol = product({ id: 'e2', name: 'Estradiol', kind: 'HRT', category: 'ESTROGEN' });
 const progesterone = product({ id: 'p4', name: 'Progesterone', kind: 'HRT', category: 'PROGESTOGEN' });
+const testosterone = product({ id: 't1', name: 'Testosterone', kind: 'TRT', category: 'TESTOSTERONE' });
 
 describe('checkPrescribingRules', () => {
   it('requires at least one item', () => {
@@ -77,6 +78,60 @@ describe('checkPrescribingRules', () => {
 
     it('accepts estrogen with a progestogen', () => {
       expect(codes(ctx({ kind: 'HRT', items: [e2, p4], answers: [{ questionId: 'has_uterus', answer: 'yes' }] }))).toEqual([]);
+    });
+  });
+
+  describe('testosterone', () => {
+    const t1 = item(null, { product: testosterone, strength: { label: '250 mg', titrationStep: null, active: true, productId: 't1' } });
+
+    it('flags testosterone with a history of prostate cancer', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'prostate_cancer_history', answer: 'Yes' }] })))
+        .toEqual(['TESTOSTERONE_PROSTATE_HISTORY:soft']);
+    });
+
+    it('accepts testosterone with no prostate cancer history', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'prostate_cancer_history', answer: 'no' }] }))).toEqual([]);
+    });
+
+    it('accepts testosterone when the question was never asked', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1] }))).toEqual([]);
+    });
+
+    it('flags prostate cancer reported at eligibility even when intake says no', () => {
+      expect(
+        codes(
+          ctx({
+            kind: 'TRT',
+            items: [t1],
+            answers: [
+              { questionId: 'medical_history', answer: 'Prostate cancer', value: 'prostate_cancer' },
+              { questionId: 'prostate_cancer_history', answer: 'No', value: 'no' },
+            ],
+          }),
+        ),
+      ).toEqual(['TESTOSTERONE_PROSTATE_HISTORY:soft']);
+    });
+
+    it('flags breast cancer history', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'breast_cancer_history', answer: 'Yes', value: 'yes' }] })))
+        .toEqual(['TESTOSTERONE_BREAST_CANCER_HISTORY:soft']);
+    });
+
+    it('flags breast cancer reported at eligibility among multiple selections', () => {
+      expect(
+        codes(
+          ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'medical_history', answer: 'Sleep apnea, Breast cancer', value: 'sleep_apnea|breast_cancer' }] }),
+        ),
+      ).toEqual(['TESTOSTERONE_BREAST_CANCER_HISTORY:soft']);
+    });
+
+    it('flags a missing baseline diagnosis', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'baseline_diagnosis', answer: 'No', value: 'no' }] })))
+        .toEqual(['TESTOSTERONE_NO_BASELINE_DIAGNOSIS:soft']);
+    });
+
+    it('accepts testosterone with a confirmed baseline diagnosis and no contraindications', () => {
+      expect(codes(ctx({ kind: 'TRT', items: [t1], answers: [{ questionId: 'baseline_diagnosis', answer: 'Yes', value: 'yes' }] }))).toEqual([]);
     });
   });
 });

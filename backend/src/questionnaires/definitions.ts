@@ -188,6 +188,64 @@ const GLP1_ELIGIBILITY: Questionnaire = {
   ],
 };
 
+const TRT_ELIGIBILITY: Questionnaire = {
+  kind: ConsultationKind.TRT,
+  stage: 'ELIGIBILITY',
+  version: 1,
+  title: 'TRT eligibility',
+  questions: [
+    {
+      id: 'age',
+      text: 'What is your age?',
+      type: 'single',
+      options: [
+        { value: 'under_18', label: 'Under 18', flag: critical('Under 18 — outside the 18–65 TRT age range') },
+        { value: '18_39', label: '18 to 39' },
+        { value: '40_54', label: '40 to 54' },
+        { value: '55_65', label: '55 to 65' },
+        { value: 'over_65', label: 'Over 65', flag: critical('Over 65 — outside the 18–65 TRT age range') },
+      ],
+    },
+    {
+      id: 'symptoms',
+      text: 'Which symptoms are you experiencing?',
+      type: 'multi',
+      options: [
+        { value: 'low_energy', label: 'Low energy or fatigue' },
+        { value: 'low_libido', label: 'Low libido' },
+        { value: 'erectile_dysfunction', label: 'Erectile dysfunction' },
+        { value: 'muscle_loss', label: 'Loss of muscle mass or strength' },
+        { value: 'mood', label: 'Low mood or irritability' },
+        { value: 'none', label: NONE, exclusive: true, flag: critical('No low-testosterone symptoms reported') },
+      ],
+    },
+    {
+      id: 'medical_history',
+      text: 'Have you ever had any of the following?',
+      type: 'multi',
+      options: [
+        { value: 'prostate_cancer', label: 'Prostate cancer', flag: critical('History of prostate cancer') },
+        { value: 'breast_cancer', label: 'Breast cancer', flag: critical('History of breast cancer') },
+        { value: 'polycythemia', label: 'Polycythemia (high red blood cell count)', flag: warning('History of polycythemia — needs monitoring on TRT') },
+        { value: 'sleep_apnea', label: 'Sleep apnea', flag: warning('Sleep apnea — testosterone can worsen it') },
+        { value: 'none', label: NONE, exclusive: true },
+      ],
+    },
+    {
+      id: 'trying_to_conceive',
+      text: 'Are you trying to have a child in the next 12 months?',
+      type: 'single',
+      options: yesNo(warning('Trying to conceive — testosterone suppresses fertility')),
+    },
+    {
+      id: 'recent_cvd',
+      text: 'Have you had a stroke or heart attack in the past 6 months?',
+      type: 'single',
+      options: yesNo(critical('Stroke or heart attack in the past 6 months')),
+    },
+  ],
+};
+
 // ── Medical intake ──────────────────────────────────────────────────────────
 // Answered after payment, in the patient portal. What a prescriber needs that
 // the short eligibility screen doesn't ask. Ids must not collide with the
@@ -257,7 +315,10 @@ function deriveVitals(kind: ConsultationKind) {
     if (sys && dia) {
       if (sys >= 160 || dia >= 100) {
         const reading = `Blood pressure ${sys}/${dia}`;
-        derived.flags.push(kind === ConsultationKind.HRT ? critical(`${reading} — uncontrolled hypertension`) : warning(`${reading} — uncontrolled hypertension`));
+        // Uncontrolled BP compounds the cardiovascular risk of both hormone
+        // programmes (VTE on HRT, polycythemia/erythrocytosis on TRT).
+        const hrtOrTrt = kind === ConsultationKind.HRT || kind === ConsultationKind.TRT;
+        derived.flags.push(hrtOrTrt ? critical(`${reading} — uncontrolled hypertension`) : warning(`${reading} — uncontrolled hypertension`));
       } else if (sys >= 140 || dia >= 90) {
         derived.flags.push(warning(`Blood pressure ${sys}/${dia} — raised`));
       }
@@ -399,6 +460,62 @@ const GLP1_INTAKE: Questionnaire = {
       type: 'single',
       showIf: { questionId: 'diabetes_medicines', anyOf: ['insulin', 'sulfonylurea', 'metformin'] },
       options: yesNo(warning('Diabetic retinopathy — rapid glucose improvement can worsen it')),
+    },
+  ],
+};
+
+const TRT_INTAKE: Questionnaire = {
+  kind: ConsultationKind.TRT,
+  stage: 'INTAKE',
+  version: 1,
+  title: 'TRT medical questionnaire',
+  derive: deriveVitals(ConsultationKind.TRT),
+  questions: [
+    ...COMMON_INTAKE,
+    { id: 'prior_trt_use', text: 'Are you currently using testosterone, or have you used it before?', type: 'single', options: yesNo() },
+    {
+      id: 'prior_trt_details',
+      text: 'Which product, what dose, and when did you last use it?',
+      type: 'text',
+      showIf: { questionId: 'prior_trt_use', anyOf: ['yes'] },
+    },
+    {
+      // Read by the prescribing rules: an absolute contraindication to testosterone.
+      id: 'prostate_cancer_history',
+      text: 'Have you ever been diagnosed with prostate cancer?',
+      type: 'single',
+      options: yesNo(critical('History of prostate cancer — contraindication to testosterone')),
+    },
+    {
+      id: 'breast_cancer_history',
+      text: 'Have you ever been diagnosed with breast cancer?',
+      type: 'single',
+      options: yesNo(critical('History of breast cancer — contraindication to testosterone')),
+    },
+    {
+      id: 'sleep_apnea',
+      text: 'Do you have sleep apnea?',
+      type: 'single',
+      options: yesNo(warning('Sleep apnea — testosterone can worsen it')),
+    },
+    // trying_to_conceive is already asked at ELIGIBILITY — not repeated here,
+    // so there's one fertility answer per consultation, not two.
+    {
+      id: 'urinary_symptoms',
+      text: 'Do you have trouble urinating, a weak stream, or urinate frequently at night?',
+      type: 'single',
+      options: yesNo(warning('Urinary symptoms — assess prostate before starting testosterone')),
+    },
+    {
+      // Read by the prescribing rules: TRT shouldn't start on symptoms alone.
+      id: 'baseline_diagnosis',
+      text: 'Has a doctor confirmed low testosterone with a blood test, or do you have a diagnosed condition that causes it (e.g. hypogonadism)?',
+      help: 'If not, we can arrange blood tests before starting treatment.',
+      type: 'single',
+      options: [
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No', flag: warning('No confirmed baseline diagnosis of low testosterone on file') },
+      ],
     },
   ],
 };
@@ -549,13 +666,80 @@ const HRT_CHECKIN: Questionnaire = {
   },
 };
 
+const TRT_CHECKIN: Questionnaire = {
+  kind: ConsultationKind.TRT,
+  stage: 'CHECKIN',
+  version: 1,
+  title: 'Monthly check-in',
+  questions: [
+    {
+      id: 'symptom_control',
+      text: 'How are your symptoms compared with before treatment?',
+      type: 'single',
+      options: [
+        { value: 'much_better', label: 'Much better' },
+        { value: 'better', label: 'A little better' },
+        { value: 'same', label: 'No change' },
+        { value: 'worse', label: 'Worse', flag: warning('Symptoms worse on treatment') },
+      ],
+    },
+    {
+      id: 'side_effects',
+      text: 'Which side effects have you had?',
+      type: 'multi',
+      options: [
+        { value: 'acne', label: 'Acne or oily skin' },
+        { value: 'mood', label: 'Mood changes or irritability' },
+        { value: 'injection_site', label: 'Injection site pain or swelling' },
+        { value: 'breast_tenderness', label: 'Breast tenderness or swelling', flag: warning('Breast tenderness/swelling — check for gynaecomastia') },
+        { value: 'fluid_retention', label: 'Fluid retention or swelling in the ankles' },
+        { value: 'none', label: 'None', exclusive: true },
+      ],
+    },
+    {
+      id: 'polycythemia_symptoms',
+      text: 'Have you had headaches, dizziness, visual disturbance, or unusual redness of the face?',
+      help: URGENT,
+      type: 'single',
+      options: yesNo(critical('Possible symptoms of raised red blood cell count (polycythemia)')),
+    },
+    {
+      id: 'urinary_symptoms',
+      text: 'Have you had new or worsening urinary symptoms (weak stream, frequency, blood in urine)?',
+      type: 'single',
+      options: yesNo(warning('Urinary symptoms — assess prostate')),
+    },
+    {
+      id: 'vte_symptoms',
+      text: 'Have you had a painful, swollen leg, sudden shortness of breath, or chest pain?',
+      help: URGENT,
+      type: 'single',
+      options: yesNo(critical('Possible blood clot symptoms')),
+    },
+    { id: 'bp_systolic', text: 'If you’ve had your blood pressure taken this month: top number', type: 'number', unit: 'mmHg', min: 70, max: 250, optional: true },
+    { id: 'bp_diastolic', text: 'Bottom number', type: 'number', unit: 'mmHg', min: 40, max: 150, optional: true },
+    ...COMMON_CHECKIN_END,
+  ],
+  derive: (values) => {
+    const sys = Number(values.bp_systolic);
+    const dia = Number(values.bp_diastolic);
+    const flags: Flag[] = [];
+    if (sys && dia && (sys >= 160 || dia >= 100)) flags.push(critical(`Blood pressure ${sys}/${dia} — uncontrolled hypertension`));
+    else if (sys && dia && (sys >= 140 || dia >= 90)) flags.push(warning(`Blood pressure ${sys}/${dia} — raised`));
+    return { answers: [], flags };
+  },
+};
+
 export const QUESTIONNAIRES: Questionnaire[] = [
   HRT_ELIGIBILITY,
   GLP1_ELIGIBILITY,
+  TRT_ELIGIBILITY,
   HRT_INTAKE,
   GLP1_INTAKE,
+  TRT_INTAKE,
   HRT_CHECKIN,
   GLP1_CHECKIN,
+  TRT_CHECKIN,
 ];
 
 export function findQuestionnaire(kind: ConsultationKind, stage: QuestionnaireStage): Questionnaire {

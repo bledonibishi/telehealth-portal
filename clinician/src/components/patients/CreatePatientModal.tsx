@@ -31,7 +31,7 @@ function randomAdultDob(): string {
   return `${now.getFullYear() - age}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-type Plan = 'GLP1' | 'HRT';
+type Plan = 'GLP1' | 'HRT' | 'TRT';
 
 type FormState = {
   firstName: string;
@@ -230,7 +230,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
           <div>
             <p className={labelCls}>Plan</p>
             <div className="flex gap-2">
-              {(['GLP1', 'HRT'] as const).map((kind) => (
+              {(['GLP1', 'HRT', 'TRT'] as const).map((kind) => (
                 <button
                   key={kind}
                   onClick={() => setForm((f) => ({ ...f, plan: kind }))}
@@ -238,7 +238,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                     form.plan === kind ? 'bg-brand-500 text-white border-brand-500' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  {kind === 'GLP1' ? 'GLP-1' : 'HRT'}
+                  {kind === 'GLP1' ? 'GLP-1' : kind === 'HRT' ? 'HRT' : 'TRT'}
                 </button>
               ))}
             </div>
