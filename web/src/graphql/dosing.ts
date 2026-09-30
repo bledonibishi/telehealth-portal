@@ -12,6 +12,7 @@ export const MY_DOSE_CALENDAR = gql`
         id
         name
         brandName
+        category
         requiresColdChain
       }
       strength {
@@ -48,6 +49,15 @@ export const UNMARK_DOSE = gql`
     unmarkDose(id: $id) {
       id
       status
+    }
+  }
+`;
+
+export const MY_MISSED_DOSE_STATUS = gql`
+  query MyMissedDoseStatus {
+    myMissedDoseStatus {
+      missedInARow
+      needsClinician
     }
   }
 `;

@@ -1,14 +1,15 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction';
 import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
-import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
-import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, UNMARK_DOSE } from '@/graphql/dosing';
+import { differenceInCalendarDays, format, formatDistanceToNow, isPast, isToday } from 'date-fns';
+import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '@/graphql/dosing';
 import '@/styles/dose-calendar.css';
 
 type DoseEvent = {
@@ -17,7 +18,7 @@ type DoseEvent = {
   status: 'SCHEDULED' | 'TAKEN' | 'MISSED' | 'SKIPPED';
   takenAt?: string | null;
   note?: string | null;
-  product: { id: string; name: string; brandName?: string | null; requiresColdChain: boolean };
+  product: { id: string; name: string; brandName?: string | null; category: string; requiresColdChain: boolean };
   strength: { id: string; label: string; titrationStep?: number | null };
 };
 
@@ -38,6 +39,23 @@ const doseName = (d: DoseEvent) => `${d.product.brandName ?? d.product.name} ${d
 const statusLabel = (s: string) => (s === 'DUE' ? 'Due' : s.charAt(0) + s.slice(1).toLowerCase());
 // "0.75 mg per pump" -> "0.75 mg" — the grid cell has no room for the pack description.
 const shortStrength = (label: string) => label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?.[0] ?? label;
+
+// How long after the scheduled day a missed weekly dose can still be taken, per the
+// product's licence (semaglutide: within 5 days; otherwise skip to the next one).
+// Products not listed get "ask your clinician" rather than a guess.
+const LATE_DOSE_WINDOW_DAYS: Record<string, number> = { Semaglutide: 5 };
+function missedDoseAdvice(d: DoseEvent, needsClinician: boolean): string | null {
+  if (d.product.category !== 'GLP1') return null;
+  const daysLate = differenceInCalendarDays(new Date(), new Date(d.scheduledFor));
+  if (daysLate < 1) return null;
+  // After several missed in a row, restarting at this dose is the clinician's call.
+  if (needsClinician) return 'You’ve missed several doses in a row — please message your clinician before taking this or your next dose.';
+  const window = LATE_DOSE_WINDOW_DAYS[d.product.name];
+  if (window === undefined) return 'Missed this dose? Message your clinician for advice before taking it late.';
+  return daysLate <= window
+    ? `Missed it? You can still take it today — it’s within ${window} days of the scheduled day. Then carry on with your usual day.`
+    : `It’s more than ${window} days since this dose was due, so skip it and take your next one on your usual day. Never take two doses to catch up.`;
+}
 
 function visualStatus(d: DoseEvent): keyof typeof COLORS {
   if (d.status === 'SCHEDULED' && isPast(new Date(d.scheduledFor)) && !isToday(new Date(d.scheduledFor))) return 'DUE';
@@ -61,15 +79,16 @@ function DoseChip(arg: EventContentArg) {
   );
 }
 
-function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }) {
+function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needsClinician: boolean; onClose: () => void }) {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
-  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
+  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
   const [markSkipped, { loading: skipping }] = useMutation(MARK_DOSE_SKIPPED, opts);
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
   const status = visualStatus(dose);
   const c = COLORS[status];
+  const advice = missedDoseAdvice(dose, needsClinician);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5">
@@ -89,6 +108,7 @@ function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }
       {dose.takenAt && <p className="text-xs text-slate-400 mt-2">Logged {formatDistanceToNow(new Date(dose.takenAt), { addSuffix: true })}</p>}
       {dose.note && <p className="text-xs text-slate-500 mt-2">Note: {dose.note}</p>}
       {dose.product.requiresColdChain && <p className="text-xs text-slate-400 mt-2">Keep refrigerated (2–8°C).</p>}
+      {(dose.status === 'MISSED' || status === 'DUE') && advice && <p className="text-xs text-slate-600 bg-amber-50 rounded-lg px-3 py-2 mt-3">{advice}</p>}
       {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
 
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
@@ -139,6 +159,11 @@ export default function DosesPage() {
     [doses],
   );
 
+  // Worked out by the backend on the active prescription only, so misses on a replaced one don't count.
+  const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
+  const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
+  const needsClinician: boolean = missed.needsClinician;
+
   const events: EventInput[] = doses.map((d) => {
     const c = COLORS[visualStatus(d)];
     return {
@@ -182,6 +207,16 @@ export default function DosesPage() {
 
       {doses.length > 0 && (
         <>
+          {needsClinician && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6" role="alert">
+              <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.missedInARow} doses in a row</p>
+              <p className="text-sm text-amber-900/80 mt-1">
+                Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
+                strong side effects, so they may restart you on a lower one.
+              </p>
+              <Link href="/messages" className="inline-block mt-3 text-sm font-semibold text-brand-700 hover:text-brand-900">Message my clinician →</Link>
+            </div>
+          )}
           {next && (
             <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
@@ -229,7 +264,7 @@ export default function DosesPage() {
 
             <div>
               {selected ? (
-                <DetailPanel dose={selected} onClose={() => setSelectedId(null)} />
+                <DetailPanel dose={selected} needsClinician={needsClinician} onClose={() => setSelectedId(null)} />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-100 p-5 text-sm text-slate-400">
                   Click a dose on the calendar to log it or see the details.

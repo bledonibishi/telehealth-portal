@@ -388,6 +388,32 @@ type MfaSetupResponse {
   secret: String!
 }
 
+"""
+A patient on a stepped-up GLP-1 dose who has not taken several doses in a row
+"""
+type MissedDoseAlert {
+  lastTakenAt: DateTime
+  missedInARow: Int!
+
+  """The first dose of the current run not taken"""
+  missedSince: DateTime!
+  patientId: ID!
+  patientName: String!
+  productName: String!
+  strengthLabel: String!
+  titrationStep: Int!
+}
+
+"""
+The signed-in patient’s own run of GLP-1 doses not taken, on their active prescription
+"""
+type MissedDoseStatus {
+  missedInARow: Int!
+
+  """They should talk to their clinician before the next injection"""
+  needsClinician: Boolean!
+}
+
 enum MonthlyCheckInState {
   COMPLETED
   READY
@@ -518,6 +544,10 @@ type Mutation {
 }
 
 type NotificationCounts {
+  """
+  GLP-1 patients who have not taken several doses in a row (see missedDoseAlerts)
+  """
+  missedDoseAlerts: Int!
   newLeads: Int!
   patientMessages: Int!
   pendingConsultations: Int!
@@ -829,6 +859,11 @@ type Query {
   messages(consultationId: ID!): [Message!]!
 
   """
+  GLP-1 patients on a stepped-up dose who have not taken several doses in a row — consider re-titrating
+  """
+  missedDoseAlerts: [MissedDoseAlert!]!
+
+  """
   A numeric answer (e.g. weight_kg) from the authenticated patient's completed check-ins, oldest first
   """
   myCheckInAnswerTrend(questionId: String!): [TrendPoint!]!
@@ -849,6 +884,10 @@ type Query {
 
   """The authenticated patient's own lab history, most recent first"""
   myLabResults: [LabResult!]!
+  """
+  Whether the signed-in patient should talk to their clinician before their next GLP-1 dose
+  """
+  myMissedDoseStatus: MissedDoseStatus!
   myOnboarding: OnboardingSubmission!
   myOrders: [Order!]!
   myPrescriptions: [Prescription!]!

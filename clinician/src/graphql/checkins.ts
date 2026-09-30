@@ -97,3 +97,18 @@ export const PATIENT_TRENDS = gql`
     }
   }
 `;
+
+export const MISSED_DOSE_ALERTS = gql`
+  query MissedDoseAlerts {
+    missedDoseAlerts {
+      patientId
+      patientName
+      productName
+      strengthLabel
+      titrationStep
+      missedInARow
+      missedSince
+      lastTakenAt
+    }
+  }
+`;
