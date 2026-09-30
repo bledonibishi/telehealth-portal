@@ -265,6 +265,39 @@ enum DoseStatus {
   TAKEN
 }
 
+type LabResult {
+  collectedAt: DateTime!
+  createdAt: DateTime!
+  enteredBy: Clinician
+  flagged: Boolean!
+  id: ID!
+  kind: LabResultKind!
+  note: String
+  patient: Patient
+  patientId: ID!
+  referenceRangeHigh: Float
+  referenceRangeLow: Float
+  reviewNote: String
+  reviewedAt: DateTime
+  reviewedBy: Clinician
+  unit: String!
+  value: Float!
+}
+
+enum LabResultKind {
+  ESTRADIOL
+  FSH
+  HBA1C
+  HEMATOCRIT
+  LH
+  LIPID_PANEL
+  LIVER_FUNCTION
+  OTHER
+  PSA
+  SHBG
+  TESTOSTERONE
+}
+
 type Lead {
   convertedAt: DateTime
   createdAt: DateTime!
@@ -336,6 +369,9 @@ type Mutation {
   markDoseTaken(id: ID!): DoseEvent!
   markOrderDelivered(id: ID!): Order!
   markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Order!
+
+  """Enter a new lab result for a patient"""
+  recordLabResult(input: RecordLabResultInput!): LabResult!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
 
   """Hand a claimed consultation back to the queue"""
@@ -354,6 +390,9 @@ type Mutation {
 
   """Decide the next step after a monthly check-in"""
   reviewCheckIn(input: ReviewCheckInInput!): CheckIn!
+
+  """Acknowledge a lab result, with an optional clinical note"""
+  reviewLabResult(input: ReviewLabResultInput!): LabResult!
   reviewOnboardingStep(input: ReviewOnboardingStepInput!): OnboardingSubmission!
   revokeClinicianVerification(id: ID!): Clinician!
   saveBodyPhotosStep(input: SaveBodyPhotosStepInput!): OnboardingSubmission!
@@ -683,6 +722,9 @@ type Query {
   """
   consultationQueue: [Consultation!]!
   dashboardMetrics: DashboardMetrics!
+
+  """Out-of-range results nobody has reviewed yet, oldest first"""
+  flaggedLabResultQueue: [LabResult!]!
   lead(id: ID!): Lead!
   leads: [Lead!]!
 
@@ -700,6 +742,9 @@ type Query {
   The authenticated patient's dose calendar — recent history plus what's ahead
   """
   myDoseCalendar(fromDays: Int, toDays: Int): [DoseEvent!]!
+
+  """The authenticated patient's own lab history, most recent first"""
+  myLabResults: [LabResult!]!
   myOnboarding: OnboardingSubmission!
   myOrders: [Order!]!
   myPrescriptions: [Prescription!]!
@@ -719,6 +764,9 @@ type Query {
 
   """Prior consultations for a patient, newest first"""
   patientHistory(patientId: ID!): [Consultation!]!
+
+  """A patient's lab history"""
+  patientLabResults(patientId: ID!): [LabResult!]!
   patientOrders(patientId: ID!): [Order!]!
 
   """A patient's prescriptions, newest first, including superseded ones"""
@@ -807,6 +855,20 @@ input QuizAnswerInput {
   value: String
 }
 
+input RecordLabResultInput {
+  """When the specimen was collected, not when it was entered"""
+  collectedAt: DateTime!
+  kind: LabResultKind!
+  note: String
+  patientId: ID!
+  referenceRangeHigh: Float
+
+  """Omit when the lab/kind has no standard range (e.g. OTHER)"""
+  referenceRangeLow: Float
+  unit: String!
+  value: Float!
+}
+
 type RedFlag {
   createdAt: DateTime!
   description: String!
@@ -844,6 +906,11 @@ input ReviewCheckInInput {
   overrideReason: String
   refillsAllowed: Int
   validityDays: Int
+}
+
+input ReviewLabResultInput {
+  labResultId: ID!
+  reviewNote: String
 }
 
 input ReviewOnboardingStepInput {
