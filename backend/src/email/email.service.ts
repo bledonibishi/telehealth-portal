@@ -60,6 +60,28 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Your monthly check-in is ready', html });
   }
 
+  async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string) {
+    const when = scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">Upcoming dose reminder</h2>
+        <p style="color:#475569">Hi ${firstName}, your next dose of ${productName} is due on ${when}.</p>
+        <a href="${portalUrl}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          View my dose calendar
+        </a>
+        <p style="color:#94a3b8;font-size:13px">You can mark it as taken or skipped from your portal once it's done.</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Dose reminder email to ${to}: ${productName} due ${scheduledFor.toISOString()}`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: `Reminder: ${productName} dose due ${when}`, html });
+  }
+
   // Deliberately generic: email isn't a secure channel, so the clinical detail
   // (decision, reasons, messages) stays behind the portal login.
   async sendConsultationUpdateEmail(to: string, firstName: string, headline: string, portalUrl: string) {
