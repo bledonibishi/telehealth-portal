@@ -9,6 +9,7 @@ import { PATIENT_HISTORY } from '@/graphql/consultations';
 import { GET_ORDERS } from '@/graphql/orders';
 import { PrescriptionForm, PrescriptionSubmission, Row } from '@/components/consultation/PrescriptionForm';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
+import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
 
@@ -171,6 +172,7 @@ export default function CheckInsPage() {
           <h1 className="text-lg font-semibold text-gray-900">Check-ins</h1>
           <p className="text-xs text-gray-500 mt-0.5">{queue.length} waiting for review</p>
         </div>
+        <MissedDoseAlerts />
         {loading && <p className="p-5 text-sm text-gray-400">Loading…</p>}
         {error && <p className="p-5 text-sm text-danger-500">{error.message}</p>}
         <div className="flex-1 overflow-y-auto divide-y divide-gray-100">

@@ -15,6 +15,8 @@ import AuthedImage from '@/components/AuthedImage';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
+import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
+import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
 
 const PROOF_TYPE_LABEL: Record<string, string> = {
@@ -37,7 +39,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'labs';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
 
 function OnboardingStepSection({
   title,
@@ -171,6 +173,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const { data: prescriptionsData } = useQuery(PATIENT_PRESCRIPTIONS, { variables: { patientId } });
   // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
   const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId } });
+  const { data: symptomsData } = useQuery(PATIENT_SYMPTOM_ASSESSMENTS, { variables: { patientId } });
   const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
   });
@@ -181,6 +184,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const p = data?.patient;
   const onboarding = onboardingData?.onboardingSubmission;
   const weightJourney = weightData?.weightJourneyForPatient;
+  const symptomAssessments = symptomsData?.patientSymptomAssessments ?? [];
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center text-sm text-gray-400">Loading…</div>
@@ -282,6 +286,10 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'checkin',       label: 'Check-in' },
     ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: 'Labs' }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: 'Weight' }] : []),
+    // Hormone programmes track symptoms instead of weight.
+    ...(symptomAssessments.length > 0 || ['HRT', 'TRT'].includes(latestConsult?.kind)
+      ? [{ key: 'symptoms' as Tab, label: 'Symptoms' }]
+      : []),
   ];
 
   return (
@@ -604,6 +612,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'weight' && weightJourney && (
           <WeightJourneyPanel journey={weightJourney} patientId={patientId} canCorrect={hasAccess(['ADMIN', 'DOCTOR'])} />
         )}
+
+        {/* ── Symptoms ── */}
+        {tab === 'symptoms' && <SymptomsPanel assessments={symptomAssessments} />}
 
         {/* ── Labs ── */}
         {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} />}

@@ -388,6 +388,32 @@ type MfaSetupResponse {
   secret: String!
 }
 
+"""
+A patient on a stepped-up GLP-1 dose who has not taken several doses in a row
+"""
+type MissedDoseAlert {
+  lastTakenAt: DateTime
+  missedInARow: Int!
+
+  """The first dose of the current run not taken"""
+  missedSince: DateTime!
+  patientId: ID!
+  patientName: String!
+  productName: String!
+  strengthLabel: String!
+  titrationStep: Int!
+}
+
+"""
+The signed-in patient’s own run of GLP-1 doses not taken, on their active prescription
+"""
+type MissedDoseStatus {
+  missedInARow: Int!
+
+  """They should talk to their clinician before the next injection"""
+  needsClinician: Boolean!
+}
+
 enum MonthlyCheckInState {
   COMPLETED
   READY
@@ -454,6 +480,10 @@ type Mutation {
 
   """Enter a new lab result for a patient"""
   recordLabResult(input: RecordLabResultInput!): LabResult!
+  """
+  Save a filled-in symptom questionnaire. Replaces one saved in the last 24 hours.
+  """
+  recordMySymptoms(input: RecordSymptomsInput!): SymptomAssessment!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
 
   """Hand a claimed consultation back to the queue"""
@@ -518,6 +548,10 @@ type Mutation {
 }
 
 type NotificationCounts {
+  """
+  GLP-1 patients who have not taken several doses in a row (see missedDoseAlerts)
+  """
+  missedDoseAlerts: Int!
   newLeads: Int!
   patientMessages: Int!
   pendingConsultations: Int!
@@ -829,6 +863,11 @@ type Query {
   messages(consultationId: ID!): [Message!]!
 
   """
+  GLP-1 patients on a stepped-up dose who have not taken several doses in a row — consider re-titrating
+  """
+  missedDoseAlerts: [MissedDoseAlert!]!
+
+  """
   A numeric answer (e.g. weight_kg) from the authenticated patient's completed check-ins, oldest first
   """
   myCheckInAnswerTrend(questionId: String!): [TrendPoint!]!
@@ -849,12 +888,26 @@ type Query {
 
   """The authenticated patient's own lab history, most recent first"""
   myLabResults: [LabResult!]!
+  """
+  Whether the signed-in patient should talk to their clinician before their next GLP-1 dose
+  """
+  myMissedDoseStatus: MissedDoseStatus!
   myOnboarding: OnboardingSubmission!
   myOrders: [Order!]!
   myPrescriptions: [Prescription!]!
 
   """The programme the patient signed up for on the website"""
   myProductKind: ConsultationKind
+
+  """
+  The signed-in patient’s symptom scores on their current programme’s scale, oldest first
+  """
+  mySymptomAssessments: [SymptomAssessment!]!
+
+  """
+  The symptom questionnaire for the signed-in patient’s programme. Null when it has none.
+  """
+  mySymptomScale: SymptomScaleDefinition
 
   """
   The signed-in patient’s testosterone blood-test schedule. Null when not on testosterone.
@@ -887,6 +940,9 @@ type Query {
   """A patient's prescriptions, newest first, including superseded ones"""
   patientPrescriptions(patientId: ID!): [Prescription!]!
 
+  """A patient’s symptom scores, oldest first"""
+  patientSymptomAssessments(patientId: ID!): [SymptomAssessment!]!
+
   """
   A patient’s testosterone blood-test schedule and whether repeats are on hold
   """
@@ -902,6 +958,11 @@ type Query {
   """Prescribable medicines; inactive ones only when asked"""
   products(includeInactive: Boolean = false, kind: ConsultationKind): [Product!]!
   questionnaire(kind: ConsultationKind!, stage: QuestionnaireStage!): Questionnaire!
+
+  """
+  A symptom questionnaire’s wording, for showing a patient’s item-by-item answers
+  """
+  symptomScaleDefinition(scale: SymptomScale!): SymptomScaleDefinition!
 
   """
   Testosterone patients on hold, with a warning, or with a blood test due soon
@@ -999,6 +1060,11 @@ input RecordLabResultInput {
   value: Float!
 }
 
+input RecordSymptomsInput {
+  """One answer per item of the patient’s scale"""
+  answers: [SymptomAnswerInput!]!
+}
+
 type RedFlag {
   createdAt: DateTime!
   description: String!
@@ -1092,6 +1158,71 @@ type Subscription {
   newMessage(consultationId: ID!): Message!
 }
 
+type SymptomAnswer {
+  itemId: String!
+  score: Int!
+}
+
+input SymptomAnswerInput {
+  itemId: String!
+  score: Int!
+}
+
+type SymptomAssessment {
+  answers: [SymptomAnswer!]!
+  domainScores: [SymptomDomainScore!]!
+  id: ID!
+  maxScore: Int!
+  minScore: Int!
+  recordedAt: DateTime!
+  scale: SymptomScale!
+
+  """e.g. "Mild", from the scale’s published bands"""
+  severity: String!
+  totalScore: Int!
+}
+
+type SymptomDomainScore {
+  domain: String!
+  label: String!
+  max: Int!
+  min: Int!
+  score: Int!
+}
+
+enum SymptomScale {
+  AMS
+  MRS
+}
+
+"""A symptom questionnaire, for rendering the form"""
+type SymptomScaleDefinition {
+  domains: [SymptomScaleDomain!]!
+  id: SymptomScale!
+  intro: String!
+  items: [SymptomScaleItem!]!
+  maxScore: Int!
+  minScore: Int!
+  name: String!
+
+  """Answer choices, lowest (no symptom) first"""
+  options: [SymptomScaleOption!]!
+}
+
+type SymptomScaleDomain {
+  id: String!
+  label: String!
+}
+
+type SymptomScaleItem {
+  domain: String!
+  id: String!
+  text: String!
+}
+
+type SymptomScaleOption {
+  label: String!
+  score: Int!
 type TrendPoint {
   checkInId: ID!
   date: DateTime!

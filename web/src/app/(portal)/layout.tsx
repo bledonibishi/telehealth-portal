@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { useQuery } from '@apollo/client';
+import { useApolloClient, useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
+import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -18,6 +19,8 @@ const NAV = [
 
 // Only weight-management patients have a journey (the API returns null otherwise).
 const WEIGHT_NAV = { href: '/weight-journey', label: 'Weight journey', icon: '⚖️' };
+// Only hormone-programme patients have a symptom scale (null otherwise).
+const SYMPTOMS_NAV = { href: '/symptoms', label: 'Symptoms', icon: '📈' };
 
 // Patients can still reach support while onboarding is incomplete.
 const ONBOARDING_EXEMPT_PATHS = ['/messages'];
@@ -45,10 +48,21 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     skip: !isAuthenticated() || onboardingStatus !== 'APPROVED',
     fetchPolicy: 'cache-and-network',
   });
-  const navItems = journeyData?.myWeightJourney ? [...NAV, WEIGHT_NAV] : NAV;
+  const { data: scaleData } = useQuery(MY_SYMPTOM_SCALE, {
+    skip: !isAuthenticated() || onboardingStatus !== 'APPROVED',
+  });
+  const navItems = [
+    ...NAV,
+    ...(journeyData?.myWeightJourney ? [WEIGHT_NAV] : []),
+    ...(scaleData?.mySymptomScale ? [SYMPTOMS_NAV] : []),
+  ];
 
+  const apollo = useApolloClient();
   const handleLogout = () => {
     clearToken();
+    // Patient-scoped queries are cached without the patient in their key, so the
+    // next person to sign in on this browser must not be shown this one's data.
+    apollo.clearStore();
     router.replace('/login');
   };
 
