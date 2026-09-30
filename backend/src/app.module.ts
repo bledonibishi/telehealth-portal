@@ -28,6 +28,7 @@ import { CheckInsModule } from './check-ins/check-ins.module';
 import { WeightJourneyModule } from './weight-journey/weight-journey.module';
 import { DosingModule } from './dosing/dosing.module';
 import { SymptomsModule } from './symptoms/symptoms.module';
+import { LabsModule } from './labs/labs.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { SymptomsModule } from './symptoms/symptoms.module';
     WeightJourneyModule,
     DosingModule,
     SymptomsModule,
+    LabsModule,
   ],
 })
 export class AppModule {}

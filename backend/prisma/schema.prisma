@@ -144,6 +144,20 @@ enum PrescriptionProofType {
   ORDER_CONFIRMATION
 }
 
+enum LabResultKind {
+  ESTRADIOL
+  TESTOSTERONE
+  FSH
+  LH
+  SHBG
+  PSA
+  HEMATOCRIT
+  LIPID_PANEL
+  HBA1C
+  LIVER_FUNCTION
+  OTHER
+}
+
 model Clinician {
   id            String        @id @default(cuid())
   email         String        @unique
@@ -166,6 +180,8 @@ model Clinician {
   reviewedOnboardings OnboardingSubmission[]
   prescriptions       Prescription[]
   reviewedCheckIns    CheckIn[]
+  enteredLabResults   LabResult[]            @relation("LabResultEnteredBy")
+  reviewedLabResults  LabResult[]            @relation("LabResultReviewedBy")
 
   @@map("clinicians")
 }
@@ -221,6 +237,7 @@ model Patient {
   weightEntries WeightEntry[]
   doseEvents    DoseEvent[]
   symptomAssessments SymptomAssessment[]
+  labResults    LabResult[]
 
   @@map("patients")
 }
@@ -400,6 +417,43 @@ model DoseEvent {
   @@unique([prescriptionItemId, scheduledFor])
   @@index([patientId, scheduledFor])
   @@map("dose_events")
+}
+
+// A single analyte result (e.g. one estradiol or PSA draw), entered by staff
+// today (no lab-partner integration yet). Kind-agnostic across HRT and GLP-1
+// like CheckIn, so titration/dosing decisions can be checked against levels.
+model LabResult {
+  id                 String         @id @default(cuid())
+  patientId          String         @map("patient_id")
+  kind               LabResultKind
+  // Required when kind is OTHER, since that kind alone doesn't say what was measured.
+  analyteName        String?        @map("analyte_name")
+  value              Float
+  unit               String
+  referenceRangeLow  Float?         @map("reference_range_low")
+  referenceRangeHigh Float?         @map("reference_range_high")
+  // Set at entry from the reference range, if one was given — lets the
+  // review queue surface out-of-range results without recomputing per query.
+  flagged            Boolean        @default(false)
+  collectedAt        DateTime       @map("collected_at")
+  note               String?
+  enteredById        String?        @map("entered_by_id")
+  reviewedAt         DateTime?      @map("reviewed_at")
+  reviewedById       String?        @map("reviewed_by_id")
+  reviewNote         String?        @map("review_note")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  patient    Patient    @relation(fields: [patientId], references: [id])
+  enteredBy  Clinician? @relation("LabResultEnteredBy", fields: [enteredById], references: [id])
+  reviewedBy Clinician? @relation("LabResultReviewedBy", fields: [reviewedById], references: [id])
+
+  // History queries filter by patient and sort by collection date across all
+  // kinds; the flagged-queue query filters flagged+unreviewed and sorts by
+  // collection date.
+  @@index([patientId, collectedAt])
+  @@index([flagged, reviewedAt, collectedAt])
+  @@map("lab_results")
 }
 
 model ProductStrength {
