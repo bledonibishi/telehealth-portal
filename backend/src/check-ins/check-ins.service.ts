@@ -4,9 +4,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, PrescriptionStatus } from '../common/enums';
+import { CheckInStatus, ConsultationKind, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
-import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
+import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 
 const CHECK_IN_INTERVAL_DAYS = 30;
@@ -105,11 +105,42 @@ export class CheckInsService {
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, strength: true } } },
     });
     const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
     const kind = (rx?.items[0]?.product.kind ?? patient?.lead?.productKind ?? null) as ConsultationKind | null;
     return { prescription: rx, kind };
+  }
+
+  /**
+   * GLP-1 dropout is driven almost entirely by side effects, and they're most
+   * dangerous right after a dose increase — but a clinician reviewing one
+   * check-in in isolation has no way to see "this is shortly after a step-up"
+   * unless it's flagged. Severe side effects reported within the product's
+   * step interval of a still-titrating prescription get an automatic flag.
+   */
+  private glp1TitrationRiskFlag(
+    prescription: {
+      issuedAt: Date;
+      items: Array<{ product: { category: string; weeksPerStep: number | null }; strength: { titrationStep: number | null } }>;
+    },
+    answers: Array<{ questionId: string; value: string | null }>,
+  ): Flag | null {
+    const item = prescription.items.find((i) => i.product.category === ProductCategory.GLP1);
+    const step = item?.strength.titrationStep;
+    const weeksPerStep = item?.product.weeksPerStep;
+    if (!item || !step || step <= 1 || !weeksPerStep) return null; // starting dose, or not titrated
+
+    const daysSinceIssued = (Date.now() - prescription.issuedAt.getTime()) / 86_400_000;
+    if (daysSinceIssued > weeksPerStep * 7) return null; // well past the step-up window
+
+    const impact = answers.find((a) => a.questionId === 'side_effect_impact')?.value;
+    if (impact !== 'severe') return null;
+
+    return {
+      severity: RedFlagSeverity.WARNING,
+      description: `Severe side effects reported within ${weeksPerStep} week(s) of stepping up to titration step ${step} — consider holding rather than continuing to escalate`,
+    };
   }
 
   async findByToken(token: string) {
@@ -135,6 +166,11 @@ export class CheckInsService {
     const questionnaire = findQuestionnaire(kind, 'CHECKIN');
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+
+    if (kind === ConsultationKind.GLP1 && prescription) {
+      const titrationFlag = this.glp1TitrationRiskFlag(prescription, evaluation.answers);
+      if (titrationFlag) evaluation.flags.push(titrationFlag);
+    }
 
     // The weight is asked in the questionnaire; keep a typed copy for the Weight Journey.
     const weightAnswer = evaluation.answers.find((a) => a.questionId === 'weight_kg');
