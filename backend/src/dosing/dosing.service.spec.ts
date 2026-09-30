@@ -26,7 +26,7 @@ function makePrisma() {
 }
 
 function makeEmail() {
-  return { sendDoseReminderEmail: jest.fn() };
+  return { sendDoseReminderEmail: jest.fn().mockResolvedValue(true) };
 }
 
 function makeConfig() {
@@ -185,7 +185,7 @@ describe('DosingService.houseKeeping', () => {
 });
 
 describe('DosingService.sendReminders', () => {
-  it('emails and marks a reminder for each upcoming, not-yet-reminded dose', async () => {
+  it('claims a dose, emails it, and keeps the claim when delivery succeeds', async () => {
     const prisma = makePrisma();
     const scheduledFor = new Date(Date.now() + 3 * 3_600_000);
     prisma.doseEvent.findMany.mockResolvedValue([
@@ -196,13 +196,52 @@ describe('DosingService.sendReminders', () => {
         prescriptionItem: { product: { name: 'Semaglutide' } },
       },
     ]);
+    prisma.doseEvent.updateMany.mockResolvedValueOnce({ count: 1 }); // the claim succeeds
     const email = makeEmail();
     const service = new DosingService(prisma as any, email as any, makeConfig() as any);
 
-    await service.sendReminders();
+    const sent = await service.sendReminders();
 
-    expect(email.sendDoseReminderEmail).toHaveBeenCalledWith('p@example.com', 'Tia', 'Semaglutide', scheduledFor, expect.stringContaining('/dosing'));
-    expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { reminderSentAt: expect.any(Date) } });
+    expect(sent).toBe(1);
+    expect(prisma.doseEvent.updateMany).toHaveBeenCalledWith({ where: { id: 'd-1', reminderSentAt: null }, data: { reminderSentAt: expect.any(Date) } });
+    expect(email.sendDoseReminderEmail).toHaveBeenCalledWith('p@example.com', 'Tia', 'Semaglutide', scheduledFor, expect.stringContaining('/doses'));
+    expect(prisma.doseEvent.updateMany).toHaveBeenCalledTimes(1); // no release call on success
+  });
+
+  it('skips a dose that another run already claimed', async () => {
+    const prisma = makePrisma();
+    prisma.doseEvent.findMany.mockResolvedValue([
+      { id: 'd-1', scheduledFor: new Date(), patient: { email: 'p@example.com', firstName: 'Tia' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+    ]);
+    prisma.doseEvent.updateMany.mockResolvedValueOnce({ count: 0 }); // lost the race (or the dose was cancelled)
+    const email = makeEmail();
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(0);
+    expect(email.sendDoseReminderEmail).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim on a failed send and keeps processing the rest of the batch', async () => {
+    const prisma = makePrisma();
+    prisma.doseEvent.findMany.mockResolvedValue([
+      { id: 'd-1', scheduledFor: new Date(), patient: { email: 'a@example.com', firstName: 'A' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+      { id: 'd-2', scheduledFor: new Date(), patient: { email: 'b@example.com', firstName: 'B' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+    ]);
+    prisma.doseEvent.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // claim d-1
+      .mockResolvedValueOnce({ count: 1 }) // release d-1 after its failed send
+      .mockResolvedValueOnce({ count: 1 }); // claim d-2
+    const email = makeEmail();
+    email.sendDoseReminderEmail.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(1); // only d-2 counted
+    expect(email.sendDoseReminderEmail).toHaveBeenCalledTimes(2); // d-2 still attempted despite d-1 failing
+    expect(prisma.doseEvent.updateMany).toHaveBeenNthCalledWith(2, { where: { id: 'd-1' }, data: { reminderSentAt: null } });
   });
 
   it('only looks at scheduled doses within the reminder window that have not already been reminded', async () => {
@@ -222,9 +261,9 @@ describe('DosingService.sendReminders', () => {
     const email = makeEmail();
     const service = new DosingService(prisma as any, email as any, makeConfig() as any);
 
-    await service.sendReminders();
+    const sent = await service.sendReminders();
 
+    expect(sent).toBe(0);
     expect(email.sendDoseReminderEmail).not.toHaveBeenCalled();
-    expect(prisma.doseEvent.update).not.toHaveBeenCalled();
   });
 });

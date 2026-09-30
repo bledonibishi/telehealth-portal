@@ -142,9 +142,17 @@ export class DosingService {
     }
   }
 
-  /** Emails a reminder for any scheduled dose coming up within the reminder window, once each. */
+  /**
+   * Emails a reminder for any scheduled dose coming up within the reminder
+   * window, once each. Also callable from the Vercel Cron-triggered endpoint
+   * (DosingCronController) alongside this in-process timer — each dose is
+   * claimed atomically first, so the two triggers (or two overlapping runs
+   * of this timer) can never double-send, and a dose cancelled between the
+   * initial fetch and the claim just yields a no-op claim instead of a
+   * stale email.
+   */
   @Cron(CronExpression.EVERY_HOUR)
-  async sendReminders() {
+  async sendReminders(): Promise<number> {
     const upcoming = await this.prisma.doseEvent.findMany({
       where: {
         status: DoseStatus.SCHEDULED,
@@ -154,17 +162,33 @@ export class DosingService {
       include: { patient: true, prescriptionItem: { include: { product: true } } },
     });
 
+    let sent = 0;
     for (const event of upcoming) {
-      await this.email.sendDoseReminderEmail(
-        event.patient.email,
-        event.patient.firstName,
-        event.prescriptionItem.product.name,
-        event.scheduledFor,
-        `${this.appUrl}/dosing`,
-      );
-      await this.prisma.doseEvent.update({ where: { id: event.id }, data: { reminderSentAt: new Date() } });
+      const claim = await this.prisma.doseEvent.updateMany({
+        where: { id: event.id, reminderSentAt: null },
+        data: { reminderSentAt: new Date() },
+      });
+      if (claim.count === 0) continue; // already claimed/sent, or cancelled since the fetch above
+
+      try {
+        const delivered = await this.email.sendDoseReminderEmail(
+          event.patient.email,
+          event.patient.firstName,
+          event.prescriptionItem.product.name,
+          event.scheduledFor,
+          `${this.appUrl}/doses`,
+        );
+        if (!delivered) throw new Error('Email provider did not confirm delivery');
+        sent++;
+      } catch (err) {
+        // Release the claim so it's retried next run, and keep processing
+        // the rest of the batch — one failed send shouldn't block the others.
+        await this.prisma.doseEvent.updateMany({ where: { id: event.id }, data: { reminderSentAt: null } });
+        this.logger.error(`Dose reminder failed for dose ${event.id}: ${(err as Error).message}`);
+      }
     }
-    if (upcoming.length) this.logger.log(`Sent ${upcoming.length} dose reminder(s)`);
+    if (sent) this.logger.log(`Sent ${sent} dose reminder(s)`);
+    return sent;
   }
 
   private async topUp(

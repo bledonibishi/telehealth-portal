@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
+// Patient-supplied text (names) gets interpolated straight into HTML emails —
+// escape it so a name like `<img src=x onerror=...>` can't inject markup.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -60,12 +66,15 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Your monthly check-in is ready', html });
   }
 
-  async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string) {
+  /** Resolves true only once the provider has confirmed it accepted the send. */
+  async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string): Promise<boolean> {
     const when = scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const safeFirstName = escapeHtml(firstName);
+    const safeProductName = escapeHtml(productName);
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#1e293b">Upcoming dose reminder</h2>
-        <p style="color:#475569">Hi ${firstName}, your next dose of ${productName} is due on ${when}.</p>
+        <p style="color:#475569">Hi ${safeFirstName}, your next dose of ${safeProductName} is due on ${when}.</p>
         <a href="${portalUrl}"
           style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
           View my dose calendar
@@ -75,11 +84,17 @@ export class EmailService {
     `;
 
     if (!this.resend) {
+      // Not a real send — the caller must not treat this as delivered.
       this.logger.log(`[DEV] Dose reminder email to ${to}: ${productName} due ${scheduledFor.toISOString()}`);
-      return;
+      return false;
     }
 
-    await this.resend.emails.send({ from: this.from, to, subject: `Reminder: ${productName} dose due ${when}`, html });
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `Reminder: ${productName} dose due ${when}`, html });
+    if (error) {
+      this.logger.error(`Dose reminder email to ${to} failed: ${error.message}`);
+      return false;
+    }
+    return true;
   }
 
   // Deliberately generic: email isn't a secure channel, so the clinical detail
