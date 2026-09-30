@@ -1,18 +1,21 @@
 import * as bcrypt from 'bcryptjs';
 import { PatientsService } from './patients.service';
 
-// findAll/updateMyBasicInfo only touch prisma — the other four constructor
-// deps (audit, posthog, consents, prescribing) are only exercised by
-// createByStaff, below.
-const noopDeps = () => [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any] as const;
+// findAll/updateMyBasicInfo only touch prisma (and, for findAll, the weight
+// journey) — the other constructor deps (audit, posthog, consents, prescribing)
+// are only exercised by createByStaff, below.
+const noJourneys = () => ({ summariesFor: jest.fn().mockResolvedValue(new Map()) });
+const noopDeps = (journey: any = noJourneys()) =>
+  [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any, journey] as const;
 
 describe('PatientsService.findAll', () => {
   const row = (over: Partial<any> = {}) => ({
     id: 'p-1',
     firstName: 'Emma',
     lead: { productKind: 'HRT' },
-    consultations: [{ status: 'APPROVED' }],
-    prescriptions: [{ id: 'rx-1' }],
+    activatedAt: new Date('2026-09-01'),
+    consultations: [{ status: 'APPROVED', kind: 'HRT', messages: [] }],
+    prescriptions: [{ id: 'rx-1', medication: 'Oestrogel', dosage: '0.75 mg', items: [] }],
     checkIns: [{ status: 'SENT', dueAt: new Date('2026-10-01') }],
     ...over,
   });
@@ -62,13 +65,76 @@ describe('PatientsService.findAll', () => {
     });
   });
 
-  it('queries the latest consultation and check-in only (take 1, newest first) and only active prescriptions', async () => {
+  it('names the medication after the brand, with the prescribed strength', async () => {
+    const items = [{ product: { name: 'Semaglutide', brandName: 'Wegovy' }, strength: { label: '0.5 mg' } }];
+    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [{ id: 'rx-1', medication: 'x', dosage: 'y', items }] })]) } };
+    const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+    expect(result.medications).toEqual([{ label: 'Wegovy', dose: '0.5 mg' }]);
+  });
+
+  it('falls back to the prescription summary when it has no items', async () => {
+    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
+    const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+    expect(result.medications).toEqual([{ label: 'Oestrogel', dose: '0.75 mg' }]);
+  });
+
+  it('is ACTIVE with a prescription, INACTIVE without one and PENDING before activation', async () => {
+    const prisma = {
+      patient: {
+        findMany: jest.fn().mockResolvedValue([row(), row({ prescriptions: [] }), row({ activatedAt: null })]),
+      },
+    };
+    const result = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+    expect(result.map((r) => r.treatmentStatus)).toEqual(['ACTIVE', 'INACTIVE', 'PENDING']);
+  });
+
+  it('takes the weight numbers from the weight journey, for weight programmes only', async () => {
+    const journey = {
+      summariesFor: jest.fn().mockResolvedValue(
+        new Map([['p-1', { startingWeightKg: 100, currentWeightKg: 92, targetWeightKg: 85, weightLostKg: 8, progressPercentage: 53.33, latestMeasurementAt: new Date('2026-09-20') }]]),
+      ),
+    };
+    const prisma = {
+      patient: {
+        findMany: jest.fn().mockResolvedValue([
+          row({ lead: { productKind: 'GLP1' } }),
+          row({ id: 'p-2', lead: { productKind: 'HRT' } }),
+        ]),
+      },
+    };
+    const [glp1, hrt] = await new PatientsService(prisma as any, ...noopDeps(journey)).findAll();
+
+    expect(journey.summariesFor).toHaveBeenCalledWith(['p-1']);
+    expect(glp1).toMatchObject({ weightLostKg: 8, targetWeightKg: 85, progressPercentage: 53.33, lastWeighedAt: new Date('2026-09-20') });
+    expect(hrt).toMatchObject({ weightLostKg: null, progressPercentage: null, lastWeighedAt: null });
+  });
+
+  it('flags a patient whose newest message is unanswered', async () => {
+    const at = (d: string) => new Date(d);
+    const thread = (...m: [string, string][]) => ({ status: 'APPROVED', kind: 'GLP1', messages: [{ senderRole: m[0][0], sentAt: at(m[0][1]) }] });
+    const prisma = {
+      patient: {
+        findMany: jest.fn().mockResolvedValue([
+          row({ consultations: [thread(['PATIENT', '2026-09-20'])] }),
+          row({ consultations: [thread(['CLINICIAN', '2026-09-21'])] }),
+          // Patient wrote last in an older thread, but staff replied since in the newer one.
+          row({ consultations: [thread(['CLINICIAN', '2026-09-22']), thread(['PATIENT', '2026-09-10'])] }),
+        ]),
+      },
+    };
+    const result = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+    expect(result.map((r) => r.awaitingReply)).toEqual([true, false, false]);
+    expect(result[0].lastMessageAt).toEqual(at('2026-09-20'));
+  });
+
+  it('queries every consultation (newest first), the latest check-in only, and only active prescriptions', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const deps = noopDeps();
     await new PatientsService({ patient: { findMany } } as any, ...deps).findAll();
 
     const { include } = findMany.mock.calls[0][0];
-    expect(include.consultations).toMatchObject({ take: 1, orderBy: { submittedAt: 'desc' } });
+    expect(include.consultations).toMatchObject({ orderBy: { submittedAt: 'desc' } });
+    expect(include.consultations).not.toHaveProperty('take');
     expect(include.checkIns).toMatchObject({ take: 1, orderBy: { createdAt: 'desc' } });
     expect(include.prescriptions).toMatchObject({ where: { status: 'ACTIVE' } });
   });
@@ -224,7 +290,7 @@ describe('PatientsService.createByStaff', () => {
       record: jest.fn().mockResolvedValue({}),
     };
     const prescribing = { issue: jest.fn().mockResolvedValue({ id: 'rx-1' }) };
-    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any);
+    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any, {} as any);
     return { svc, prisma, tx, audit, posthog, consents, prescribing };
   }
 

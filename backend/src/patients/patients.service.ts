@@ -10,6 +10,8 @@ import { AuditService } from '../audit/audit.service';
 import { PostHogService } from '../posthog/posthog.service';
 import { ConsentsService } from '../consents/consents.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
+import { WeightJourneyService } from '../weight-journey/weight-journey.service';
+import { PatientTreatmentStatus } from './models/patient-list-item.model';
 import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import {
@@ -62,6 +64,7 @@ export class PatientsService {
     private posthog: PostHogService,
     private consents: ConsentsService,
     private prescribing: PrescribingService,
+    private weightJourney: WeightJourneyService,
   ) {}
 
   // One query per relation (batched across all patients, not per row) so the
@@ -72,20 +75,74 @@ export class PatientsService {
       orderBy: { createdAt: 'desc' },
       include: {
         lead: { select: { productKind: true } },
-        consultations: { orderBy: { submittedAt: 'desc' }, take: 1, select: { status: true } },
-        prescriptions: { where: { status: PrescriptionStatus.ACTIVE }, select: { id: true }, take: 1 },
+        consultations: {
+          orderBy: { submittedAt: 'desc' },
+          select: {
+            status: true,
+            kind: true,
+            // Only the newest message of each thread, to tell whether a reply is owed.
+            messages: { orderBy: { sentAt: 'desc' }, take: 1, select: { senderRole: true, sentAt: true } },
+          },
+        },
+        prescriptions: {
+          where: { status: PrescriptionStatus.ACTIVE },
+          orderBy: { issuedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            medication: true,
+            dosage: true,
+            items: { select: { product: { select: { name: true, brandName: true } }, strength: { select: { label: true } } } },
+          },
+        },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1, select: { status: true, dueAt: true } },
       },
     });
 
-    return rows.map(({ lead, consultations, prescriptions, checkIns, ...patient }) => ({
-      ...patient,
-      productKind: lead?.productKind ?? null,
-      latestConsultationStatus: consultations[0]?.status ?? null,
-      hasActivePrescription: prescriptions.length > 0,
-      lastCheckInStatus: checkIns[0]?.status ?? null,
-      lastCheckInDueAt: checkIns[0]?.dueAt ?? null,
-    }));
+    // Same numbers the patient sees on their own dashboard.
+    const glp1Ids = rows
+      .filter((r) => (r.lead?.productKind ?? r.consultations[0]?.kind) === ConsultationKind.GLP1)
+      .map((r) => r.id);
+    const journeys = await this.weightJourney.summariesFor(glp1Ids);
+
+    return rows.map(({ lead, consultations, prescriptions, checkIns, ...patient }) => {
+      const journey = journeys.get(patient.id);
+      const prescription = prescriptions[0];
+      const newest = consultations
+        .flatMap((c) => c.messages)
+        .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
+      const lastFromPatient = consultations
+        .flatMap((c) => c.messages)
+        .filter((m) => m.senderRole === UserRole.PATIENT)
+        .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
+
+      return {
+        ...patient,
+        productKind: lead?.productKind ?? null,
+        latestConsultationStatus: consultations[0]?.status ?? null,
+        hasActivePrescription: prescriptions.length > 0,
+        lastCheckInStatus: checkIns[0]?.status ?? null,
+        lastCheckInDueAt: checkIns[0]?.dueAt ?? null,
+        treatmentStatus: !patient.activatedAt
+          ? PatientTreatmentStatus.PENDING
+          : prescription
+            ? PatientTreatmentStatus.ACTIVE
+            : PatientTreatmentStatus.INACTIVE,
+        medications: prescription
+          ? prescription.items.length > 0
+            ? prescription.items.map((i) => ({ label: i.product.brandName ?? i.product.name, dose: i.strength.label }))
+            : [{ label: prescription.medication, dose: prescription.dosage }]
+          : [],
+        startingWeightKg: journey?.startingWeightKg ?? null,
+        currentWeightKg: journey?.currentWeightKg ?? null,
+        targetWeightKg: journey?.targetWeightKg ?? null,
+        weightLostKg: journey?.weightLostKg ?? null,
+        progressPercentage: journey?.progressPercentage ?? null,
+        lastWeighedAt: journey?.latestMeasurementAt ?? null,
+        awaitingReply: newest?.senderRole === UserRole.PATIENT,
+        lastMessageAt: lastFromPatient?.sentAt ?? null,
+      };
+    });
   }
 
   findById(id: string) {
