@@ -10,6 +10,7 @@ import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction'
 import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
 import { differenceInCalendarDays, format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '@/graphql/dosing';
+import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import '@/styles/dose-calendar.css';
 
 type DoseEvent = {
@@ -165,6 +166,11 @@ export default function DosesPage() {
   const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
   const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
   const needsClinician: boolean = missed.needsClinician;
+  // Straight into the conversation (on the newest consultation, where replies go) rather than the
+  // Messages list; skipped until the banner is actually shown.
+  const { data: consultationsData } = useQuery(MY_CONSULTATIONS, { skip: !needsClinician });
+  const latestConsultationId: string | undefined = consultationsData?.myConsultations?.[0]?.id;
+  const messageClinicianHref = latestConsultationId ? `/consultation/${latestConsultationId}?chat=open` : '/messages';
 
   const events: EventInput[] = doses.map((d) => {
     const c = COLORS[visualStatus(d)];
@@ -216,7 +222,7 @@ export default function DosesPage() {
                 Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
                 strong side effects, so they may restart you on a lower one.
               </p>
-              <Link href="/messages" className="inline-block mt-3 text-sm font-semibold text-brand-700 hover:text-brand-900">Message my clinician →</Link>
+              <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-brand-700 hover:text-brand-900">Message my clinician →</Link>
             </div>
           )}
           {next && (
