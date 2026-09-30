@@ -17,7 +17,7 @@ type DoseEvent = {
   status: 'SCHEDULED' | 'TAKEN' | 'MISSED' | 'SKIPPED';
   takenAt?: string | null;
   note?: string | null;
-  product: { id: string; name: string; brandName?: string | null; requiresColdChain: boolean };
+  product: { id: string; name: string; brandName?: string | null; form: string; requiresColdChain: boolean };
   strength: { id: string; label: string; titrationStep?: number | null };
 };
 
@@ -36,8 +36,8 @@ const LEGEND: (keyof typeof COLORS)[] = ['SCHEDULED', 'DUE', 'TAKEN', 'MISSED', 
 
 const doseName = (d: DoseEvent) => `${d.product.brandName ?? d.product.name} ${d.strength.label}`;
 const statusLabel = (s: string) => (s === 'DUE' ? 'Due' : s.charAt(0) + s.slice(1).toLowerCase());
-// "0.75 mg per pump" -> "0.75 mg" — the grid cell has no room for the pack description.
-const shortStrength = (label: string) => label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?.[0] ?? label;
+// "0.75 mg per pump" -> "0.75 mg", "50 micrograms/24 h" -> "50 mcg" — the grid cell has no room for more.
+const shortStrength = (label: string) => (label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?.[0] ?? label).replace(/micrograms?$/, 'mcg');
 
 function visualStatus(d: DoseEvent): keyof typeof COLORS {
   if (d.status === 'SCHEDULED' && isPast(new Date(d.scheduledFor)) && !isToday(new Date(d.scheduledFor))) return 'DUE';
@@ -70,6 +70,7 @@ function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
   const status = visualStatus(dose);
   const c = COLORS[status];
+  const isPatch = dose.product.form === 'PATCH';
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5">
@@ -89,6 +90,7 @@ function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }
       {dose.takenAt && <p className="text-xs text-slate-400 mt-2">Logged {formatDistanceToNow(new Date(dose.takenAt), { addSuffix: true })}</p>}
       {dose.note && <p className="text-xs text-slate-500 mt-2">Note: {dose.note}</p>}
       {dose.product.requiresColdChain && <p className="text-xs text-slate-400 mt-2">Keep refrigerated (2–8°C).</p>}
+      {isPatch && <p className="text-xs text-slate-400 mt-2">Put the new patch on a different spot from the last one, below the waist.</p>}
       {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
 
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
@@ -98,7 +100,7 @@ function DetailPanel({ dose, onClose }: { dose: DoseEvent; onClose: () => void }
             disabled={taking}
             className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
           >
-            {taking ? 'Saving…' : 'Mark as taken'}
+            {taking ? 'Saving…' : isPatch ? 'Mark patch changed' : 'Mark as taken'}
           </button>
           <div className="flex gap-2">
             <input
@@ -176,7 +178,7 @@ export default function DosesPage() {
 
       {!loading && doses.length === 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-          <p className="text-slate-400 text-sm">Nothing to show yet — this fills in once you have an active, dated prescription (e.g. a weekly injection).</p>
+          <p className="text-slate-400 text-sm">Nothing to show yet — this fills in once you have an active, dated prescription (e.g. a weekly injection or twice-weekly patch).</p>
         </div>
       )}
 

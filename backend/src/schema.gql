@@ -298,10 +298,10 @@ type DoseEvent {
   id: ID!
   note: String
   prescriptionItemId: ID!
-  product: Product
+  product: Product!
   scheduledFor: DateTime!
   status: DoseStatus!
-  strength: ProductStrength
+  strength: ProductStrength!
   takenAt: DateTime
 }
 
@@ -632,26 +632,28 @@ type PrescribingViolation {
 type Prescription {
   cancelReason: String
   cancelledAt: DateTime
-  carrier: String
+  carrier: String @deprecated(reason: "Use orders")
   consultation: Consultation
   consultationId: String
 
   """SHA-256 of the content at issue, printed on the document"""
   contentHash: String
-  deliveredAt: DateTime
-  dispatchedAt: DateTime
-  documentUrl: String
+  deliveredAt: DateTime @deprecated(reason: "Use orders")
+  dispatchedAt: DateTime @deprecated(reason: "Use orders")
+
+  """Authenticated link to the prescription PDF"""
+  documentUrl: String!
   dosage: String!
   id: ID!
   instructions: String!
   issuedAt: DateTime!
-  items: [PrescriptionItem!]
+  items: [PrescriptionItem!]!
   medication: String!
   orders: [Order!]!
-  outForDeliveryAt: DateTime
+  outForDeliveryAt: DateTime @deprecated(reason: "Use orders")
   overrideReason: String
   patientId: ID!
-  pharmacyRef: String
+  pharmacyRef: String @deprecated(reason: "Use orders")
   prescriber: Clinician
   refillsAllowed: Int!
 
@@ -659,8 +661,8 @@ type Prescription {
   repeatsRemaining: Int!
   status: PrescriptionStatus!
   supersedesId: String
-  trackingNumber: String
-  trackingUrl: String
+  trackingNumber: String @deprecated(reason: "Use orders")
+  trackingUrl: String @deprecated(reason: "Use orders")
   validUntil: DateTime
 }
 
@@ -702,9 +704,14 @@ type Product {
   defaultDirections: String
 
   """
-  Days between doses, e.g. 7 for weekly — null when there is no dose calendar for this product
+  Days between doses, e.g. 7 for weekly — null when there is no fixed interval (see dosesPerWeek)
   """
   doseIntervalDays: Int
+
+  """
+  Doses a week on fixed weekdays (e.g. 2 for a twice-weekly patch) — used when there is no fixed interval
+  """
+  dosesPerWeek: Int
   form: ProductForm!
   id: ID!
   kind: ConsultationKind!

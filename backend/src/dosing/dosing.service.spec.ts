@@ -15,6 +15,7 @@ function makePrisma() {
     doseEvent: {
       upsert,
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
       findMany: jest.fn(),
@@ -41,9 +42,23 @@ describe('DosingService.generateForItem', () => {
     expect(new Set(dates).size).toBe(8);
   });
 
-  it('does nothing for a product with no fixed dosing interval', async () => {
+  it('schedules a twice-weekly patch on the same two weekdays every week', async () => {
     const prisma = makePrisma();
-    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null });
+    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null, dosesPerWeek: 2 });
+    const service = new DosingService(prisma as any);
+    const monday = new Date('2026-10-05T09:00:00Z');
+
+    await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'patch' }, 'p-1', monday);
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => c[0].create.scheduledFor as Date);
+    expect(dates).toHaveLength(8);
+    expect(dates.map((d) => d.getUTCDay())).toEqual([1, 4, 1, 4, 1, 4, 1, 4]); // Mon/Thu
+    expect(dates[2].getTime()).toBe(monday.getTime() + 7 * DAY);
+  });
+
+  it('does nothing for a product with no dosing schedule', async () => {
+    const prisma = makePrisma();
+    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null, dosesPerWeek: null });
     const service = new DosingService(prisma as any);
 
     await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'patch' }, 'p-1', new Date());
@@ -160,6 +175,49 @@ describe('DosingService.houseKeeping', () => {
     expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(5); // top up to 8
     const first = prisma.doseEvent.upsert.mock.calls[0][0].create.scheduledFor.getTime();
     expect(first).toBe(lastDate.getTime() + 7 * DAY); // starts after the last one, not on it
+  });
+
+  it('tops up a twice-weekly patch keeping the weekdays set by its first dose', async () => {
+    const prisma = makePrisma();
+    const firstMonday = new Date('2026-10-05T09:00:00Z');
+    const lastThursday = new Date('2026-10-22T09:00:00Z');
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      {
+        id: 'item-1',
+        product: { doseIntervalDays: null, dosesPerWeek: 2 },
+        prescription: { patientId: 'p-1' },
+        doseEvents: [{ scheduledFor: lastThursday }],
+      },
+    ]);
+    prisma.doseEvent.findFirst.mockResolvedValue({ scheduledFor: firstMonday });
+    prisma.doseEvent.count.mockResolvedValue(5);
+
+    const service = new DosingService(prisma as any);
+    await service.houseKeeping();
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => (c[0].create.scheduledFor as Date).toISOString());
+    expect(dates).toEqual(['2026-10-26T09:00:00.000Z', '2026-10-29T09:00:00.000Z', '2026-11-02T09:00:00.000Z']);
+  });
+
+  it('starts a schedule from now for an active patch prescription that has no doses yet', async () => {
+    const prisma = makePrisma();
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      { id: 'item-1', product: { doseIntervalDays: null, dosesPerWeek: 2 }, prescription: { patientId: 'p-1' }, doseEvents: [] },
+    ]);
+    prisma.doseEvent.count.mockResolvedValue(0);
+
+    const before = Date.now();
+    const service = new DosingService(prisma as any);
+    await service.houseKeeping();
+
+    expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(8);
+    const first = prisma.doseEvent.upsert.mock.calls[0][0].create.scheduledFor.getTime();
+    expect(first).toBeGreaterThanOrEqual(before);
+    expect(prisma.prescriptionItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ product: { OR: [{ doseIntervalDays: { not: null } }, { dosesPerWeek: { not: null } }] } }),
+      }),
+    );
   });
 
   it('does not top up an item that already has a full window', async () => {
