@@ -1,36 +1,84 @@
 'use client';
 
-import { ApolloClient, InMemoryCache, createHttpLink, split } from '@apollo/client';
-import { onError } from '@apollo/client/link/error';
+import { ApolloClient, InMemoryCache, Observable, createHttpLink, fromPromise, split } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
+import { onError } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
+import { print } from 'graphql';
 import { createClient } from 'graphql-ws';
+import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
+import { clearToken, getRefreshToken, getToken, setToken } from './auth';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
 
 const httpLink = createHttpLink({ uri: GRAPHQL_URL });
 
-// An expired/invalid token otherwise leaves protected pages stuck in a
-// permanent loading/blank state (no data ever arrives, nothing redirects).
-// Bounce straight to login instead whenever the API rejects the token.
-const errorLink = onError(({ graphQLErrors, networkError }) => {
-  if (typeof window === 'undefined') return;
-
-  const isAuthError =
-    graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED') ||
-    (networkError && 'statusCode' in networkError && (networkError as any).statusCode === 401);
-
-  if (isAuthError && !window.location.pathname.startsWith('/login')) {
-    localStorage.removeItem('patient_token');
-    window.location.href = '/login';
-  }
+const authLink = setContext((_, { headers }) => {
+  const token = getToken();
+  return { headers: { ...headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } };
 });
 
-const authLink = setContext((_, { headers }) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('patient_token') : null;
-  return { headers: { ...headers, ...(token ? { authorization: `Bearer ${token}` } : {}) } };
+const REFRESH_QUERY = print(REFRESH_ACCESS_TOKEN);
+let refreshInFlight: Promise<string | null> | null = null;
+
+// Calls the API directly, not through the client, so a failed refresh cannot loop back into errorLink.
+function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return Promise.resolve(null);
+
+  refreshInFlight ??= fetch(GRAPHQL_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: REFRESH_QUERY, variables: { refreshToken } }),
+  })
+    .then((res) => res.json())
+    .then(({ data }) => {
+      const tokens = data?.refreshAccessToken;
+      if (!tokens) return null;
+      setToken(tokens.accessToken, tokens.refreshToken);
+      return tokens.accessToken as string;
+    })
+    .catch(() => null)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+function endSession() {
+  clearToken();
+  if (window.location.pathname !== '/login') window.location.href = '/login';
+}
+
+// An expired access token triggers a silent refresh-and-retry (using the
+// refresh token) instead of logging the patient out — this is what keeps them
+// signed in across the 15-minute access token lifetime without re-entering
+// their password, for as long as the 7-day refresh token is still valid.
+const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
+  if (typeof window === 'undefined') return;
+
+  const reason = graphQLErrors
+    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
+    .find(Boolean);
+
+  const isAuthError = !!reason || graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED');
+  if (!isAuthError) return;
+
+  if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {
+    endSession();
+    return;
+  }
+
+  return fromPromise(refreshAccessToken()).flatMap((token) => {
+    if (!token) {
+      endSession();
+      return Observable.of(response!);
+    }
+    operation.setContext({ retriedAfterRefresh: true });
+    return forward(operation);
+  });
 });
 
 const wsLink =
@@ -39,12 +87,14 @@ const wsLink =
         createClient({
           url: WS_URL,
           connectionParams: () => {
-            const token = localStorage.getItem('patient_token');
+            const token = getToken();
             return token ? { authorization: `Bearer ${token}` } : {};
           },
         }),
       )
     : null;
+
+const httpChain = errorLink.concat(authLink).concat(httpLink);
 
 const splitLink =
   wsLink !== null
@@ -54,11 +104,11 @@ const splitLink =
           return def.kind === 'OperationDefinition' && def.operation === 'subscription';
         },
         wsLink,
-        authLink.concat(httpLink),
+        httpChain,
       )
-    : authLink.concat(httpLink);
+    : httpChain;
 
 export const apolloClient = new ApolloClient({
-  link: errorLink.concat(splitLink),
+  link: splitLink,
   cache: new InMemoryCache(),
 });

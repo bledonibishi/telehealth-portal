@@ -14,7 +14,7 @@ export default function LoginPage() {
 
   const [loginPatient, { loading }] = useMutation(LOGIN_PATIENT, {
     onCompleted(data) {
-      setToken(data.loginPatient.accessToken);
+      setToken(data.loginPatient.accessToken, data.loginPatient.refreshToken);
       router.push('/dashboard');
     },
     onError(err) {

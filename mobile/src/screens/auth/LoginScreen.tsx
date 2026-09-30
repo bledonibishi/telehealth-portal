@@ -3,10 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useMutation } from '@apollo/client';
-import * as SecureStore from 'expo-secure-store';
 import { LOGIN_PATIENT } from '../../graphql/operations';
 import { MY_ONBOARDING } from '../../graphql/onboarding';
 import { apolloClient } from '../../lib/apollo';
+import { setTokens } from '../../lib/tokens';
 
 export function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -15,7 +15,7 @@ export function LoginScreen({ navigation }: any) {
 
   const [login, { loading }] = useMutation(LOGIN_PATIENT, {
     onCompleted: async ({ loginPatient }) => {
-      await SecureStore.setItemAsync('access_token', loginPatient.accessToken);
+      await setTokens(loginPatient.accessToken, loginPatient.refreshToken);
       try {
         const { data } = await apolloClient.query({ query: MY_ONBOARDING, fetchPolicy: 'network-only' });
         navigation.replace(data?.myOnboarding?.status === 'APPROVED' ? 'Main' : 'Onboarding');

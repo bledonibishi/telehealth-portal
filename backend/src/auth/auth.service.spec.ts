@@ -108,13 +108,14 @@ describe('AuthService', () => {
       await expect(service.loginPatient('nobody@example.com', 'pw')).rejects.toThrow(UnauthorizedException);
     });
 
-    it('returns an access token for an activated patient with the right password', async () => {
+    it('returns an access token and refresh token for an activated patient with the right password', async () => {
       prisma.patient.findUnique.mockResolvedValue(PATIENT);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
       const result = await service.loginPatient(PATIENT.email, 'correct');
 
       expect(result.accessToken).toBe('signed-token');
+      expect(result.refreshToken).toBe('signed-token');
       expect(result.patient).toBe(PATIENT);
     });
   });
@@ -179,6 +180,24 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('signed-token');
       expect(result.refreshToken).toBe('signed-token');
+    });
+
+    it('issues a new token pair for a valid patient refresh token', async () => {
+      jwtService.verify.mockReturnValue({ sub: PATIENT.id, role: UserRole.PATIENT, type: 'refresh' });
+      prisma.patient.findUnique.mockResolvedValue(PATIENT);
+
+      const result = await service.refreshAccessToken('token');
+
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.refreshToken).toBe('signed-token');
+      expect(prisma.patient.findUnique).toHaveBeenCalledWith({ where: { id: PATIENT.id } });
+    });
+
+    it('rejects a refresh token for a patient that no longer exists', async () => {
+      jwtService.verify.mockReturnValue({ sub: PATIENT.id, role: UserRole.PATIENT, type: 'refresh' });
+      prisma.patient.findUnique.mockResolvedValue(null);
+
+      await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
     });
   });
 });
