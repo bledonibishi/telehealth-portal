@@ -10,6 +10,7 @@ describe('OrdersService', () => {
   let prisma: any;
   let audit: { log: jest.Mock };
   let service: OrdersService;
+  let trtMonitoring: { assertRepeatAllowed: jest.Mock };
 
   beforeEach(() => {
     prisma = {
@@ -22,7 +23,8 @@ describe('OrdersService', () => {
       prescription: { findUnique: jest.fn() },
     };
     audit = { log: jest.fn() };
-    service = new OrdersService(prisma, audit as any);
+    trtMonitoring = { assertRepeatAllowed: jest.fn() };
+    service = new OrdersService(prisma, audit as any, trtMonitoring as any);
   });
 
   describe('dispatch', () => {
@@ -94,6 +96,14 @@ describe('OrdersService', () => {
     it('refuses while another order is still pending', async () => {
       withOrders([{ status: 'PENDING', sequence: 1 }]);
       await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/already an order waiting/);
+    });
+
+    it('refuses a testosterone repeat while its blood tests are on hold', async () => {
+      withOrders([{ status: 'DELIVERED', sequence: 1 }]);
+      trtMonitoring.assertRepeatAllowed.mockRejectedValue(new Error('Testosterone repeat on hold: PSA test overdue'));
+      await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/on hold/);
+      expect(trtMonitoring.assertRepeatAllowed).toHaveBeenCalledWith('rx-1', prisma);
+      expect(prisma.order.create).not.toHaveBeenCalled();
     });
   });
 });

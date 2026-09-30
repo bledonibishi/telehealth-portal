@@ -835,6 +835,11 @@ type Query {
   """The programme the patient signed up for on the website"""
   myProductKind: ConsultationKind
 
+  """
+  The signed-in patient’s testosterone blood-test schedule. Null when not on testosterone.
+  """
+  myTrtMonitoring: TrtMonitoring
+
   """The signed-in patient’s own journey. Null for programmes without one."""
   myWeightJourney: WeightJourney
 
@@ -860,6 +865,11 @@ type Query {
 
   """A patient's prescriptions, newest first, including superseded ones"""
   patientPrescriptions(patientId: ID!): [Prescription!]!
+
+  """
+  A patient’s testosterone blood-test schedule and whether repeats are on hold
+  """
+  patientTrtMonitoring(patientId: ID!): TrtMonitoring
   patients: [PatientListItem!]!
 
   """
@@ -871,6 +881,11 @@ type Query {
   """Prescribable medicines; inactive ones only when asked"""
   products(includeInactive: Boolean = false, kind: ConsultationKind): [Product!]!
   questionnaire(kind: ConsultationKind!, stage: QuestionnaireStage!): Questionnaire!
+
+  """
+  Testosterone patients on hold, with a warning, or with a blood test due soon
+  """
+  trtMonitoringQueue: [TrtMonitoringQueueEntry!]!
   weightJourneyForPatient(patientId: ID!): WeightJourney
   weightTimelineForPatient(from: DateTime!, limit: Int, patientId: ID!, to: DateTime!): WeightTimeline!
 }
@@ -1054,6 +1069,41 @@ input SubmitIntakeQuizInput {
 
 type Subscription {
   newMessage(consultationId: ID!): Message!
+}
+
+type TrtLabStatus {
+  """When the next result is due"""
+  dueAt: DateTime!
+  kind: LabResultKind!
+  lastCollectedAt: DateTime
+  lastUnit: String
+  lastValue: Float
+
+  """
+  More than the grace period past due — repeats are on hold until a result is entered
+  """
+  overdue: Boolean!
+}
+
+"""Safety blood-test monitoring for a patient on testosterone"""
+type TrtMonitoring {
+  holdReasons: [String!]!
+  labs: [TrtLabStatus!]!
+  patientId: ID!
+
+  """Repeat supplies are blocked while this is true"""
+  refillsOnHold: Boolean!
+
+  """When testosterone treatment started (first prescription)"""
+  startedAt: DateTime!
+
+  """Worth a clinician’s attention, but not blocking"""
+  warnings: [String!]!
+}
+
+type TrtMonitoringQueueEntry {
+  monitoring: TrtMonitoring!
+  patientName: String!
 }
 
 input UpdateBasicInfoInput {

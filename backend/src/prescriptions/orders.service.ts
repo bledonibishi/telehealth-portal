@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { TrtMonitoringService } from '../labs/trt-monitoring.service';
 import { OrderStatus, PrescriptionStatus, UserRole } from '../common/enums';
 
 type Db = PrismaService | Prisma.TransactionClient;
@@ -45,6 +46,7 @@ export class OrdersService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private trtMonitoring: TrtMonitoringService,
   ) {}
 
   findAll(status?: OrderStatus) {
@@ -78,6 +80,7 @@ export class OrdersService {
     if (repeatsUsed >= rx.refillsAllowed) {
       throw new BadRequestException('All repeats on this prescription have been used — it needs a new prescription');
     }
+    await this.trtMonitoring.assertRepeatAllowed(prescriptionId, db);
 
     const sequence = Math.max(0, ...rx.orders.map((o) => o.sequence)) + 1;
     const order = await db.order.create({ data: { prescriptionId, patientId: rx.patientId, sequence } });

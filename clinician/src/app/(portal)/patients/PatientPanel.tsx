@@ -14,6 +14,7 @@ import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
+import LabsPanel from '@/components/labs/LabsPanel';
 import { hasAccess } from '@/lib/role';
 
 const PROOF_TYPE_LABEL: Record<string, string> = {
@@ -36,7 +37,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'labs';
 
 function OnboardingStepSection({
   title,
@@ -279,6 +280,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'orders',        label: `Orders (${orders.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
     { key: 'checkin',       label: 'Check-in' },
+    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: 'Labs' }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: 'Weight' }] : []),
   ];
 
@@ -602,6 +604,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'weight' && weightJourney && (
           <WeightJourneyPanel journey={weightJourney} patientId={patientId} canCorrect={hasAccess(['ADMIN', 'DOCTOR'])} />
         )}
+
+        {/* ── Labs ── */}
+        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} />}
 
         {/* ── Check-in ── */}
         {tab === 'checkin' && (
