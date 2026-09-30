@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useSubscription } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
@@ -179,6 +179,15 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     return stopPolling;
   }, [connected, startPolling, stopPolling]);
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
+
+  // Keep the newest message in view: when the tab opens, and whenever one arrives or is sent.
+  const threadRef = useRef<HTMLDivElement>(null);
+  const messageCount = (data?.patient?.consultations ?? []).reduce((n: number, c: any) => n + (c.messages?.length ?? 0), 0);
+  useEffect(() => {
+    if (tab !== 'messages') return;
+    const el = threadRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [tab, messageCount]);
   const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
   const [updatePatient, { loading: saving }] = useMutation(UPDATE_PATIENT, {
     refetchQueries: [{ query: GET_PATIENTS }],
@@ -573,7 +582,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
         {tab === 'messages' && (
           <div className="flex flex-col h-full">
             {/* Message thread */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            <div ref={threadRef} className="flex-1 overflow-y-auto p-5 space-y-3">
               {allMessages.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400">No messages yet.</div>
               ) : (
