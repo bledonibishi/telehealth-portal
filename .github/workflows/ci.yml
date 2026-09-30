@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+# Cancel superseded runs on the same branch/PR so pushes don't queue up stale checks.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shared-types:
+    name: shared-types / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/shared-types
+
+  backend:
+    name: backend / build + test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: telehealth
+          POSTGRES_PASSWORD: telehealth_dev
+          POSTGRES_DB: telehealth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U telehealth"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://telehealth:telehealth_dev@localhost:5432/telehealth
+      JWT_SECRET: ci-test-secret
+      JWT_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      PORT: 4000
+      ALLOWED_ORIGINS: http://localhost:3000
+      PRESCRIBER_MFA_REQUIRED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/backend
+      - name: Apply migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+      - run: pnpm exec turbo run test --filter=@telehealth/backend
+
+  web:
+    name: web / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/web
+
+  clinician:
+    name: clinician / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/clinician
+
+  website:
+    name: website / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo run build --filter=@telehealth/website
+
+  mobile:
+    name: mobile / typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @telehealth/mobile exec tsc --noEmit
