@@ -381,8 +381,12 @@ model Product {
   weeksPerStep      Int?             @map("weeks_per_step")
   // Days between doses, e.g. 7 for a weekly GLP-1 injection, 1 for a daily
   // gel/capsule. Null when the product has no clean fixed interval (e.g.
-  // twice-weekly patches) — no dose calendar is generated for those.
+  // twice-weekly patches) — see dosesPerWeek for those.
   doseIntervalDays  Int?             @map("dose_interval_days")
+  // For products taken a set number of times a week on fixed weekdays
+  // rather than every N days, e.g. 2 for a twice-weekly patch (changed on
+  // the same two days each week). Only used when doseIntervalDays is null.
+  dosesPerWeek      Int?             @map("doses_per_week")
   defaultDirections String?          @map("default_directions")
   active            Boolean          @default(true)
   createdAt         DateTime         @default(now()) @map("created_at")

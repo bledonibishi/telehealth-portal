@@ -51,8 +51,11 @@ export class ProductModel {
   @Field(() => Int, { nullable: true })
   weeksPerStep?: number;
 
-  @Field(() => Int, { nullable: true, description: 'Days between doses, e.g. 7 for weekly — null when there is no dose calendar for this product' })
+  @Field(() => Int, { nullable: true, description: 'Days between doses, e.g. 7 for weekly — null when there is no fixed interval (see dosesPerWeek)' })
   doseIntervalDays?: number;
+
+  @Field(() => Int, { nullable: true, description: 'Doses a week on fixed weekdays (e.g. 2 for a twice-weekly patch) — used when there is no fixed interval' })
+  dosesPerWeek?: number;
 
   @Field({ nullable: true })
   defaultDirections?: string;

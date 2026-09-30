@@ -15,6 +15,7 @@ function makePrisma() {
     doseEvent: {
       upsert,
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
@@ -22,6 +23,7 @@ function makePrisma() {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     prescriptionItem: { findMany: jest.fn().mockResolvedValue([]) },
+    prescription: { findUnique: jest.fn().mockResolvedValue({ validUntil: null }) },
   };
 }
 
@@ -49,9 +51,34 @@ describe('DosingService.generateForItem', () => {
     expect(new Set(dates).size).toBe(8);
   });
 
-  it('does nothing for a product with no fixed dosing interval', async () => {
+  it('schedules a twice-weekly patch on the same two weekdays every week', async () => {
     const prisma = makePrisma();
-    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null });
+    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null, dosesPerWeek: 2 });
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+    const monday = new Date('2026-10-05T09:00:00Z'); // pinned to midday UTC for patches
+
+    await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'patch' }, 'p-1', monday);
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => c[0].create.scheduledFor as Date);
+    expect(dates).toHaveLength(8);
+    expect(dates.map((d) => d.getUTCDay())).toEqual([1, 4, 1, 4, 1, 4, 1, 4]); // Mon/Thu
+    expect(dates[0].toISOString()).toBe('2026-10-05T12:00:00.000Z');
+    expect(dates[2].getTime()).toBe(dates[0].getTime() + 7 * DAY);
+  });
+
+  it('does not schedule past the prescription’s validity', async () => {
+    const prisma = makePrisma();
+    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: 7 });
+    const anchor = new Date('2026-10-01T09:00:00Z');
+    prisma.prescription.findUnique.mockResolvedValue({ validUntil: new Date(anchor.getTime() + 20 * DAY) });
+    await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'sema' }, 'p-1', anchor);
+
+    expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(3); // days 0, 7, 14
+  });
+
+  it('does nothing for a product with no dosing schedule', async () => {
+    const prisma = makePrisma();
+    prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null, dosesPerWeek: null });
     const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
 
     await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'patch' }, 'p-1', new Date());
@@ -168,6 +195,67 @@ describe('DosingService.houseKeeping', () => {
     expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(5); // top up to 8
     const first = prisma.doseEvent.upsert.mock.calls[0][0].create.scheduledFor.getTime();
     expect(first).toBe(lastDate.getTime() + 7 * DAY); // starts after the last one, not on it
+  });
+
+  it('tops up a twice-weekly patch keeping the weekdays set by its first dose', async () => {
+    const prisma = makePrisma();
+    const firstMonday = new Date('2026-10-05T12:00:00Z');
+    const lastThursday = new Date('2026-10-22T12:00:00Z');
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      {
+        id: 'item-1',
+        product: { doseIntervalDays: null, dosesPerWeek: 2 },
+        prescription: { patientId: 'p-1', issuedAt: firstMonday, validUntil: null },
+        doseEvents: [{ scheduledFor: lastThursday }],
+      },
+    ]);
+    prisma.doseEvent.findFirst.mockResolvedValue({ scheduledFor: firstMonday });
+    prisma.doseEvent.count.mockResolvedValue(5);
+
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+    await service.houseKeeping();
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => (c[0].create.scheduledFor as Date).toISOString());
+    expect(dates).toEqual(['2026-10-26T12:00:00.000Z', '2026-10-29T12:00:00.000Z', '2026-11-02T12:00:00.000Z']);
+  });
+
+  it('backfills a patch prescription with no doses on its own schedule, future dates only', async () => {
+    const prisma = makePrisma();
+    const issuedAt = new Date(Date.now() - 10 * DAY);
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      { id: 'item-1', product: { doseIntervalDays: null, dosesPerWeek: 2 }, prescription: { patientId: 'p-1', issuedAt, validUntil: null }, doseEvents: [] },
+    ]);
+    prisma.doseEvent.count.mockResolvedValue(0);
+
+    const before = Date.now();
+    await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).houseKeeping();
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => c[0].create.scheduledFor as Date);
+    expect(dates).toHaveLength(8);
+    expect(dates[0].getTime()).toBeGreaterThan(before);
+    // Same weekdays as the prescription's issue date (+0 / +3 days).
+    const issuedDay = issuedAt.getUTCDay();
+    expect(new Set(dates.map((d) => d.getUTCDay()))).toEqual(new Set([issuedDay, (issuedDay + 3) % 7]));
+    expect(prisma.prescriptionItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          prescription: { status: 'ACTIVE', OR: [{ validUntil: null }, { validUntil: { gt: expect.any(Date) } }] },
+          product: { OR: [{ doseIntervalDays: { not: null } }, { dosesPerWeek: { not: null } }] },
+        },
+      }),
+    );
+  });
+
+  it('never tops up beyond the prescription’s validity', async () => {
+    const prisma = makePrisma();
+    const last = new Date(Date.now() + DAY);
+    prisma.prescriptionItem.findMany.mockResolvedValue([
+      { id: 'item-1', product: { doseIntervalDays: 7 }, prescription: { patientId: 'p-1', issuedAt: new Date(), validUntil: new Date(last.getTime() + 10 * DAY) }, doseEvents: [{ scheduledFor: last }] },
+    ]);
+    prisma.doseEvent.count.mockResolvedValue(1);
+    await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).houseKeeping();
+
+    expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(1); // only last + 7 days fits
   });
 
   it('does not top up an item that already has a full window', async () => {

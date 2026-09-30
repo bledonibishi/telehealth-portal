@@ -20,10 +20,11 @@ type ProductSeed = {
   coldChain?: boolean;
   weeksPerStep?: number;
   // Days between doses, for the patient's dose calendar — only set where the
-  // regimen is a clean fixed interval (e.g. weekly, daily). Left unset for
-  // irregular regimens (e.g. twice-weekly patches) rather than showing an
-  // inaccurate schedule.
+  // regimen is a clean fixed interval (e.g. weekly, daily).
   doseIntervalDays?: number;
+  // Doses a week on the same weekdays each week (e.g. 2 for twice-weekly
+  // patches), for regimens with no clean fixed interval.
+  dosesPerWeek?: number;
   directions: string;
   strengths: StrengthSeed[];
   // Defaults to true. Set false for a product that isn't ready to prescribe
@@ -106,6 +107,7 @@ export const CATALOG: ProductSeed[] = [
     kind: ConsultationKind.HRT,
     category: ProductCategory.ESTROGEN,
     form: ProductForm.PATCH,
+    dosesPerWeek: 2,
     directions: 'Apply one patch twice a week to clean, dry skin below the waist, changing the patch every 3–4 days.',
     strengths: [
       { label: '25 micrograms/24 h', pack: '8 patches' },
@@ -181,6 +183,7 @@ export async function seedCatalog(prisma: PrismaClient) {
       requiresColdChain: p.coldChain ?? false,
       weeksPerStep: p.weeksPerStep ?? null,
       doseIntervalDays: p.doseIntervalDays ?? null,
+      dosesPerWeek: p.dosesPerWeek ?? null,
       defaultDirections: p.directions,
     };
     const product = await prisma.product.upsert({

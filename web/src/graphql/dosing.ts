@@ -12,6 +12,7 @@ export const MY_DOSE_CALENDAR = gql`
         id
         name
         brandName
+        form
         category
         requiresColdChain
       }
