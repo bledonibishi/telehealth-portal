@@ -284,8 +284,10 @@ type Mutation {
   submitOnboarding: OnboardingSubmission!
   updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
 
-  """Where the pharmacy sends the medicine"""
-  updateMyDeliveryDetails(input: UpdateDeliveryDetailsInput!): Patient!
+  """
+  Confirmed date of birth and delivery details, collected once during onboarding
+  """
+  updateMyBasicInfo(input: UpdateBasicInfoInput!): Patient!
   updatePatient(input: UpdatePatientInput!): Patient!
 
   """
@@ -391,6 +393,38 @@ type Patient {
   leadId: String
   phone: String
   postcode: String
+}
+
+type PatientListItem {
+  activatedAt: DateTime
+  addressLine1: String
+  addressLine2: String
+  checkIns: [CheckIn!]!
+  city: String
+  consultations: [Consultation!]!
+  country: String
+  createdAt: DateTime!
+  dateOfBirth: DateTime!
+  email: String!
+  firstName: String!
+
+  """Has a currently active prescription"""
+  hasActivePrescription: Boolean!
+  id: ID!
+
+  """When their most recent check-in is/was due"""
+  lastCheckInDueAt: DateTime
+  lastCheckInStatus: CheckInStatus
+  lastName: String!
+
+  """Status of their most recent consultation"""
+  latestConsultationStatus: ConsultationStatus
+  leadId: String
+  phone: String
+  postcode: String
+
+  """The programme this patient signed up for"""
+  productKind: ConsultationKind
 }
 
 enum PersonaStatus {
@@ -574,7 +608,7 @@ type Query {
 
   """A patient's prescriptions, newest first, including superseded ones"""
   patientPrescriptions(patientId: ID!): [Prescription!]!
-  patients: [Patient!]!
+  patients: [PatientListItem!]!
 
   """
   Dry run of the prescribing rules for a consultation — what approval would reject or need a reason for
@@ -743,11 +777,14 @@ type Subscription {
   newMessage(consultationId: ID!): Message!
 }
 
-input UpdateDeliveryDetailsInput {
+input UpdateBasicInfoInput {
   addressLine1: String!
   addressLine2: String
   city: String!
   country: String!
+  dateOfBirth: DateTime!
+  firstName: String!
+  lastName: String!
   phone: String!
   postcode: String!
 }

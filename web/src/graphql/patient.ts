@@ -1,8 +1,11 @@
 import { gql } from '@apollo/client';
 
-const DELIVERY_FIELDS = gql`
-  fragment DeliveryFields on Patient {
+const BASIC_INFO_FIELDS = gql`
+  fragment BasicInfoFields on Patient {
     id
+    firstName
+    lastName
+    dateOfBirth
     phone
     addressLine1
     addressLine2
@@ -12,20 +15,29 @@ const DELIVERY_FIELDS = gql`
   }
 `;
 
-export const ME_DELIVERY = gql`
-  ${DELIVERY_FIELDS}
-  query MeDelivery {
+export const ME_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  query MeBasicInfo {
     me {
-      ...DeliveryFields
+      ...BasicInfoFields
     }
   }
 `;
 
-export const UPDATE_MY_DELIVERY_DETAILS = gql`
-  ${DELIVERY_FIELDS}
-  mutation UpdateMyDeliveryDetails($input: UpdateDeliveryDetailsInput!) {
-    updateMyDeliveryDetails(input: $input) {
-      ...DeliveryFields
+export const ME_NAME = gql`
+  query MeName {
+    me {
+      id
+      firstName
+    }
+  }
+`;
+
+export const UPDATE_MY_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  mutation UpdateMyBasicInfo($input: UpdateBasicInfoInput!) {
+    updateMyBasicInfo(input: $input) {
+      ...BasicInfoFields
     }
   }
 `;

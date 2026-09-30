@@ -8,7 +8,8 @@ import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
 
 const NAV = [
-  { href: '/dashboard', label: 'My consultations', icon: '📋' },
+  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
+  { href: '/consultations', label: 'My consultations', icon: '📋' },
   { href: '/messages', label: 'Messages', icon: '💬' },
   { href: '/prescription', label: 'Prescriptions', icon: '💊' },
 ];

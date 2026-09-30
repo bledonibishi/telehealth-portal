@@ -3,8 +3,9 @@ import { AuditRead } from '../audit/audit-read.interceptor';
 import { ForbiddenException } from '@nestjs/common';
 import { PatientsService } from './patients.service';
 import { PatientModel } from './models/patient.model';
+import { PatientListItemModel } from './models/patient-list-item.model';
 import { UpdatePatientInput } from './dto/update-patient.input';
-import { UpdateDeliveryDetailsInput } from './dto/update-delivery-details.input';
+import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuthUser, STAFF } from '../auth/access-roles';
 import { ConsultationKind } from '../common/enums';
@@ -15,7 +16,7 @@ export class PatientsResolver {
   constructor(private patientsService: PatientsService) {}
 
   @Authorized(...STAFF)
-  @Query(() => [PatientModel])
+  @Query(() => [PatientListItemModel])
   patients() {
     return this.patientsService.findAll();
   }
@@ -37,9 +38,9 @@ export class PatientsResolver {
   }
 
   @Authorized('PATIENT')
-  @Mutation(() => PatientModel, { description: 'Where the pharmacy sends the medicine' })
-  updateMyDeliveryDetails(@CurrentUser() user: AuthUser, @Args('input') input: UpdateDeliveryDetailsInput) {
-    return this.patientsService.updateDeliveryDetails(user.id, input);
+  @Mutation(() => PatientModel, { description: 'Confirmed date of birth and delivery details, collected once during onboarding' })
+  updateMyBasicInfo(@CurrentUser() user: AuthUser, @Args('input') input: UpdateBasicInfoInput) {
+    return this.patientsService.updateMyBasicInfo(user.id, input);
   }
 
   @Authorized('PATIENT')

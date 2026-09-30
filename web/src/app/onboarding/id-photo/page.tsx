@@ -7,8 +7,11 @@ import Link from 'next/link';
 import PhotoUploadField from '@/components/onboarding/PhotoUploadField';
 import { SAVE_IDENTITY_STEP, MY_ONBOARDING } from '@/graphql/onboarding';
 
+const CHECKLIST = ['Have a valid ID ready (e.g. passport, driving licence)', 'Find a well-lit spot for your selfie'];
+
 export default function IdPhotoStepPage() {
   const router = useRouter();
+  const [phase, setPhase] = useState<'intro' | 'capture'>('intro');
   const [idDocumentFileId, setIdDocumentFileId] = useState<string | null>(null);
   const [selfieFileId, setSelfieFileId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -30,24 +33,46 @@ export default function IdPhotoStepPage() {
     }
   };
 
+  if (phase === 'intro') {
+    return (
+      <div>
+        <Link href="/onboarding" className="text-sm text-slate-400 hover:text-slate-600">← Back</Link>
+
+        <h1 className="text-xl font-bold text-slate-900 mt-4">Verify your identity</h1>
+        <p className="text-sm text-slate-500 mt-2">
+          This is legally required before we can prescribe and is only used for this verification.
+        </p>
+
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 mt-6">
+          <p className="text-sm font-semibold text-slate-900 mb-3">Before you start</p>
+          <ul className="space-y-3">
+            {CHECKLIST.map((item) => (
+              <li key={item} className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full border-2 border-brand-500 text-brand-500 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">✓</span>
+                <span className="text-sm text-slate-700">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <button
+          onClick={() => setPhase('capture')}
+          className="w-full mt-8 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        >
+          Start verification
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <Link href="/onboarding" className="text-sm text-slate-400 hover:text-slate-600">← Back</Link>
+      <button onClick={() => setPhase('intro')} className="text-sm text-slate-400 hover:text-slate-600">← Back</button>
 
       <h1 className="text-xl font-bold text-slate-900 mt-4">Verify your identity</h1>
-      <p className="text-sm text-slate-500 mt-2">
-        This is legally required before we can prescribe and is only used for this verification.
-      </p>
+      <p className="text-sm text-slate-500 mt-2">Upload a clear photo of your ID and a selfie.</p>
 
-      <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 mt-5 mb-6">
-        <p className="text-xs font-semibold text-slate-700 mb-2">Before you start</p>
-        <ul className="space-y-1.5 text-xs text-slate-600">
-          <li>✓ Have a valid ID ready (e.g. passport, driving licence)</li>
-          <li>✓ Find a well-lit spot for your selfie</li>
-        </ul>
-      </div>
-
-      <div className="space-y-4">
+      <div className="space-y-4 mt-6">
         <PhotoUploadField
           kind="ID_DOCUMENT"
           label="Government ID"
