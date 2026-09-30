@@ -12,6 +12,7 @@ import { hasAccess } from '@/lib/role';
 const KIND_BADGE: Record<string, string> = {
   HRT: 'bg-violet-100 text-violet-700',
   GLP1: 'bg-teal-100 text-teal-700',
+  TRT: 'bg-sky-100 text-sky-700',
 };
 
 const REVIEW_STATUS: Record<string, { label: string; cls: string }> = {
@@ -27,6 +28,7 @@ const PROGRAMME_OPTIONS = [
   { value: 'ALL', label: 'All programmes' },
   { value: 'HRT', label: 'HRT' },
   { value: 'GLP1', label: 'GLP-1' },
+  { value: 'TRT', label: 'TRT' },
 ];
 const REVIEW_OPTIONS = [
   { value: 'ALL', label: 'All review statuses' },

@@ -498,17 +498,24 @@ const TRT_INTAKE: Questionnaire = {
       type: 'single',
       options: yesNo(warning('Sleep apnea — testosterone can worsen it')),
     },
-    {
-      id: 'trying_to_conceive',
-      text: 'Are you trying to have a child in the next 12 months?',
-      type: 'single',
-      options: yesNo(warning('Trying to conceive — testosterone suppresses fertility; discuss alternatives')),
-    },
+    // trying_to_conceive is already asked at ELIGIBILITY — not repeated here,
+    // so there's one fertility answer per consultation, not two.
     {
       id: 'urinary_symptoms',
       text: 'Do you have trouble urinating, a weak stream, or urinate frequently at night?',
       type: 'single',
       options: yesNo(warning('Urinary symptoms — assess prostate before starting testosterone')),
+    },
+    {
+      // Read by the prescribing rules: TRT shouldn't start on symptoms alone.
+      id: 'baseline_diagnosis',
+      text: 'Has a doctor confirmed low testosterone with a blood test, or do you have a diagnosed condition that causes it (e.g. hypogonadism)?',
+      help: 'If not, we can arrange blood tests before starting treatment.',
+      type: 'single',
+      options: [
+        { value: 'yes', label: 'Yes' },
+        { value: 'no', label: 'No', flag: warning('No confirmed baseline diagnosis of low testosterone on file') },
+      ],
     },
   ],
 };

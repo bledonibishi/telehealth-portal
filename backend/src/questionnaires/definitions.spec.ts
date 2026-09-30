@@ -14,6 +14,17 @@ describe('findQuestionnaire', () => {
   });
 });
 
+describe('findQuestionnaire question IDs', () => {
+  it('never asks the same question twice — no question ID appears in both ELIGIBILITY and INTAKE for a kind', () => {
+    for (const kind of Object.values(ConsultationKind)) {
+      const eligibilityIds = new Set(findQuestionnaire(kind, 'ELIGIBILITY').questions.map((q) => q.id));
+      const intakeIds = findQuestionnaire(kind, 'INTAKE').questions.map((q) => q.id);
+      const overlap = intakeIds.filter((id) => eligibilityIds.has(id));
+      expect(overlap).toEqual([]);
+    }
+  });
+});
+
 describe('TRT questionnaires', () => {
   it('flags a history of prostate cancer as critical', () => {
     const intake = findQuestionnaire(ConsultationKind.TRT, 'INTAKE');
