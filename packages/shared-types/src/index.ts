@@ -131,6 +131,20 @@ export enum DoseStatus {
   SKIPPED = 'SKIPPED',
 }
 
+export enum LabResultKind {
+  ESTRADIOL = 'ESTRADIOL',
+  TESTOSTERONE = 'TESTOSTERONE',
+  FSH = 'FSH',
+  LH = 'LH',
+  SHBG = 'SHBG',
+  PSA = 'PSA',
+  HEMATOCRIT = 'HEMATOCRIT',
+  LIPID_PANEL = 'LIPID_PANEL',
+  HBA1C = 'HBA1C',
+  LIVER_FUNCTION = 'LIVER_FUNCTION',
+  OTHER = 'OTHER',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;
