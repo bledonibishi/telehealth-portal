@@ -30,12 +30,18 @@ function makePrisma(prescription: any) {
   };
 }
 
-function makeGlp1Prescription(over: { titrationStep?: number | null; weeksPerStep?: number | null; issuedDaysAgo?: number } = {}) {
-  const { titrationStep = 3, weeksPerStep = 4, issuedDaysAgo = 5 } = over;
+function makeGlp1Prescription(
+  over: { titrationStep?: number | null; weeksPerStep?: number | null; issuedDaysAgo?: number; previousStep?: number | null } = {},
+) {
+  const { titrationStep = 3, weeksPerStep = 4, issuedDaysAgo = 5, previousStep = titrationStep !== null ? titrationStep - 1 : null } = over;
   return {
     id: 'rx-1',
     issuedAt: new Date(Date.now() - issuedDaysAgo * DAY),
     items: [{ product: { kind: 'GLP1', category: 'GLP1', weeksPerStep }, strength: { titrationStep } }],
+    supersedes:
+      previousStep === null
+        ? null
+        : { items: [{ product: { category: 'GLP1' }, strength: { titrationStep: previousStep } }] },
   };
 }
 
@@ -75,8 +81,8 @@ describe('CheckInsService.submit — GLP-1 titration/side-effect correlation', (
     expect(flagsOf(prisma)).not.toContainEqual(expect.objectContaining({ description: expect.stringContaining('titration step') }));
   });
 
-  it('does not add the titration flag for a patient still on the starting dose', async () => {
-    const prisma = makePrisma(makeGlp1Prescription({ titrationStep: 1, weeksPerStep: 4, issuedDaysAgo: 2 }));
+  it('does not add the titration flag for a patient on their first-ever prescription (nothing to compare against)', async () => {
+    const prisma = makePrisma(makeGlp1Prescription({ titrationStep: 1, weeksPerStep: 4, issuedDaysAgo: 2, previousStep: null }));
     const service = new CheckInsService(prisma as any, {} as any, { get: jest.fn() } as any);
 
     await service.submit('tok-1', { answers: glp1Answers(), wantsToReorder: false, feeling: 'OKAY' as any });
@@ -86,6 +92,25 @@ describe('CheckInsService.submit — GLP-1 titration/side-effect correlation', (
 
   it('does not add the titration flag for a product with no titration schedule', async () => {
     const prisma = makePrisma(makeGlp1Prescription({ titrationStep: null, weeksPerStep: null, issuedDaysAgo: 2 }));
+    const service = new CheckInsService(prisma as any, {} as any, { get: jest.fn() } as any);
+
+    await service.submit('tok-1', { answers: glp1Answers(), wantsToReorder: false, feeling: 'OKAY' as any });
+
+    expect(flagsOf(prisma)).not.toContainEqual(expect.objectContaining({ description: expect.stringContaining('titration step') }));
+  });
+
+  it('does not add the titration flag for a same-strength reissue (e.g. a REPEAT outcome), even with severe side effects', async () => {
+    // The new prescription keeps the patient at their existing step 3 — not an increase.
+    const prisma = makePrisma(makeGlp1Prescription({ titrationStep: 3, weeksPerStep: 4, issuedDaysAgo: 2, previousStep: 3 }));
+    const service = new CheckInsService(prisma as any, {} as any, { get: jest.fn() } as any);
+
+    await service.submit('tok-1', { answers: glp1Answers(), wantsToReorder: false, feeling: 'OKAY' as any });
+
+    expect(flagsOf(prisma)).not.toContainEqual(expect.objectContaining({ description: expect.stringContaining('titration step') }));
+  });
+
+  it('does not add the titration flag for a first-ever prescription started above the lowest dose (verified prior use, not a step-up here)', async () => {
+    const prisma = makePrisma(makeGlp1Prescription({ titrationStep: 3, weeksPerStep: 4, issuedDaysAgo: 2, previousStep: null }));
     const service = new CheckInsService(prisma as any, {} as any, { get: jest.fn() } as any);
 
     await service.submit('tok-1', { answers: glp1Answers(), wantsToReorder: false, feeling: 'OKAY' as any });

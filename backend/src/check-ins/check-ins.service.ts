@@ -105,7 +105,12 @@ export class CheckInsService {
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },
-      include: { items: { include: { product: true, strength: true } } },
+      include: {
+        items: { include: { product: true, strength: true } },
+        // Needed to tell a genuine dose increase from a same-strength reissue
+        // (e.g. a REPEAT outcome) — see glp1TitrationRiskFlag.
+        supersedes: { include: { items: { include: { product: true, strength: true } } } },
+      },
     });
     const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
     const kind = (rx?.items[0]?.product.kind ?? patient?.lead?.productKind ?? null) as ConsultationKind | null;
@@ -117,19 +122,26 @@ export class CheckInsService {
    * dangerous right after a dose increase — but a clinician reviewing one
    * check-in in isolation has no way to see "this is shortly after a step-up"
    * unless it's flagged. Severe side effects reported within the product's
-   * step interval of a still-titrating prescription get an automatic flag.
+   * step interval of a genuine dose increase get an automatic flag.
    */
   private glp1TitrationRiskFlag(
     prescription: {
       issuedAt: Date;
       items: Array<{ product: { category: string; weeksPerStep: number | null }; strength: { titrationStep: number | null } }>;
+      supersedes?: { items: Array<{ product: { category: string }; strength: { titrationStep: number | null } }> } | null;
     },
     answers: Array<{ questionId: string; value: string | null }>,
   ): Flag | null {
     const item = prescription.items.find((i) => i.product.category === ProductCategory.GLP1);
     const step = item?.strength.titrationStep;
     const weeksPerStep = item?.product.weeksPerStep;
-    if (!item || !step || step <= 1 || !weeksPerStep) return null; // starting dose, or not titrated
+    if (!item || !step || !weeksPerStep) return null; // not titrated
+
+    // A same-strength reissue (e.g. a REPEAT outcome) isn't a dose increase —
+    // only flag when the strength actually went up from what preceded it.
+    const previousItem = prescription.supersedes?.items.find((i) => i.product.category === ProductCategory.GLP1);
+    const previousStep = previousItem?.strength.titrationStep ?? null;
+    if (previousStep === null || step <= previousStep) return null;
 
     const daysSinceIssued = (Date.now() - prescription.issuedAt.getTime()) / 86_400_000;
     if (daysSinceIssued > weeksPerStep * 7) return null; // well past the step-up window
