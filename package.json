@@ -2,6 +2,9 @@
   "name": "telehealth-portal",
   "private": true,
   "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",

@@ -1,13 +1,10 @@
 import { InputType, Field, ID } from '@nestjs/graphql';
 
 @InputType()
-export class ReviewOnboardingInput {
+export class ReviewLabResultInput {
   @Field(() => ID)
-  patientId: string;
-
-  @Field()
-  approve: boolean;
+  labResultId: string;
 
   @Field({ nullable: true })
-  rejectionReason?: string;
+  reviewNote?: string;
 }

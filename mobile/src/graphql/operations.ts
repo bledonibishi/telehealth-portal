@@ -4,12 +4,22 @@ export const LOGIN_PATIENT = gql`
   mutation LoginPatient($input: LoginInput!) {
     loginPatient(input: $input) {
       accessToken
+      refreshToken
       patient {
         id
         email
         firstName
         lastName
       }
+    }
+  }
+`;
+
+export const REFRESH_ACCESS_TOKEN = gql`
+  mutation RefreshAccessToken($refreshToken: String!) {
+    refreshAccessToken(refreshToken: $refreshToken) {
+      accessToken
+      refreshToken
     }
   }
 `;
@@ -96,6 +106,51 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
       senderRole
       content
       sentAt
+    }
+  }
+`;
+
+export const QUESTIONNAIRE = gql`
+  query Questionnaire($kind: ConsultationKind!, $stage: QuestionnaireStage!) {
+    questionnaire(kind: $kind, stage: $stage) {
+      kind
+      version
+      title
+      questions {
+        id
+        text
+        help
+        type
+        optional
+        min
+        max
+        unit
+        options {
+          value
+          label
+          exclusive
+        }
+        showIf {
+          questionId
+          anyOf
+        }
+      }
+    }
+  }
+`;
+
+export const MY_PRODUCT_KIND = gql`
+  query MyProductKind {
+    myProductKind
+  }
+`;
+
+export const CONSENT_TEXT = gql`
+  query ConsentText($type: ConsentType!) {
+    consentText(type: $type) {
+      type
+      version
+      text
     }
   }
 `;

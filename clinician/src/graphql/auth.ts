@@ -12,7 +12,7 @@ export const LOGIN_CLINICIAN = gql`
         email
         firstName
         lastName
-        gmcNumber
+        licenseNumber
         isVerified
         mfaEnabled
       }

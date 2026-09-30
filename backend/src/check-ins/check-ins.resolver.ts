@@ -1,14 +1,39 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
-import { UseGuards, ForbiddenException } from '@nestjs/common';
+import { AuditRead } from '../audit/audit-read.interceptor';
 import { CheckInsService } from './check-ins.service';
 import { CheckInModel } from './models/check-in.model';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
-import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { ReviewCheckInInput } from './dto/review-check-in.input';
+import { CheckInReviewService } from './check-in-review.service';
+import { Authorized } from '../auth/decorators/authorized.decorator';
+import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => CheckInModel)
 export class CheckInsResolver {
-  constructor(private checkInsService: CheckInsService) {}
+  constructor(
+    private checkInsService: CheckInsService,
+    private review: CheckInReviewService,
+  ) {}
+
+  @Authorized(...PRESCRIBERS)
+  @Query(() => [CheckInModel], { description: 'Completed check-ins waiting for a doctor — critical flags first, then oldest' })
+  checkInReviewQueue() {
+    return this.review.queue();
+  }
+
+  @Authorized(...STAFF)
+  @AuditRead('CheckIn')
+  @Query(() => CheckInModel)
+  checkIn(@Args('id', { type: () => ID }) id: string) {
+    return this.review.findById(id);
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Mutation(() => CheckInModel, { description: 'Decide the next step after a monthly check-in' })
+  reviewCheckIn(@CurrentUser() user: AuthUser, @Args('input') input: ReviewCheckInInput) {
+    return this.review.review(user.id, input);
+  }
 
   // Deliberately unauthenticated: the token itself (emailed to the patient,
   // unguessable, single-use, expiring) is the proof of identity — same model
@@ -23,14 +48,12 @@ export class CheckInsResolver {
     return this.checkInsService.submit(token, input);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Mutation(() => CheckInModel, { description: 'Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.' })
   rescheduleCheckIn(
-    @CurrentUser() user: { role: string },
     @Args('id', { type: () => ID }) id: string,
     @Args('dueAt') dueAt: Date,
   ) {
-    if (user.role !== 'CLINICIAN') throw new ForbiddenException('Clinicians only');
     return this.checkInsService.reschedule(id, dueAt);
   }
 

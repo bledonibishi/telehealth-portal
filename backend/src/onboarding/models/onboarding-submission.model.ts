@@ -6,6 +6,7 @@ import {
   PrescriptionProofType,
 } from '../../common/enums';
 import { PatientModel } from '../../patients/models/patient.model';
+import { OnboardingStepFeedbackModel } from './onboarding-step-feedback.model';
 
 @ObjectType('OnboardingSubmission')
 export class OnboardingSubmissionModel {
@@ -51,8 +52,8 @@ export class OnboardingSubmissionModel {
   @Field({ nullable: true })
   reviewedAt?: Date;
 
-  @Field({ nullable: true })
-  rejectionReason?: string;
+  @Field(() => [OnboardingStepFeedbackModel])
+  stepFeedback: OnboardingStepFeedbackModel[];
 
   @Field(() => PatientModel, { nullable: true })
   patient?: PatientModel;

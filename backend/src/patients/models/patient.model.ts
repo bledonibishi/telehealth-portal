@@ -25,8 +25,29 @@ export class PatientModel {
   @Field({ nullable: true })
   activatedAt?: Date;
 
+  @Field({ nullable: true })
+  phone?: string;
+
+  @Field({ nullable: true })
+  addressLine1?: string;
+
+  @Field({ nullable: true })
+  addressLine2?: string;
+
+  @Field({ nullable: true })
+  city?: string;
+
+  @Field({ nullable: true })
+  postcode?: string;
+
+  @Field({ nullable: true })
+  country?: string;
+
   @Field()
   createdAt: Date;
+
+  @Field({ nullable: true, description: 'Only set once, in the response to createPatient — never stored or returned afterwards' })
+  temporaryPassword?: string;
 
   @Field(() => [ConsultationModel])
   consultations: ConsultationModel[];

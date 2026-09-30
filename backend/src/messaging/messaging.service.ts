@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { SendMessageInput } from './dto/send-message.input';
 import { PostHogService } from '../posthog/posthog.service';
+import { AuthUser } from '../auth/access-roles';
 
 const pubSub = new PubSub();
 
@@ -15,6 +16,16 @@ export class MessagingService {
     private audit: AuditService,
     private posthog: PostHogService,
   ) {}
+
+  // Staff can reach any thread; a patient only threads on their own consultations.
+  async assertCanAccess(user: AuthUser, consultationId: string) {
+    if (user.role !== UserRole.PATIENT) return;
+    const consultation = await this.prisma.consultation.findUnique({
+      where: { id: consultationId },
+      select: { patientId: true },
+    });
+    if (consultation?.patientId !== user.id) throw new ForbiddenException();
+  }
 
   async send(senderId: string, senderRole: UserRole, input: SendMessageInput) {
     const message = await this.prisma.message.create({

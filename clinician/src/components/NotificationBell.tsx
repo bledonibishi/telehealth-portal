@@ -5,6 +5,7 @@ import { useQuery } from '@apollo/client';
 import { useRouter } from 'next/navigation';
 import { GET_NOTIFICATION_COUNTS } from '@/graphql/notifications';
 import { getCurrentRole, type ClinicianRole } from '@/lib/role';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Item = { label: string; count: number; href: string; roles: ClinicianRole[] };
 
@@ -13,9 +14,11 @@ const ITEMS: Item[] = [
   { label: 'Consultations awaiting review', count: 0, href: '/queue', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Patient messages with no reply', count: 0, href: '/patients', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] },
   { label: 'Orders pending dispatch',   count: 0, href: '/orders',   roles: ['ADMIN', 'PROVIDER'] },
+  { label: 'GLP-1 patients with missed doses', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
 ];
 
 export function NotificationBell() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -29,6 +32,7 @@ export function NotificationBell() {
     { ...ITEMS[1], count: counts?.pendingConsultations ?? 0 },
     { ...ITEMS[2], count: counts?.patientMessages ?? 0 },
     { ...ITEMS[3], count: counts?.pendingOrders ?? 0 },
+    { ...ITEMS[4], count: counts?.missedDoseAlerts ?? 0 },
   ].filter((item) => !role || item.roles.includes(role));
 
   const total = items.reduce((sum, i) => sum + i.count, 0);
@@ -61,11 +65,11 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-9 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-900">Notifications</p>
+            <p className="text-sm font-semibold text-gray-900">{t('Notifications')}</p>
           </div>
 
           {items.length === 0 || total === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-400">All caught up 🎉</div>
+            <div className="px-4 py-6 text-center text-sm text-gray-400">{t('All caught up 🎉')}</div>
           ) : (
             <div className="divide-y divide-gray-50">
               {items.filter((i) => i.count > 0).map((item) => (
@@ -74,7 +78,7 @@ export function NotificationBell() {
                   onClick={() => { router.push(item.href); setOpen(false); }}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left"
                 >
-                  <p className="text-sm text-gray-700">{item.label}</p>
+                  <p className="text-sm text-gray-700">{t(item.label)}</p>
                   <span className="ml-3 shrink-0 w-6 h-6 bg-red-100 text-red-600 text-xs font-bold rounded-full flex items-center justify-center">
                     {item.count}
                   </span>
@@ -84,7 +88,7 @@ export function NotificationBell() {
           )}
 
           <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50">
-            <p className="text-xs text-gray-400">Refreshes every 30 seconds</p>
+            <p className="text-xs text-gray-400">{t('Refreshes every 30 seconds')}</p>
           </div>
         </div>
       )}

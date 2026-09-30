@@ -1,5 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { ConsultationStatus, ConsultationKind, RedFlagSeverity } from '../../common/enums';
+import { ConsultationStatus, ConsultationKind, RedFlagSeverity, RefundStatus } from '../../common/enums';
 import { ClinicianModel } from '../../clinicians/models/clinician.model';
 import { PatientModel } from '../../patients/models/patient.model';
 import { PrescriptionModel } from '../../prescriptions/models/prescription.model';
@@ -15,6 +15,12 @@ export class QuizAnswerType {
 
   @Field()
   answer: string;
+
+  @Field({ nullable: true })
+  value?: string;
+
+  @Field({ nullable: true, description: 'Which questionnaire the answer came from, for grouping' })
+  section?: string;
 }
 
 @ObjectType('RedFlag')
@@ -58,8 +64,17 @@ export class ConsultationModel {
   @Field(() => [QuizAnswerType])
   quizAnswers: QuizAnswerType[];
 
+  @Field({ nullable: true })
+  questionnaireVersion?: string;
+
   @Field(() => [MessageModel])
   messages: MessageModel[];
+
+  @Field({ nullable: true })
+  declineReason?: string;
+
+  @Field(() => RefundStatus, { nullable: true, description: 'Outcome of refunding the checkout payment on decline' })
+  refundStatus?: RefundStatus;
 
   @Field()
   submittedAt: Date;

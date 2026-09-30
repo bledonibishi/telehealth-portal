@@ -15,7 +15,11 @@ export const ONBOARDING_FIELDS = gql`
     prescriptionProofUrl
     submittedAt
     reviewedAt
-    rejectionReason
+    stepFeedback {
+      step
+      approved
+      reason
+    }
   }
 `;
 
@@ -28,9 +32,9 @@ export const GET_ONBOARDING_SUBMISSION = gql`
   ${ONBOARDING_FIELDS}
 `;
 
-export const REVIEW_ONBOARDING = gql`
-  mutation ReviewOnboarding($input: ReviewOnboardingInput!) {
-    reviewOnboarding(input: $input) {
+export const REVIEW_ONBOARDING_STEP = gql`
+  mutation ReviewOnboardingStep($input: ReviewOnboardingStepInput!) {
+    reviewOnboardingStep(input: $input) {
       ...ClinicianOnboardingFields
     }
   }

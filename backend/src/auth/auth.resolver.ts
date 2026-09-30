@@ -3,8 +3,9 @@ import { UseGuards } from '@nestjs/common';
 import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
-import { GqlAuthGuard } from './guards/gql-auth.guard';
 import { ThrottleLoginAttempts } from './guards/gql-throttler.guard';
+import { Authorized } from './decorators/authorized.decorator';
+import { STAFF } from './access-roles';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 function loginAttempt(ctx: any): LoginAttempt {
@@ -42,13 +43,13 @@ export class AuthResolver {
     return this.authService.refreshAccessToken(refreshToken);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Mutation(() => MfaSetupResponse)
   setupMfa(@CurrentUser() user: any) {
     return this.authService.setupMfa(user.id);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Mutation(() => Boolean)
   enableMfa(@CurrentUser() user: any, @Args('totpCode') totpCode: string) {
     return this.authService.enableMfa(user.id, totpCode);

@@ -3,8 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { UserRole } from '../common/enums';
-import { ClinicianRole } from '@prisma/client';
+import { UserRole, ClinicianRole } from '../common/enums';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
@@ -87,7 +86,6 @@ export class AuthService {
       resourceId: patient.id,
     });
 
-    const accessToken = this.jwtService.sign({ sub: patient.id, role: UserRole.PATIENT });
     this.posthog.identify(patient.id, {
       email: patient.email,
       first_name: patient.firstName,
@@ -97,7 +95,7 @@ export class AuthService {
     this.posthog.capture(patient.id, 'patient_logged_in', {
       login_method: 'password',
     });
-    return { mfaRequired: false, pendingToken: null, accessToken, patient };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(patient.id, UserRole.PATIENT), patient };
   }
 
   private auditPatientLoginFailed(email: string, patientId: string | undefined, reason: string, attempt: LoginAttempt) {
@@ -165,16 +163,25 @@ export class AuthService {
     }
     if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
 
-    // Only clinicians get refresh tokens today; patients have no login mutation yet.
-    const clinician = Object.values(ClinicianRole).includes(payload.role)
-      ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
-      : null;
+    if (payload.role === UserRole.PATIENT) {
+      const patient = await this.prisma.patient.findUnique({ where: { id: payload.sub } });
+      if (!patient) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+      return this.issueTokens(patient.id, UserRole.PATIENT);
+    }
+
+    // Accept both the specific ClinicianRole values and the old generic UserRole.CLINICIAN
+    // shape, so refresh tokens issued before this rollout keep working.
+    const clinicianRoles = Object.values(ClinicianRole) as string[];
+    const clinician =
+      payload.role === UserRole.CLINICIAN || clinicianRoles.includes(payload.role)
+        ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
+        : null;
     if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
 
     return this.issueTokens(clinician.id, clinician.role);
   }
 
-  private issueTokens(sub: string, role: UserRole | ClinicianRole) {
+  private issueTokens(sub: string, role: string) {
     return {
       accessToken: this.jwtService.sign({ sub, role }),
       refreshToken: this.jwtService.sign(

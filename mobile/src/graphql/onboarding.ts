@@ -15,7 +15,10 @@ export const ONBOARDING_FIELDS = gql`
     prescriptionProofUrl
     submittedAt
     reviewedAt
-    rejectionReason
+    stepFeedback {
+      step
+      reason
+    }
   }
 `;
 

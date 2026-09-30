@@ -46,6 +46,9 @@ export const MY_CONSULTATION = gql`
         issuedAt
         pharmacyRef
         dispatchedAt
+        outForDeliveryAt
+        deliveredAt
+        trackingUrl
       }
       messages {
         id

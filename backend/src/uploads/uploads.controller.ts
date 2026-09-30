@@ -15,15 +15,19 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
-import { createReadStream } from 'fs';
 import { UploadKind } from '@prisma/client';
 import { UploadsService } from './uploads.service';
+import { AuditService } from '../audit/audit.service';
+import { UserRole } from '../common/enums';
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
 @Controller('uploads')
 export class UploadsController {
-  constructor(private uploads: UploadsService) {}
+  constructor(
+    private uploads: UploadsService,
+    private audit: AuditService,
+  ) {}
 
   @UseGuards(AuthGuard('jwt'))
   @Post()
@@ -51,7 +55,19 @@ export class UploadsController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const file = await this.uploads.findForAccess(id, req.user);
+    // ID documents and body photos are among the most sensitive things we hold.
+    await this.audit.log({
+      actorId: req.user.id,
+      actorRole: req.user.role as UserRole,
+      action: 'FILE_VIEWED',
+      resourceType: 'UploadedFile',
+      resourceId: id,
+      metadata: { kind: file.kind, patientId: file.patientId },
+    });
+    const contents = await this.uploads.readContents(file);
     res.setHeader('Content-Type', file.mimeType);
-    return new StreamableFile(createReadStream(file.absolutePath));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(contents);
   }
 }
