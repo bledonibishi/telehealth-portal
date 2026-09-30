@@ -8,7 +8,7 @@ import { MY_CONSULTATIONS } from '@/graphql/consultations';
 export default function MessagesPage() {
   const { data, loading } = useQuery(MY_CONSULTATIONS);
   const consultations = (data?.myConsultations ?? []).filter(
-    (c: any) => c.status === 'MORE_INFO_REQUESTED' || c.status === 'IN_REVIEW' || c.status === 'APPROVED',
+    (c: any) => c.status === 'SUBMITTED' || c.status === 'MORE_INFO_REQUESTED' || c.status === 'IN_REVIEW' || c.status === 'APPROVED',
   );
 
   return (

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation } from '@apollo/client';
+import { useEffect, useState } from 'react';
+import { useQuery, useMutation, useSubscription } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears, format } from 'date-fns';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
-import { SEND_MESSAGE } from '@/graphql/messaging';
+import { SEND_MESSAGE, NEW_MESSAGE_SUBSCRIPTION } from '@/graphql/messaging';
+import { realtime } from '@/lib/apollo';
+import { useRealtimeConnected } from '@/lib/realtime';
 import { GET_ORDERS, PATIENT_ORDERS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
@@ -145,6 +147,13 @@ function OnboardingStepSection({
   );
 }
 
+// A patient's messages live in each consultation's thread, so listen to every one of them
+// and reload the patient when anything arrives.
+function MessageWatcher({ consultationId, onMessage }: { consultationId: string; onMessage: () => void }) {
+  useSubscription(NEW_MESSAGE_SUBSCRIPTION, { variables: { consultationId }, onData: onMessage });
+  return null;
+}
+
 export default function PatientPanel({ patientId, onClose }: { patientId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
@@ -161,7 +170,15 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const isAdmin = hasAccess(['ADMIN']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
 
-  const { data, loading } = useQuery(GET_PATIENT, { variables: { id: patientId } });
+  const { data, loading, refetch, startPolling, stopPolling } = useQuery(GET_PATIENT, { variables: { id: patientId } });
+  const connected = useRealtimeConnected(realtime);
+  // Poll while live updates aren't arriving, and catch up on anything missed while the socket was down.
+  useEffect(() => {
+    if (connected) return;
+    startPolling(10_000);
+    return stopPolling;
+  }, [connected, startPolling, stopPolling]);
+  useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
   const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
   const [updatePatient, { loading: saving }] = useMutation(UPDATE_PATIENT, {
     refetchQueries: [{ query: GET_PATIENTS }],
@@ -196,7 +213,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
   const orders = ordersData?.patientOrders ?? [];
   // Includes prescriptions from later dose changes, which have no consultation.
   const allPrescriptions = prescriptionsData?.patientPrescriptions ?? [];
-  const allMessages = p.consultations?.flatMap((c: any) => c.messages ?? []) ?? [];
+  const allMessages = (p.consultations?.flatMap((c: any) => c.messages ?? []) ?? []).sort(
+    (a: any, b: any) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
+  );
   const checkIns = p.checkIns ?? [];
   const latestConsultId = p.consultations?.[0]?.id;
 
@@ -294,6 +313,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
   return (
     <div className="flex flex-col h-full bg-white border-l border-gray-200">
+      {p.consultations?.map((c: any) => (
+        <MessageWatcher key={c.id} consultationId={c.id} onMessage={() => { refetch(); }} />
+      ))}
       {/* Panel header */}
       <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
         <div>

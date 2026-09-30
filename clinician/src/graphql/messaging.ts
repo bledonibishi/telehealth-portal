@@ -35,3 +35,24 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
     }
   }
 `;
+
+// A patient's messages live on each of their consultations; the chat shows them as one conversation.
+// Consultations come newest first, and replies go to the newest one.
+export const PATIENT_CONVERSATION = gql`
+  query PatientConversation($id: ID!) {
+    patient(id: $id) {
+      id
+      consultations {
+        id
+        submittedAt
+        messages {
+          id
+          senderId
+          senderRole
+          content
+          sentAt
+        }
+      }
+    }
+  }
+`;

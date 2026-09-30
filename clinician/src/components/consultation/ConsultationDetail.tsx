@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
 import { RedFlagBanner } from './RedFlagBanner';
 import { DecisionPanel } from './DecisionPanel';
-import { MessageThread } from './MessageThread';
+import { ChatDock } from './ChatDock';
 import { PatientHistory } from './PatientHistory';
 import { PrescriptionCard } from './PrescriptionCard';
 import { OnboardingSummary } from './OnboardingSummary';
 import { getToken } from '@/lib/auth';
-import { formatDistanceToNow } from 'date-fns';
+import { differenceInYears, formatDistanceToNow } from 'date-fns';
 
 function parseJwtPayload(token: string) {
   try {
@@ -31,6 +31,16 @@ function groupBySection(answers: any[]): [string, any[]][] {
   return [...groups.entries()];
 }
 
+const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  SUBMITTED: { label: 'New', cls: 'bg-blue-50 text-blue-700' },
+  IN_REVIEW: { label: 'In review', cls: 'bg-warn-50 text-warn-900' },
+  MORE_INFO_REQUESTED: { label: 'Awaiting info', cls: 'bg-purple-50 text-purple-700' },
+  APPROVED: { label: 'Approved', cls: 'bg-green-50 text-green-700' },
+  DECLINED: { label: 'Declined', cls: 'bg-danger-50 text-danger-500' },
+};
+
+const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+
 export function ConsultationDetail({ id }: { id: string }) {
   const { data, loading, error } = useQuery(GET_CONSULTATION, { variables: { id } });
 
@@ -42,49 +52,36 @@ export function ConsultationDetail({ id }: { id: string }) {
 
   const token = getToken();
   const currentUserId = token ? parseJwtPayload(token)?.sub : null;
+  const status = STATUS_STYLE[c.status] ?? { label: c.status.replace(/_/g, ' '), cls: 'bg-gray-100 text-gray-600' };
+  const dob = new Date(c.patient.dateOfBirth);
+  const fullName = `${c.patient.firstName} ${c.patient.lastName}`;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div>
-        <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
-          ← Back to queue
-        </Link>
-      </div>
-
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">
-            {c.patient.firstName} {c.patient.lastName}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {c.kind} · submitted {formatDistanceToNow(new Date(c.submittedAt), { addSuffix: true })}
-            {c.questionnaireVersion && <span className="text-gray-400"> · {c.questionnaireVersion}</span>}
-          </p>
-        </div>
-        <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-600">
-          {c.status.replace(/_/g, ' ')}
-        </span>
-      </div>
-
-      <RedFlagBanner redFlags={c.redFlags} />
-
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
-          {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
-            <section key={section} className="bg-white rounded-lg border border-gray-200">
-              <div className="px-4 py-3 border-b border-gray-200">
-                <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
+    <div className="h-full flex">
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Identity + decision stay in view while the questionnaire scrolls. */}
+        <header className="shrink-0 bg-white border-b border-gray-200">
+          <div className="px-6 pt-3 pb-3">
+            <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
+              ← Review queue
+            </Link>
+            <div className="mt-2 flex items-center gap-4">
+              <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-900 font-semibold text-sm flex items-center justify-center shrink-0">
+                {initials(c.patient.firstName, c.patient.lastName)}
               </div>
-              <div className="divide-y divide-gray-100">
-                {answers.map((a: any) => (
-                  <div key={a.questionId} className="px-4 py-3">
-                    <p className="text-xs text-gray-500">{a.question}</p>
-                    <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{a.answer}</p>
-                  </div>
-                ))}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h1 className="text-xl font-semibold text-gray-900 truncate">{fullName}</h1>
+                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${status.cls}`}>{status.label}</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {differenceInYears(new Date(), dob)} yrs · {c.kind} · submitted{' '}
+                  {formatDistanceToNow(new Date(c.submittedAt), { addSuffix: true })}
+                  {c.questionnaireVersion && <span className="text-gray-400"> · {c.questionnaireVersion}</span>}
+                </p>
               </div>
-            </section>
-          ))}
+            </div>
+          </div>
 
           <DecisionPanel
             consultationId={c.id}
@@ -95,32 +92,65 @@ export function ConsultationDetail({ id }: { id: string }) {
             clinician={c.clinician}
             currentUserId={currentUserId}
           />
+        </header>
 
-          <MessageThread consultationId={c.id} currentUserId={currentUserId} />
-        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+            <div className="space-y-5 min-w-0">
+              <RedFlagBanner redFlags={c.redFlags} />
 
-        <aside className="space-y-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Patient</h3>
-            <dl className="space-y-2 text-sm">
-              <div><dt className="text-gray-500">Email</dt><dd>{c.patient.email}</dd></div>
-              <div>
-                <dt className="text-gray-500">Date of birth</dt>
-                <dd>{new Date(c.patient.dateOfBirth).toLocaleDateString('en-GB')}</dd>
+              {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
+                <section key={section} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
+                    <span className="text-xs text-gray-400">{answers.length} {answers.length === 1 ? 'answer' : 'answers'}</span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {answers.map((a: any, i: number) => (
+                      <div key={a.questionId} className="px-4 py-2.5 flex flex-wrap items-baseline gap-x-6 gap-y-0.5">
+                        <p className="flex-1 basis-56 text-[13px] text-gray-500">
+                          <span className="text-gray-300 mr-2 tabular-nums">{i + 1}</span>
+                          {a.question}
+                        </p>
+                        <p className="flex-1 basis-40 text-sm font-medium text-gray-900 whitespace-pre-wrap">{a.answer}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <aside className="space-y-4 min-w-0">
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Patient</h3>
+                <dl className="space-y-2.5 text-sm">
+                  <div>
+                    <dt className="text-xs text-gray-500">Email</dt>
+                    <dd className="break-all">
+                      <a href={`mailto:${c.patient.email}`} className="hover:text-brand-500">{c.patient.email}</a>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-gray-500">Date of birth</dt>
+                    <dd>{dob.toLocaleDateString('en-GB')} <span className="text-gray-400">· {differenceInYears(new Date(), dob)} yrs</span></dd>
+                  </div>
+                </dl>
               </div>
-            </dl>
+
+              <OnboardingSummary patientId={c.patient.id} />
+
+              {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
+                <PatientHistory patientId={c.patient.id} excludeId={c.id} />
+              </div>
+            </aside>
           </div>
-
-          <OnboardingSummary patientId={c.patient.id} />
-
-          {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
-
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Prior consultations</h3>
-            <PatientHistory patientId={c.patient.id} excludeId={c.id} />
-          </div>
-        </aside>
+        </div>
       </div>
+
+      <ChatDock key={c.patient.id} patientId={c.patient.id} patientName={fullName} currentUserId={currentUserId} />
     </div>
   );
 }
