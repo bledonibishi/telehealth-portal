@@ -546,6 +546,108 @@ async function main() {
   });
 
   console.log('✓ Messages');
+
+  // ── TRT demo: Tom, 130 days on testosterone gel with only baseline bloods ──
+  // His 3-month testosterone / haematocrit / PSA are more than 30 days overdue,
+  // so repeat supplies are on hold (Labs page, patient Labs tab, his Prescriptions
+  // page). Recording the three results in his Labs tab lifts the hold.
+  const patientTom = await prisma.patient.upsert({
+    where: { email: 'tom.berisha@example.com' },
+    update: {},
+    create: {
+      email: 'tom.berisha@example.com',
+      passwordHash: pw,
+      firstName: 'Tom',
+      lastName: 'Berisha',
+      dateOfBirth: dob(1975, 3, 2),
+      activatedAt: daysAgo(135),
+      phone: '+383 44 555 020',
+      addressLine1: 'Rruga B 4',
+      city: 'Prishtinë',
+      postcode: '10000',
+      country: 'Kosovo',
+      createdAt: daysAgo(136),
+    },
+  });
+  await prisma.onboardingSubmission.upsert({
+    where: { patientId: patientTom.id },
+    update: {},
+    create: {
+      patientId: patientTom.id,
+      personaStatus: 'VERIFIED',
+      photoReviewStatus: 'APPROVED',
+      priorMedicationUse: false,
+      status: 'APPROVED',
+      submittedAt: daysAgo(134),
+      reviewedAt: daysAgo(133),
+      reviewedByClinicianId: doctor.id,
+    },
+  });
+  const consultTom = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-tom-approved' },
+    update: {},
+    create: {
+      id: 'seed-consult-tom-approved',
+      patientId: patientTom.id,
+      clinicianId: doctor.id,
+      kind: ConsultationKind.TRT,
+      status: ConsultationStatus.APPROVED,
+      quizAnswers: [],
+      submittedAt: daysAgo(132),
+    },
+  });
+  const testosteroneGel = await prisma.product.findUnique({ where: { slug: 'testosterone-gel-tostran' }, include: { strengths: true } });
+  if (testosteroneGel?.strengths[0]) {
+    const tomIssuedAt = daysAgo(130);
+    await prisma.prescription.upsert({
+      where: { consultationId: consultTom.id },
+      update: {},
+      create: {
+        consultationId: consultTom.id,
+        patientId: patientTom.id,
+        prescriberId: doctor.id,
+        medication: `${testosteroneGel.name} ${testosteroneGel.strengths[0].label}`,
+        dosage: testosteroneGel.strengths[0].label,
+        instructions: testosteroneGel.defaultDirections ?? 'Apply once daily in the morning.',
+        issuedAt: tomIssuedAt,
+        validUntil: new Date(tomIssuedAt.getTime() + 365 * 86_400_000),
+        refillsAllowed: 5,
+        items: { create: { productId: testosteroneGel.id, strengthId: testosteroneGel.strengths[0].id, quantity: 1, directions: 'Apply once daily in the morning.' } },
+        orders: {
+          create: { patientId: patientTom.id, sequence: 1, status: 'DELIVERED', pharmacyRef: 'PH-2026-00512', dispatchedAt: daysAgo(128), deliveredAt: daysAgo(126) },
+        },
+      },
+    });
+    const baseline: [string, number, string, number, number][] = [
+      ['TESTOSTERONE', 7.2, 'nmol/L', 8.6, 29],
+      ['HEMATOCRIT', 44, '%', 40, 54],
+      ['PSA', 0.8, 'ng/mL', 0, 4],
+    ];
+    for (const [kind, value, unit, low, high] of baseline) {
+      const id = `seed-lab-tom-baseline-${kind.toLowerCase()}`;
+      await prisma.labResult.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          patientId: patientTom.id,
+          kind: kind as any,
+          value,
+          unit,
+          referenceRangeLow: low,
+          referenceRangeHigh: high,
+          // Low testosterone is why he's on treatment — flagged, and already reviewed.
+          flagged: value < low || value > high,
+          reviewedAt: value < low ? daysAgo(130) : null,
+          reviewedById: value < low ? doctor.id : null,
+          reviewNote: value < low ? 'Confirms hypogonadism — start treatment.' : null,
+          collectedAt: daysAgo(131),
+          enteredById: doctor.id,
+        },
+      });
+    }
+  }
+  console.log('✓ Demo  tom.berisha@example.com — TRT, 3-month bloods overdue so repeats are on hold (password123)');
   console.log('\n✅ Seed complete.\n');
   console.log('Login credentials (all passwords: password123)');
   console.log('─────────────────────────────────────────────');
