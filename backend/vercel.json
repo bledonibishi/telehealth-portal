@@ -1,5 +1,6 @@
 {
   "buildCommand": null,
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "crons": [{ "path": "/internal/cron/dose-reminders", "schedule": "0 * * * *" }]
 }
