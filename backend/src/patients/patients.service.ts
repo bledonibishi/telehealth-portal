@@ -35,6 +35,7 @@ const STARTER_ITEMS: Record<ConsultationKind, Array<{ slug: string; label: strin
     { slug: 'estradiol-gel-oestrogel', label: '0.75 mg per pump' },
     { slug: 'progesterone-utrogestan', label: '100 mg' },
   ],
+  [ConsultationKind.TRT]: [{ slug: 'testosterone-gel-tostran', label: '20 mg (2 pumps)' }],
 };
 
 function ageInYears(dob: Date, now = new Date()): number {

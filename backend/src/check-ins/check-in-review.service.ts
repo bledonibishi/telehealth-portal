@@ -46,8 +46,15 @@ export class CheckInReviewService {
       include: { patient: true, prescription: true },
       orderBy: { completedAt: 'asc' },
     });
-    const critical = (c: { redFlags: unknown }) => (c.redFlags as Array<{ severity: string }>).some((f) => f.severity === 'CRITICAL');
-    return rows.sort((a, b) => Number(critical(b)) - Number(critical(a)));
+    // Critical first, then warning, then unflagged — a stable sort keeps each
+    // group in the completedAt-ascending order the query already returned.
+    const severityRank = (c: { redFlags: unknown }) => {
+      const flags = c.redFlags as Array<{ severity: string }>;
+      if (flags.some((f) => f.severity === 'CRITICAL')) return 2;
+      if (flags.some((f) => f.severity === 'WARNING')) return 1;
+      return 0;
+    };
+    return rows.sort((a, b) => severityRank(b) - severityRank(a));
   }
 
   async findById(id: string) {

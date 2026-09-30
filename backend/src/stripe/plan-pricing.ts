@@ -4,7 +4,7 @@ import { ConsultationKind, ProductCategory } from '../common/enums';
 // on the website (WEBSITE_BRIEF.md): GLP-1 Starter covers the titration doses
 // up to 0.5 mg, Advanced the maintenance doses; HRT Complete adds a
 // progestogen. Price ids come from STRIPE_PRICE_<PLAN> env vars.
-export type PlanKey = 'GLP1_STARTER' | 'GLP1_ADVANCED' | 'HRT_STARTER' | 'HRT_COMPLETE';
+export type PlanKey = 'GLP1_STARTER' | 'GLP1_ADVANCED' | 'HRT_STARTER' | 'HRT_COMPLETE' | 'TRT_STANDARD';
 
 export function planFor(
   kind: ConsultationKind | string,
@@ -14,5 +14,6 @@ export function planFor(
     const step = items.find((i) => i.category === ProductCategory.GLP1)?.titrationStep ?? 1;
     return step <= 2 ? 'GLP1_STARTER' : 'GLP1_ADVANCED';
   }
+  if (kind === ConsultationKind.TRT) return 'TRT_STANDARD';
   return items.some((i) => i.category === ProductCategory.PROGESTOGEN) ? 'HRT_COMPLETE' : 'HRT_STARTER';
 }
