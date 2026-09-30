@@ -84,7 +84,6 @@ export class AuthService {
       resourceId: patient.id,
     });
 
-    const accessToken = this.jwtService.sign({ sub: patient.id, role: UserRole.PATIENT });
     this.posthog.identify(patient.id, {
       email: patient.email,
       first_name: patient.firstName,
@@ -94,7 +93,7 @@ export class AuthService {
     this.posthog.capture(patient.id, 'patient_logged_in', {
       login_method: 'password',
     });
-    return { mfaRequired: false, pendingToken: null, accessToken, patient };
+    return { mfaRequired: false, pendingToken: null, ...this.issueTokens(patient.id, UserRole.PATIENT), patient };
   }
 
   async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {
@@ -151,7 +150,12 @@ export class AuthService {
     }
     if (payload.type !== 'refresh') throw authFailure(AuthFailureReason.WRONG_TOKEN_TYPE);
 
-    // Only clinicians get refresh tokens today; patients have no login mutation yet.
+    if (payload.role === UserRole.PATIENT) {
+      const patient = await this.prisma.patient.findUnique({ where: { id: payload.sub } });
+      if (!patient) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+      return this.issueTokens(patient.id, UserRole.PATIENT);
+    }
+
     // Accept both the specific ClinicianRole values and the old generic UserRole.CLINICIAN
     // shape, so refresh tokens issued before this rollout keep working.
     const clinicianRoles = Object.values(ClinicianRole) as string[];

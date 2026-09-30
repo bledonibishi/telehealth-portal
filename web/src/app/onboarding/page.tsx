@@ -4,10 +4,12 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
+import { MY_CONSULTATIONS } from '@/graphql/consultations';
+import { ME_BASIC_INFO } from '@/graphql/patient';
 
-type StepKey = 'id-photo' | 'body-photo' | 'prescription-proof';
+type StepKey = 'basic-information' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
 
-const STEP_REJECTION_KEY: Record<StepKey, string> = {
+const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   'id-photo': 'ID_PHOTO',
   'body-photo': 'BODY_PHOTO',
   'prescription-proof': 'PRESCRIPTION_PROOF',
@@ -16,6 +18,8 @@ const STEP_REJECTION_KEY: Record<StepKey, string> = {
 export default function OnboardingLandingPage() {
   const router = useRouter();
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
+  const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const { data: meData, loading: meLoading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
@@ -26,7 +30,7 @@ export default function OnboardingLandingPage() {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
   }, [o?.status, router]);
 
-  if (loading || !o) {
+  if (loading || consultationsLoading || meLoading || !o) {
     return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   }
 
@@ -35,9 +39,31 @@ export default function OnboardingLandingPage() {
   const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
-  const feedbackFor = (key: StepKey) => stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+  const feedbackFor = (key: StepKey) =>
+    key === 'medical-questionnaire'
+      ? questionnaireFeedback
+      : STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+
+  // The questionnaire creates the consultation a doctor reviews.
+  const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
+  const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
+  const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
+    ? 'A clinician has asked for more information — please review your answers'
+    : undefined;
 
   const baseSteps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
+    {
+      key: 'basic-information',
+      label: 'Basic information',
+      hint: 'Your details and where we send your treatment',
+      done: !!(meData?.me?.addressLine1 && meData?.me?.city && meData?.me?.postcode && meData?.me?.phone),
+    },
+    {
+      key: 'medical-questionnaire',
+      label: 'Medical questionnaire',
+      hint: 'Your health, medicines and measurements',
+      done: questionnaireDone,
+    },
     { key: 'id-photo', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
     { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
     {
@@ -88,14 +114,6 @@ export default function OnboardingLandingPage() {
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-8 mb-3">What&rsquo;s left</p>
 
       <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100">
-        <div className="flex items-center gap-3 px-4 py-4">
-          <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-sm flex-shrink-0">✓</div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-slate-900">Basic information</p>
-            <p className="text-xs text-slate-400">Completed</p>
-          </div>
-        </div>
-
         {steps.map((s, i) => (
           <button
             key={s.key}
@@ -111,7 +129,7 @@ export default function OnboardingLandingPage() {
                     : 'bg-slate-100 text-slate-500'
               }`}
             >
-              {s.needsChanges ? '!' : s.done ? '✓' : i + 2}
+              {s.needsChanges ? '!' : s.done ? '✓' : i + 1}
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-900">{s.label}</p>

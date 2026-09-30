@@ -1,61 +1,126 @@
 import { gql } from '@apollo/client';
 
-export const GET_ORDERS = gql`
-  query GetOrders {
-    orders {
+export const ORDER_FIELDS = gql`
+  fragment OrderFields on Order {
+    id
+    sequence
+    status
+    createdAt
+    pharmacyRef
+    dispatchedAt
+    carrier
+    trackingNumber
+    trackingUrl
+    outForDeliveryAt
+    deliveredAt
+    cancelledAt
+    cancelReason
+    shippingAddress {
+      name
+      phone
+      addressLine1
+      addressLine2
+      city
+      postcode
+      country
+    }
+    patient {
       id
+      firstName
+      lastName
+      email
+      phone
+      addressLine1
+      addressLine2
+      city
+      postcode
+      country
+    }
+    prescription {
+      id
+      status
       medication
       dosage
       instructions
       issuedAt
-      pharmacyRef
-      dispatchedAt
-      carrier
-      trackingNumber
-      trackingUrl
-      outForDeliveryAt
-      deliveredAt
+      validUntil
+      refillsAllowed
+      documentUrl
       consultation {
         id
         kind
-        patient {
+      }
+      items {
+        id
+        quantity
+        product {
           id
-          firstName
-          lastName
-          email
+          requiresColdChain
         }
       }
     }
   }
 `;
 
+export const GET_ORDERS = gql`
+  ${ORDER_FIELDS}
+  query GetOrders($status: OrderStatus) {
+    orders(status: $status) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const PATIENT_ORDERS = gql`
+  ${ORDER_FIELDS}
+  query PatientOrders($patientId: ID!) {
+    patientOrders(patientId: $patientId) {
+      ...OrderFields
+    }
+  }
+`;
+
 export const DISPATCH_ORDER = gql`
+  ${ORDER_FIELDS}
   mutation DispatchOrder($id: ID!, $pharmacyRef: String!) {
     dispatchOrder(id: $id, pharmacyRef: $pharmacyRef) {
-      id
-      pharmacyRef
-      dispatchedAt
+      ...OrderFields
     }
   }
 `;
 
 export const MARK_ORDER_OUT_FOR_DELIVERY = gql`
+  ${ORDER_FIELDS}
   mutation MarkOrderOutForDelivery($id: ID!, $carrier: String, $trackingNumber: String, $trackingUrl: String) {
     markOrderOutForDelivery(id: $id, carrier: $carrier, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl) {
-      id
-      carrier
-      trackingNumber
-      trackingUrl
-      outForDeliveryAt
+      ...OrderFields
     }
   }
 `;
 
 export const MARK_ORDER_DELIVERED = gql`
+  ${ORDER_FIELDS}
   mutation MarkOrderDelivered($id: ID!) {
     markOrderDelivered(id: $id) {
-      id
-      deliveredAt
+      ...OrderFields
+    }
+  }
+`;
+
+export const CANCEL_ORDER = gql`
+  ${ORDER_FIELDS}
+  mutation CancelOrder($id: ID!, $reason: String!) {
+    cancelOrder(id: $id, reason: $reason) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const CREATE_REPEAT_ORDER = gql`
+  ${ORDER_FIELDS}
+  mutation CreateRepeatOrder($prescriptionId: ID!) {
+    createRepeatOrder(prescriptionId: $prescriptionId) {
+      ...OrderFields
     }
   }
 `;

@@ -11,6 +11,11 @@ export const GET_PATIENTS = gql`
       leadId
       activatedAt
       createdAt
+      productKind
+      latestConsultationStatus
+      hasActivePrescription
+      lastCheckInStatus
+      lastCheckInDueAt
     }
   }
 `;

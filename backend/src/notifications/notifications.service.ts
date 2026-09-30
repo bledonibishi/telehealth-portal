@@ -18,8 +18,8 @@ export class NotificationsService {
           where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } },
         }),
 
-        // Prescriptions not yet dispatched
-        this.prisma.prescription.count({ where: { dispatchedAt: null } }),
+        // Orders waiting for the pharmacy
+        this.prisma.order.count({ where: { status: 'PENDING' } }),
 
         // Find consultations where the last message was from a patient
         this.prisma.consultation.findMany({

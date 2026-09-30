@@ -4,9 +4,19 @@
 
 input ApproveConsultationInput {
   consultationId: ID!
-  dosage: String!
-  instructions: String!
-  medication: String!
+  items: [PrescriptionItemInput!]!
+
+  """Extra instructions printed on the prescription"""
+  notes: String
+
+  """
+  Required when the prescription goes against an overridable prescribing rule
+  """
+  overrideReason: String
+  refillsAllowed: Int = 0
+
+  """Days the prescription stays valid; defaults to 180"""
+  validityDays: Int
 }
 
 type AuthResponse {
@@ -21,6 +31,9 @@ type AuthResponse {
 type CheckIn {
   answers: [QuizAnswer!]
 
+  """What happened to billing as a result of the review"""
+  billingNote: String
+
   """
   The link the patient uses to complete their check-in. Only set while a check-in is SENT and awaiting a response.
   """
@@ -29,11 +42,36 @@ type CheckIn {
   createdAt: DateTime!
   dueAt: DateTime!
   id: ID!
+  kind: ConsultationKind
+  outcome: CheckInOutcome
+  patient: Patient
   patientFirstName: String
+
+  """The prescription the patient was on when they checked in"""
+  prescription: Prescription
+  questionnaireVersion: String
+  redFlags: [CheckInFlag!]!
+  resultOrderId: String
+  resultPrescriptionId: String
+  reviewNote: String
+  reviewedAt: DateTime
+  reviewedBy: Clinician
   sentAt: DateTime
   status: CheckInStatus!
   tokenExpiresAt: DateTime
   wantsToReorder: Boolean
+}
+
+type CheckInFlag {
+  description: String!
+  severity: RedFlagSeverity!
+}
+
+enum CheckInOutcome {
+  HOLD
+  NEW_PRESCRIPTION
+  REPEAT
+  STOP
 }
 
 enum CheckInStatus {
@@ -46,12 +84,14 @@ type Clinician {
   createdAt: DateTime!
   email: String!
   firstName: String!
-  gmcNumber: String
   id: ID!
   isVerified: Boolean!
   lastName: String!
+  licenseNumber: String
+  licensingBody: String
   mfaEnabled: Boolean!
   role: ClinicianRole!
+  verifiedAt: DateTime
 }
 
 enum ClinicianRole {
@@ -61,15 +101,31 @@ enum ClinicianRole {
   PROVIDER
 }
 
+type ConsentText {
+  """One statement per line"""
+  text: String!
+  type: ConsentType!
+  version: String!
+}
+
+enum ConsentType {
+  TELEHEALTH
+}
+
 type Consultation {
   clinician: Clinician
+  declineReason: String
   id: ID!
   kind: ConsultationKind!
   messages: [Message!]!
   patient: Patient!
   prescription: Prescription
+  questionnaireVersion: String
   quizAnswers: [QuizAnswer!]!
   redFlags: [RedFlag!]!
+
+  """Outcome of refunding the checkout payment on decline"""
+  refundStatus: RefundStatus
   status: ConsultationStatus!
   submittedAt: DateTime!
   updatedAt: DateTime!
@@ -118,7 +174,22 @@ scalar DateTime
 
 input DeclineConsultationInput {
   consultationId: ID!
+
+  """Sent to the patient as a message in the consultation thread"""
+  messageToPatient: String
+
+  """Clinical reason, recorded on the consultation and audit log"""
   reason: String!
+}
+
+type DeliveryAddress {
+  addressLine1: String!
+  addressLine2: String
+  city: String!
+  country: String!
+  name: String!
+  phone: String
+  postcode: String!
 }
 
 type Lead {
@@ -154,33 +225,75 @@ type MfaSetupResponse {
 
 type Mutation {
   approveConsultation(input: ApproveConsultationInput!): Consultation!
+
+  """Stop an order that has not been dispatched"""
+  cancelOrder(id: ID!, reason: String!): Order!
+
+  """Stop a prescription; no further orders can be dispatched against it"""
+  cancelPrescription(id: ID!, reason: String!): Prescription!
+
+  """
+  Take ownership of a consultation so no other doctor decides it at the same time
+  """
+  claimConsultation(id: ID!): Consultation!
   createLead(input: CreateLeadInput!): Lead!
+
+  """Queue another supply against the prescription's repeats"""
+  createRepeatOrder(prescriptionId: ID!): Order!
   declineConsultation(input: DeclineConsultationInput!): Consultation!
-  dispatchOrder(id: ID!, pharmacyRef: String!): Prescription!
+  dispatchOrder(id: ID!, pharmacyRef: String!): Order!
   enableMfa(totpCode: String!): Boolean!
   loginClinician(input: LoginInput!): AuthResponse!
   loginPatient(input: LoginInput!): AuthResponse!
-  markOrderDelivered(id: ID!): Prescription!
-  markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Prescription!
+  markOrderDelivered(id: ID!): Order!
+  markOrderOutForDelivery(carrier: String, id: ID!, trackingNumber: String, trackingUrl: String): Order!
   refreshAccessToken(refreshToken: String!): RefreshResponse!
-  requestMoreInfo(consultationId: ID!): Consultation!
+
+  """Hand a claimed consultation back to the queue"""
+  releaseConsultation(id: ID!): Consultation!
+  requestMoreInfo(
+    consultationId: ID!
+
+    """What the patient needs to tell us; sent as a message"""
+    message: String
+  ): Consultation!
 
   """
   Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.
   """
   rescheduleCheckIn(dueAt: DateTime!, id: ID!): CheckIn!
+
+  """Decide the next step after a monthly check-in"""
+  reviewCheckIn(input: ReviewCheckInInput!): CheckIn!
   reviewOnboardingStep(input: ReviewOnboardingStepInput!): OnboardingSubmission!
+  revokeClinicianVerification(id: ID!): Clinician!
   saveBodyPhotosStep(input: SaveBodyPhotosStepInput!): OnboardingSubmission!
   saveIdentityStep(input: SaveIdentityStepInput!): OnboardingSubmission!
   savePrescriptionProofStep(input: SavePrescriptionProofStepInput!): OnboardingSubmission!
   savePriorMedicationUse(priorMedicationUse: Boolean!): OnboardingSubmission!
   sendMessage(input: SendMessageInput!): Message!
+
+  """Withdraw a product from (or return it to) prescribing"""
+  setProductActive(active: Boolean!, id: ID!): Product!
+
+  """Withdraw a single strength, e.g. during a supply shortage"""
+  setProductStrengthActive(active: Boolean!, id: ID!): Product!
   setupMfa: MfaSetupResponse!
   submitCheckIn(input: SubmitCheckInInput!, token: String!): CheckIn!
   submitIntakeQuiz(input: SubmitIntakeQuizInput!): Consultation!
   submitOnboarding: OnboardingSubmission!
   updateClinicianRole(id: ID!, role: ClinicianRole!): Clinician!
+
+  """
+  Confirmed date of birth and delivery details, collected once during onboarding
+  """
+  updateMyBasicInfo(input: UpdateBasicInfoInput!): Patient!
   updatePatient(input: UpdatePatientInput!): Patient!
+
+  """
+  Record a checked medical licence; required before the clinician can prescribe
+  """
+  verifyClinician(input: VerifyClinicianInput!): Clinician!
   verifyMfa(pendingToken: String!, totpCode: String!): AuthResponse!
 }
 
@@ -231,10 +344,46 @@ type OnboardingSubmission {
   updatedAt: DateTime!
 }
 
+type Order {
+  cancelReason: String
+  cancelledAt: DateTime
+  carrier: String
+  createdAt: DateTime!
+  deliveredAt: DateTime
+  dispatchedAt: DateTime
+  id: ID!
+  outForDeliveryAt: DateTime
+  patient: Patient!
+  pharmacyRef: String
+  prescription: Prescription!
+  prescriptionId: ID!
+
+  """1 = first supply; each repeat increments"""
+  sequence: Int!
+
+  """Where it was sent, captured at dispatch"""
+  shippingAddress: DeliveryAddress
+  status: OrderStatus!
+  trackingNumber: String
+  trackingUrl: String
+}
+
+enum OrderStatus {
+  CANCELLED
+  DELIVERED
+  DISPATCHED
+  OUT_FOR_DELIVERY
+  PENDING
+}
+
 type Patient {
   activatedAt: DateTime
+  addressLine1: String
+  addressLine2: String
   checkIns: [CheckIn!]!
+  city: String
   consultations: [Consultation!]!
+  country: String
   createdAt: DateTime!
   dateOfBirth: DateTime!
   email: String!
@@ -242,6 +391,40 @@ type Patient {
   id: ID!
   lastName: String!
   leadId: String
+  phone: String
+  postcode: String
+}
+
+type PatientListItem {
+  activatedAt: DateTime
+  addressLine1: String
+  addressLine2: String
+  checkIns: [CheckIn!]!
+  city: String
+  consultations: [Consultation!]!
+  country: String
+  createdAt: DateTime!
+  dateOfBirth: DateTime!
+  email: String!
+  firstName: String!
+
+  """Has a currently active prescription"""
+  hasActivePrescription: Boolean!
+  id: ID!
+
+  """When their most recent check-in is/was due"""
+  lastCheckInDueAt: DateTime
+  lastCheckInStatus: CheckInStatus
+  lastName: String!
+
+  """Status of their most recent consultation"""
+  latestConsultationStatus: ConsultationStatus
+  leadId: String
+  phone: String
+  postcode: String
+
+  """The programme this patient signed up for"""
+  productKind: ConsultationKind
 }
 
 enum PersonaStatus {
@@ -259,21 +442,65 @@ enum PhotoReviewStatus {
   REJECTED
 }
 
+type PrescribingViolation {
+  code: String!
+  message: String!
+
+  """The prescriber may proceed by recording a reason"""
+  overridable: Boolean!
+}
+
 type Prescription {
+  cancelReason: String
+  cancelledAt: DateTime
   carrier: String
   consultation: Consultation
-  consultationId: String!
+  consultationId: String
+
+  """SHA-256 of the content at issue, printed on the document"""
+  contentHash: String
   deliveredAt: DateTime
   dispatchedAt: DateTime
+  documentUrl: String
   dosage: String!
   id: ID!
   instructions: String!
   issuedAt: DateTime!
+  items: [PrescriptionItem!]
   medication: String!
+  orders: [Order!]!
   outForDeliveryAt: DateTime
+  overrideReason: String
+  patientId: ID!
   pharmacyRef: String
+  prescriber: Clinician
+  refillsAllowed: Int!
+
+  """Repeats not yet ordered"""
+  repeatsRemaining: Int!
+  status: PrescriptionStatus!
+  supersedesId: String
   trackingNumber: String
   trackingUrl: String
+  validUntil: DateTime
+}
+
+type PrescriptionItem {
+  directions: String!
+  id: ID!
+  product: Product!
+  quantity: Int!
+  strength: ProductStrength!
+}
+
+input PrescriptionItemInput {
+  """Directions for the patient, printed on the label"""
+  directions: String!
+  productId: ID!
+
+  """Number of packs"""
+  quantity: Int!
+  strengthId: ID!
 }
 
 enum PrescriptionProofType {
@@ -283,9 +510,65 @@ enum PrescriptionProofType {
   PRESCRIPTION_DOCUMENT
 }
 
+enum PrescriptionStatus {
+  ACTIVE
+  CANCELLED
+  SUPERSEDED
+}
+
+type Product {
+  active: Boolean!
+  brandName: String
+  category: ProductCategory!
+  defaultDirections: String
+  form: ProductForm!
+  id: ID!
+  kind: ConsultationKind!
+  name: String!
+  requiresColdChain: Boolean!
+  slug: String!
+  strengths: [ProductStrength!]!
+  weeksPerStep: Int
+}
+
+enum ProductCategory {
+  ESTROGEN
+  GLP1
+  PROGESTOGEN
+}
+
+enum ProductForm {
+  CAPSULE
+  GEL
+  INJECTION_PEN
+  PATCH
+  SPRAY
+  TABLET
+}
+
+type ProductStrength {
+  active: Boolean!
+  defaultQuantity: Int!
+  id: ID!
+  label: String!
+  packDescription: String
+
+  """1 = starting dose; null when the product is not titrated"""
+  titrationStep: Int
+}
+
 type Query {
+  checkIn(id: ID!): CheckIn!
   checkInByToken(token: String!): CheckIn!
+
+  """
+  Completed check-ins waiting for a doctor — critical flags first, then oldest
+  """
+  checkInReviewQueue: [CheckIn!]!
   clinicians: [Clinician!]!
+
+  """The consent wording patients currently agree to"""
+  consentText(type: ConsentType!): ConsentText!
   consultation(id: ID!): Consultation!
 
   """
@@ -295,6 +578,9 @@ type Query {
   dashboardMetrics: DashboardMetrics!
   lead(id: ID!): Lead!
   leads: [Lead!]!
+
+  """The authenticated patient's own record"""
+  me: Patient!
   messages(consultationId: ID!): [Message!]!
 
   """A single consultation belonging to the authenticated patient"""
@@ -303,27 +589,107 @@ type Query {
   """The authenticated patient's own consultations"""
   myConsultations: [Consultation!]!
   myOnboarding: OnboardingSubmission!
+  myOrders: [Order!]!
+  myPrescriptions: [Prescription!]!
+
+  """The programme the patient signed up for on the website"""
+  myProductKind: ConsultationKind
   notificationCounts: NotificationCounts!
   onboardingQueue: [OnboardingSubmission!]!
   onboardingSubmission(patientId: ID!): OnboardingSubmission
-  orders: [Prescription!]!
+
+  """Pharmacy fulfilment queue, newest first"""
+  orders(status: OrderStatus): [Order!]!
   patient(id: ID!): Patient
 
   """Prior consultations for a patient, newest first"""
   patientHistory(patientId: ID!): [Consultation!]!
-  patients: [Patient!]!
+  patientOrders(patientId: ID!): [Order!]!
+
+  """A patient's prescriptions, newest first, including superseded ones"""
+  patientPrescriptions(patientId: ID!): [Prescription!]!
+  patients: [PatientListItem!]!
+
+  """
+  Dry run of the prescribing rules for a consultation — what approval would reject or need a reason for
+  """
+  prescribingCheck(consultationId: ID!, items: [PrescriptionItemInput!]!): [PrescribingViolation!]!
+  prescription(id: ID!): Prescription!
+
+  """Prescribable medicines; inactive ones only when asked"""
+  products(includeInactive: Boolean = false, kind: ConsultationKind): [Product!]!
+  questionnaire(kind: ConsultationKind!, stage: QuestionnaireStage!): Questionnaire!
+}
+
+type Question {
+  help: String
+  id: String!
+  max: Float
+  min: Float
+  optional: Boolean!
+  options: [QuestionOption!]
+
+  """Ask only when an earlier answer has one of these values"""
+  showIf: QuestionCondition
+  text: String!
+  type: QuestionType!
+  unit: String
+}
+
+type QuestionCondition {
+  anyOf: [String!]!
+  questionId: String!
+}
+
+type QuestionOption {
+  exclusive: Boolean!
+  label: String!
+  value: String!
+}
+
+enum QuestionType {
+  multi
+  number
+  single
+  text
+}
+
+type Questionnaire {
+  kind: ConsultationKind!
+  questions: [Question!]!
+  stage: QuestionnaireStage!
+  title: String!
+  version: Int!
+}
+
+enum QuestionnaireStage {
+  CHECKIN
+  ELIGIBILITY
+  INTAKE
 }
 
 type QuizAnswer {
   answer: String!
   question: String!
   questionId: String!
+
+  """Which questionnaire the answer came from, for grouping"""
+  section: String
+  value: String
 }
 
 input QuizAnswerInput {
+  """Display text: the chosen option label(s), number or free text"""
   answer: String!
-  question: String!
+
+  """
+  Ignored by the server, which uses its own wording; kept for older clients
+  """
+  question: String
   questionId: String!
+
+  """Option value(s) from the questionnaire, '|'-separated for multi-select"""
+  value: String
 }
 
 type RedFlag {
@@ -341,6 +707,28 @@ enum RedFlagSeverity {
 type RefreshResponse {
   accessToken: String!
   refreshToken: String!
+}
+
+enum RefundStatus {
+  FAILED
+  NOT_REQUIRED
+  REFUNDED
+}
+
+input ReviewCheckInInput {
+  checkInId: ID!
+  items: [PrescriptionItemInput!]
+
+  """Sent to the patient as a message"""
+  messageToPatient: String
+
+  """Clinical note, kept on the check-in record"""
+  note: String
+  notes: String
+  outcome: CheckInOutcome!
+  overrideReason: String
+  refillsAllowed: Int
+  validityDays: Int
 }
 
 input ReviewOnboardingStepInput {
@@ -378,22 +766,53 @@ input SubmitCheckInInput {
 input SubmitIntakeQuizInput {
   answers: [QuizAnswerInput!]!
   kind: ConsultationKind!
+
+  """
+  Version of the telehealth consent the patient accepted (see consentText)
+  """
+  telehealthConsentVersion: String
 }
 
 type Subscription {
   newMessage(consultationId: ID!): Message!
 }
 
+input UpdateBasicInfoInput {
+  addressLine1: String!
+  addressLine2: String
+  city: String!
+  country: String!
+  dateOfBirth: DateTime!
+  firstName: String!
+  lastName: String!
+  phone: String!
+  postcode: String!
+}
+
 input UpdatePatientInput {
+  addressLine1: String
+  addressLine2: String
+  city: String
+  country: String
   dateOfBirth: DateTime
   email: String
   firstName: String
   id: ID!
   lastName: String
+  phone: String
+  postcode: String
 }
 
 enum UserRole {
   ADMIN
   CLINICIAN
   PATIENT
+}
+
+input VerifyClinicianInput {
+  clinicianId: ID!
+  licenseNumber: String!
+
+  """Body that issued the licence, e.g. the national chamber of physicians"""
+  licensingBody: String!
 }

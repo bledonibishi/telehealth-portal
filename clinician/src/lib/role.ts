@@ -17,3 +17,16 @@ export function hasAccess(allowed: ClinicianRole[]): boolean {
   const role = getCurrentRole();
   return role !== null && allowed.includes(role);
 }
+
+// Where each role lands after login — must be a page it actually has access
+// to (see NAV in the portal layout).
+const LANDING_PATH: Record<ClinicianRole, string> = {
+  ADMIN: '/',
+  DOCTOR: '/queue',
+  CX_TEAM: '/leads',
+  PROVIDER: '/orders',
+};
+
+export function landingPathFor(role: ClinicianRole | null): string {
+  return role ? LANDING_PATH[role] : '/login';
+}

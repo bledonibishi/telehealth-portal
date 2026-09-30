@@ -61,7 +61,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
-      <Link href="/dashboard" className="text-xs text-slate-400 hover:text-slate-600">← Back to consultations</Link>
+      <Link href="/consultations" className="text-xs text-slate-400 hover:text-slate-600">← Back to consultations</Link>
 
       <div className="flex items-start justify-between">
         <div>

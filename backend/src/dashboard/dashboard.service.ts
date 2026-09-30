@@ -34,8 +34,8 @@ export class DashboardService {
         where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } },
       }),
       this.prisma.consultation.count({ where: { status: 'APPROVED' } }),
-      this.prisma.prescription.count({ where: { dispatchedAt: null } }),
-      this.prisma.prescription.count({ where: { dispatchedAt: { not: null } } }),
+      this.prisma.order.count({ where: { status: 'PENDING' } }),
+      this.prisma.order.count({ where: { status: { in: ['DISPATCHED', 'OUT_FOR_DELIVERY', 'DELIVERED'] } } }),
     ]);
 
     const conversionRate =

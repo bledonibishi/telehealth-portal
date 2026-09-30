@@ -16,13 +16,19 @@ export class ClinicianModel {
   lastName: string;
 
   @Field({ nullable: true })
-  gmcNumber?: string;
+  licenseNumber?: string;
+
+  @Field({ nullable: true })
+  licensingBody?: string;
 
   @Field(() => ClinicianRole)
   role: ClinicianRole;
 
   @Field()
   isVerified: boolean;
+
+  @Field({ nullable: true })
+  verifiedAt?: Date;
 
   @Field()
   mfaEnabled: boolean;

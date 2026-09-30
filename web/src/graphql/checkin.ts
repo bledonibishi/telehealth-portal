@@ -6,6 +6,7 @@ export const CHECK_IN_BY_TOKEN = gql`
       id
       status
       dueAt
+      kind
       patientFirstName
     }
   }

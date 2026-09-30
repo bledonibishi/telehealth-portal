@@ -1,32 +1,38 @@
 import { Resolver, Query, Mutation, Subscription, Args, ID } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
+import { AuditRead } from '../audit/audit-read.interceptor';
 import { MessagingService } from './messaging.service';
 import { MessageModel } from './models/message.model';
 import { SendMessageInput } from './dto/send-message.input';
-import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthUser, STAFF } from '../auth/access-roles';
 
 @Resolver(() => MessageModel)
 export class MessagingResolver {
   constructor(private messagingService: MessagingService) {}
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF, 'PATIENT')
+  @AuditRead('Consultation', 'consultationId')
   @Query(() => [MessageModel])
-  messages(@Args('consultationId', { type: () => ID }) consultationId: string) {
+  async messages(@CurrentUser() user: AuthUser, @Args('consultationId', { type: () => ID }) consultationId: string) {
+    await this.messagingService.assertCanAccess(user, consultationId);
     return this.messagingService.findByConsultation(consultationId);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF, 'PATIENT')
   @Mutation(() => MessageModel)
-  sendMessage(@CurrentUser() user: any, @Args('input') input: SendMessageInput) {
-    return this.messagingService.send(user.id, user.role, input);
+  async sendMessage(@CurrentUser() user: AuthUser, @Args('input') input: SendMessageInput) {
+    await this.messagingService.assertCanAccess(user, input.consultationId);
+    return this.messagingService.send(user.id, user.role as any, input);
   }
 
+  @Authorized(...STAFF, 'PATIENT')
   @Subscription(() => MessageModel, {
     filter: (payload, variables) =>
       payload.newMessage.consultationId === variables.consultationId,
   })
-  newMessage(@Args('consultationId', { type: () => ID }) consultationId: string) {
+  async newMessage(@CurrentUser() user: AuthUser, @Args('consultationId', { type: () => ID }) consultationId: string) {
+    await this.messagingService.assertCanAccess(user, consultationId);
     return this.messagingService.subscribeToNewMessages(consultationId);
   }
 }

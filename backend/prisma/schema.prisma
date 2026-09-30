@@ -78,6 +78,52 @@ enum PhotoReviewStatus {
   REJECTED
 }
 
+enum RefundStatus {
+  NOT_REQUIRED
+  REFUNDED
+  FAILED
+}
+
+enum ProductCategory {
+  GLP1
+  ESTROGEN
+  PROGESTOGEN
+}
+
+enum ProductForm {
+  INJECTION_PEN
+  GEL
+  PATCH
+  TABLET
+  CAPSULE
+  SPRAY
+}
+
+enum PrescriptionStatus {
+  ACTIVE
+  SUPERSEDED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  DISPATCHED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum CheckInOutcome {
+  REPEAT
+  NEW_PRESCRIPTION
+  HOLD
+  STOP
+}
+
+enum ConsentType {
+  TELEHEALTH
+}
+
 enum PrescriptionProofType {
   MEDICINE_BOX_LABEL
   PRESCRIPTION_DOCUMENT
@@ -86,21 +132,27 @@ enum PrescriptionProofType {
 }
 
 model Clinician {
-  id           String        @id @default(cuid())
-  email        String        @unique
-  passwordHash String        @map("password_hash")
-  firstName    String        @map("first_name")
-  lastName     String        @map("last_name")
-  gmcNumber    String?       @unique @map("gmc_number")
-  role         ClinicianRole @default(DOCTOR)
-  isVerified   Boolean       @default(false) @map("is_verified")
-  mfaSecret    String?       @map("mfa_secret")
-  mfaEnabled   Boolean       @default(false) @map("mfa_enabled")
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id            String        @id @default(cuid())
+  email         String        @unique
+  passwordHash  String        @map("password_hash")
+  firstName     String        @map("first_name")
+  lastName      String        @map("last_name")
+  // Medical licence — required (with isVerified) before a clinician can prescribe
+  licenseNumber String?       @unique @map("license_number")
+  licensingBody String?       @map("licensing_body")
+  role          ClinicianRole @default(DOCTOR)
+  isVerified    Boolean       @default(false) @map("is_verified")
+  verifiedAt    DateTime?     @map("verified_at")
+  verifiedById  String?       @map("verified_by_id")
+  mfaSecret     String?       @map("mfa_secret")
+  mfaEnabled    Boolean       @default(false) @map("mfa_enabled")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   consultations       Consultation[]
   reviewedOnboardings OnboardingSubmission[]
+  prescriptions       Prescription[]
+  reviewedCheckIns    CheckIn[]
 
   @@map("clinicians")
 }
@@ -123,37 +175,52 @@ model Lead {
 }
 
 model Patient {
-  id                      String    @id @default(cuid())
-  email                   String    @unique
-  passwordHash            String    @map("password_hash")
-  firstName               String    @map("first_name")
-  lastName                String    @map("last_name")
-  dateOfBirth             DateTime  @map("date_of_birth")
-  leadId                  String?   @unique @map("lead_id")
-  activationToken         String?   @unique @map("activation_token")
+  id                       String    @id @default(cuid())
+  email                    String    @unique
+  passwordHash             String    @map("password_hash")
+  firstName                String    @map("first_name")
+  lastName                 String    @map("last_name")
+  dateOfBirth              DateTime  @map("date_of_birth")
+  leadId                   String?   @unique @map("lead_id")
+  activationToken          String?   @unique @map("activation_token")
   activationTokenExpiresAt DateTime? @map("activation_token_expires_at")
-  activatedAt             DateTime? @map("activated_at")
-  createdAt               DateTime  @default(now()) @map("created_at")
-  updatedAt               DateTime  @updatedAt @map("updated_at")
+  activatedAt              DateTime? @map("activated_at")
+  stripeCustomerId         String?   @map("stripe_customer_id")
+  stripeSubscriptionId     String?   @map("stripe_subscription_id")
+  phone                    String?   @map("phone")
+  addressLine1             String?   @map("address_line1")
+  addressLine2             String?   @map("address_line2")
+  city                     String?   @map("city")
+  postcode                 String?   @map("postcode")
+  country                  String?   @map("country")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  lead          Lead?          @relation(fields: [leadId], references: [id])
+  lead          Lead?                 @relation(fields: [leadId], references: [id])
   consultations Consultation[]
   uploadedFiles UploadedFile[]
   onboarding    OnboardingSubmission?
   checkIns      CheckIn[]
+  prescriptions Prescription[]
+  orders        Order[]
+  consents      Consent[]
 
   @@map("patients")
 }
 
 model Consultation {
-  id          String             @id @default(cuid())
-  patientId   String             @map("patient_id")
-  clinicianId String?            @map("clinician_id")
-  kind        ConsultationKind
-  status      ConsultationStatus @default(SUBMITTED)
-  quizAnswers Json               @map("quiz_answers")
-  submittedAt DateTime           @default(now()) @map("submitted_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  id                   String             @id @default(cuid())
+  patientId            String             @map("patient_id")
+  clinicianId          String?            @map("clinician_id")
+  kind                 ConsultationKind
+  status               ConsultationStatus @default(SUBMITTED)
+  quizAnswers          Json               @map("quiz_answers")
+  // Which questionnaire wording the answers were given against, e.g. "GLP1-intake@1".
+  questionnaireVersion String?            @map("questionnaire_version")
+  declineReason        String?            @map("decline_reason")
+  refundStatus         RefundStatus?      @map("refund_status")
+  submittedAt          DateTime           @default(now()) @map("submitted_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
 
   patient      Patient       @relation(fields: [patientId], references: [id])
   clinician    Clinician?    @relation(fields: [clinicianId], references: [id])
@@ -177,23 +244,129 @@ model RedFlag {
 }
 
 model Prescription {
-  id                String    @id @default(cuid())
-  consultationId    String    @unique @map("consultation_id")
-  medication        String
-  dosage            String
-  instructions      String
-  issuedAt          DateTime  @default(now()) @map("issued_at")
-  pharmacyRef       String?   @map("pharmacy_ref")
-  dispatchedAt      DateTime? @map("dispatched_at")
-  carrier           String?   @map("carrier")
-  trackingNumber    String?   @map("tracking_number")
-  trackingUrl       String?   @map("tracking_url")
-  outForDeliveryAt  DateTime? @map("out_for_delivery_at")
-  deliveredAt       DateTime? @map("delivered_at")
+  id             String             @id @default(cuid())
+  // The consultation that led to the first prescription. Later dose changes
+  // (from check-ins) are new prescriptions with no consultation, linked back
+  // through supersedesId.
+  consultationId String?            @unique @map("consultation_id")
+  patientId      String             @map("patient_id")
+  prescriberId   String?            @map("prescriber_id")
+  status         PrescriptionStatus @default(ACTIVE)
+  // Human-readable summaries of `items`, kept for the order and patient views.
+  medication     String
+  dosage         String
+  instructions   String
+  validUntil     DateTime?          @map("valid_until")
+  refillsAllowed Int                @default(0) @map("refills_allowed")
+  // Why the prescriber went against a prescribing rule, when they did.
+  overrideReason String?            @map("override_reason")
+  // SHA-256 of the prescription's canonical content at issue — printed on the
+  // document so a pharmacy can detect alteration.
+  contentHash    String?            @map("content_hash")
+  supersedesId   String?            @unique @map("supersedes_id")
+  cancelledAt    DateTime?          @map("cancelled_at")
+  cancelReason   String?            @map("cancel_reason")
+  issuedAt       DateTime           @default(now()) @map("issued_at")
 
-  consultation Consultation @relation(fields: [consultationId], references: [id])
+  consultation Consultation?      @relation(fields: [consultationId], references: [id])
+  patient      Patient            @relation(fields: [patientId], references: [id])
+  prescriber   Clinician?         @relation(fields: [prescriberId], references: [id])
+  supersedes   Prescription?      @relation("PrescriptionHistory", fields: [supersedesId], references: [id])
+  supersededBy Prescription?      @relation("PrescriptionHistory")
+  items        PrescriptionItem[]
+  orders       Order[]
+  checkIns     CheckIn[]          @relation("CheckInPrescription")
 
+  @@index([patientId])
   @@map("prescriptions")
+}
+
+// One supply of a prescription: the first fill, then one per repeat. What the
+// pharmacy dispatches and the patient tracks.
+model Order {
+  id               String      @id @default(cuid())
+  prescriptionId   String      @map("prescription_id")
+  patientId        String      @map("patient_id")
+  // 1 = first supply; each repeat increments.
+  sequence         Int
+  status           OrderStatus @default(PENDING)
+  // Snapshot at dispatch, so later address changes don't rewrite history.
+  shippingAddress  Json?       @map("shipping_address")
+  pharmacyRef      String?     @map("pharmacy_ref")
+  dispatchedAt     DateTime?   @map("dispatched_at")
+  carrier          String?
+  trackingNumber   String?     @map("tracking_number")
+  trackingUrl      String?     @map("tracking_url")
+  outForDeliveryAt DateTime?   @map("out_for_delivery_at")
+  deliveredAt      DateTime?   @map("delivered_at")
+  cancelledAt      DateTime?   @map("cancelled_at")
+  cancelReason     String?     @map("cancel_reason")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+  patient      Patient      @relation(fields: [patientId], references: [id])
+
+  @@unique([prescriptionId, sequence])
+  @@index([status])
+  @@map("orders")
+}
+
+model PrescriptionItem {
+  id             String @id @default(cuid())
+  prescriptionId String @map("prescription_id")
+  productId      String @map("product_id")
+  strengthId     String @map("strength_id")
+  quantity       Int
+  directions     String
+
+  prescription Prescription    @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id])
+  strength     ProductStrength @relation(fields: [strengthId], references: [id])
+
+  @@map("prescription_items")
+}
+
+// Medicines a clinician can prescribe. Seeded; review with the partner
+// pharmacy before go-live.
+model Product {
+  id                String           @id @default(cuid())
+  slug              String           @unique
+  name              String
+  brandName         String?          @map("brand_name")
+  kind              ConsultationKind
+  category          ProductCategory
+  form              ProductForm
+  requiresColdChain Boolean          @default(false) @map("requires_cold_chain")
+  // Minimum weeks on a titration step before stepping up.
+  weeksPerStep      Int?             @map("weeks_per_step")
+  defaultDirections String?          @map("default_directions")
+  active            Boolean          @default(true)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  strengths         ProductStrength[]
+  prescriptionItems PrescriptionItem[]
+
+  @@map("products")
+}
+
+model ProductStrength {
+  id              String  @id @default(cuid())
+  productId       String  @map("product_id")
+  label           String
+  packDescription String? @map("pack_description")
+  // 1 = starting dose. Null for products that aren't titrated.
+  titrationStep   Int?    @map("titration_step")
+  defaultQuantity Int     @default(1) @map("default_quantity")
+  sortOrder       Int     @default(0) @map("sort_order")
+  active          Boolean @default(true)
+
+  product           Product            @relation(fields: [productId], references: [id])
+  prescriptionItems PrescriptionItem[]
+
+  @@unique([productId, label])
+  @@map("product_strengths")
 }
 
 model Message {
@@ -238,46 +411,81 @@ model UploadedFile {
 }
 
 model CheckIn {
-  id             String        @id @default(cuid())
-  patientId      String        @map("patient_id")
-  dueAt          DateTime      @map("due_at")
-  status         CheckInStatus @default(SCHEDULED)
-  token          String?       @unique
-  tokenExpiresAt DateTime?     @map("token_expires_at")
-  sentAt         DateTime?     @map("sent_at")
-  answers        Json?
-  wantsToReorder Boolean?      @map("wants_to_reorder")
-  completedAt    DateTime?     @map("completed_at")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  id                   String            @id @default(cuid())
+  patientId            String            @map("patient_id")
+  dueAt                DateTime          @map("due_at")
+  status               CheckInStatus     @default(SCHEDULED)
+  token                String?           @unique
+  tokenExpiresAt       DateTime?         @map("token_expires_at")
+  sentAt               DateTime?         @map("sent_at")
+  answers              Json?
+  wantsToReorder       Boolean?          @map("wants_to_reorder")
+  // Captured on submission: the programme, questionnaire wording, the flags the
+  // answers raised, and the prescription the patient was on at the time.
+  kind                 ConsultationKind? @map("kind")
+  questionnaireVersion String?           @map("questionnaire_version")
+  redFlags             Json              @default("[]") @map("red_flags")
+  prescriptionId       String?           @map("prescription_id")
+  // The doctor's review of the completed check-in.
+  reviewedAt           DateTime?         @map("reviewed_at")
+  reviewedById         String?           @map("reviewed_by_id")
+  outcome              CheckInOutcome?
+  reviewNote           String?           @map("review_note")
+  // What happened to billing as a result (price change, pause, cancellation).
+  billingNote          String?           @map("billing_note")
+  resultOrderId        String?           @map("result_order_id")
+  resultPrescriptionId String?           @map("result_prescription_id")
+  completedAt          DateTime?         @map("completed_at")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
 
-  patient Patient @relation(fields: [patientId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  prescription Prescription? @relation("CheckInPrescription", fields: [prescriptionId], references: [id])
+  reviewedBy   Clinician?    @relation(fields: [reviewedById], references: [id])
 
   @@map("check_ins")
 }
 
 model OnboardingSubmission {
-  id                      String                  @id @default(cuid())
-  patientId               String                  @unique @map("patient_id")
-  idDocumentFileId        String?                 @map("id_document_file_id")
-  selfieFileId            String?                 @map("selfie_file_id")
-  personaStatus           PersonaStatus           @default(NOT_STARTED) @map("persona_status")
-  bodyPhotoFrontFileId    String?                 @map("body_photo_front_file_id")
-  bodyPhotoSideFileId     String?                 @map("body_photo_side_file_id")
-  photoReviewStatus       PhotoReviewStatus       @default(NOT_STARTED) @map("photo_review_status")
-  priorMedicationUse      Boolean?                @map("prior_medication_use")
-  prescriptionProofType   PrescriptionProofType?  @map("prescription_proof_type")
-  prescriptionProofFileId String?                 @map("prescription_proof_file_id")
-  status                  OnboardingStatus        @default(IN_PROGRESS) @map("status")
-  submittedAt             DateTime?               @map("submitted_at")
-  reviewedAt              DateTime?               @map("reviewed_at")
-  reviewedByClinicianId   String?                 @map("reviewed_by_clinician_id")
-  stepFeedback            Json                    @default("[]") @map("step_feedback")
-  createdAt               DateTime                @default(now()) @map("created_at")
-  updatedAt               DateTime                @updatedAt @map("updated_at")
+  id                      String                 @id @default(cuid())
+  patientId               String                 @unique @map("patient_id")
+  idDocumentFileId        String?                @map("id_document_file_id")
+  selfieFileId            String?                @map("selfie_file_id")
+  personaStatus           PersonaStatus          @default(NOT_STARTED) @map("persona_status")
+  bodyPhotoFrontFileId    String?                @map("body_photo_front_file_id")
+  bodyPhotoSideFileId     String?                @map("body_photo_side_file_id")
+  photoReviewStatus       PhotoReviewStatus      @default(NOT_STARTED) @map("photo_review_status")
+  priorMedicationUse      Boolean?               @map("prior_medication_use")
+  prescriptionProofType   PrescriptionProofType? @map("prescription_proof_type")
+  prescriptionProofFileId String?                @map("prescription_proof_file_id")
+  status                  OnboardingStatus       @default(IN_PROGRESS) @map("status")
+  submittedAt             DateTime?              @map("submitted_at")
+  reviewedAt              DateTime?              @map("reviewed_at")
+  reviewedByClinicianId   String?                @map("reviewed_by_clinician_id")
+  stepFeedback            Json                   @default("[]") @map("step_feedback")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
 
   patient             Patient    @relation(fields: [patientId], references: [id])
   reviewedByClinician Clinician? @relation(fields: [reviewedByClinicianId], references: [id])
 
   @@map("onboarding_submissions")
+}
+
+// A patient agreeing to a specific version of a consent text. Append-only
+// (enforced by a trigger), like the audit log: withdrawing consent is a new
+// record, not an edit.
+model Consent {
+  id         String      @id @default(cuid())
+  patientId  String      @map("patient_id")
+  type       ConsentType
+  version    String
+  acceptedAt DateTime    @default(now()) @map("accepted_at")
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, type])
+  @@map("consents")
 }

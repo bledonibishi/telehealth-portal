@@ -1,12 +1,55 @@
 import { gql } from '@apollo/client';
 
+export const PRESCRIPTION_FRAGMENT = gql`
+  fragment PrescriptionFields on Prescription {
+    id
+    status
+    medication
+    dosage
+    instructions
+    issuedAt
+    validUntil
+    refillsAllowed
+    overrideReason
+    contentHash
+    documentUrl
+    prescriber {
+      id
+      firstName
+      lastName
+    }
+    items {
+      id
+      quantity
+      directions
+      product {
+        id
+        name
+        brandName
+        requiresColdChain
+      }
+      strength {
+        id
+        label
+        packDescription
+        titrationStep
+      }
+    }
+    repeatsRemaining
+    cancelReason
+  }
+`;
+
 const CONSULTATION_FRAGMENT = gql`
+  ${PRESCRIPTION_FRAGMENT}
   fragment ConsultationFields on Consultation {
     id
     kind
     status
     submittedAt
     updatedAt
+    declineReason
+    refundStatus
     patient {
       id
       firstName
@@ -25,19 +68,15 @@ const CONSULTATION_FRAGMENT = gql`
       severity
     }
     prescription {
-      id
-      medication
-      dosage
-      instructions
-      issuedAt
-      pharmacyRef
-      dispatchedAt
+      ...PrescriptionFields
     }
     quizAnswers {
       questionId
       question
       answer
+      section
     }
+    questionnaireVersion
   }
 `;
 
@@ -104,9 +143,61 @@ export const DECLINE_CONSULTATION = gql`
 
 export const REQUEST_MORE_INFO = gql`
   ${CONSULTATION_FRAGMENT}
-  mutation RequestMoreInfo($consultationId: ID!) {
-    requestMoreInfo(consultationId: $consultationId) {
+  mutation RequestMoreInfo($consultationId: ID!, $message: String) {
+    requestMoreInfo(consultationId: $consultationId, message: $message) {
       ...ConsultationFields
+    }
+  }
+`;
+
+export const CLAIM_CONSULTATION = gql`
+  ${CONSULTATION_FRAGMENT}
+  mutation ClaimConsultation($id: ID!) {
+    claimConsultation(id: $id) {
+      ...ConsultationFields
+    }
+  }
+`;
+
+export const RELEASE_CONSULTATION = gql`
+  ${CONSULTATION_FRAGMENT}
+  mutation ReleaseConsultation($id: ID!) {
+    releaseConsultation(id: $id) {
+      ...ConsultationFields
+    }
+  }
+`;
+
+export const PRESCRIBING_CHECK = gql`
+  query PrescribingCheck($consultationId: ID!, $items: [PrescriptionItemInput!]!) {
+    prescribingCheck(consultationId: $consultationId, items: $items) {
+      code
+      message
+      overridable
+    }
+  }
+`;
+
+export const CANCEL_PRESCRIPTION = gql`
+  mutation CancelPrescription($id: ID!, $reason: String!) {
+    cancelPrescription(id: $id, reason: $reason) {
+      id
+      status
+      cancelledAt
+      cancelReason
+    }
+  }
+`;
+
+export const PATIENT_PRESCRIPTIONS = gql`
+  ${PRESCRIPTION_FRAGMENT}
+  query PatientPrescriptions($patientId: ID!) {
+    patientPrescriptions(patientId: $patientId) {
+      ...PrescriptionFields
+      consultation {
+        id
+        kind
+      }
     }
   }
 `;
