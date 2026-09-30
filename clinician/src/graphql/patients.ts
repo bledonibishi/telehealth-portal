@@ -73,3 +73,16 @@ export const UPDATE_PATIENT = gql`
     }
   }
 `;
+
+export const CREATE_PATIENT = gql`
+  mutation CreatePatient($input: CreatePatientInput!) {
+    createPatient(input: $input) {
+      id
+      email
+      firstName
+      lastName
+      dateOfBirth
+      temporaryPassword
+    }
+  }
+`;

@@ -6,6 +6,8 @@ import { useQuery } from '@apollo/client';
 import { formatDistanceToNow, differenceInYears } from 'date-fns';
 import { GET_PATIENTS } from '@/graphql/patients';
 import PatientPanel from './PatientPanel';
+import CreatePatientModal from '@/components/patients/CreatePatientModal';
+import { hasAccess } from '@/lib/role';
 
 const KIND_BADGE: Record<string, string> = {
   HRT: 'bg-violet-100 text-violet-700',
@@ -96,6 +98,8 @@ function Patients() {
   const [sort, setSort] = useState<Sort>({ key: 'joined', dir: 'desc' });
   // ?patient=<id> opens that patient directly (linked from a consultation).
   const [selectedId, setSelectedId] = useState<string | null>(useSearchParams().get('patient'));
+  const [creating, setCreating] = useState(false);
+  const canCreate = hasAccess(['ADMIN']);
 
   const all = data?.patients ?? [];
 
@@ -147,7 +151,15 @@ function Patients() {
             <h1 className="text-lg font-semibold text-gray-900">Patients</h1>
             <p className="text-xs text-gray-500 mt-0.5">Users who purchased and activated their account</p>
           </div>
-          <div className="flex gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm">
+            {canCreate && (
+              <button
+                onClick={() => setCreating(true)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-brand-500 text-white hover:bg-brand-600"
+              >
+                + New patient
+              </button>
+            )}
             <div className="text-center">
               <p className="font-semibold text-gray-900">{all.length}</p>
               <p className="text-xs text-gray-400">Total</p>
@@ -320,6 +332,16 @@ function Patients() {
             onClose={() => setSelectedId(null)}
           />
         </div>
+      )}
+
+      {creating && (
+        <CreatePatientModal
+          onClose={() => setCreating(false)}
+          onCreated={(id) => {
+            setCreating(false);
+            setSelectedId(id);
+          }}
+        />
       )}
     </div>
   );

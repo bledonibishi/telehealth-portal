@@ -6,9 +6,10 @@ import { PatientModel } from './models/patient.model';
 import { PatientListItemModel } from './models/patient-list-item.model';
 import { UpdatePatientInput } from './dto/update-patient.input';
 import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
+import { CreatePatientInput } from './dto/create-patient.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuthUser, STAFF } from '../auth/access-roles';
-import { ConsultationKind } from '../common/enums';
+import { ClinicianRole, ConsultationKind } from '../common/enums';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => PatientModel)
@@ -54,5 +55,11 @@ export class PatientsResolver {
   updatePatient(@Args('input') input: UpdatePatientInput) {
     const { id, ...data } = input;
     return this.patientsService.update(id, data);
+  }
+
+  @Authorized(ClinicianRole.ADMIN)
+  @Mutation(() => PatientModel, { description: 'Fast-track: create a patient with personal info, a plan, and optionally fully-approved onboarding' })
+  createPatient(@CurrentUser() user: AuthUser, @Args('input') input: CreatePatientInput) {
+    return this.patientsService.createByStaff(user.id, input);
   }
 }

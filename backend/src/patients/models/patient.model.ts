@@ -46,6 +46,9 @@ export class PatientModel {
   @Field()
   createdAt: Date;
 
+  @Field({ nullable: true, description: 'Only set once, in the response to createPatient — never stored or returned afterwards' })
+  temporaryPassword?: string;
+
   @Field(() => [ConsultationModel])
   consultations: ConsultationModel[];
 
