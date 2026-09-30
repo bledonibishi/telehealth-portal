@@ -6,9 +6,9 @@ import { onError } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
 import { print } from 'graphql';
-import { createClient } from 'graphql-ws';
 import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
 import { clearToken, getRefreshToken, getToken, setToken } from './auth';
+import { createRealtime } from './realtime';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
@@ -71,7 +71,13 @@ const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
     return;
   }
 
-  return fromPromise(refreshAccessToken()).flatMap((token) => {
+  // A refreshed token also has to reach the socket: it authenticates subscriptions with
+  // the token it connected with, so reconnect (live subscriptions resume by themselves).
+  const refreshed = refreshAccessToken().then((token) => {
+    if (token) realtime?.reconnect();
+    return token;
+  });
+  return fromPromise(refreshed).flatMap((token) => {
     if (!token) {
       endSession();
       return Observable.of(response!);
@@ -81,18 +87,13 @@ const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
   });
 });
 
-const wsLink =
+// Also exposed so screens can fall back to polling while the socket is down.
+export const realtime =
   typeof window !== 'undefined'
-    ? new GraphQLWsLink(
-        createClient({
-          url: WS_URL,
-          connectionParams: () => {
-            const token = getToken();
-            return token ? { authorization: `Bearer ${token}` } : {};
-          },
-        }),
-      )
+    ? createRealtime({ url: WS_URL, getToken, refreshToken: refreshAccessToken })
     : null;
+
+const wsLink = realtime ? new GraphQLWsLink(realtime.client) : null;
 
 const httpChain = errorLink.concat(authLink).concat(httpLink);
 

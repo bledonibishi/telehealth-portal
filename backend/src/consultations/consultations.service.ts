@@ -173,7 +173,8 @@ export class ConsultationsService {
   findByPatient(patientId: string) {
     return this.prisma.consultation.findMany({
       where: { patientId },
-      include: { redFlags: true, prescription: true },
+      // Messages let the patient app show one conversation across all their consultations.
+      include: { redFlags: true, prescription: true, messages: { orderBy: { sentAt: 'asc' } } },
       orderBy: { submittedAt: 'desc' },
     });
   }

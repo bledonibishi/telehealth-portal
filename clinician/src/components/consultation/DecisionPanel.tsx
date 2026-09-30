@@ -12,6 +12,7 @@ import {
 } from '@/graphql/consultations';
 import { hasAccess } from '@/lib/role';
 import { PrescriptionForm, PrescriptionSubmission } from './PrescriptionForm';
+import { Modal } from './Modal';
 
 type Action = 'approve' | 'decline' | 'more_info' | null;
 
@@ -85,7 +86,7 @@ export function DecisionPanel({
 
   if (!reviewable) {
     return (
-      <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-500 space-y-1">
+      <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-200 text-sm text-gray-500 flex flex-wrap items-center gap-x-4 gap-y-1">
         <p>This consultation has been {status.toLowerCase().replace(/_/g, ' ')}.</p>
         {declineReason && <p>Reason: <span className="text-gray-700">{declineReason}</span></p>}
         {refundStatus && REFUND_LABEL[refundStatus] && (
@@ -110,15 +111,30 @@ export function DecisionPanel({
     }
   };
 
+  const close = () => { setAction(null); setError(''); };
+
   return (
-    <div className="border border-gray-200 rounded-lg p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Decision</h3>
+    <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <div className="text-xs min-w-0">
+        {claimedByMe && <p className="text-gray-500">You’re reviewing this consultation.</p>}
+        {claimedByOther && (
+          <p className="text-warn-900">
+            Being reviewed by Dr {clinician!.lastName}.{isAdmin ? ' As an admin you can still decide or release it.' : ''}
+          </p>
+        )}
+        {status === 'MORE_INFO_REQUESTED' && (
+          <p className="text-warn-900">Waiting for the patient to reply or update their answers.</p>
+        )}
+        {status === 'SUBMITTED' && <p className="text-gray-500">Not yet claimed — claim it so colleagues know you’re on it.</p>}
+        {!action && error && <p className="text-danger-500 text-sm">{error}</p>}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
         {status === 'SUBMITTED' && (
           <button
             onClick={() => claim({ variables: { id: consultationId } })}
             disabled={claiming}
-            className="text-xs font-medium border border-brand-500 text-brand-500 rounded px-2.5 py-1 disabled:opacity-50"
+            className="text-sm font-medium border border-brand-500 text-brand-500 bg-white rounded-lg px-3 py-1.5 hover:bg-brand-50 disabled:opacity-50"
           >
             {claiming ? 'Claiming…' : 'Claim for review'}
           </button>
@@ -127,100 +143,96 @@ export function DecisionPanel({
           <button
             onClick={() => release({ variables: { id: consultationId } })}
             disabled={releasing}
-            className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50"
+            className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1.5 disabled:opacity-50"
           >
             Release to queue
           </button>
         )}
+        {!blocked && (
+          <>
+            {status !== 'MORE_INFO_REQUESTED' && (
+              <button onClick={() => setAction('more_info')} className="text-sm font-medium border border-warn-500 text-warn-900 bg-white rounded-lg px-3.5 py-1.5 hover:bg-warn-50">
+                Request info
+              </button>
+            )}
+            <button onClick={() => setAction('decline')} className="text-sm font-medium border border-danger-500 text-danger-500 bg-white rounded-lg px-3.5 py-1.5 hover:bg-danger-50">
+              Decline
+            </button>
+            <button onClick={() => setAction('approve')} className="text-sm font-medium bg-green-600 text-white rounded-lg px-4 py-1.5 hover:bg-green-700 shadow-sm">
+              Approve
+            </button>
+          </>
+        )}
       </div>
 
-      {claimedByMe && <p className="text-xs text-gray-500">You’re reviewing this consultation.</p>}
-      {claimedByOther && (
-        <p className="text-xs bg-warn-50 text-warn-900 rounded p-2">
-          Being reviewed by Dr {clinician!.lastName}.{isAdmin ? ' As an admin you can still decide or release it.' : ''}
-        </p>
-      )}
-      {status === 'MORE_INFO_REQUESTED' && (
-        <p className="text-xs bg-warn-50 text-warn-900 rounded p-2">Waiting for the patient to reply or update their answers.</p>
-      )}
-
-      {error && <p className="text-sm text-danger-500">{error}</p>}
-
-      {!action && !blocked && (
-        <div className="flex gap-3">
-          <button onClick={() => setAction('approve')} className="flex-1 bg-green-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-green-700">
-            Approve
-          </button>
-          {status !== 'MORE_INFO_REQUESTED' && (
-            <button onClick={() => setAction('more_info')} className="flex-1 bg-warn-500 text-white rounded px-4 py-2 text-sm font-medium hover:bg-warn-900">
-              Request info
-            </button>
-          )}
-          <button onClick={() => setAction('decline')} className="flex-1 bg-danger-500 text-white rounded px-4 py-2 text-sm font-medium hover:bg-danger-900">
-            Decline
-          </button>
-        </div>
-      )}
-
       {action === 'approve' && (
-        <PrescriptionForm
-          consultationId={consultationId}
-          kind={kind}
-          submitting={approving}
-          onCancel={() => setAction(null)}
-          onSubmit={(rx: PrescriptionSubmission) => {
-            setError('');
-            approve({ variables: { input: { consultationId, ...rx } } });
-          }}
-        />
+        <Modal title="Approve and prescribe" subtitle="Issues the prescription and sends it to the pharmacy queue." onClose={close} wide>
+          {error && <p className="text-sm text-danger-500 mb-3">{error}</p>}
+          <PrescriptionForm
+            consultationId={consultationId}
+            kind={kind}
+            submitting={approving}
+            onCancel={close}
+            onSubmit={(rx: PrescriptionSubmission) => {
+              setError('');
+              approve({ variables: { input: { consultationId, ...rx } } });
+            }}
+          />
+        </Modal>
       )}
 
       {action === 'decline' && (
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="block text-xs font-medium text-gray-700 mb-1">Clinical reason (internal, required)</span>
-            <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} className={cls} />
-          </label>
-          <label className="block">
-            <span className="block text-xs font-medium text-gray-700 mb-1">Message to the patient</span>
-            <select value={template} onChange={(e) => chooseTemplate(e.target.value)} className={`${cls} mb-2`}>
-              {DECLINE_TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
-            <textarea rows={4} required value={patientMessage} onChange={(e) => setPatientMessage(e.target.value)} className={cls} />
-          </label>
-          <p className="text-xs text-gray-500">
-            Unless the patient already has an approved treatment, their subscription is cancelled and their payment refunded automatically.
-          </p>
-          <div className="flex gap-2">
-            <button type="submit" disabled={declining} className="bg-danger-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
-              {declining ? 'Declining…' : 'Confirm decline'}
-            </button>
-            <button type="button" onClick={() => setAction(null)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
-          </div>
-        </form>
+        <Modal title="Decline consultation" onClose={close}>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-700 mb-1">Clinical reason (internal, required)</span>
+              <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} className={cls} />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-700 mb-1">Message to the patient</span>
+              <select value={template} onChange={(e) => chooseTemplate(e.target.value)} className={`${cls} mb-2`}>
+                {DECLINE_TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+              <textarea rows={4} required value={patientMessage} onChange={(e) => setPatientMessage(e.target.value)} className={cls} />
+            </label>
+            <p className="text-xs text-gray-500">
+              Unless the patient already has an approved treatment, their subscription is cancelled and their payment refunded automatically.
+            </p>
+            <div className="flex gap-2">
+              <button type="submit" disabled={declining} className="bg-danger-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+                {declining ? 'Declining…' : 'Confirm decline'}
+              </button>
+              <button type="button" onClick={close} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {action === 'more_info' && (
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="block text-xs font-medium text-gray-700 mb-1">What do you need from the patient?</span>
-            <textarea
-              rows={3}
-              required
-              value={infoMessage}
-              onChange={(e) => setInfoMessage(e.target.value)}
-              placeholder="e.g. Please send a blood pressure reading taken in the last month."
-              className={cls}
-            />
-          </label>
-          <p className="text-xs text-gray-500">Sent as a message. The patient can reply, or update their questionnaire, which returns the consultation to the queue.</p>
-          <div className="flex gap-2">
-            <button type="submit" disabled={requesting} className="bg-warn-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
-              {requesting ? 'Sending…' : 'Send request'}
-            </button>
-            <button type="button" onClick={() => setAction(null)} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
-          </div>
-        </form>
+        <Modal title="Request more information" onClose={close}>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-700 mb-1">What do you need from the patient?</span>
+              <textarea
+                rows={3}
+                required
+                value={infoMessage}
+                onChange={(e) => setInfoMessage(e.target.value)}
+                placeholder="e.g. Please send a blood pressure reading taken in the last month."
+                className={cls}
+              />
+            </label>
+            <p className="text-xs text-gray-500">Sent as a message. The patient can reply, or update their questionnaire, which returns the consultation to the queue.</p>
+            <div className="flex gap-2">
+              <button type="submit" disabled={requesting} className="bg-warn-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+                {requesting ? 'Sending…' : 'Send request'}
+              </button>
+              <button type="button" onClick={close} className="text-sm text-gray-500 px-4 py-2">Cancel</button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
