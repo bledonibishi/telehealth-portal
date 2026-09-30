@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
 import { missedStreak, needsRetitrationReview } from './missed-doses';
 import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
@@ -13,6 +15,8 @@ type Db = PrismaService | Prisma.TransactionClient;
 // hasn't logged it yet).
 const WINDOW = 8;
 const MISSED_GRACE_HOURS = 24;
+// How far ahead of a dose we email the patient a reminder.
+const REMINDER_WINDOW_HOURS = 24;
 
 /**
  * Individual scheduled doses (e.g. each weekly GLP-1 injection) within a
@@ -22,8 +26,15 @@ const MISSED_GRACE_HOURS = 24;
 @Injectable()
 export class DosingService {
   private readonly logger = new Logger(DosingService.name);
+  private readonly appUrl: string;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private email: EmailService,
+    config: ConfigService,
+  ) {
+    this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+  }
 
   /**
    * Generates the first batch of scheduled doses for a newly-issued
@@ -193,6 +204,55 @@ export class DosingService {
       const anchor = latest ? latest.scheduledFor : new Date();
       await this.topUp(item.id, item.prescription.patientId, item.product.doseIntervalDays!, anchor, this.prisma, WINDOW - remaining, !latest);
     }
+  }
+
+  /**
+   * Emails a reminder for any scheduled dose coming up within the reminder
+   * window, once each. Also callable from the Vercel Cron-triggered endpoint
+   * (DosingCronController) alongside this in-process timer — each dose is
+   * claimed atomically first, so the two triggers (or two overlapping runs
+   * of this timer) can never double-send, and a dose cancelled between the
+   * initial fetch and the claim just yields a no-op claim instead of a
+   * stale email.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async sendReminders(): Promise<number> {
+    const upcoming = await this.prisma.doseEvent.findMany({
+      where: {
+        status: DoseStatus.SCHEDULED,
+        reminderSentAt: null,
+        scheduledFor: { gte: new Date(), lte: new Date(Date.now() + REMINDER_WINDOW_HOURS * 3_600_000) },
+      },
+      include: { patient: true, prescriptionItem: { include: { product: true } } },
+    });
+
+    let sent = 0;
+    for (const event of upcoming) {
+      const claim = await this.prisma.doseEvent.updateMany({
+        where: { id: event.id, reminderSentAt: null },
+        data: { reminderSentAt: new Date() },
+      });
+      if (claim.count === 0) continue; // already claimed/sent, or cancelled since the fetch above
+
+      try {
+        const delivered = await this.email.sendDoseReminderEmail(
+          event.patient.email,
+          event.patient.firstName,
+          event.prescriptionItem.product.name,
+          event.scheduledFor,
+          `${this.appUrl}/doses`,
+        );
+        if (!delivered) throw new Error('Email provider did not confirm delivery');
+        sent++;
+      } catch (err) {
+        // Release the claim so it's retried next run, and keep processing
+        // the rest of the batch — one failed send shouldn't block the others.
+        await this.prisma.doseEvent.updateMany({ where: { id: event.id }, data: { reminderSentAt: null } });
+        this.logger.error(`Dose reminder failed for dose ${event.id}: ${(err as Error).message}`);
+      }
+    }
+    if (sent) this.logger.log(`Sent ${sent} dose reminder(s)`);
+    return sent;
   }
 
   private async topUp(

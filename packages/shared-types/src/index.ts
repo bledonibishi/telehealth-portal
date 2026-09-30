@@ -9,6 +9,7 @@ export enum ConsultationStatus {
 export enum ConsultationKind {
   HRT = 'HRT',
   GLP1 = 'GLP1',
+  TRT = 'TRT',
 }
 
 export enum UserRole {
@@ -88,15 +89,18 @@ export enum ProductCategory {
   GLP1 = 'GLP1',
   ESTROGEN = 'ESTROGEN',
   PROGESTOGEN = 'PROGESTOGEN',
+  TESTOSTERONE = 'TESTOSTERONE',
 }
 
 export enum ProductForm {
   INJECTION_PEN = 'INJECTION_PEN',
+  INJECTION_VIAL = 'INJECTION_VIAL',
   GEL = 'GEL',
   PATCH = 'PATCH',
   TABLET = 'TABLET',
   CAPSULE = 'CAPSULE',
   SPRAY = 'SPRAY',
+  PELLET = 'PELLET',
 }
 
 export enum PrescriptionStatus {

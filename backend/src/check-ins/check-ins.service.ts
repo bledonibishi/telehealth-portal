@@ -4,9 +4,9 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
-import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
+import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
 
@@ -106,11 +106,54 @@ export class CheckInsService {
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },
-      include: { items: { include: { product: true, strength: true } } },
+      include: {
+        items: { include: { product: true, strength: true } },
+        // Needed to tell a genuine dose increase from a same-strength reissue
+        // (e.g. a REPEAT outcome) — see glp1TitrationRiskFlag.
+        supersedes: { include: { items: { include: { product: true, strength: true } } } },
+      },
     });
     const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
     const kind = (rx?.items[0]?.product.kind ?? patient?.lead?.productKind ?? null) as ConsultationKind | null;
     return { prescription: rx, kind };
+  }
+
+  /**
+   * GLP-1 dropout is driven almost entirely by side effects, and they're most
+   * dangerous right after a dose increase — but a clinician reviewing one
+   * check-in in isolation has no way to see "this is shortly after a step-up"
+   * unless it's flagged. Severe side effects reported within the product's
+   * step interval of a genuine dose increase get an automatic flag.
+   */
+  private glp1TitrationRiskFlag(
+    prescription: {
+      issuedAt: Date;
+      items: Array<{ product: { category: string; weeksPerStep: number | null }; strength: { titrationStep: number | null } }>;
+      supersedes?: { items: Array<{ product: { category: string }; strength: { titrationStep: number | null } }> } | null;
+    },
+    answers: Array<{ questionId: string; value: string | null }>,
+  ): Flag | null {
+    const item = prescription.items.find((i) => i.product.category === ProductCategory.GLP1);
+    const step = item?.strength.titrationStep;
+    const weeksPerStep = item?.product.weeksPerStep;
+    if (!item || !step || !weeksPerStep) return null; // not titrated
+
+    // A same-strength reissue (e.g. a REPEAT outcome) isn't a dose increase —
+    // only flag when the strength actually went up from what preceded it.
+    const previousItem = prescription.supersedes?.items.find((i) => i.product.category === ProductCategory.GLP1);
+    const previousStep = previousItem?.strength.titrationStep ?? null;
+    if (previousStep === null || step <= previousStep) return null;
+
+    const daysSinceIssued = (Date.now() - prescription.issuedAt.getTime()) / 86_400_000;
+    if (daysSinceIssued > weeksPerStep * 7) return null; // well past the step-up window
+
+    const impact = answers.find((a) => a.questionId === 'side_effect_impact')?.value;
+    if (impact !== 'severe') return null;
+
+    return {
+      severity: RedFlagSeverity.WARNING,
+      description: `Severe side effects reported within ${weeksPerStep} week(s) of stepping up to titration step ${step} — consider holding rather than continuing to escalate`,
+    };
   }
 
   private async missedDoseFlag(items: Array<{ id: string; product: { category: string }; strength: { label: string; titrationStep: number | null } }>) {
@@ -148,11 +191,13 @@ export class CheckInsService {
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
 
-    // The patient's self-reported "doses missed" is one answer; the dose log says
-    // for certain whether they've gone long enough without to need re-titrating.
     if (kind === ConsultationKind.GLP1 && prescription) {
-      const flag = await this.missedDoseFlag(prescription.items);
-      if (flag) evaluation.flags.push(flag);
+      const titrationFlag = this.glp1TitrationRiskFlag(prescription, evaluation.answers);
+      if (titrationFlag) evaluation.flags.push(titrationFlag);
+      // The patient's self-reported "doses missed" is one answer; the dose log says
+      // for certain whether they've gone long enough without to need re-titrating.
+      const missedFlag = await this.missedDoseFlag(prescription.items);
+      if (missedFlag) evaluation.flags.push(missedFlag);
     }
 
     // The weight is asked in the questionnaire; keep a typed copy for the Weight Journey.

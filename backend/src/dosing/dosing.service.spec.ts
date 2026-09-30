@@ -17,7 +17,7 @@ function makePrisma() {
       findUnique: jest.fn(),
       update: jest.fn(),
       deleteMany: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
@@ -25,11 +25,19 @@ function makePrisma() {
   };
 }
 
+function makeEmail() {
+  return { sendDoseReminderEmail: jest.fn().mockResolvedValue(true) };
+}
+
+function makeConfig() {
+  return { get: jest.fn().mockReturnValue(undefined) };
+}
+
 describe('DosingService.generateForItem', () => {
   it('generates a weekly window of scheduled doses anchored on the given date', async () => {
     const prisma = makePrisma();
     prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: 7 });
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
     const anchor = new Date('2026-10-01T09:00:00Z');
 
     await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'sema' }, 'p-1', anchor);
@@ -44,7 +52,7 @@ describe('DosingService.generateForItem', () => {
   it('does nothing for a product with no fixed dosing interval', async () => {
     const prisma = makePrisma();
     prisma.product.findUnique.mockResolvedValue({ doseIntervalDays: null });
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
 
     await service.generateForItem({ id: 'item-1', prescriptionId: 'rx-1', productId: 'patch' }, 'p-1', new Date());
 
@@ -55,7 +63,7 @@ describe('DosingService.generateForItem', () => {
 describe('DosingService.cancelForPrescription', () => {
   it('deletes only not-yet-due scheduled doses for the prescription, keeping history', async () => {
     const prisma = makePrisma();
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
 
     await service.cancelForPrescription('rx-1');
 
@@ -71,7 +79,7 @@ describe('DosingService patient actions', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    service = new DosingService(prisma as any);
+    service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
   });
 
   it('marks an owned, scheduled dose as taken', async () => {
@@ -131,7 +139,7 @@ describe('DosingService.houseKeeping', () => {
   it('flips overdue scheduled doses to missed', async () => {
     const prisma = makePrisma();
     prisma.doseEvent.updateMany.mockResolvedValue({ count: 3 });
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
 
     await service.houseKeeping();
 
@@ -154,7 +162,7 @@ describe('DosingService.houseKeeping', () => {
     ]);
     prisma.doseEvent.count.mockResolvedValue(3); // 3 of the usual 8 left
 
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
     await service.houseKeeping();
 
     expect(prisma.doseEvent.upsert).toHaveBeenCalledTimes(5); // top up to 8
@@ -169,7 +177,7 @@ describe('DosingService.houseKeeping', () => {
     ]);
     prisma.doseEvent.count.mockResolvedValue(8);
 
-    const service = new DosingService(prisma as any);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
     await service.houseKeeping();
 
     expect(prisma.doseEvent.upsert).not.toHaveBeenCalled();
@@ -192,7 +200,7 @@ describe('DosingService.missedDoseAlerts', () => {
       item(3, ['MISSED', 'TAKEN']), // only one
       item(3, ['TAKEN', 'MISSED', 'MISSED']), // back on track
     ]);
-    const alerts = await new DosingService(prisma as any).missedDoseAlerts();
+    const alerts = await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).missedDoseAlerts();
 
     expect(alerts).toEqual([
       expect.objectContaining({ patientName: 'Sofia Meyer', productName: 'Wegovy', strengthLabel: '1 mg', titrationStep: 3, missedInARow: 2 }),
@@ -211,7 +219,7 @@ describe('DosingService.missedDoseAlerts', () => {
   it('counts a run longer than a dozen doses in full', async () => {
     const prisma = makePrisma();
     prisma.prescriptionItem.findMany.mockResolvedValue([item(3, [...Array(13).fill('MISSED'), 'TAKEN'])]);
-    const [alert] = await new DosingService(prisma as any).missedDoseAlerts();
+    const [alert] = await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).missedDoseAlerts();
     expect(alert.missedInARow).toBe(13);
   });
 });
@@ -226,7 +234,7 @@ describe('DosingService.missedDoseStatusFor', () => {
   it('looks only at the patient’s active GLP-1 prescription', async () => {
     const prisma = makePrisma();
     prisma.prescriptionItem.findMany.mockResolvedValue([item(3, ['MISSED', 'MISSED', 'TAKEN'])]);
-    expect(await new DosingService(prisma as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 2, needsClinician: true });
+    expect(await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 2, needsClinician: true });
     expect(prisma.prescriptionItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { prescription: { patientId: 'p-1', status: 'ACTIVE' }, product: { category: 'GLP1' } } }),
     );
@@ -235,8 +243,92 @@ describe('DosingService.missedDoseStatusFor', () => {
   it('does not ask for the clinician on the starting dose or with nothing active', async () => {
     const prisma = makePrisma();
     prisma.prescriptionItem.findMany.mockResolvedValue([item(1, ['MISSED', 'MISSED'])]);
-    expect(await new DosingService(prisma as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 2, needsClinician: false });
+    expect(await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 2, needsClinician: false });
     prisma.prescriptionItem.findMany.mockResolvedValue([]);
-    expect(await new DosingService(prisma as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 0, needsClinician: false });
+    expect(await new DosingService(prisma as any, makeEmail() as any, makeConfig() as any).missedDoseStatusFor('p-1')).toEqual({ missedInARow: 0, needsClinician: false });
+  });
+});
+
+describe('DosingService.sendReminders', () => {
+  it('claims a dose, emails it, and keeps the claim when delivery succeeds', async () => {
+    const prisma = makePrisma();
+    const scheduledFor = new Date(Date.now() + 3 * 3_600_000);
+    prisma.doseEvent.findMany.mockResolvedValue([
+      {
+        id: 'd-1',
+        scheduledFor,
+        patient: { email: 'p@example.com', firstName: 'Tia' },
+        prescriptionItem: { product: { name: 'Semaglutide' } },
+      },
+    ]);
+    prisma.doseEvent.updateMany.mockResolvedValueOnce({ count: 1 }); // the claim succeeds
+    const email = makeEmail();
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(1);
+    expect(prisma.doseEvent.updateMany).toHaveBeenCalledWith({ where: { id: 'd-1', reminderSentAt: null }, data: { reminderSentAt: expect.any(Date) } });
+    expect(email.sendDoseReminderEmail).toHaveBeenCalledWith('p@example.com', 'Tia', 'Semaglutide', scheduledFor, expect.stringContaining('/doses'));
+    expect(prisma.doseEvent.updateMany).toHaveBeenCalledTimes(1); // no release call on success
+  });
+
+  it('skips a dose that another run already claimed', async () => {
+    const prisma = makePrisma();
+    prisma.doseEvent.findMany.mockResolvedValue([
+      { id: 'd-1', scheduledFor: new Date(), patient: { email: 'p@example.com', firstName: 'Tia' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+    ]);
+    prisma.doseEvent.updateMany.mockResolvedValueOnce({ count: 0 }); // lost the race (or the dose was cancelled)
+    const email = makeEmail();
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(0);
+    expect(email.sendDoseReminderEmail).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim on a failed send and keeps processing the rest of the batch', async () => {
+    const prisma = makePrisma();
+    prisma.doseEvent.findMany.mockResolvedValue([
+      { id: 'd-1', scheduledFor: new Date(), patient: { email: 'a@example.com', firstName: 'A' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+      { id: 'd-2', scheduledFor: new Date(), patient: { email: 'b@example.com', firstName: 'B' }, prescriptionItem: { product: { name: 'Semaglutide' } } },
+    ]);
+    prisma.doseEvent.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // claim d-1
+      .mockResolvedValueOnce({ count: 1 }) // release d-1 after its failed send
+      .mockResolvedValueOnce({ count: 1 }); // claim d-2
+    const email = makeEmail();
+    email.sendDoseReminderEmail.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(1); // only d-2 counted
+    expect(email.sendDoseReminderEmail).toHaveBeenCalledTimes(2); // d-2 still attempted despite d-1 failing
+    expect(prisma.doseEvent.updateMany).toHaveBeenNthCalledWith(2, { where: { id: 'd-1' }, data: { reminderSentAt: null } });
+  });
+
+  it('only looks at scheduled doses within the reminder window that have not already been reminded', async () => {
+    const prisma = makePrisma();
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+
+    await service.sendReminders();
+
+    expect(prisma.doseEvent.findMany).toHaveBeenCalledWith({
+      where: { status: 'SCHEDULED', reminderSentAt: null, scheduledFor: { gte: expect.any(Date), lte: expect.any(Date) } },
+      include: { patient: true, prescriptionItem: { include: { product: true } } },
+    });
+  });
+
+  it('does nothing when there is nothing upcoming', async () => {
+    const prisma = makePrisma();
+    const email = makeEmail();
+    const service = new DosingService(prisma as any, email as any, makeConfig() as any);
+
+    const sent = await service.sendReminders();
+
+    expect(sent).toBe(0);
+    expect(email.sendDoseReminderEmail).not.toHaveBeenCalled();
   });
 });
