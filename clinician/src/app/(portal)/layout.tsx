@@ -30,6 +30,7 @@ const NAV: NavItem[] = [
   { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
   { href: '/check-ins', label: 'Check-ins',     icon: '🩺', roles: ['ADMIN', 'DOCTOR'] },
+  { href: '/labs',     label: 'Labs',           icon: '🧪', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
   { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
 ];

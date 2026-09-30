@@ -916,6 +916,11 @@ type Query {
   """
   mySymptomScale: SymptomScaleDefinition
 
+  """
+  The signed-in patient’s testosterone blood-test schedule. Null when not on testosterone.
+  """
+  myTrtMonitoring: TrtMonitoring
+
   """The signed-in patient’s own journey. Null for programmes without one."""
   myWeightJourney: WeightJourney
 
@@ -944,6 +949,11 @@ type Query {
 
   """A patient’s symptom scores, oldest first"""
   patientSymptomAssessments(patientId: ID!): [SymptomAssessment!]!
+
+  """
+  A patient’s testosterone blood-test schedule and whether repeats are on hold
+  """
+  patientTrtMonitoring(patientId: ID!): TrtMonitoring
   patients: [PatientListItem!]!
 
   """
@@ -960,6 +970,11 @@ type Query {
   A symptom questionnaire’s wording, for showing a patient’s item-by-item answers
   """
   symptomScaleDefinition(scale: SymptomScale!): SymptomScaleDefinition!
+
+  """
+  Testosterone patients on hold, with a warning, or with a blood test due soon
+  """
+  trtMonitoringQueue: [TrtMonitoringQueueEntry!]!
   weightJourneyForPatient(patientId: ID!): WeightJourney
   weightTimelineForPatient(from: DateTime!, limit: Int, patientId: ID!, to: DateTime!): WeightTimeline!
 }
@@ -1219,6 +1234,41 @@ type TrendPoint {
   checkInId: ID!
   date: DateTime!
   value: Float!
+}
+
+type TrtLabStatus {
+  """When the next result is due"""
+  dueAt: DateTime!
+  kind: LabResultKind!
+  lastCollectedAt: DateTime
+  lastUnit: String
+  lastValue: Float
+
+  """
+  More than the grace period past due — repeats are on hold until a result is entered
+  """
+  overdue: Boolean!
+}
+
+"""Safety blood-test monitoring for a patient on testosterone"""
+type TrtMonitoring {
+  holdReasons: [String!]!
+  labs: [TrtLabStatus!]!
+  patientId: ID!
+
+  """Repeat supplies are blocked while this is true"""
+  refillsOnHold: Boolean!
+
+  """When testosterone treatment started (first prescription)"""
+  startedAt: DateTime!
+
+  """Worth a clinician’s attention, but not blocking"""
+  warnings: [String!]!
+}
+
+type TrtMonitoringQueueEntry {
+  monitoring: TrtMonitoring!
+  patientName: String!
 }
 
 input UpdateBasicInfoInput {

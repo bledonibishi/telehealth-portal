@@ -3,6 +3,7 @@
 import { useQuery } from '@apollo/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
+import { BloodTestsCard } from '@/components/labs/BloodTestsCard';
 
 const STAGES = ['Prescribed', 'Dispatched', 'Out for delivery', 'Delivered'] as const;
 
@@ -63,6 +64,8 @@ export default function PrescriptionPage() {
         <h1 className="text-2xl font-bold text-slate-900">Prescriptions &amp; orders</h1>
         <p className="text-sm text-slate-500 mt-1">Everything your clinician has prescribed, and where it&rsquo;s up to.</p>
       </div>
+
+      <BloodTestsCard />
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
 

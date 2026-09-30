@@ -14,6 +14,7 @@ import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
 import AuthedImage from '@/components/AuthedImage';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
+import LabsPanel from '@/components/labs/LabsPanel';
 import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
 import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
@@ -38,7 +39,7 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms';
+type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
 
 function OnboardingStepSection({
   title,
@@ -283,6 +284,7 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
     { key: 'orders',        label: `Orders (${orders.length})` },
     { key: 'messages',      label: `Messages (${allMessages.length})` },
     { key: 'checkin',       label: 'Check-in' },
+    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: 'Labs' }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: 'Weight' }] : []),
     // Hormone programmes track symptoms instead of weight.
     ...(symptomAssessments.length > 0 || ['HRT', 'TRT'].includes(latestConsult?.kind)
@@ -613,6 +615,9 @@ export default function PatientPanel({ patientId, onClose }: { patientId: string
 
         {/* ── Symptoms ── */}
         {tab === 'symptoms' && <SymptomsPanel assessments={symptomAssessments} />}
+
+        {/* ── Labs ── */}
+        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} />}
 
         {/* ── Check-in ── */}
         {tab === 'checkin' && (
