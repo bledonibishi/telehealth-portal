@@ -148,6 +148,21 @@ enum PrescriptionProofType {
   ORDER_CONFIRMATION
 }
 
+enum ReferralStatus {
+  PENDING
+  CONVERTED
+}
+
+enum VoucherKind {
+  REFERRER_REWARD
+  REFEREE_REWARD
+}
+
+enum VoucherStatus {
+  ISSUED
+  APPLIED
+}
+
 enum LabResultKind {
   ESTRADIOL
   TESTOSTERONE
@@ -198,11 +213,15 @@ model Lead {
   productKind     ConsultationKind @map("product_kind")
   quizAnswers     Json             @map("quiz_answers")
   stripeSessionId String?          @map("stripe_session_id")
+  // The referrer's code this lead arrived with, if any — kept even before a
+  // Referral row exists, since LeadsService validates it at creation time.
+  referralCode    String?          @map("referral_code")
   convertedAt     DateTime?        @map("converted_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
 
-  patient Patient?
+  patient  Patient?
+  referral Referral?
 
   @@map("leads")
 }
@@ -220,6 +239,12 @@ model Patient {
   activatedAt              DateTime? @map("activated_at")
   stripeCustomerId         String?   @map("stripe_customer_id")
   stripeSubscriptionId     String?   @map("stripe_subscription_id")
+  // This patient's own shareable referral code — generated lazily on first use.
+  referralCode             String?   @unique @map("referral_code")
+  // Whether a reward this patient earns is credited automatically, or left for
+  // them to apply themselves from the Rewards page. Defaults to today's
+  // auto-apply behaviour.
+  voucherAutoApply         Boolean   @default(true) @map("voucher_auto_apply")
   phone                    String?   @map("phone")
   addressLine1             String?   @map("address_line1")
   addressLine2             String?   @map("address_line2")
@@ -229,19 +254,22 @@ model Patient {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  lead          Lead?                 @relation(fields: [leadId], references: [id])
-  consultations Consultation[]
-  uploadedFiles UploadedFile[]
-  onboarding    OnboardingSubmission?
-  checkIns      CheckIn[]
-  prescriptions Prescription[]
-  orders        Order[]
-  consents      Consent[]
-  weightGoal    WeightGoal?
-  weightEntries WeightEntry[]
-  doseEvents    DoseEvent[]
+  lead               Lead?                 @relation(fields: [leadId], references: [id])
+  consultations      Consultation[]
+  uploadedFiles      UploadedFile[]
+  onboarding         OnboardingSubmission?
+  checkIns           CheckIn[]
+  prescriptions      Prescription[]
+  orders             Order[]
+  consents           Consent[]
+  weightGoal         WeightGoal?
+  weightEntries      WeightEntry[]
+  doseEvents         DoseEvent[]
   symptomAssessments SymptomAssessment[]
-  labResults    LabResult[]
+  labResults         LabResult[]
+  referralsMade      Referral[]            @relation("ReferralsMade")
+  referralsReceived  Referral?             @relation("ReferralsReceived")
+  vouchers           Voucher[]
 
   @@map("patients")
 }
@@ -434,26 +462,26 @@ model DoseEvent {
 // today (no lab-partner integration yet). Kind-agnostic across HRT and GLP-1
 // like CheckIn, so titration/dosing decisions can be checked against levels.
 model LabResult {
-  id                 String         @id @default(cuid())
-  patientId          String         @map("patient_id")
+  id                 String        @id @default(cuid())
+  patientId          String        @map("patient_id")
   kind               LabResultKind
   // Required when kind is OTHER, since that kind alone doesn't say what was measured.
-  analyteName        String?        @map("analyte_name")
+  analyteName        String?       @map("analyte_name")
   value              Float
   unit               String
-  referenceRangeLow  Float?         @map("reference_range_low")
-  referenceRangeHigh Float?         @map("reference_range_high")
+  referenceRangeLow  Float?        @map("reference_range_low")
+  referenceRangeHigh Float?        @map("reference_range_high")
   // Set at entry from the reference range, if one was given — lets the
   // review queue surface out-of-range results without recomputing per query.
-  flagged            Boolean        @default(false)
-  collectedAt        DateTime       @map("collected_at")
+  flagged            Boolean       @default(false)
+  collectedAt        DateTime      @map("collected_at")
   note               String?
-  enteredById        String?        @map("entered_by_id")
-  reviewedAt         DateTime?      @map("reviewed_at")
-  reviewedById       String?        @map("reviewed_by_id")
-  reviewNote         String?        @map("review_note")
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
+  enteredById        String?       @map("entered_by_id")
+  reviewedAt         DateTime?     @map("reviewed_at")
+  reviewedById       String?       @map("reviewed_by_id")
+  reviewNote         String?       @map("review_note")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
   patient    Patient    @relation(fields: [patientId], references: [id])
   enteredBy  Clinician? @relation("LabResultEnteredBy", fields: [enteredById], references: [id])
@@ -680,4 +708,52 @@ model SymptomAssessment {
 
   @@index([patientId, recordedAt])
   @@map("symptom_assessments")
+}
+
+// One friend a patient (the "referrer") has invited via their referral link.
+// Created PENDING when the friend's Lead is created with a valid code;
+// becomes CONVERTED once the friend's first payment actually succeeds — that's
+// the point rewards are handed out, so a lead that never pays never costs anything.
+model Referral {
+  id                String         @id @default(cuid())
+  // Snapshot of the code used, so history reads correctly even if the
+  // referrer's own code is ever regenerated.
+  code              String
+  referrerId        String         @map("referrer_id")
+  referredLeadId    String         @unique @map("referred_lead_id")
+  referredPatientId String?        @unique @map("referred_patient_id")
+  status            ReferralStatus @default(PENDING)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  convertedAt       DateTime?      @map("converted_at")
+
+  referrer        Patient   @relation("ReferralsMade", fields: [referrerId], references: [id])
+  referredLead    Lead      @relation(fields: [referredLeadId], references: [id])
+  referredPatient Patient?  @relation("ReferralsReceived", fields: [referredPatientId], references: [id])
+  vouchers        Voucher[]
+
+  @@index([referrerId])
+  @@map("referrals")
+}
+
+// A single $-off reward earned through the referral programme, for either
+// side of a Referral. ISSUED until applied; how "applying" actually works is
+// up to the service layer (today: a Stripe customer-balance credit, since
+// every patient is on a subscription — see ReferralsService.applyVoucher).
+model Voucher {
+  id          String        @id @default(cuid())
+  patientId   String        @map("patient_id")
+  referralId  String        @map("referral_id")
+  kind        VoucherKind
+  amountCents Int           @map("amount_cents")
+  currency    String        @default("gbp")
+  status      VoucherStatus @default(ISSUED)
+  issuedAt    DateTime      @default(now()) @map("issued_at")
+  appliedAt   DateTime?     @map("applied_at")
+  note        String?
+
+  patient  Patient  @relation(fields: [patientId], references: [id])
+  referral Referral @relation(fields: [referralId], references: [id])
+
+  @@index([patientId])
+  @@map("vouchers")
 }

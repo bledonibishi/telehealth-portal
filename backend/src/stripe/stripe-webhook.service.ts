@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class StripeWebhookService {
@@ -15,6 +16,7 @@ export class StripeWebhookService {
     private prisma: PrismaService,
     private email: EmailService,
     private config: ConfigService,
+    private referrals: ReferralsService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3001';
   }
@@ -117,6 +119,11 @@ export class StripeWebhookService {
     });
 
     this.logger.log(`Patient created/updated for ${email} — patient ${patient.id}`);
+
+    // This lead's first payment just succeeded — the point referral rewards
+    // actually get handed out (never at quiz/lead time, to avoid rewarding
+    // referrals that never pay).
+    await this.referrals.handleConversion(lead, patient);
 
     // Send activation email
     const activationUrl = `${this.appUrl}/activate?token=${activationToken}`;

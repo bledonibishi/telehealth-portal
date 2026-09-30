@@ -16,6 +16,7 @@ import { QuestionnairesModule } from './questionnaires/questionnaires.module';
 import { ConsentsModule } from './consents/consents.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { StripeModule } from './stripe/stripe.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { EmailModule } from './email/email.module';
@@ -65,6 +66,7 @@ import { LabsModule } from './labs/labs.module';
     ConsentsModule,
     MessagingModule,
     LeadsModule,
+    ReferralsModule,
     StripeModule,
     CheckoutModule,
     EmailModule,

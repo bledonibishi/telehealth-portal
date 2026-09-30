@@ -118,4 +118,25 @@ export class EmailService {
 
     await this.resend.emails.send({ from: this.from, to, subject: headline, html });
   }
+
+  async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean) {
+    const safeFirstName = escapeHtml(firstName);
+    const body = autoApplied
+      ? `${amountLabel} has already been credited to your account, and will come off your next bill automatically.`
+      : `${amountLabel} is ready for you to apply whenever you like — just visit your Rewards page and hit "Apply now".`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">A friend you referred just joined!</h2>
+        <p style="color:#475569">Hi ${safeFirstName}, your friend's first payment just went through — thanks for spreading the word.</p>
+        <p style="color:#475569">${body}</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Referral reward email to ${to}: ${amountLabel} (autoApplied=${autoApplied})`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: 'Your referral reward is ready', html });
+  }
 }

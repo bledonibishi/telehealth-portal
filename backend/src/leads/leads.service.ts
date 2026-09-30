@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class LeadsService {
@@ -10,6 +11,7 @@ export class LeadsService {
     private prisma: PrismaService,
     private posthog: PostHogService,
     private posthogLogger: PostHogLoggerService,
+    private referrals: ReferralsService,
   ) {}
 
   findAll() {
@@ -61,6 +63,7 @@ export class LeadsService {
         has_payment_session: Boolean(lead.stripeSessionId),
         posthogDistinctId: lead.id,
       });
+      await this.referrals.validateAndAttach(input.referralCode, { id: lead.id, email: lead.email });
     }
 
     return lead;

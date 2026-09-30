@@ -155,6 +155,21 @@ export enum LabResultKind {
   OTHER = 'OTHER',
 }
 
+export enum ReferralStatus {
+  PENDING = 'PENDING',
+  CONVERTED = 'CONVERTED',
+}
+
+export enum VoucherKind {
+  REFERRER_REWARD = 'REFERRER_REWARD',
+  REFEREE_REWARD = 'REFEREE_REWARD',
+}
+
+export enum VoucherStatus {
+  ISSUED = 'ISSUED',
+  APPLIED = 'APPLIED',
+}
+
 export interface QuizAnswer {
   questionId: string;
   question: string;
