@@ -26,14 +26,14 @@ export class TrendsResolver {
 
   @Authorized('PATIENT')
   @Query(() => [AdherenceWeekModel], { description: "The authenticated patient's dose adherence, bucketed by week" })
-  myDoseAdherenceTrend(@CurrentUser() user: AuthUser, @Args('weeks', { type: () => Int, nullable: true }) weeks?: number) {
+  myDoseAdherenceTrend(@CurrentUser() user: AuthUser, @Args('weeks', { type: () => Int, nullable: true }) weeks?: number | null) {
     return this.trends.doseAdherenceTrend(user.id, weeks);
   }
 
   @Authorized(...PRESCRIBERS)
   @AuditRead('Patient', 'patientId')
   @Query(() => [AdherenceWeekModel], { description: "A patient's dose adherence, bucketed by week" })
-  doseAdherenceTrend(@Args('patientId', { type: () => ID }) patientId: string, @Args('weeks', { type: () => Int, nullable: true }) weeks?: number) {
+  doseAdherenceTrend(@Args('patientId', { type: () => ID }) patientId: string, @Args('weeks', { type: () => Int, nullable: true }) weeks?: number | null) {
     return this.trends.doseAdherenceTrend(patientId, weeks);
   }
 }

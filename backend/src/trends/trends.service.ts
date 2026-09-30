@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CheckInStatus, DoseStatus } from '../common/enums';
 import { TrendPointModel } from './models/trend-point.model';
 import { AdherenceWeekModel } from './models/adherence-week.model';
 
 type StoredAnswer = { questionId: string; value?: string | null };
+
+const DEFAULT_WEEKS = 12;
+const MIN_WEEKS = 1;
+const MAX_WEEKS = 52;
 
 /**
  * Read-side aggregation over CheckIn and DoseEvent history, shaped for a
@@ -37,11 +41,25 @@ export class TrendsService {
     return points;
   }
 
-  /** Adherence to scheduled doses, bucketed by the Monday-aligned week they were due. */
-  async doseAdherenceTrend(patientId: string, weeks = 12): Promise<AdherenceWeekModel[]> {
-    const since = new Date(Date.now() - weeks * 7 * 86_400_000);
+  /**
+   * Adherence to scheduled doses, bucketed by the Monday-aligned week they
+   * were due. `weeks` counts the current (in-progress) week as one of the
+   * requested weeks, so the window starts at the Monday of the earliest
+   * requested week rather than a raw "N*7 days ago" cutoff that can land
+   * mid-week and produce a truncated extra bucket.
+   */
+  async doseAdherenceTrend(patientId: string, weeks?: number | null): Promise<AdherenceWeekModel[]> {
+    const requestedWeeks = weeks ?? DEFAULT_WEEKS;
+    if (!Number.isInteger(requestedWeeks) || requestedWeeks < MIN_WEEKS || requestedWeeks > MAX_WEEKS) {
+      throw new BadRequestException(`weeks must be a whole number between ${MIN_WEEKS} and ${MAX_WEEKS}`);
+    }
+
+    const now = new Date();
+    const since = new Date(weekStartOf(now).getTime() - (requestedWeeks - 1) * 7 * 86_400_000);
     const events = await this.prisma.doseEvent.findMany({
-      where: { patientId, scheduledFor: { gte: since }, status: { not: DoseStatus.SCHEDULED } },
+      // Upper-bound at now, so a dose resolved ahead of its schedule doesn't
+      // land in "historical" adherence before it was actually due.
+      where: { patientId, scheduledFor: { gte: since, lte: now }, status: { not: DoseStatus.SCHEDULED } },
       orderBy: { scheduledFor: 'asc' },
     });
 
