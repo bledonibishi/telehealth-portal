@@ -67,12 +67,14 @@ export class AuthService {
     return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, clinician.role), clinician };
   }
 
-  async loginPatient(email: string, password: string) {
+  async loginPatient(email: string, password: string, attempt: LoginAttempt = {}) {
     const patient = await this.prisma.patient.findUnique({ where: { email } });
     if (!patient || !(await bcrypt.compare(password, patient.passwordHash))) {
+      await this.auditPatientLoginFailed(email, patient?.id, patient ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', attempt);
       throw new UnauthorizedException('Invalid credentials');
     }
     if (!patient.activatedAt) {
+      await this.auditPatientLoginFailed(email, patient.id, 'NOT_ACTIVATED', attempt);
       throw new UnauthorizedException('Account not activated — check your email for the activation link');
     }
 
@@ -94,6 +96,17 @@ export class AuthService {
       login_method: 'password',
     });
     return { mfaRequired: false, pendingToken: null, ...this.issueTokens(patient.id, UserRole.PATIENT), patient };
+  }
+
+  private auditPatientLoginFailed(email: string, patientId: string | undefined, reason: string, attempt: LoginAttempt) {
+    return this.audit.log({
+      actorId: patientId ?? 'anonymous',
+      actorRole: UserRole.PATIENT,
+      action: 'AUTH_LOGIN_FAILED',
+      resourceType: 'Patient',
+      resourceId: patientId ?? 'unknown',
+      metadata: { email, reason, ...attempt },
+    });
   }
 
   async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {

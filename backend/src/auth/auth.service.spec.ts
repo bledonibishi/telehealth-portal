@@ -95,17 +95,46 @@ describe('AuthService', () => {
   });
 
   describe('loginPatient', () => {
-    it('throws when the account has not been activated', async () => {
+    const ATTEMPT = { ip: '203.0.113.7', userAgent: 'jest' };
+
+    it('throws and audit-logs NOT_ACTIVATED when the account has not been activated', async () => {
       prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, activatedAt: null });
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
 
-      await expect(service.loginPatient(PATIENT.email, 'correct')).rejects.toThrow(UnauthorizedException);
+      await expect(service.loginPatient(PATIENT.email, 'correct', ATTEMPT)).rejects.toThrow(UnauthorizedException);
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'AUTH_LOGIN_FAILED', metadata: expect.objectContaining({ reason: 'NOT_ACTIVATED' }) }),
+      );
     });
 
-    it('throws on a wrong password without leaking whether the email exists', async () => {
+    it('throws and audit-logs UNKNOWN_EMAIL, with IP and user agent, when no patient matches', async () => {
       prisma.patient.findUnique.mockResolvedValue(null);
 
-      await expect(service.loginPatient('nobody@example.com', 'pw')).rejects.toThrow(UnauthorizedException);
+      await expect(service.loginPatient('nobody@example.com', 'pw', ATTEMPT)).rejects.toThrow('Invalid credentials');
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AUTH_LOGIN_FAILED',
+          actorRole: UserRole.PATIENT,
+          metadata: { email: 'nobody@example.com', reason: 'UNKNOWN_EMAIL', ...ATTEMPT },
+        }),
+      );
+    });
+
+    it('throws and audit-logs BAD_PASSWORD when the password does not match', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PATIENT);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.loginPatient(PATIENT.email, 'wrong', ATTEMPT)).rejects.toThrow('Invalid credentials');
+
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AUTH_LOGIN_FAILED',
+          resourceId: PATIENT.id,
+          metadata: expect.objectContaining({ reason: 'BAD_PASSWORD' }),
+        }),
+      );
     });
 
     it('returns an access token and refresh token for an activated patient with the right password', async () => {
@@ -166,14 +195,14 @@ describe('AuthService', () => {
     });
 
     it('rejects a refresh token for a clinician that no longer exists', async () => {
-      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: CLINICIAN.role, type: 'refresh' });
       prisma.clinician.findUnique.mockResolvedValue(null);
 
       await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
     });
 
     it('issues a new access + refresh token pair for a valid refresh token', async () => {
-      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: UserRole.CLINICIAN, type: 'refresh' });
+      jwtService.verify.mockReturnValue({ sub: CLINICIAN.id, role: CLINICIAN.role, type: 'refresh' });
       prisma.clinician.findUnique.mockResolvedValue(CLINICIAN);
 
       const result = await service.refreshAccessToken('token');

@@ -5,13 +5,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '', {
   apiVersion: '2023-10-16',
 });
 
-// The Webflow site now owns the domain — this app only serves this API from a subdomain,
-// so requests come in cross-origin and need explicit CORS handling.
-const ALLOWED_ORIGIN = process.env.WEBFLOW_SITE_URL ?? 'http://localhost:3000';
+// This app now owns the domain — success/cancel URLs point to our own pages.
+// CORS headers are kept for backward-compat if the Webflow site still calls this endpoint.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3001';
 
 function corsHeaders() {
   return {
-    'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': SITE_URL,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${ALLOWED_ORIGIN}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${ALLOWED_ORIGIN}/checkout/cancel`,
+    success_url: `${SITE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${SITE_URL}/checkout/cancel`,
     metadata: { planName },
     allow_promotion_codes: true,
   });

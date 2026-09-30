@@ -667,6 +667,14 @@ model OnboardingSubmission {
   @@map("onboarding_submissions")
 }
 
+model ThrottleCounter {
+  key       String   @id
+  hits      Int
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@map("throttle_counters")
+}
+
 // A patient agreeing to a specific version of a consent text. Append-only
 // (enforced by a trigger), like the audit log: withdrawing consent is a new
 // record, not an edit.
