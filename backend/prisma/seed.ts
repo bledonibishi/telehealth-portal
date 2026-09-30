@@ -1,6 +1,7 @@
 import { PrismaClient, ConsultationStatus, ConsultationKind, RedFlagSeverity, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { seedCatalog } from './catalog';
+import { dosePattern, nextDoseDates } from '../src/dosing/dose-pattern';
 
 const prisma = new PrismaClient();
 
@@ -273,11 +274,12 @@ async function main() {
     },
   });
 
-  // Prescribe the starting-dose strength of a catalogue GLP-1 product, when the catalogue is seeded.
+  // Sofia has been stepped up once (titration step 2), so she's the demo for the
+  // missed-dose re-titration alert — her dose log below ends in two missed weeks.
   const glp1Product = await prisma.product.findFirst({
     where: { kind: ConsultationKind.GLP1, active: true },
     orderBy: { slug: 'desc' },
-    include: { strengths: { where: { active: true }, orderBy: { sortOrder: 'asc' }, take: 1 } },
+    include: { strengths: { where: { active: true, titrationStep: 2 }, take: 1 } },
   });
   const sofiaRx = await prisma.prescription.upsert({
     where: { consultationId: consultSofia.id },
@@ -286,8 +288,8 @@ async function main() {
       consultationId: consultSofia.id,
       patientId: patientSofia.id,
       prescriberId: doctor.id,
-      medication: glp1Product ? `${glp1Product.name} ${glp1Product.strengths[0]?.label ?? ''}`.trim() : 'Semaglutide (Wegovy) 0.25 mg',
-      dosage: '0.25 mg once weekly',
+      medication: glp1Product ? `${glp1Product.name} ${glp1Product.strengths[0]?.label ?? ''}`.trim() : 'Semaglutide (Wegovy) 0.5 mg',
+      dosage: '0.5 mg once weekly',
       instructions: 'Inject subcutaneously once a week on the same day. Review dose after 4 weeks.',
       issuedAt: daysAgo(77),
       refillsAllowed: 5,
@@ -297,7 +299,7 @@ async function main() {
             productId: glp1Product.id,
             strengthId: glp1Product.strengths[0].id,
             quantity: 1,
-            directions: 'Inject 0.25 mg subcutaneously once a week.',
+            directions: 'Inject 0.5 mg subcutaneously once a week.',
           },
         },
       }),
@@ -494,7 +496,8 @@ async function main() {
   // realism), today's still open, and a week ahead scheduled — so "My doses"
   // has something to show immediately rather than an empty state.
   const emmaItem = emmaPrescription.items[0];
-  if (emmaItem) {
+  // Dates are relative to today, so only write them once — a re-run would add a second set.
+  if (emmaItem && !(await prisma.doseEvent.count({ where: { prescriptionItemId: emmaItem.id } }))) {
     const doseDates = Array.from({ length: 15 }, (_, i) => new Date(rxIssuedAt.getTime() + i * 86_400_000));
     await prisma.doseEvent.createMany({
       skipDuplicates: true,
@@ -513,6 +516,163 @@ async function main() {
   }
 
   console.log('✓ Prescriptions');
+
+  // ── Demo data for dose tracking and symptom features ────────────────────────
+  // Only written when the item has no doses yet, so re-running the seed on an
+  // existing database never piles up duplicate calendars.
+
+  // Sofia: weekly GLP-1 doses from her issue date — taken, then the last two
+  // missed, so she shows the "missed doses" banner and the clinician alert.
+  const sofiaItem = await prisma.prescriptionItem.findFirst({ where: { prescriptionId: sofiaRx.id } });
+  if (sofiaItem && !(await prisma.doseEvent.count({ where: { prescriptionItemId: sofiaItem.id } }))) {
+    const weekly = Array.from({ length: 15 }, (_, i) => new Date(sofiaRx.issuedAt.getTime() + i * 7 * 86_400_000));
+    const past = weekly.filter((d) => d.getTime() < Date.now() - 86_400_000);
+    await prisma.doseEvent.createMany({
+      data: weekly.map((scheduledFor) => {
+        const index = past.findIndex((d) => d.getTime() === scheduledFor.getTime());
+        const status = index === -1 ? 'SCHEDULED' : index >= past.length - 2 ? 'MISSED' : 'TAKEN';
+        return {
+          prescriptionItemId: sofiaItem.id,
+          patientId: patientSofia.id,
+          scheduledFor,
+          status,
+          takenAt: status === 'TAKEN' ? new Date(scheduledFor.getTime() + 60 * 60_000) : null,
+        };
+      }),
+    });
+  }
+
+  // Lina — HRT for three months on a twice-weekly estradiol patch plus nightly
+  // progesterone, with a symptom history that improves on treatment.
+  const patientLina = await prisma.patient.upsert({
+    where: { email: 'lina.krasniqi@example.com' },
+    update: {},
+    create: {
+      email: 'lina.krasniqi@example.com',
+      passwordHash: pw,
+      firstName: 'Lina',
+      lastName: 'Krasniqi',
+      dateOfBirth: dob(1972, 11, 2),
+      activatedAt: daysAgo(96),
+      phone: '+383 44 555 010',
+      addressLine1: 'Rruga Agim Ramadani 7',
+      city: 'Prishtinë',
+      postcode: '10000',
+      country: 'Kosovo',
+      createdAt: daysAgo(97),
+    },
+  });
+  await prisma.onboardingSubmission.upsert({
+    where: { patientId: patientLina.id },
+    update: {},
+    create: {
+      patientId: patientLina.id,
+      personaStatus: 'VERIFIED',
+      photoReviewStatus: 'APPROVED',
+      priorMedicationUse: false,
+      status: 'APPROVED',
+      submittedAt: daysAgo(96),
+      reviewedAt: daysAgo(95),
+      reviewedByClinicianId: doctor.id,
+    },
+  });
+  const consultLina = await prisma.consultation.upsert({
+    where: { id: 'seed-consult-lina-approved' },
+    update: {},
+    create: {
+      id: 'seed-consult-lina-approved',
+      patientId: patientLina.id,
+      clinicianId: doctor.id,
+      kind: ConsultationKind.HRT,
+      status: ConsultationStatus.APPROVED,
+      quizAnswers: HRT_QUIZ,
+      submittedAt: daysAgo(95),
+    },
+  });
+
+  const patch = await prisma.product.findUnique({ where: { slug: 'estradiol-patch-evorel' }, include: { strengths: true } });
+  const progesterone = await prisma.product.findUnique({ where: { slug: 'progesterone-utrogestan' }, include: { strengths: true } });
+  const patchStrength = patch?.strengths.find((st) => st.label === '50 micrograms/24 h');
+  if (patch && patchStrength && progesterone?.strengths[0]) {
+    const linaIssuedAt = daysAgo(92);
+    const linaRx = await prisma.prescription.upsert({
+      where: { consultationId: consultLina.id },
+      update: {},
+      create: {
+        consultationId: consultLina.id,
+        patientId: patientLina.id,
+        prescriberId: doctor.id,
+        medication: 'Estradiol patch 50 micrograms/24 h (Evorel) + Micronised progesterone 100 mg (Utrogestan)',
+        dosage: 'One patch twice a week; one capsule nightly',
+        instructions: 'Change the patch twice a week on the same two days, on a different spot below the waist each time. Take progesterone at bedtime every night.',
+        issuedAt: linaIssuedAt,
+        validUntil: new Date(linaIssuedAt.getTime() + 180 * 86_400_000),
+        refillsAllowed: 5,
+        items: {
+          create: [
+            { productId: patch.id, strengthId: patchStrength.id, quantity: 1, directions: 'Apply one patch twice a week.' },
+            { productId: progesterone.id, strengthId: progesterone.strengths[0].id, quantity: 1, directions: 'Take one capsule at bedtime every night.' },
+          ],
+        },
+        orders: {
+          create: [
+            { patientId: patientLina.id, sequence: 1, status: 'DELIVERED', pharmacyRef: 'PH-2026-00301', dispatchedAt: daysAgo(90), deliveredAt: daysAgo(88) },
+            { patientId: patientLina.id, sequence: 2, status: 'DELIVERED', pharmacyRef: 'PH-2026-00377', dispatchedAt: daysAgo(34), deliveredAt: daysAgo(32) },
+          ],
+        },
+      },
+      include: { items: { include: { product: true } } },
+    });
+
+    // Up to ~a week ahead of today, generated the same way the app does it
+    // (patches pinned to the same two weekdays), past doses mostly logged.
+    for (const item of linaRx.items) {
+      if (await prisma.doseEvent.count({ where: { prescriptionItemId: item.id } })) continue;
+      const pattern = dosePattern(item.product);
+      if (!pattern) continue;
+      const until = Date.now() + 7 * 86_400_000;
+      const dates = nextDoseDates(pattern, linaIssuedAt, null, 200).filter((d) => d.getTime() <= until);
+      await prisma.doseEvent.createMany({
+        data: dates.map((scheduledFor, i) => {
+          const due = scheduledFor.getTime() < Date.now() - 86_400_000;
+          const status = !due ? 'SCHEDULED' : i % 17 === 5 ? 'MISSED' : 'TAKEN';
+          return {
+            prescriptionItemId: item.id,
+            patientId: patientLina.id,
+            scheduledFor,
+            status,
+            takenAt: status === 'TAKEN' ? new Date(scheduledFor.getTime() + 45 * 60_000) : null,
+          };
+        }),
+      });
+    }
+  }
+
+  // Monthly Menopause Rating Scale scores: severe at the start, mild now.
+  const MRS_ITEMS = ['hot_flushes', 'heart_discomfort', 'sleep', 'depressive_mood', 'irritability', 'anxiety', 'exhaustion', 'sexual', 'bladder', 'vaginal_dryness', 'joint_muscle'];
+  const linaScores: { daysAgo: number; scores: number[] }[] = [
+    { daysAgo: 93, scores: [4, 2, 4, 3, 3, 2, 3, 2, 1, 2, 3] },
+    { daysAgo: 62, scores: [3, 1, 3, 2, 2, 2, 2, 2, 1, 2, 2] },
+    { daysAgo: 31, scores: [2, 1, 2, 1, 1, 1, 2, 1, 1, 1, 2] },
+    { daysAgo: 3, scores: [1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1] },
+  ];
+  for (const [n, entry] of linaScores.entries()) {
+    const answers = MRS_ITEMS.map((itemId, i) => ({ itemId, score: entry.scores[i] }));
+    await prisma.symptomAssessment.upsert({
+      where: { id: `seed-symptoms-lina-${n + 1}` },
+      update: {},
+      create: {
+        id: `seed-symptoms-lina-${n + 1}`,
+        patientId: patientLina.id,
+        scale: 'MRS',
+        answers,
+        totalScore: entry.scores.reduce((a, b) => a + b, 0),
+        recordedAt: daysAgo(entry.daysAgo),
+      },
+    });
+  }
+
+  console.log('✓ Demo  Sofia missed doses (step 2) / Lina patch + progesterone + symptom history');
 
   // ── Messages ────────────────────────────────────────────────────────────────
   await prisma.message.createMany({
@@ -555,8 +715,9 @@ async function main() {
   console.log('  provider@clinic.dev  → Provider (patients, orders)');
   console.log('');
   console.log('Patients (patient portal)');
-  console.log('  sofia.meyer@example.com  → GLP-1, onboarding done, Weight Journey with history');
-  console.log('  emma.white@example.com   → HRT, onboarding done');
+  console.log('  sofia.meyer@example.com   → GLP-1 at step 2, Weight Journey, last two doses missed (banner + clinician alert)');
+  console.log('  emma.white@example.com    → HRT, onboarding done, no symptom scores yet');
+  console.log('  lina.krasniqi@example.com → HRT patch + progesterone, 3 months of symptom scores');
 }
 
 main()
