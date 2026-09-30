@@ -39,7 +39,8 @@ export class DosingService {
     const product = await db.product.findUnique({ where: { id: item.productId } });
     const pattern = product && dosePattern(product);
     if (!pattern) return;
-    await this.topUp(item.id, patientId, nextDoseDates(pattern, anchor, null, WINDOW), db);
+    const rx = await db.prescription.findUnique({ where: { id: item.prescriptionId }, select: { validUntil: true } });
+    await this.topUp(item.id, patientId, withinValidity(nextDoseDates(pattern, anchor, null, WINDOW), rx?.validUntil), db);
   }
 
   /** Deletes not-yet-due doses when a prescription is superseded or cancelled; past history is kept. */
@@ -111,14 +112,16 @@ export class DosingService {
     });
     if (count) this.logger.log(`Marked ${count} unlogged dose(s) as missed`);
 
+    const now = new Date();
     const items = await this.prisma.prescriptionItem.findMany({
       where: {
-        prescription: { status: PrescriptionStatus.ACTIVE },
+        // Nothing to schedule on a prescription that has run out.
+        prescription: { status: PrescriptionStatus.ACTIVE, OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
         product: { OR: [{ doseIntervalDays: { not: null } }, { dosesPerWeek: { not: null } }] },
       },
       include: {
         product: true,
-        prescription: { select: { patientId: true } },
+        prescription: { select: { patientId: true, issuedAt: true, validUntil: true } },
         doseEvents: { orderBy: { scheduledFor: 'desc' }, take: 1 },
       },
     });
@@ -133,10 +136,12 @@ export class DosingService {
       if (!pattern) continue;
       // Continue after the last generated date, so the schedule never drifts, and
       // only generate as many as are missing — not another full window each time.
+      // An item with no doses yet (e.g. a patch prescribed before patches had a
+      // calendar) follows its prescription's own schedule, from now on.
       const dates = latest
         ? nextDoseDates(pattern, await this.seriesStart(item.id, pattern, latest.scheduledFor), latest.scheduledFor, WINDOW - remaining)
-        : nextDoseDates(pattern, new Date(), null, WINDOW - remaining);
-      await this.topUp(item.id, item.prescription.patientId, dates, this.prisma);
+        : nextDoseDates(pattern, item.prescription.issuedAt, now, WINDOW - remaining);
+      await this.topUp(item.id, item.prescription.patientId, withinValidity(dates, item.prescription.validUntil), this.prisma);
     }
   }
 
@@ -160,4 +165,9 @@ export class DosingService {
       });
     }
   }
+}
+
+/** Drops dates after the prescription stops being valid. */
+function withinValidity(dates: Date[], validUntil: Date | null | undefined): Date[] {
+  return validUntil ? dates.filter((d) => d.getTime() <= validUntil.getTime()) : dates;
 }

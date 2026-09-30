@@ -19,12 +19,22 @@ export function dosePattern(product: { doseIntervalDays?: number | null; dosesPe
 }
 
 /**
+ * Doses on fixed weekdays sit at midday UTC on their day. Stepping whole
+ * 24-hour days from there can never cross midnight in any timezone within
+ * ±11 hours, daylight saving included, so the weekdays a patient sees stay
+ * the same all year (from 00:30 local, a clock change would move them).
+ */
+function middayUtc(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12));
+}
+
+/**
  * The next `count` dose dates in a series that started at `seriesStart`:
  * strictly after `after`, or from `seriesStart` itself (inclusive) when
- * `after` is null.
+ * `after` is null. Multi-dose weekly patterns are pinned to midday UTC.
  */
 export function nextDoseDates(pattern: DosePattern, seriesStart: Date, after: Date | null, count: number): Date[] {
-  const start = seriesStart.getTime();
+  const start = (pattern.offsets.length > 1 ? middayUtc(seriesStart) : seriesStart).getTime();
   const cycleMs = pattern.cycleDays * DAY;
   const dates: Date[] = [];
   let cycle = after ? Math.max(0, Math.floor((after.getTime() - start) / cycleMs)) : 0;
