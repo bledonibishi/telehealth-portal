@@ -14,8 +14,11 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
   const dose = product.doses[doseIdx];
   const planKey = planKeyFor(product, dose, progesterone);
   const plan = CONFIG.PLANS[planKey];
+  // A plan with no display price or no Stripe price configured can't be ordered yet.
+  const available = /\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE');
 
   const handleContinue = () => {
+    if (!available) return;
     mergeAssessment({
       plan: planKey,
       productSlug: product.slug,
@@ -72,13 +75,19 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
         <div className="th-prod-foot">
           <div>
             <div className="th-plan-price">
-              {plan.price}
-              <small>{plan.per}</small>
+              {available ? (
+                <>
+                  {plan.price}
+                  <small>{plan.per}</small>
+                </>
+              ) : (
+                'Coming soon'
+              )}
             </div>
             <div className="th-prod-tier">{plan.name}</div>
           </div>
-          <button type="button" className="th-prod-cta" onClick={handleContinue}>
-            Continue →
+          <button type="button" className="th-prod-cta" onClick={handleContinue} disabled={!available} style={available ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}>
+            {available ? 'Continue →' : 'Unavailable'}
           </button>
         </div>
       </div>

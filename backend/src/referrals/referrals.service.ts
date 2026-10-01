@@ -64,6 +64,9 @@ export class ReferralsService {
   async validateAndAttach(code: string | null | undefined, lead: { id: string; email: string }): Promise<void> {
     if (!code) return;
 
+    // One referral per lead: keep the first attribution rather than overwrite or error.
+    if (await this.prisma.referral.findUnique({ where: { referredLeadId: lead.id }, select: { id: true } })) return;
+
     const referrer = await this.prisma.patient.findUnique({ where: { referralCode: code }, select: { id: true, email: true } });
     if (!referrer) {
       this.logger.warn(`Lead ${lead.id} carried an unknown referral code`);

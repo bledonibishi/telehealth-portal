@@ -9,7 +9,7 @@ export class CheckoutController {
 
   @Post()
   createHostedSession(
-    @Body() body: { priceId?: string; planName?: string; leadId?: string; email?: string; product?: string; dose?: string; applyReward?: boolean; shipping?: ShippingInput },
+    @Body() body: { priceId?: string; planName?: string; leadId?: string; email?: string; product?: string; dose?: string; addProgesterone?: boolean; applyReward?: boolean; shipping?: ShippingInput },
   ) {
     return this.checkout.createHostedSession(body);
   }
@@ -17,13 +17,13 @@ export class CheckoutController {
   @Post('stripe-intent')
   createSubscriptionIntent(
     @Body()
-    body: { priceId?: string; planName?: string; email?: string; leadId?: string; medication?: string; product?: string; dose?: string; applyReward?: boolean; shipping?: ShippingInput },
+    body: { priceId?: string; planName?: string; leadId?: string; medication?: string; product?: string; dose?: string; addProgesterone?: boolean; applyReward?: boolean; shipping?: ShippingInput },
   ) {
     return this.checkout.createSubscriptionIntent(body);
   }
 
   @Post('details')
-  saveShipping(@Body() body: { leadId?: string; email?: string; shipping?: ShippingInput }) {
+  saveShipping(@Body() body: { leadId?: string; shipping?: ShippingInput }) {
     return this.checkout.saveShipping(body);
   }
 

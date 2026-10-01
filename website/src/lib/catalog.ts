@@ -144,16 +144,6 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     image: 'products',
     doses: [{ label: '250 mg/mL', pack: '1 mL ampoule' }],
   },
-  {
-    slug: 'testosterone-pellets-testopel',
-    kind: 'TRT',
-    brand: 'Testopel',
-    generic: 'Testosterone pellets',
-    blurb: 'Small pellets placed under the skin that release testosterone over several months.',
-    format: 'Implant',
-    image: 'products',
-    doses: [{ label: '75 mg pellet', pack: '6 pellets per implant procedure' }],
-  },
 ];
 
 export const PROGESTERONE_NOTE = 'Micronised progesterone (Utrogestan 100 mg capsules) protects the womb if you still have one.';

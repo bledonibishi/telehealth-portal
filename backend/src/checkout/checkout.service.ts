@@ -47,25 +47,29 @@ export class CheckoutService {
     email?: string;
     product?: string;
     dose?: string;
+    addProgesterone?: boolean;
     applyReward?: boolean;
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
     if (!input.priceId) throw new BadRequestException('Missing priceId.');
 
-    const referralCoupon = await this.referralCouponFor(input.leadId, input.applyReward);
-    await this.saveCheckoutDetails(input.leadId, { ...(input.shipping ?? {}), referralRewardApplied: Boolean(referralCoupon) });
+    // With a lead, the email comes from the lead itself, never from the request.
+    const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
+    const email = lead?.email ?? input.email;
+    const referralCoupon = await this.referralCouponFor(lead?.id, input.applyReward);
+    if (lead) await this.saveLeadDetails(lead, input.shipping, input);
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: input.priceId, quantity: 1 }],
       success_url: `${this.webflowSiteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.webflowSiteUrl}/checkout/cancel`,
-      ...(input.email ? { customer_email: input.email } : {}),
+      ...(email ? { customer_email: email } : {}),
       metadata: {
         planName: input.planName ?? '',
-        leadId: input.leadId ?? '',
-        email: input.email ?? '',
+        leadId: lead?.id ?? '',
+        email: email ?? '',
         product: input.product ?? '',
         dose: input.dose ?? '',
       },
@@ -81,24 +85,26 @@ export class CheckoutService {
   async createSubscriptionIntent(input: {
     priceId?: string;
     planName?: string;
-    email?: string;
     leadId?: string;
     medication?: string;
     product?: string;
     dose?: string;
+    addProgesterone?: boolean;
     applyReward?: boolean;
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
     if (!input.priceId) throw new BadRequestException('Missing priceId.');
-    if (!input.email) throw new BadRequestException('Missing email.');
 
-    const customerId = await this.findOrCreateCustomer(input.email, input.shipping);
-    // Toggling the reward on the checkout page starts a new payment, so drop
-    // the abandoned unpaid ones instead of letting them pile up.
-    await this.cancelIncompleteSubscriptions(customerId);
-    const referralCoupon = await this.referralCouponFor(input.leadId, input.applyReward);
-    await this.saveCheckoutDetails(input.leadId, { ...(input.shipping ?? {}), referralRewardApplied: Boolean(referralCoupon) });
+    // The lead is the identity of this checkout: its email is the only one we
+    // act on, so a request can't name someone else's email to touch their Stripe data.
+    const lead = await this.loadOpenLead(input.leadId);
+    const customerId = await this.findOrCreateCustomer(lead.email, this.sanitizeShipping(input.shipping));
+    // Toggling the reward on the checkout page starts a new payment, so drop this
+    // lead's abandoned unpaid ones instead of letting them pile up.
+    await this.cancelIncompleteSubscriptions(customerId, lead.id);
+    const referralCoupon = await this.referralCouponFor(lead.id, input.applyReward);
+    await this.saveLeadDetails(lead, input.shipping, input);
 
     const subscription = await this.stripe.subscriptions.create({
       customer: customerId,
@@ -109,7 +115,7 @@ export class CheckoutService {
       ...(referralCoupon ? { discounts: [{ coupon: referralCoupon }] } : {}),
       metadata: {
         planName: input.planName ?? '',
-        leadId: input.leadId ?? '',
+        leadId: lead.id,
         medication: input.medication ?? '',
         product: input.product ?? '',
         dose: input.dose ?? '',
@@ -209,41 +215,88 @@ export class CheckoutService {
     };
   }
 
-  /** Merges into what the lead already has, so saving the address never forgets whether the reward was applied. */
-  private async saveCheckoutDetails(leadId: string | undefined, patch: Record<string, unknown>) {
-    if (!leadId) return;
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { checkoutDetails: true } });
-    if (!lead) return;
-    await this.prisma.lead.update({
+  /** The lead behind a checkout: must exist and not already be a paying customer. */
+  private async loadOpenLead(leadId: string | undefined) {
+    if (!leadId) throw new BadRequestException('Missing leadId.');
+    const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      data: { checkoutDetails: { ...((lead.checkoutDetails as Record<string, unknown> | null) ?? {}), ...patch } as any },
+      select: { id: true, email: true, convertedAt: true, quizAnswers: true, checkoutDetails: true },
     });
+    if (!lead) throw new BadRequestException('Unknown lead.');
+    if (lead.convertedAt) throw new BadRequestException('This order has already been paid.');
+    const patient = await this.prisma.patient.findFirst({
+      where: { email: { equals: lead.email, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (patient) throw new BadRequestException('An account already exists for this email. Please sign in.');
+    return lead;
+  }
+
+  /** Only the delivery fields we use, trimmed — nothing else from the request body is stored. */
+  private sanitizeShipping(raw?: ShippingInput): ShippingInput | undefined {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const clip = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+    const country = clip(raw.country, 2)?.toUpperCase();
+    return {
+      name: clip(raw.name, 100),
+      line1: clip(raw.line1, 200),
+      city: clip(raw.city, 100),
+      postalCode: clip(raw.postalCode, 20),
+      country: country && country.length === 2 ? country : undefined,
+    };
+  }
+
+  /**
+   * Saves the delivery details on the lead (copied onto the patient when the
+   * first payment succeeds) and the treatment the buyer picked, so the
+   * reviewing clinician sees it alongside the eligibility answers.
+   */
+  private async saveLeadDetails(
+    lead: { id: string; quizAnswers: unknown; checkoutDetails: unknown },
+    shipping: ShippingInput | undefined,
+    choice: { product?: string; dose?: string; addProgesterone?: boolean },
+  ) {
+    const clean = this.sanitizeShipping(shipping);
+    const data: { checkoutDetails?: any; quizAnswers?: any } = {};
+    if (clean) {
+      const defined = Object.fromEntries(Object.entries(clean).filter(([, v]) => v !== undefined));
+      data.checkoutDetails = { ...((lead.checkoutDetails as Record<string, unknown> | null) ?? {}), ...defined };
+    }
+    const product = typeof choice.product === 'string' ? choice.product.trim().slice(0, 80) : '';
+    if (product) {
+      const dose = typeof choice.dose === 'string' ? choice.dose.trim().slice(0, 40) : '';
+      const answer = `${product}${dose ? ` ${dose}` : ''}${choice.addProgesterone ? ' + micronised progesterone' : ''}`;
+      const existing = Array.isArray(lead.quizAnswers) ? (lead.quizAnswers as Array<{ questionId?: string }>) : [];
+      // The final choice replaces the earlier "preferred medicine" from the products page.
+      const kept = existing.filter((a) => a.questionId !== 'preferred_medication' && a.questionId !== 'preferred_treatment');
+      data.quizAnswers = [...kept, { questionId: 'preferred_treatment', question: 'Preferred treatment (chosen at checkout)', answer }];
+    }
+    if (Object.keys(data).length) await this.prisma.lead.update({ where: { id: lead.id }, data });
   }
 
   /** Delivery details from the checkout form; called just before an inline card payment is confirmed. */
-  async saveShipping(input: { leadId?: string; email?: string; shipping?: ShippingInput }) {
+  async saveShipping(input: { leadId?: string; shipping?: ShippingInput }) {
     this.assertConfigured();
-    if (!input.shipping) throw new BadRequestException('Missing shipping details.');
-    await this.saveCheckoutDetails(input.leadId, { ...input.shipping });
-    if (input.email) await this.findOrCreateCustomer(input.email, input.shipping);
+    const shipping = this.sanitizeShipping(input.shipping);
+    if (!shipping) throw new BadRequestException('Missing shipping details.');
+    const lead = await this.loadOpenLead(input.leadId);
+    await this.saveLeadDetails(lead, shipping, {});
+    await this.findOrCreateCustomer(lead.email, shipping);
     return { ok: true };
   }
 
-  private async cancelIncompleteSubscriptions(customerId: string) {
+  /** Cancels only this lead's own abandoned unpaid subscriptions, never anyone else's. */
+  private async cancelIncompleteSubscriptions(customerId: string, leadId: string) {
     const { data } = await this.stripe.subscriptions.list({ customer: customerId, status: 'incomplete', limit: 20 });
-    await Promise.all(data.map((sub) => this.stripe.subscriptions.cancel(sub.id).catch(() => undefined)));
+    await Promise.all(
+      data.filter((sub) => sub.metadata?.leadId === leadId).map((sub) => this.stripe.subscriptions.cancel(sub.id).catch(() => undefined)),
+    );
   }
 
   private async findOrCreateCustomer(email: string, shipping?: ShippingInput): Promise<string> {
+    const address = shipping && { line1: shipping.line1, city: shipping.city, postal_code: shipping.postalCode, country: shipping.country };
     const details: Stripe.CustomerUpdateParams = shipping
-      ? {
-          ...(shipping.name ? { name: shipping.name } : {}),
-          address: { line1: shipping.line1, city: shipping.city, postal_code: shipping.postalCode, country: shipping.country },
-          shipping: {
-            name: shipping.name ?? '',
-            address: { line1: shipping.line1, city: shipping.city, postal_code: shipping.postalCode, country: shipping.country },
-          },
-        }
+      ? { ...(shipping.name ? { name: shipping.name } : {}), address, shipping: { name: shipping.name ?? '', address: address! } }
       : {};
     const existing = await this.stripe.customers.list({ email, limit: 1 });
     if (existing.data[0]) {

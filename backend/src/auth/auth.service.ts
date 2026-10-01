@@ -114,8 +114,14 @@ export class AuthService {
     });
     if (!patient || patient.activatedAt) return true;
 
-    const token = newActivationToken();
-    await this.prisma.patient.update({ where: { id: patient.id }, data: token });
+    // Reuse a link that is still valid instead of replacing it: repeated requests
+    // can't invalidate the one the patient already holds (e.g. the one emailed
+    // right after payment). Volume is capped by the per-account throttle.
+    const stillValid = patient.activationToken && patient.activationTokenExpiresAt && patient.activationTokenExpiresAt > new Date();
+    const token = stillValid
+      ? { activationToken: patient.activationToken!, activationTokenExpiresAt: patient.activationTokenExpiresAt! }
+      : newActivationToken();
+    if (!stillValid) await this.prisma.patient.update({ where: { id: patient.id }, data: token });
 
     const appUrl = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
     try {
@@ -150,21 +156,31 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const activatedAt = patient.activatedAt ?? new Date();
-    // Matching on the token again makes this single-use even if two requests race.
-    const claimed = await this.prisma.patient.updateMany({
-      where: { id: patient.id, activationToken: token },
-      data: { passwordHash, activatedAt, activationToken: null, activationTokenExpiresAt: null },
+    // One transaction: the password change, the spent token and the audit row
+    // commit together, so a failed audit write can't leave a patient with a
+    // changed password, a cleared link and no way in. Matching on the token again
+    // makes this single-use even if two requests race.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.patient.updateMany({
+        where: { id: patient.id, activationToken: token },
+        data: { passwordHash, activatedAt, activationToken: null, activationTokenExpiresAt: null },
+      });
+      if (result.count !== 1) return false;
+      await this.audit.log(
+        {
+          actorId: patient.id,
+          actorRole: UserRole.PATIENT,
+          action: 'AUTH_ACCOUNT_ACTIVATED',
+          resourceType: 'Patient',
+          resourceId: patient.id,
+          metadata: { ...attempt },
+        },
+        tx,
+      );
+      return true;
     });
-    if (claimed.count !== 1) throw invalidLink();
+    if (!claimed) throw invalidLink();
 
-    await this.audit.log({
-      actorId: patient.id,
-      actorRole: UserRole.PATIENT,
-      action: 'AUTH_ACCOUNT_ACTIVATED',
-      resourceType: 'Patient',
-      resourceId: patient.id,
-      metadata: { ...attempt },
-    });
     this.posthog.identify(patient.id, {
       email: patient.email,
       first_name: patient.firstName,

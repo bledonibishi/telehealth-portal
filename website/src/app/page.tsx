@@ -264,7 +264,6 @@ export default function HomePage() {
                 <div className="th-product-meds">
                   <span className="th-product-med">Tostran gel</span>
                   <span className="th-product-med">Sustanon 250</span>
-                  <span className="th-product-med">Testopel</span>
                 </div>
                 <div className="th-product-cta">
                   <Link href="/trt-eligibility" className="btn-primary btn-sm">

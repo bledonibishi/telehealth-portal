@@ -11,6 +11,7 @@ describe('AuthService', () => {
   let prisma: {
     clinician: { findUnique: jest.Mock; update: jest.Mock };
     patient: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+    $transaction: jest.Mock;
   };
   let email: { sendActivationEmail: jest.Mock };
   let jwtService: { sign: jest.Mock; verify: jest.Mock };
@@ -43,7 +44,9 @@ describe('AuthService', () => {
     prisma = {
       clinician: { findUnique: jest.fn(), update: jest.fn() },
       patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
     email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined) };
     jwtService = { sign: jest.fn().mockReturnValue('signed-token'), verify: jest.fn() };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -254,6 +257,24 @@ describe('AuthService', () => {
       );
     });
 
+    it('reuses a link that is still valid instead of replacing it', async () => {
+      const valid = { ...PENDING, activationToken: 'existing-token', activationTokenExpiresAt: new Date(Date.now() + 60_000) };
+      prisma.patient.findFirst.mockResolvedValue(valid);
+      config.get.mockImplementation((key: string) => (key === 'PATIENT_APP_URL' ? 'https://app.example.com' : '7d'));
+
+      await service.requestActivationLink(PENDING.email);
+
+      expect(prisma.patient.update).not.toHaveBeenCalled();
+      expect(email.sendActivationEmail).toHaveBeenCalledWith(PENDING.email, PENDING.firstName, 'https://app.example.com/activate?token=existing-token');
+    });
+
+    it('issues a new link when the old one has expired', async () => {
+      prisma.patient.findFirst.mockResolvedValue({ ...PENDING, activationToken: 'old', activationTokenExpiresAt: new Date(Date.now() - 1000) });
+      prisma.patient.update.mockResolvedValue(PENDING);
+      await service.requestActivationLink(PENDING.email);
+      expect(prisma.patient.update.mock.calls[0][0].data.activationToken).not.toBe('old');
+    });
+
     it('still resolves true but sends nothing for an unknown address', async () => {
       prisma.patient.findFirst.mockResolvedValue(null);
       await expect(service.requestActivationLink('nobody@example.com')).resolves.toBe(true);
@@ -300,7 +321,16 @@ describe('AuthService', () => {
       });
       expect(result.accessToken).toBe('signed-token');
       expect(result.patient.activatedAt).toBeInstanceOf(Date);
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_ACCOUNT_ACTIVATED', resourceId: PENDING.id }));
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_ACCOUNT_ACTIVATED', resourceId: PENDING.id }), prisma);
+    });
+
+    it('does not leave the account changed when the audit write fails (one transaction)', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PENDING);
+      audit.log.mockRejectedValueOnce(new Error('audit down'));
+      await expect(service.activateAccount('tok', GOOD_PASSWORD)).rejects.toThrow('audit down');
+      // The change and the audit row share one transaction, so the rejection rolls both back.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(audit.log).toHaveBeenCalledWith(expect.anything(), prisma);
     });
 
     it('rejects an unknown token', async () => {

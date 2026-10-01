@@ -43,10 +43,10 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 
 /* ── Stripe inline element mount ── */
 function StripeMount({
-  priceId, planName, email, leadId, product, dose, applyReward, confirmRef, onReady, onComplete, onAmounts,
+  priceId, planName, leadId, product, dose, applyReward, addProgesterone, confirmRef, onReady, onComplete, onAmounts,
 }: {
-  priceId: string; planName: string; email?: string; leadId?: string | null;
-  product?: string | null; dose?: string | null; applyReward: boolean;
+  priceId: string; planName: string; leadId?: string | null;
+  product?: string | null; dose?: string | null; applyReward: boolean; addProgesterone: boolean;
   confirmRef: MutableRefObject<ConfirmFn | null>;
   onReady: (mode: 'element' | 'redirect') => void;
   onComplete: (complete: boolean) => void;
@@ -54,19 +54,19 @@ function StripeMount({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const peRef = useRef<unknown>(null);
-  // React Strict Mode runs effects twice in dev; each run would create a new
-  // Stripe subscription and mount a second card form.
-  const started = useRef(false);
 
   useEffect(() => {
-    if (!ref.current || started.current) return;
-    started.current = true;
+    if (!ref.current) return;
     const mount = ref.current;
+    // A response that arrives after this form was replaced (reward toggled) or
+    // unmounted must not publish its payment or callbacks over the new form's.
+    let cancelled = false;
+    let confirmFn: ConfirmFn | null = null;
 
     if (!CONFIG.STRIPE_PUBLISHABLE_KEY) {
       mount.innerHTML = '<p class="pv-panel-note">You will enter your card details on Stripe\'s secure checkout page in the next step.</p>';
       onReady('redirect');
-      return;
+      return () => { cancelled = true; };
     }
 
     mount.innerHTML =
@@ -85,10 +85,11 @@ function StripeMount({
       }),
       post<{ clientSecret: string; intentType?: string } & Partial<Amounts>>(
         `${apiBase}/api/checkout/stripe-intent`,
-        { priceId, planName, email: email ?? null, leadId: leadId ?? null, product: product ?? null, dose: dose ?? null, applyReward },
+        { priceId, planName, leadId: leadId ?? null, product: product ?? null, dose: dose ?? null, addProgesterone, applyReward },
       ),
     ])
       .then(([, d]) => {
+        if (cancelled) return;
         if (!d?.clientSecret) throw new Error('No client secret');
         const stripe = (window as unknown as Record<string, (k: string) => unknown>)['Stripe'](CONFIG.STRIPE_PUBLISHABLE_KEY);
         const elements = (stripe as Record<string, (o: unknown) => unknown>)['elements']({
@@ -106,7 +107,7 @@ function StripeMount({
           fields: { billingDetails: { name: 'never', email: 'never', address: 'never' } },
         });
         (peRef as { current: unknown }).current = pe;
-        confirmRef.current = (billing) =>
+        confirmFn = (billing) =>
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (stripe as any).confirmPayment({
             elements,
@@ -115,6 +116,7 @@ function StripeMount({
               payment_method_data: { billing_details: billing },
             },
           });
+        confirmRef.current = confirmFn;
         onAmounts({ amountDueCents: d.amountDueCents ?? null, discountCents: d.discountCents ?? 0, currency: d.currency ?? null });
         mount.innerHTML = '';
         pe.mount(mount);
@@ -123,10 +125,17 @@ function StripeMount({
         onReady('element');
       })
       .catch((ex) => {
+        if (cancelled) return;
         console.warn('[checkout] Stripe inline unavailable:', ex);
         mount.innerHTML = '<p class="pv-panel-note">You will enter your card details on Stripe\'s secure checkout page in the next step.</p>';
         onReady('redirect');
       });
+
+    return () => {
+      cancelled = true;
+      if (confirmFn && confirmRef.current === confirmFn) confirmRef.current = null;
+      mount.innerHTML = '';
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -267,14 +276,16 @@ function CheckoutInner() {
   const plan = planKey ? CONFIG.PLANS[planKey] : null;
   // A payment without a saved lead would never get a patient account created.
   const eligible = !!session?.passed && !!session?.leadId && !!plan && plan.product === session?.product;
+  // A plan with no display price or Stripe price configured can't be ordered.
+  const planAvailable = !!plan && /\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE');
   const shippingValid = !!(shipping.name.trim() && shipping.line1.trim() && shipping.city.trim() && shipping.postalCode.trim());
 
   const canPay = useCallback(() => {
-    if (!shippingValid) return false;
+    if (!shippingValid || !planAvailable) return false;
     if (chosen === 'stripe') return stripeMode === 'redirect' || (stripeMode === 'element' && stripeComplete);
     if (chosen === 'paysera') return payseraMode === 'redirect' || (payseraMode === 'list' && !!payseraMethod);
     return false;
-  }, [shippingValid, chosen, stripeMode, stripeComplete, payseraMode, payseraMethod]);
+  }, [shippingValid, planAvailable, chosen, stripeMode, stripeComplete, payseraMode, payseraMethod]);
 
   const toggleReward = () => {
     // The card form is created with (or without) the reward, so it restarts.
@@ -287,6 +298,10 @@ function CheckoutInner() {
 
   const handlePay = async () => {
     if (!plan || !planKey) return;
+    if (!planAvailable) {
+      setPayError("This plan isn't available to order yet.");
+      return;
+    }
     if (!shippingValid) {
       setTouched(true);
       setPayError('Please fill in your name and delivery address.');
@@ -313,6 +328,7 @@ function CheckoutInner() {
           email: session?.email ?? null,
           product: session?.productName ?? null,
           dose: session?.dose ?? null,
+          addProgesterone: session?.addProgesterone ?? false,
           applyReward: rewardApplied,
           shipping: shippingBody,
         });
@@ -339,7 +355,6 @@ function CheckoutInner() {
       // redirects to /checkout/success on success and only comes back with an error.
       await post(`${CONFIG.API_BASE}/api/checkout/details`, {
         leadId: session?.leadId ?? null,
-        email: session?.email ?? null,
         shipping: shippingBody,
       });
       const result = await confirmRef.current?.({
@@ -392,16 +407,19 @@ function CheckoutInner() {
   const medName =
     plan!.product === 'GLP1' && !storeProduct && session?.med && CONFIG.MEDICATIONS[session.med] ? CONFIG.MEDICATIONS[session.med] : null;
 
-  const currencySymbol = plan!.price.match(/^[^\d]+/)?.[0] ?? '£';
+  const currencySymbol = (planAvailable && plan!.price.match(/^[^\d]+/)?.[0]) || '£';
   const planAmount = parseAmount(plan!.price);
   const rewardOff = reward?.amountOffCents != null ? reward.amountOffCents / 100 : reward?.percentOff != null ? (planAmount * reward.percentOff) / 100 : 0;
   const rewardLabel =
     reward?.amountOffCents != null ? money(reward.amountOffCents, reward.currency) : reward?.percentOff != null ? `${reward.percentOff}%` : '';
-  // Prefer Stripe's own total once the card form has created the payment.
+  // Stripe's own total once the card form has created the payment; otherwise an
+  // estimate, and never a made-up £0.00 when the display price isn't configured.
   const dueToday =
-    rewardApplied && amounts?.amountDueCents != null
+    amounts?.amountDueCents != null
       ? money(amounts.amountDueCents, amounts.currency)
-      : `${currencySymbol}${Math.max(0, planAmount - (rewardApplied ? rewardOff : 0)).toFixed(2)}`;
+      : planAvailable
+      ? `${currencySymbol}${Math.max(0, planAmount - (rewardApplied ? rewardOff : 0)).toFixed(2)}`
+      : '—';
 
   const btnLabel = paying
     ? 'Processing…'
@@ -518,11 +536,11 @@ function CheckoutInner() {
                     key={rewardApplied ? 'reward' : 'full'}
                     priceId={plan!.priceId}
                     planName={plan!.name}
-                    email={session?.email}
                     leadId={session?.leadId}
                     product={session?.productName}
                     dose={session?.dose}
                     applyReward={rewardApplied}
+                    addProgesterone={session?.addProgesterone ?? false}
                     confirmRef={confirmRef}
                     onReady={(mode) => setStripeMode(mode)}
                     onComplete={(complete) => setStripeComplete(complete)}

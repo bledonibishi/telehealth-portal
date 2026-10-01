@@ -15,62 +15,140 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
   return service;
 }
 
+const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
+
+function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
+  return {
+    lead: {
+      findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    patient: { findFirst: jest.fn().mockResolvedValue(over.patient ?? null) },
+    referral: { findUnique: jest.fn().mockResolvedValue(over.referral ?? null) },
+  };
+}
+
 describe('CheckoutService.createHostedSession', () => {
   const session = { create: jest.fn().mockResolvedValue({ url: 'https://stripe/x' }) };
   const stripe = { checkout: { sessions: session } };
-  const prismaWith = (referral: any) => ({
-    referral: { findUnique: jest.fn().mockResolvedValue(referral) },
-    lead: { findUnique: jest.fn().mockResolvedValue({ checkoutDetails: null }), update: jest.fn().mockResolvedValue({}) },
-  });
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('redirects back to the website success/cancel pages and prefills the email', async () => {
-    await build(prismaWith(null), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', email: 'a@b.com', product: 'wegovy', dose: '0.25 mg' });
+  it('redirects back to the website pages and prefills the lead email (not one from the request)', async () => {
+    await build(prismaFor(), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', email: 'attacker@evil.com', product: 'Wegovy', dose: '0.25 mg' });
 
     const args = session.create.mock.calls[0][0];
     expect(args.success_url).toBe('http://localhost:3000/checkout/success?session_id={CHECKOUT_SESSION_ID}');
     expect(args.cancel_url).toBe('http://localhost:3000/checkout/cancel');
-    expect(args.customer_email).toBe('a@b.com');
-    expect(args.metadata).toMatchObject({ product: 'wegovy', dose: '0.25 mg', email: 'a@b.com' });
+    expect(args.customer_email).toBe('buyer@b.com');
+    expect(args.metadata).toMatchObject({ leadId: 'lead-1', email: 'buyer@b.com', product: 'Wegovy', dose: '0.25 mg' });
     expect(args.allow_promotion_codes).toBe(true);
     expect(args.discounts).toBeUndefined();
   });
 
   it('does not attach the referral coupon unless the customer applied the reward', async () => {
-    await build(prismaWith({ status: 'PENDING' }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' });
+    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' });
     expect(session.create.mock.calls[0][0].discounts).toBeUndefined();
   });
 
   it('attaches the referral coupon (and drops promo codes) when the reward is applied', async () => {
-    const prisma = prismaWith({ status: 'PENDING' });
-    await build(prisma, stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', applyReward: true, shipping: { line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK' } });
+    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', applyReward: true });
 
     const args = session.create.mock.calls[0][0];
     expect(args.discounts).toEqual([{ coupon: 'coupon_ref' }]);
     expect(args.allow_promotion_codes).toBeUndefined();
-    expect(prisma.lead.update).toHaveBeenCalledWith({
-      where: { id: 'lead-1' },
-      data: { checkoutDetails: { line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK', referralRewardApplied: true } },
+  });
+
+  it('refuses a lead that has already paid', async () => {
+    await expect(build(prismaFor({ lead: { ...LEAD, convertedAt: new Date() } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' })).rejects.toThrow(BadRequestException);
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses when an account already exists for the lead email', async () => {
+    await expect(build(prismaFor({ patient: { id: 'p-1' } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' })).rejects.toThrow(BadRequestException);
+  });
+
+  it('saves delivery details and the chosen treatment on the lead, storing only whitelisted fields', async () => {
+    const prisma = prismaFor();
+    await build(prisma, stripe).createHostedSession({
+      priceId: 'price_1',
+      leadId: 'lead-1',
+      product: 'Mounjaro',
+      dose: '5 mg',
+      shipping: { name: ' Ann Lee ', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'xk', referralRewardApplied: false } as any,
     });
+
+    const data = prisma.lead.update.mock.calls[0][0].data;
+    expect(data.checkoutDetails).toEqual({ name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK' });
+    expect(data.quizAnswers).toEqual([
+      { questionId: 'age', question: 'Age?', answer: '40 to 54' },
+      { questionId: 'preferred_treatment', question: 'Preferred treatment (chosen at checkout)', answer: 'Mounjaro 5 mg' },
+    ]);
+  });
+
+  it('replaces an earlier preferred medicine with the final treatment choice', async () => {
+    const lead = { ...LEAD, quizAnswers: [{ questionId: 'preferred_medication', question: 'x', answer: 'Wegovy' }] };
+    const prisma = prismaFor({ lead });
+    await build(prisma, stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', product: 'Evorel', dose: '50 micrograms/24 h', addProgesterone: true });
+    const answers = prisma.lead.update.mock.calls[0][0].data.quizAnswers;
+    expect(answers).toHaveLength(1);
+    expect(answers[0].answer).toBe('Evorel 50 micrograms/24 h + micronised progesterone');
+  });
+});
+
+describe('CheckoutService.createSubscriptionIntent', () => {
+  const invoice = { amount_due: 14900, currency: 'gbp', total_discount_amounts: [], payment_intent: { client_secret: 'pi_secret' } };
+  function stripeWith(incomplete: any[]) {
+    return {
+      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn().mockResolvedValue({}) },
+      subscriptions: {
+        list: jest.fn().mockResolvedValue({ data: incomplete }),
+        cancel: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'sub_new', latest_invoice: invoice }),
+      },
+    };
+  }
+
+  it("acts on the lead's email and cancels only this lead's own unpaid subscriptions", async () => {
+    const stripe = stripeWith([
+      { id: 'sub_mine', metadata: { leadId: 'lead-1' } },
+      { id: 'sub_other', metadata: { leadId: 'someone-else' } },
+      { id: 'sub_legacy', metadata: {} },
+    ]);
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', email: 'victim@x.com' } as any);
+
+    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 1 });
+    expect(stripe.subscriptions.cancel).toHaveBeenCalledTimes(1);
+    expect(stripe.subscriptions.cancel).toHaveBeenCalledWith('sub_mine');
+    expect(stripe.subscriptions.create.mock.calls[0][0].metadata.leadId).toBe('lead-1');
+  });
+
+  it('requires a valid lead', async () => {
+    await expect(build(prismaFor({ lead: null }), stripeWith([])).createSubscriptionIntent({ priceId: 'price_1', leadId: 'nope' })).rejects.toThrow(BadRequestException);
+    await expect(build(prismaFor(), stripeWith([])).createSubscriptionIntent({ priceId: 'price_1' })).rejects.toThrow(BadRequestException);
   });
 });
 
 describe('CheckoutService.saveShipping', () => {
-  it('merges the address into the lead without losing the reward flag', async () => {
-    const prisma = {
-      lead: {
-        findUnique: jest.fn().mockResolvedValue({ checkoutDetails: { referralRewardApplied: true } }),
-        update: jest.fn().mockResolvedValue({}),
-      },
-    };
+  it('stores only the whitelisted address fields and updates the lead email\'s Stripe customer', async () => {
+    const prisma = prismaFor();
     const stripe = {
       customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn().mockResolvedValue({}) },
     };
-    await build(prisma, stripe).saveShipping({ leadId: 'lead-1', email: 'a@b.com', shipping: { name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK' } });
+    await build(prisma, stripe).saveShipping({
+      leadId: 'lead-1',
+      shipping: { name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK', referralRewardApplied: false } as any,
+    });
 
-    expect(prisma.lead.update.mock.calls[0][0].data.checkoutDetails).toMatchObject({ referralRewardApplied: true, line1: '1 Main St', postalCode: '10000' });
+    expect(prisma.lead.update.mock.calls[0][0].data.checkoutDetails).toEqual({ name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK' });
+    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 1 });
     expect(stripe.customers.update).toHaveBeenCalledWith('cus_1', expect.objectContaining({ name: 'Ann Lee' }));
+  });
+
+  it('refuses to change a lead that already paid, so a completed order can\'t be edited', async () => {
+    const prisma = prismaFor({ lead: { ...LEAD, convertedAt: new Date() } });
+    await expect(build(prisma, {}).saveShipping({ leadId: 'lead-1', shipping: { line1: 'x' } })).rejects.toThrow(BadRequestException);
+    expect(prisma.lead.update).not.toHaveBeenCalled();
   });
 });
 

@@ -27,10 +27,13 @@ export class StripeWebhookService {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const email = session.customer_details?.email ?? (session.metadata?.email as string);
-        await this.activatePatient(email, session.id, {
-          customerId: stripeId(session.customer),
-          subscriptionId: stripeId(session.subscription),
-        });
+        await this.activatePatient(
+          email,
+          session.id,
+          { customerId: stripeId(session.customer), subscriptionId: stripeId(session.subscription) },
+          // What Stripe actually took off this payment — not a flag the client could set.
+          (session.total_details?.amount_discount ?? 0) > 0,
+        );
         break;
       }
       case 'invoice.payment_succeeded': {
@@ -42,10 +45,16 @@ export class StripeWebhookService {
         // Cast: invoice.subscription exists on the pinned '2023-10-16' API
         // version but not in the newer SDK's types.
         const invoice = event.data.object as Stripe.Invoice & { subscription?: unknown };
-        await this.activatePatient(invoice.customer_email, invoice.id, {
-          customerId: stripeId(invoice.customer),
-          subscriptionId: stripeId(invoice.subscription),
-        });
+        const discountCents = ((invoice as any).total_discount_amounts ?? []).reduce(
+          (sum: number, d: { amount: number }) => sum + d.amount,
+          0,
+        );
+        await this.activatePatient(
+          invoice.customer_email,
+          invoice.id,
+          { customerId: stripeId(invoice.customer), subscriptionId: stripeId(invoice.subscription) },
+          discountCents > 0,
+        );
         break;
       }
       default:
@@ -57,6 +66,7 @@ export class StripeWebhookService {
     email: string | null | undefined,
     stripeReferenceId: string,
     stripeIds: { customerId: string | null; subscriptionId: string | null },
+    rewardApplied: boolean,
   ) {
     if (!email) {
       this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
@@ -95,7 +105,6 @@ export class StripeWebhookService {
       city?: string;
       postalCode?: string;
       country?: string;
-      referralRewardApplied?: boolean;
     };
 
     // Create or update patient
@@ -136,7 +145,7 @@ export class StripeWebhookService {
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding
     // referrals that never pay).
-    await this.referrals.handleConversion(lead, patient, { friendRewardApplied: details.referralRewardApplied === true });
+    await this.referrals.handleConversion(lead, patient, { friendRewardApplied: rewardApplied });
 
     // Send activation email
     const activationUrl = `${this.appUrl}/activate?token=${activationToken}`;

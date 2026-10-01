@@ -84,3 +84,10 @@ export class RefundSuccessfulAttemptInterceptor implements NestInterceptor {
 
 export const ThrottleLoginAttempts = () =>
   applyDecorators(UseGuards(GqlThrottlerGuard), UseInterceptors(RefundSuccessfulAttemptInterceptor));
+
+/**
+ * Counts every call against the account and IP limits (no refund on success).
+ * For endpoints that always succeed by design, like requestActivationLink, where
+ * a refunded counter would leave only the per-IP limit.
+ */
+export const ThrottleRequests = () => applyDecorators(UseGuards(GqlThrottlerGuard));

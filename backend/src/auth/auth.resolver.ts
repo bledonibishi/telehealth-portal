@@ -4,7 +4,7 @@ import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { ActivateAccountInput, RequestActivationLinkInput } from './dto/activation.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
-import { ThrottleLoginAttempts } from './guards/gql-throttler.guard';
+import { ThrottleLoginAttempts, ThrottleRequests } from './guards/gql-throttler.guard';
 import { Authorized } from './decorators/authorized.decorator';
 import { STAFF } from './access-roles';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -29,7 +29,7 @@ export class AuthResolver {
     return this.authService.loginPatient(input.email, input.password, loginAttempt(ctx));
   }
 
-  @ThrottleLoginAttempts()
+  @ThrottleRequests()
   @Mutation(() => Boolean, { description: 'Emails an activation link to a paid patient who has not set a password yet. Always true.' })
   requestActivationLink(@Args('input') input: RequestActivationLinkInput) {
     return this.authService.requestActivationLink(input.email);
