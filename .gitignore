@@ -21,3 +21,7 @@ packages/shared-types/src/*.d.ts
 # Vercel keeps it in-memory). No codegen or CI reads the checked-in file, so
 # tracking it was pure diff noise.
 backend/src/schema.gql
+
+# Local env overrides (hold real keys)
+.env.local
+.env*.local

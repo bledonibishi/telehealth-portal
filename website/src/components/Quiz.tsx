@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { QUIZZES, type QuizQuestion } from '@/lib/quiz-data';
 import { mergeAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
+import { loadReferralCode } from '@/lib/referral';
+import ProductPicker from './ProductPicker';
 
 /* ── Types ── */
 interface Answer { question: string; sel: string[] }
@@ -56,6 +57,7 @@ async function createLead(
             lastName: data.lastName,
             productKind: product,
             quizAnswers,
+            referralCode: loadReferralCode(),
           },
         },
       }),
@@ -67,56 +69,6 @@ async function createLead(
     console.error('[quiz] createLead failed:', err);
     return null;
   }
-}
-
-/* ── Plans component ── */
-function Plans({ product, onRestart }: { product: ProductKind; onRestart: () => void }) {
-  const router = useRouter();
-  const plans = Object.entries(CONFIG.PLANS).filter(([, p]) => p.product === product);
-
-  const handleSelect = (key: string) => {
-    mergeAssessment({ plan: key });
-    router.push('/checkout?plan=' + encodeURIComponent(key));
-  };
-
-  return (
-    <div>
-      <div className="th-plans-head">
-        <h2 className="th-plans-h2">Choose your plan</h2>
-        <p className="th-plans-sub">
-          All plans include a doctor review and free delivery to Kosovo.
-        </p>
-      </div>
-      <div className="th-plans-grid">
-        {plans.map(([key, plan], i) => (
-          <div
-            key={key}
-            className={`th-plan-card${i === 1 ? ' featured' : ''}`}
-            onClick={() => handleSelect(key)}
-          >
-            {i === 1 && <div className="th-plan-badge green">Most popular</div>}
-            {i === 0 && <div className="th-plan-badge">Starter</div>}
-            <div className="th-plan-name">{plan.name}</div>
-            <div className="th-plan-desc">{plan.desc}</div>
-            <div className="th-plan-price">
-              {plan.price}<small>{plan.per}</small>
-            </div>
-            <button className="th-plan-select-btn">
-              Select plan →
-            </button>
-          </div>
-        ))}
-      </div>
-      <p style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: 'var(--c-muted)' }}>
-        <button
-          onClick={onRestart}
-          style={{ background: 'none', border: 'none', color: 'var(--c-blue)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
-        >
-          ← Restart assessment
-        </button>
-      </p>
-    </div>
-  );
 }
 
 /* ── Ineligible component ── */
@@ -257,7 +209,14 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
     setSaving(true);
     const id = await createLead(product, visible(), st.answers, { firstName, lastName, email }, st.bmiBand);
-    mergeAssessment({ product, passed: true, leadId: id, email, at: Date.now(), plan: null, method: null });
+    if (!id) {
+      // Without a saved lead the payment webhook can't create the patient's
+      // account, so never let someone continue to pay from here.
+      setDetailsErr("We couldn't save your details. Please check your connection and try again.");
+      setSaving(false);
+      return;
+    }
+    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null });
     setScreen('plans');
     setSaving(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -265,7 +224,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* ── Render screens ── */
   if (screen === 'ineligible') return <Ineligible reason={ineligReason} onRestart={restart} />;
-  if (screen === 'plans') return <Plans product={product} onRestart={restart} />;
+  if (screen === 'plans') return <ProductPicker product={product} onRestart={restart} />;
 
   /* ── Quiz screens ── */
   const vq = visible();

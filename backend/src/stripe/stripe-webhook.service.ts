@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { newActivationToken } from '../auth/activation-token';
 
 @Injectable()
 export class StripeWebhookService {
@@ -26,10 +27,13 @@ export class StripeWebhookService {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const email = session.customer_details?.email ?? (session.metadata?.email as string);
-        await this.activatePatient(email, session.id, {
-          customerId: stripeId(session.customer),
-          subscriptionId: stripeId(session.subscription),
-        });
+        await this.activatePatient(
+          email,
+          session.id,
+          { customerId: stripeId(session.customer), subscriptionId: stripeId(session.subscription) },
+          // What Stripe actually took off this payment — not a flag the client could set.
+          (session.total_details?.amount_discount ?? 0) > 0,
+        );
         break;
       }
       case 'invoice.payment_succeeded': {
@@ -41,10 +45,16 @@ export class StripeWebhookService {
         // Cast: invoice.subscription exists on the pinned '2023-10-16' API
         // version but not in the newer SDK's types.
         const invoice = event.data.object as Stripe.Invoice & { subscription?: unknown };
-        await this.activatePatient(invoice.customer_email, invoice.id, {
-          customerId: stripeId(invoice.customer),
-          subscriptionId: stripeId(invoice.subscription),
-        });
+        const discountCents = ((invoice as any).total_discount_amounts ?? []).reduce(
+          (sum: number, d: { amount: number }) => sum + d.amount,
+          0,
+        );
+        await this.activatePatient(
+          invoice.customer_email,
+          invoice.id,
+          { customerId: stripeId(invoice.customer), subscriptionId: stripeId(invoice.subscription) },
+          discountCents > 0,
+        );
         break;
       }
       default:
@@ -56,6 +66,7 @@ export class StripeWebhookService {
     email: string | null | undefined,
     stripeReferenceId: string,
     stripeIds: { customerId: string | null; subscriptionId: string | null },
+    rewardApplied: boolean,
   ) {
     if (!email) {
       this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
@@ -86,8 +97,15 @@ export class StripeWebhookService {
     }
 
     // Generate activation token (expires 7 days)
-    const activationToken = crypto.randomBytes(32).toString('hex');
-    const activationTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const { activationToken, activationTokenExpiresAt } = newActivationToken();
+
+    // Delivery details the customer entered at checkout (see CheckoutService.saveCheckoutDetails).
+    const details = (lead.checkoutDetails ?? {}) as {
+      line1?: string;
+      city?: string;
+      postalCode?: string;
+      country?: string;
+    };
 
     // Create or update patient
     const tempPasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
@@ -104,6 +122,10 @@ export class StripeWebhookService {
         leadId: lead.id,
         activationToken,
         activationTokenExpiresAt,
+        addressLine1: details.line1 || null,
+        city: details.city || null,
+        postcode: details.postalCode || null,
+        country: details.country || null,
         ...billing,
       },
     });
@@ -123,7 +145,7 @@ export class StripeWebhookService {
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding
     // referrals that never pay).
-    await this.referrals.handleConversion(lead, patient);
+    await this.referrals.handleConversion(lead, patient, { friendRewardApplied: rewardApplied });
 
     // Send activation email
     const activationUrl = `${this.appUrl}/activate?token=${activationToken}`;
