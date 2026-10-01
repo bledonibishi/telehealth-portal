@@ -11,6 +11,33 @@ export const GET_PATIENTS = gql`
       leadId
       activatedAt
       createdAt
+      productKind
+      latestConsultationStatus
+      hasActivePrescription
+      lastCheckInStatus
+      lastCheckInDueAt
+      treatmentStatus
+      medications { label dose }
+      startingWeightKg
+      currentWeightKg
+      targetWeightKg
+      weightLostKg
+      progressPercentage
+      lastWeighedAt
+      awaitingReply
+      lastMessageAt
+    }
+  }
+`;
+
+export const PATIENT_ADHERENCE = gql`
+  query PatientDoseAdherence($patientId: ID!, $weeks: Int) {
+    doseAdherenceTrend(patientId: $patientId, weeks: $weeks) {
+      weekStart
+      taken
+      missed
+      skipped
+      adherencePct
     }
   }
 `;
@@ -65,6 +92,19 @@ export const UPDATE_PATIENT = gql`
       firstName
       lastName
       dateOfBirth
+    }
+  }
+`;
+
+export const CREATE_PATIENT = gql`
+  mutation CreatePatient($input: CreatePatientInput!) {
+    createPatient(input: $input) {
+      id
+      email
+      firstName
+      lastName
+      dateOfBirth
+      temporaryPassword
     }
   }
 `;

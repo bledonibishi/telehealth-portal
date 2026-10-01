@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getToken } from '@/lib/auth';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
@@ -12,6 +13,7 @@ const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
  * as a blob with the auth header and renders it from an object URL instead.
  */
 export default function AuthedImage({ path, alt, className }: { path?: string | null; alt: string; className?: string }) {
+  const { t } = useI18n();
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
@@ -40,8 +42,8 @@ export default function AuthedImage({ path, alt, className }: { path?: string | 
     };
   }, [path]);
 
-  if (!path) return <div className={`bg-gray-100 flex items-center justify-center text-xs text-gray-400 ${className}`}>No file</div>;
-  if (error) return <div className={`bg-gray-100 flex items-center justify-center text-xs text-red-400 ${className}`}>Failed to load</div>;
+  if (!path) return <div className={`bg-gray-100 flex items-center justify-center text-xs text-gray-400 ${className}`}>{t('No file')}</div>;
+  if (error) return <div className={`bg-gray-100 flex items-center justify-center text-xs text-red-400 ${className}`}>{t('Failed to load')}</div>;
   if (!src) return <div className={`bg-gray-100 animate-pulse ${className}`} />;
 
   return <img src={src} alt={alt} className={className} />;

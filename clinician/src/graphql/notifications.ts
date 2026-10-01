@@ -7,6 +7,7 @@ export const GET_NOTIFICATION_COUNTS = gql`
       pendingConsultations
       patientMessages
       pendingOrders
+      missedDoseAlerts
     }
   }
 `;

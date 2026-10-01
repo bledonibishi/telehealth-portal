@@ -13,4 +13,7 @@ export class NotificationCounts {
 
   @Field(() => Int)
   pendingOrders: number;
+
+  @Field(() => Int, { description: 'GLP-1 patients who have not taken several doses in a row (see missedDoseAlerts)' })
+  missedDoseAlerts: number;
 }

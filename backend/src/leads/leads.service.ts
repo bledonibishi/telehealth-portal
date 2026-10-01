@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class LeadsService {
@@ -10,6 +11,7 @@ export class LeadsService {
     private prisma: PrismaService,
     private posthog: PostHogService,
     private posthogLogger: PostHogLoggerService,
+    private referrals: ReferralsService,
   ) {}
 
   findAll() {
@@ -25,7 +27,7 @@ export class LeadsService {
   async upsert(input: CreateLeadInput) {
     const existingLead = await this.prisma.lead.findUnique({
       where: { email: input.email },
-      select: { id: true },
+      select: { id: true, convertedAt: true },
     });
     const lead = await this.prisma.lead.upsert({
       where: { email: input.email },
@@ -61,6 +63,11 @@ export class LeadsService {
         has_payment_session: Boolean(lead.stripeSessionId),
         posthogDistinctId: lead.id,
       });
+      await this.referrals.validateAndAttach(input.referralCode, { id: lead.id, email: lead.email });
+    } else if (input.referralCode && !existingLead.convertedAt) {
+      // Someone who started an assessment earlier and now arrives through a friend's
+      // link: attach the referral to their still-unpaid lead (a no-op if it already has one).
+      await this.referrals.validateAndAttach(input.referralCode, { id: lead.id, email: lead.email });
     }
 
     return lead;

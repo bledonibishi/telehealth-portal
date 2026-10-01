@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 
+// Patient-supplied text (names) gets interpolated straight into HTML emails —
+// escape it so a name like `<img src=x onerror=...>` can't inject markup.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -43,7 +49,7 @@ export class EmailService {
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#1e293b">Time for your monthly check-in, ${firstName}</h2>
-        <p style="color:#475569">Let us know how your treatment is going so we can keep your prescription on track.</p>
+        <p style="color:#475569">Share your weight and how you’re feeling — it takes about 2 minutes, and helps us keep your treatment on track.</p>
         <a href="${checkInUrl}"
           style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
           Start my check-in
@@ -58,5 +64,79 @@ export class EmailService {
     }
 
     await this.resend.emails.send({ from: this.from, to, subject: 'Your monthly check-in is ready', html });
+  }
+
+  /** Resolves true only once the provider has confirmed it accepted the send. */
+  async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string): Promise<boolean> {
+    const when = scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const safeFirstName = escapeHtml(firstName);
+    const safeProductName = escapeHtml(productName);
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">Upcoming dose reminder</h2>
+        <p style="color:#475569">Hi ${safeFirstName}, your next dose of ${safeProductName} is due on ${when}.</p>
+        <a href="${portalUrl}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          View my dose calendar
+        </a>
+        <p style="color:#94a3b8;font-size:13px">You can mark it as taken or skipped from your portal once it's done.</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      // Not a real send — the caller must not treat this as delivered.
+      this.logger.log(`[DEV] Dose reminder email to ${to}: ${productName} due ${scheduledFor.toISOString()}`);
+      return false;
+    }
+
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `Reminder: ${productName} dose due ${when}`, html });
+    if (error) {
+      this.logger.error(`Dose reminder email to ${to} failed: ${error.message}`);
+      return false;
+    }
+    return true;
+  }
+
+  // Deliberately generic: email isn't a secure channel, so the clinical detail
+  // (decision, reasons, messages) stays behind the portal login.
+  async sendConsultationUpdateEmail(to: string, firstName: string, headline: string, portalUrl: string) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">${headline}</h2>
+        <p style="color:#475569">Hi ${firstName}, there's an update from our clinical team. Log in to your patient portal to see it.</p>
+        <a href="${portalUrl}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Open my portal
+        </a>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Consultation update email to ${to}: ${headline}`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: headline, html });
+  }
+
+  async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean) {
+    const safeFirstName = escapeHtml(firstName);
+    const body = autoApplied
+      ? `${amountLabel} has already been credited to your account, and will come off your next bill automatically.`
+      : `${amountLabel} is ready for you to apply whenever you like — just visit your Rewards page and hit "Apply now".`;
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">A friend you referred just joined!</h2>
+        <p style="color:#475569">Hi ${safeFirstName}, your friend's first payment just went through — thanks for spreading the word.</p>
+        <p style="color:#475569">${body}</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Referral reward email to ${to}: ${amountLabel} (autoApplied=${autoApplied})`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: 'Your referral reward is ready', html });
   }
 }

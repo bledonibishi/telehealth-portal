@@ -1,12 +1,23 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
 import { PhotoReviewService } from './photo-review.service';
-import { OnboardingStatus } from '../common/enums';
+import { OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
-import { ReviewOnboardingInput } from './dto/review-onboarding.input';
+import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
+
+interface StepFeedback {
+  step: string;
+  approved: boolean;
+  reason?: string;
+}
+
+function toJson(feedback: StepFeedback[]): Prisma.InputJsonValue {
+  return feedback as unknown as Prisma.InputJsonValue;
+}
 
 @Injectable()
 export class OnboardingService {
@@ -36,24 +47,28 @@ export class OnboardingService {
   }
 
   async saveIdentityStep(patientId: string, input: SaveIdentityStepInput) {
-    await this.getOrCreateForPatient(patientId);
+    const existing = await this.getOrCreateForPatient(patientId);
+    const stepFeedback = existing.stepFeedback as StepFeedback[];
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId },
       data: {
         idDocumentFileId: input.idDocumentFileId,
         selfieFileId: input.selfieFileId,
+        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.ID_PHOTO)),
       },
     });
     return this.toModel(updated);
   }
 
   async saveBodyPhotosStep(patientId: string, input: SaveBodyPhotosStepInput) {
-    await this.getOrCreateForPatient(patientId);
+    const existing = await this.getOrCreateForPatient(patientId);
+    const stepFeedback = existing.stepFeedback as StepFeedback[];
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId },
       data: {
         bodyPhotoFrontFileId: input.bodyPhotoFrontFileId,
         bodyPhotoSideFileId: input.bodyPhotoSideFileId,
+        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)),
       },
     });
     return this.toModel(updated);
@@ -72,12 +87,14 @@ export class OnboardingService {
   }
 
   async savePrescriptionProofStep(patientId: string, input: SavePrescriptionProofStepInput) {
-    await this.getOrCreateForPatient(patientId);
+    const existing = await this.getOrCreateForPatient(patientId);
+    const stepFeedback = existing.stepFeedback as StepFeedback[];
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId },
       data: {
         prescriptionProofType: input.prescriptionProofType,
         prescriptionProofFileId: input.prescriptionProofFileId,
+        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.PRESCRIPTION_PROOF)),
       },
     });
     return this.toModel(updated);
@@ -121,7 +138,6 @@ export class OnboardingService {
         submittedAt: new Date(),
         reviewedAt: null,
         reviewedByClinicianId: null,
-        rejectionReason: null,
       },
     });
     return this.toModel(updated);
@@ -146,23 +162,39 @@ export class OnboardingService {
     return row ? this.toModel(row) : null;
   }
 
-  async review(clinicianId: string, input: ReviewOnboardingInput) {
+  async reviewOnboardingStep(clinicianId: string, input: ReviewOnboardingStepInput) {
     const submission = await this.prisma.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
     if (!submission) throw new NotFoundException('Onboarding not found');
     if (submission.status !== OnboardingStatus.PENDING_REVIEW) {
       throw new BadRequestException('Onboarding is not pending review');
     }
-    if (!input.approve && !input.rejectionReason) {
-      throw new BadRequestException('rejectionReason is required when rejecting');
+
+    const requiredSteps = [OnboardingStepKey.ID_PHOTO, OnboardingStepKey.BODY_PHOTO];
+    if (submission.priorMedicationUse) requiredSteps.push(OnboardingStepKey.PRESCRIPTION_PROOF);
+    if (!requiredSteps.includes(input.step)) {
+      throw new BadRequestException('This step is not part of the current review');
     }
+    if (!input.approved && !input.reason?.trim()) {
+      throw new BadRequestException('A reason is required when rejecting a step');
+    }
+
+    const decisions = (submission.stepFeedback as unknown as StepFeedback[]).filter((d) => d.step !== input.step);
+    decisions.push({ step: input.step, approved: input.approved, reason: input.approved ? undefined : input.reason!.trim() });
+
+    const allDecided = requiredSteps.every((step) => decisions.some((d) => d.step === step));
+    const anyRejected = decisions.some((d) => requiredSteps.includes(d.step as OnboardingStepKey) && !d.approved);
 
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId: input.patientId },
       data: {
-        status: input.approve ? OnboardingStatus.APPROVED : OnboardingStatus.REJECTED,
-        reviewedAt: new Date(),
-        reviewedByClinicianId: clinicianId,
-        rejectionReason: input.approve ? null : input.rejectionReason,
+        stepFeedback: toJson(decisions),
+        ...(allDecided
+          ? {
+              status: anyRejected ? OnboardingStatus.REJECTED : OnboardingStatus.APPROVED,
+              reviewedAt: new Date(),
+              reviewedByClinicianId: clinicianId,
+            }
+          : {}),
       },
     });
     return this.toModel(updated);

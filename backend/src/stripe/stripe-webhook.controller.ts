@@ -1,4 +1,4 @@
-import { Controller, Post, Req, Res, Headers, Logger } from '@nestjs/common';
+import { Controller, Post, Req, Res, Headers, Logger, type RawBodyRequest } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
@@ -22,7 +22,7 @@ export class StripeWebhookController {
 
   @Post('webhook')
   async handleWebhook(
-    @Req() req: Request,
+    @Req() req: RawBodyRequest<Request>,
     @Res() res: Response,
     @Headers('stripe-signature') sig: string,
   ) {
@@ -31,9 +31,16 @@ export class StripeWebhookController {
       return res.status(400).send('Webhook secret not configured');
     }
 
+    // Stripe signs the exact bytes it sent. req.body is already parsed JSON by
+    // now, so verify against the raw body Nest keeps (see rawBody in create-app.ts).
+    if (!req.rawBody) {
+      this.logger.error('Webhook request has no raw body — cannot verify the signature');
+      return res.status(400).send('Webhook Error: missing raw body');
+    }
+
     let event: Stripe.Event;
     try {
-      event = this.stripe.webhooks.constructEvent(req.body, sig, this.webhookSecret);
+      event = this.stripe.webhooks.constructEvent(req.rawBody, sig, this.webhookSecret);
     } catch (err: any) {
       this.logger.error(`Webhook signature verification failed: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);

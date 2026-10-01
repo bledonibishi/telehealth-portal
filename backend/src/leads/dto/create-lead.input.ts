@@ -21,4 +21,7 @@ export class CreateLeadInput {
 
   @Field({ nullable: true })
   stripeSessionId?: string;
+
+  @Field({ nullable: true, description: "A referrer's shareable code, carried through from the quiz link" })
+  referralCode?: string;
 }

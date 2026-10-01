@@ -1,8 +1,9 @@
 // Loaded first, before any other /scripts/*.js — edit these when endpoints change.
 // All values here are public by design (client-side URLs / a PostHog project key), never secrets.
 window.TELEHEALTH_CONFIG = {
-  // This Next.js app's own deployment (Vercel) — hosts /api/checkout.
-  apiBase: 'https://website.webmaverics.com',
+  // The backend (same host as graphqlUrl below) — it hosts /api/checkout. This
+  // website no longer has its own /api/checkout route.
+  apiBase: 'https://api.webmaverics.com',
 
   // Backend GraphQL endpoint (createLead mutation). Backend runs on EC2 —
   // update this once that instance is up and api.webmaverics.com points at it.

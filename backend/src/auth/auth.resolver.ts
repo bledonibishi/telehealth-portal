@@ -2,9 +2,11 @@ import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
+import { ActivateAccountInput, RequestActivationLinkInput } from './dto/activation.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
-import { GqlAuthGuard } from './guards/gql-auth.guard';
-import { ThrottleLoginAttempts } from './guards/gql-throttler.guard';
+import { ThrottleLoginAttempts, ThrottleRequests } from './guards/gql-throttler.guard';
+import { Authorized } from './decorators/authorized.decorator';
+import { STAFF } from './access-roles';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 function loginAttempt(ctx: any): LoginAttempt {
@@ -27,6 +29,18 @@ export class AuthResolver {
     return this.authService.loginPatient(input.email, input.password, loginAttempt(ctx));
   }
 
+  @ThrottleRequests()
+  @Mutation(() => Boolean, { description: 'Emails an activation link to a paid patient who has not set a password yet. Always true.' })
+  requestActivationLink(@Args('input') input: RequestActivationLinkInput) {
+    return this.authService.requestActivationLink(input.email);
+  }
+
+  @ThrottleLoginAttempts()
+  @Mutation(() => AuthResponse, { description: 'Sets the password using an emailed activation token and signs the patient in' })
+  activateAccount(@Args('input') input: ActivateAccountInput, @Context() ctx: any) {
+    return this.authService.activateAccount(input.token, input.password, loginAttempt(ctx));
+  }
+
   @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
   verifyMfa(
@@ -42,13 +56,13 @@ export class AuthResolver {
     return this.authService.refreshAccessToken(refreshToken);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Mutation(() => MfaSetupResponse)
   setupMfa(@CurrentUser() user: any) {
     return this.authService.setupMfa(user.id);
   }
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Mutation(() => Boolean)
   enableMfa(@CurrentUser() user: any, @Args('totpCode') totpCode: string) {
     return this.authService.enableMfa(user.id, totpCode);

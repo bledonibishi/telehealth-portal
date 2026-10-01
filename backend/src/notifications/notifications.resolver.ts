@@ -1,16 +1,18 @@
 import { Resolver, Query } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { NotificationCounts } from './notifications.model';
-import { GqlAuthGuard } from '../auth/guards/gql-auth.guard';
+import { Authorized } from '../auth/decorators/authorized.decorator';
+import { AuthUser, PRESCRIBERS, STAFF, accessRoleOf } from '../auth/access-roles';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver()
 export class NotificationsResolver {
   constructor(private notificationsService: NotificationsService) {}
 
-  @UseGuards(GqlAuthGuard)
+  @Authorized(...STAFF)
   @Query(() => NotificationCounts)
-  notificationCounts() {
-    return this.notificationsService.getCounts();
+  notificationCounts(@CurrentUser() user: AuthUser) {
+    const role = accessRoleOf(user);
+    return this.notificationsService.getCounts({ includeMissedDoses: !!role && PRESCRIBERS.includes(role) });
   }
 }

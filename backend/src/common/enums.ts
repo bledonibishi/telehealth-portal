@@ -9,7 +9,22 @@ import {
   PersonaStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
+  OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
+  RefundStatus,
+  ProductCategory,
+  ProductForm,
+  PrescriptionStatus,
+  OrderStatus,
+  CheckInOutcome,
+  ConsentType,
+  DoseStatus,
+  SymptomScale,
+  LabResultKind,
+  ReferralStatus,
+  VoucherKind,
+  VoucherStatus,
 } from '@telehealth/shared-types';
 
 registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
@@ -21,7 +36,22 @@ registerEnumType(OnboardingStatus, { name: 'OnboardingStatus' });
 registerEnumType(PersonaStatus, { name: 'PersonaStatus' });
 registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
+registerEnumType(OnboardingStepKey, { name: 'OnboardingStepKey' });
 registerEnumType(CheckInStatus, { name: 'CheckInStatus' });
+registerEnumType(CheckInFeeling, { name: 'CheckInFeeling' });
+registerEnumType(RefundStatus, { name: 'RefundStatus' });
+registerEnumType(ProductCategory, { name: 'ProductCategory' });
+registerEnumType(ProductForm, { name: 'ProductForm' });
+registerEnumType(PrescriptionStatus, { name: 'PrescriptionStatus' });
+registerEnumType(OrderStatus, { name: 'OrderStatus' });
+registerEnumType(CheckInOutcome, { name: 'CheckInOutcome' });
+registerEnumType(ConsentType, { name: 'ConsentType' });
+registerEnumType(DoseStatus, { name: 'DoseStatus' });
+registerEnumType(SymptomScale, { name: 'SymptomScale' });
+registerEnumType(LabResultKind, { name: 'LabResultKind' });
+registerEnumType(ReferralStatus, { name: 'ReferralStatus' });
+registerEnumType(VoucherKind, { name: 'VoucherKind' });
+registerEnumType(VoucherStatus, { name: 'VoucherStatus' });
 
 export {
   ConsultationStatus,
@@ -33,5 +63,20 @@ export {
   PersonaStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
+  OnboardingStepKey,
   CheckInStatus,
+  CheckInFeeling,
+  RefundStatus,
+  ProductCategory,
+  ProductForm,
+  PrescriptionStatus,
+  OrderStatus,
+  CheckInOutcome,
+  ConsentType,
+  DoseStatus,
+  SymptomScale,
+  LabResultKind,
+  ReferralStatus,
+  VoucherKind,
+  VoucherStatus,
 };

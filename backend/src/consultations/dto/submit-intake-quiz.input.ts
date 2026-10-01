@@ -6,11 +6,14 @@ export class QuizAnswerInput {
   @Field()
   questionId: string;
 
-  @Field()
-  question: string;
+  @Field({ nullable: true, description: 'Ignored by the server, which uses its own wording; kept for older clients' })
+  question?: string;
 
-  @Field()
+  @Field({ description: 'Display text: the chosen option label(s), number or free text' })
   answer: string;
+
+  @Field({ nullable: true, description: "Option value(s) from the questionnaire, '|'-separated for multi-select" })
+  value?: string;
 }
 
 @InputType()
@@ -20,4 +23,7 @@ export class SubmitIntakeQuizInput {
 
   @Field(() => [QuizAnswerInput])
   answers: QuizAnswerInput[];
+
+  @Field({ nullable: true, description: 'Version of the telehealth consent the patient accepted (see consentText)' })
+  telehealthConsentVersion?: string;
 }

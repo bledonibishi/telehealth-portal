@@ -1,54 +1,142 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
+import { MessagingService } from '../messaging/messaging.service';
+import { ConsultationKind, PrescriptionStatus, UserRole } from '../common/enums';
+import { OrdersService } from './orders.service';
+import { DosingService } from '../dosing/dosing.service';
+import { PrescribingService } from './prescribing.service';
+import { ChangeDoseInput } from './dto/change-dose.input';
 
 @Injectable()
 export class PrescriptionsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(PrescriptionsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private audit: AuditService,
+    private orders: OrdersService,
+    private dosing: DosingService,
+    private prescribing: PrescribingService,
+    private messaging: MessagingService,
+    private email: EmailService,
+    private config: ConfigService,
+  ) {}
+
+  async findById(id: string) {
+    const rx = await this.prisma.prescription.findUnique({ where: { id } });
+    if (!rx) throw new NotFoundException('Prescription not found');
+    return rx;
+  }
+
+  findByPatient(patientId: string) {
+    return this.prisma.prescription.findMany({ where: { patientId }, orderBy: { issuedAt: 'desc' } });
+  }
+
+  async cancel(clinicianId: string, id: string, reason: string) {
+    if (!reason.trim()) throw new BadRequestException('A reason is required to cancel a prescription');
+    const rx = await this.findById(id);
+    if (rx.status !== PrescriptionStatus.ACTIVE) {
+      throw new BadRequestException(`Only an active prescription can be cancelled (this one is ${rx.status.toLowerCase()})`);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await this.orders.cancelPendingFor(id, `Prescription cancelled: ${reason.trim()}`, tx);
+      await this.dosing.cancelForPrescription(id, tx);
+      return tx.prescription.update({
+        where: { id },
+        data: { status: PrescriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason.trim() },
+      });
+    });
+    await this.audit.log({
+      actorId: clinicianId,
+      actorRole: UserRole.CLINICIAN,
+      action: 'PRESCRIPTION_CANCELLED',
+      resourceType: 'Prescription',
+      resourceId: id,
+      metadata: { reason: reason.trim() },
+    });
+    return updated;
+  }
 
   findByConsultation(consultationId: string) {
     return this.prisma.prescription.findUnique({ where: { consultationId } });
   }
 
-  findAllOrders() {
-    return this.prisma.prescription.findMany({
-      include: {
-        consultation: {
-          include: { patient: true },
+  /**
+   * A clinician changing a patient's dose outside the monthly check-in flow —
+   * e.g. stepping up a GLP-1 titration early, or switching HRT products.
+   * Goes through the same rule engine and supersede/reissue path as every
+   * other prescribing decision (PrescribingService.issue).
+   */
+  async changeDose(clinicianId: string, input: ChangeDoseInput) {
+    if (!input.reasonForChange.trim()) throw new BadRequestException('A clinical reason is required to change the dose');
+    if (!input.items.length) throw new BadRequestException('Choose at least one medicine');
+
+    const current = await this.findById(input.prescriptionId);
+    if (current.status !== PrescriptionStatus.ACTIVE) {
+      throw new BadRequestException(`Only an active prescription can have its dose changed (this one is ${current.status.toLowerCase()})`);
+    }
+
+    await this.prescribing.assertCanPrescribe(clinicianId);
+    await this.prescribing.assertIdentityVerified(current.patientId);
+
+    const product = await this.prisma.product.findUnique({ where: { id: input.items[0].productId } });
+    if (!product) throw new BadRequestException('Unknown product');
+
+    // The prescribing rules need the patient's intake answers, same as at initial approval.
+    const consultation = await this.prisma.consultation.findFirst({
+      where: { patientId: current.patientId, kind: product.kind },
+      orderBy: { submittedAt: 'desc' },
+    });
+    const answers = (consultation?.quizAnswers as any[]) ?? [];
+
+    const issued = await this.prisma.$transaction((tx) =>
+      this.prescribing.issue(
+        {
+          patientId: current.patientId,
+          prescriberId: clinicianId,
+          kind: product.kind as ConsultationKind,
+          answers,
+          items: input.items,
+          supersedesId: current.id,
+          notes: input.notes,
+          validityDays: input.validityDays,
+          refillsAllowed: input.refillsAllowed,
+          overrideReason: input.overrideReason,
         },
-      },
-      orderBy: { issuedAt: 'desc' },
+        tx,
+      ),
+    );
+
+    await this.audit.log({
+      actorId: clinicianId,
+      actorRole: UserRole.CLINICIAN,
+      action: 'DOSE_CHANGED',
+      resourceType: 'Prescription',
+      resourceId: issued.id,
+      metadata: { supersedes: current.id, reason: input.reasonForChange.trim(), medication: issued.medication },
     });
+
+    const patient = await this.prisma.patient.findUnique({ where: { id: current.patientId } });
+    if (patient) await this.notifyPatient(patient, clinicianId, input.messageToPatient);
+
+    return issued;
   }
 
-  dispatch(id: string, pharmacyRef: string) {
-    return this.prisma.prescription.update({
-      where: { id },
-      data: { dispatchedAt: new Date(), pharmacyRef },
-      include: { consultation: { include: { patient: true } } },
-    });
-  }
-
-  async markOutForDelivery(id: string, carrier?: string, trackingNumber?: string, trackingUrl?: string) {
-    const rx = await this.prisma.prescription.findUnique({ where: { id } });
-    if (!rx) throw new NotFoundException('Order not found');
-    if (!rx.dispatchedAt) throw new BadRequestException('Order must be dispatched before it can be out for delivery');
-
-    return this.prisma.prescription.update({
-      where: { id },
-      data: { outForDeliveryAt: new Date(), carrier, trackingNumber, trackingUrl },
-      include: { consultation: { include: { patient: true } } },
-    });
-  }
-
-  async markDelivered(id: string) {
-    const rx = await this.prisma.prescription.findUnique({ where: { id } });
-    if (!rx) throw new NotFoundException('Order not found');
-    if (!rx.outForDeliveryAt) throw new BadRequestException('Order must be out for delivery before it can be marked delivered');
-
-    return this.prisma.prescription.update({
-      where: { id },
-      data: { deliveredAt: new Date() },
-      include: { consultation: { include: { patient: true } } },
-    });
+  // Best effort: a failed email or message must not undo a dose change that is already saved.
+  private async notifyPatient(patient: { id: string; email: string; firstName: string }, clinicianId: string, message?: string) {
+    try {
+      if (message?.trim()) {
+        const thread = await this.prisma.consultation.findFirst({ where: { patientId: patient.id }, orderBy: { submittedAt: 'desc' } });
+        if (thread) await this.messaging.send(clinicianId, UserRole.CLINICIAN, { consultationId: thread.id, content: message.trim() });
+      }
+      const portal = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+      await this.email.sendConsultationUpdateEmail(patient.email, patient.firstName, 'Your dose has been updated', `${portal}/dashboard`);
+    } catch (err: any) {
+      this.logger.error(`Dose-change notification failed: ${err?.message}`);
+    }
   }
 }

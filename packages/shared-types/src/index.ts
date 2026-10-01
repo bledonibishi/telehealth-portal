@@ -9,6 +9,7 @@ export enum ConsultationStatus {
 export enum ConsultationKind {
   HRT = 'HRT',
   GLP1 = 'GLP1',
+  TRT = 'TRT',
 }
 
 export enum UserRole {
@@ -58,10 +59,115 @@ export enum PrescriptionProofType {
   ORDER_CONFIRMATION = 'ORDER_CONFIRMATION',
 }
 
+export enum OnboardingStepKey {
+  ID_PHOTO = 'ID_PHOTO',
+  BODY_PHOTO = 'BODY_PHOTO',
+  PRESCRIPTION_PROOF = 'PRESCRIPTION_PROOF',
+}
+
 export enum CheckInStatus {
   SCHEDULED = 'SCHEDULED',
   SENT = 'SENT',
   COMPLETED = 'COMPLETED',
+}
+
+/** Validated symptom questionnaires: Menopause Rating Scale (HRT), Aging Males' Symptoms scale (TRT). */
+export enum SymptomScale {
+  MRS = 'MRS',
+  AMS = 'AMS',
+}
+
+export enum CheckInFeeling {
+  GREAT = 'GREAT',
+  GOOD = 'GOOD',
+  OKAY = 'OKAY',
+  DIFFICULTIES = 'DIFFICULTIES',
+  NOT_WELL = 'NOT_WELL',
+}
+
+export enum RefundStatus {
+  NOT_REQUIRED = 'NOT_REQUIRED',
+  REFUNDED = 'REFUNDED',
+  FAILED = 'FAILED',
+}
+
+export enum ProductCategory {
+  GLP1 = 'GLP1',
+  ESTROGEN = 'ESTROGEN',
+  PROGESTOGEN = 'PROGESTOGEN',
+  TESTOSTERONE = 'TESTOSTERONE',
+}
+
+export enum ProductForm {
+  INJECTION_PEN = 'INJECTION_PEN',
+  INJECTION_VIAL = 'INJECTION_VIAL',
+  GEL = 'GEL',
+  PATCH = 'PATCH',
+  TABLET = 'TABLET',
+  CAPSULE = 'CAPSULE',
+  SPRAY = 'SPRAY',
+  PELLET = 'PELLET',
+}
+
+export enum PrescriptionStatus {
+  ACTIVE = 'ACTIVE',
+  SUPERSEDED = 'SUPERSEDED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  DISPATCHED = 'DISPATCHED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum CheckInOutcome {
+  REPEAT = 'REPEAT',
+  NEW_PRESCRIPTION = 'NEW_PRESCRIPTION',
+  HOLD = 'HOLD',
+  STOP = 'STOP',
+}
+
+export enum ConsentType {
+  TELEHEALTH = 'TELEHEALTH',
+}
+
+export enum DoseStatus {
+  SCHEDULED = 'SCHEDULED',
+  TAKEN = 'TAKEN',
+  MISSED = 'MISSED',
+  SKIPPED = 'SKIPPED',
+}
+
+export enum LabResultKind {
+  ESTRADIOL = 'ESTRADIOL',
+  TESTOSTERONE = 'TESTOSTERONE',
+  FSH = 'FSH',
+  LH = 'LH',
+  SHBG = 'SHBG',
+  PSA = 'PSA',
+  HEMATOCRIT = 'HEMATOCRIT',
+  LIPID_PANEL = 'LIPID_PANEL',
+  HBA1C = 'HBA1C',
+  LIVER_FUNCTION = 'LIVER_FUNCTION',
+  OTHER = 'OTHER',
+}
+
+export enum ReferralStatus {
+  PENDING = 'PENDING',
+  CONVERTED = 'CONVERTED',
+}
+
+export enum VoucherKind {
+  REFERRER_REWARD = 'REFERRER_REWARD',
+  REFEREE_REWARD = 'REFEREE_REWARD',
+}
+
+export enum VoucherStatus {
+  ISSUED = 'ISSUED',
+  APPLIED = 'APPLIED',
 }
 
 export interface QuizAnswer {

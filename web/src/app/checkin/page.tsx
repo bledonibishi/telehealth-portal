@@ -4,18 +4,19 @@ import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { CHECK_IN_BY_TOKEN, SUBMIT_CHECK_IN } from '@/graphql/checkin';
-
-const PROGRESS_OPTIONS = ['Great', 'Good', 'No noticeable change', 'Getting worse'];
+import { QUESTIONNAIRE } from '@/graphql/intake';
+import { QuestionnaireForm, SubmittedAnswer } from '@/components/intake/QuestionnaireForm';
+import { FEELINGS } from '@/lib/weight';
 
 function CheckInForm({ token }: { token: string }) {
   const { data, loading, error } = useQuery(CHECK_IN_BY_TOKEN, { variables: { token } });
+  const kind = data?.checkInByToken?.kind;
+  const { data: qData, loading: qLoading } = useQuery(QUESTIONNAIRE, { variables: { kind, stage: 'CHECKIN' }, skip: !kind });
   const [submitCheckIn, { loading: submitting, error: submitError, data: submitData }] = useMutation(SUBMIT_CHECK_IN);
-
-  const [progress, setProgress] = useState('');
-  const [sideEffects, setSideEffects] = useState('');
   const [wantsToReorder, setWantsToReorder] = useState<boolean | null>(null);
+  const [feeling, setFeeling] = useState<string | null>(null);
 
-  if (loading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
+  if (loading || qLoading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
 
   if (error) {
     return (
@@ -32,96 +33,81 @@ function CheckInForm({ token }: { token: string }) {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
         <div className="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-xl mx-auto mb-4">✓</div>
-        <h1 className="text-lg font-semibold text-slate-900">Thanks — you're all set</h1>
-        <p className="text-sm text-slate-500 mt-2">Your care team will review your check-in.</p>
+        <h1 className="text-lg font-semibold text-slate-900">Thanks — you&rsquo;re all set</h1>
+        <p className="text-sm text-slate-500 mt-2">Your clinician will review your check-in before your next supply.</p>
+        <p className="text-xs text-slate-400 mt-4">
+          If you have severe symptoms in the meantime, call 112 or go to your nearest emergency department.
+        </p>
       </div>
     );
   }
 
   const checkIn = data?.checkInByToken;
-  const canSubmit = !!progress && wantsToReorder !== null;
+  const questions = qData?.questionnaire?.questions ?? [];
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    submitCheckIn({
-      variables: {
-        token,
-        input: {
-          answers: [
-            { questionId: 'progress', question: 'How’s your progress been since starting treatment?', answer: progress },
-            { questionId: 'side_effects', question: 'Have you experienced any side effects?', answer: sideEffects || 'None reported' },
-          ],
-          wantsToReorder,
-        },
-      },
-    });
+  const handleSubmit = (answers: SubmittedAnswer[]) => {
+    submitCheckIn({ variables: { token, input: { answers, wantsToReorder, feeling } } });
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-6">
-      <h1 className="text-xl font-bold text-slate-900">
-        Hi {checkIn?.patientFirstName ?? 'there'}, let&rsquo;s check in
-      </h1>
-      <p className="text-sm text-slate-500 mt-2">
-        A quick 3-question update helps your clinician keep your treatment on track.
-      </p>
-
-      <div className="mt-6 space-y-6">
-        <div>
-          <p className="text-sm font-medium text-slate-800 mb-2">How&rsquo;s your progress been since starting treatment?</p>
-          <div className="space-y-2">
-            {PROGRESS_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                onClick={() => setProgress(opt)}
-                className={`w-full text-left px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-                  progress === opt ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-slate-800 mb-2">Have you experienced any side effects?</p>
-          <textarea
-            rows={3}
-            placeholder="None, or describe briefly…"
-            value={sideEffects}
-            onChange={(e) => setSideEffects(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-slate-800 mb-2">Would you like to continue and reorder your prescription?</p>
-          <div className="flex gap-2">
-            {[true, false].map((val) => (
-              <button
-                key={String(val)}
-                onClick={() => setWantsToReorder(val)}
-                className={`flex-1 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-                  wantsToReorder === val ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {val ? 'Yes, reorder' : 'No, not right now'}
-              </button>
-            ))}
-          </div>
-        </div>
+    <div>
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
+        <h1 className="text-xl font-bold text-slate-900">
+          Hi {checkIn?.patientFirstName ?? 'there'}, let&rsquo;s check in
+        </h1>
+        <p className="text-sm text-slate-500 mt-2">
+          Your clinician reads this before sending your next supply. It takes about 2 minutes.
+        </p>
       </div>
 
-      {submitError && <p className="text-sm text-danger-500 mt-4">{submitError.message}</p>}
-
-      <button
-        onClick={handleSubmit}
-        disabled={!canSubmit || submitting}
-        className="w-full mt-6 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
-      >
-        {submitting ? 'Submitting…' : 'Submit check-in'}
-      </button>
+      <QuestionnaireForm
+        questions={questions}
+        submitting={submitting}
+        error={submitError?.message}
+        onSubmit={handleSubmit}
+        ready={wantsToReorder !== null && feeling !== null}
+        footer={
+          <>
+          <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+            <legend className="sr-only">How are you feeling?</legend>
+            <p className="text-sm font-medium text-slate-900">How are you feeling?</p>
+            <div className="space-y-2 mt-3">
+              {FEELINGS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  aria-pressed={feeling === f.value}
+                  onClick={() => setFeeling(f.value)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm text-left transition-colors ${
+                    feeling === f.value ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="text-xl" aria-hidden>{f.emoji}</span>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+            <p className="text-sm font-medium text-slate-900">Would you like to continue your treatment next month?</p>
+            <div className="flex gap-2 mt-3">
+              {[true, false].map((val) => (
+                <button
+                  key={String(val)}
+                  type="button"
+                  onClick={() => setWantsToReorder(val)}
+                  className={`flex-1 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+                    wantsToReorder === val ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {val ? 'Yes, continue' : 'No, not right now'}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          </>
+        }
+      />
     </div>
   );
 }
