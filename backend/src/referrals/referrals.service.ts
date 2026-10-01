@@ -47,6 +47,15 @@ export class ReferralsService {
     throw new Error('Could not generate a unique referral code');
   }
 
+  /** The shareable link for a patient's own code (created on first use). */
+  async referralLinkFor(patientId: string): Promise<string> {
+    return this.linkFor(await this.codeFor(patientId));
+  }
+
+  private linkFor(code: string): string {
+    return `${this.webflowSiteUrl}/?ref=${code}`;
+  }
+
   /**
    * Called from LeadsService.upsert right after a brand-new lead is created.
    * Silently no-ops on an unknown code or a self-referral, so a bad/missing
@@ -79,7 +88,11 @@ export class ReferralsService {
    * Called from StripeWebhookService.activatePatient the first time a lead
    * converts into a Patient. Only fires rewards for a lead that actually paid.
    */
-  async handleConversion(lead: { id: string }, patient: { id: string; email: string; firstName: string }): Promise<void> {
+  async handleConversion(
+    lead: { id: string },
+    patient: { id: string; email: string; firstName: string },
+    { friendRewardApplied = true }: { friendRewardApplied?: boolean } = {},
+  ): Promise<void> {
     const referral = await this.prisma.referral.findUnique({ where: { referredLeadId: lead.id } });
     if (!referral || referral.status === 'CONVERTED') return;
 
@@ -88,8 +101,8 @@ export class ReferralsService {
       data: { status: 'CONVERTED', convertedAt: new Date(), referredPatientId: patient.id },
     });
 
-    // The friend's own $20 was already applied as a discount at their checkout
-    // (see CheckoutService) — this voucher just records that for their Rewards page.
+    // The friend's own reward: applied at checkout if they chose to. If they
+    // skipped it, it stays ISSUED so they can still apply it from their portal.
     await this.prisma.voucher.create({
       data: {
         patientId: patient.id,
@@ -97,9 +110,9 @@ export class ReferralsService {
         kind: VoucherKind.REFEREE_REWARD,
         amountCents: REFERRAL_REWARD_CENTS,
         currency: REWARD_CURRENCY,
-        status: VoucherStatus.APPLIED,
-        appliedAt: new Date(),
-        note: 'Applied as a discount on your first order',
+        status: friendRewardApplied ? VoucherStatus.APPLIED : VoucherStatus.ISSUED,
+        appliedAt: friendRewardApplied ? new Date() : null,
+        note: friendRewardApplied ? 'Applied as a discount on your first order' : null,
       },
     });
 
@@ -182,7 +195,7 @@ export class ReferralsService {
 
     return {
       code,
-      link: `${this.webflowSiteUrl}/?ref=${code}`,
+      link: this.linkFor(code),
       voucherAutoApply: patient.voucherAutoApply,
       vouchers,
       referrals: referrals.map((r) => ({

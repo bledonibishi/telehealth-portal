@@ -57,6 +57,7 @@ export class GqlThrottlerGuard extends ThrottlerGuard {
   private accountTracker(context: ExecutionContext): string {
     const args = GqlExecutionContext.create(context).getArgs();
     if (args.input?.email) return args.input.email.trim().toLowerCase();
+    if (args.input?.token) return args.input.token;
     try {
       return this.jwtService.verify(args.pendingToken).sub;
     } catch {

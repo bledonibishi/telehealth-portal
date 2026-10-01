@@ -1,15 +1,34 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, Suspense } from 'react';
+import { useEffect, useRef, useState, useCallback, Suspense, type MutableRefObject } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG, type PlanKey } from '@/lib/config';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
+import { STORE_PRODUCTS } from '@/lib/catalog';
 
 /* ── Types ── */
 type PayMethod = 'stripe' | 'paysera';
 interface PayseraMethod { key: string; title: string; logo?: string; group?: string }
+
+type Amounts = { amountDueCents: number | null; discountCents: number; currency: string | null };
+interface BillingDetails {
+  name: string;
+  email: string;
+  address: { line1: string; line2: string; city: string; state: string; postal_code: string; country: string };
+}
+type ConfirmFn = (billing: BillingDetails) => Promise<{ error?: { message?: string } }>;
+interface Shipping { name: string; line1: string; city: string; postalCode: string; country: string }
+interface Reward { title: string; description: string; amountOffCents: number | null; percentOff: number | null; currency: string | null }
+
+const COUNTRIES: Array<[string, string]> = [
+  ['XK', 'Kosovo'], ['AL', 'Albania'], ['MK', 'North Macedonia'], ['ME', 'Montenegro'], ['RS', 'Serbia'],
+  ['DE', 'Germany'], ['AT', 'Austria'], ['CH', 'Switzerland'], ['GB', 'United Kingdom'], ['IE', 'Ireland'],
+];
+
+const money = (cents: number, currency: string | null) =>
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'gbp').toUpperCase() }).format(cents / 100);
 
 /* ── Helper ── */
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -24,17 +43,24 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 
 /* ── Stripe inline element mount ── */
 function StripeMount({
-  priceId, planName, email, leadId, onReady, onComplete,
+  priceId, planName, email, leadId, product, dose, applyReward, confirmRef, onReady, onComplete, onAmounts,
 }: {
   priceId: string; planName: string; email?: string; leadId?: string | null;
+  product?: string | null; dose?: string | null; applyReward: boolean;
+  confirmRef: MutableRefObject<ConfirmFn | null>;
   onReady: (mode: 'element' | 'redirect') => void;
   onComplete: (complete: boolean) => void;
+  onAmounts: (a: Amounts) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const peRef = useRef<unknown>(null);
+  // React Strict Mode runs effects twice in dev; each run would create a new
+  // Stripe subscription and mount a second card form.
+  const started = useRef(false);
 
   useEffect(() => {
-    if (!ref.current) return;
+    if (!ref.current || started.current) return;
+    started.current = true;
     const mount = ref.current;
 
     if (!CONFIG.STRIPE_PUBLISHABLE_KEY) {
@@ -57,9 +83,9 @@ function StripeMount({
         s.onerror = () => rej(new Error('Stripe.js failed to load'));
         document.head.appendChild(s);
       }),
-      post<{ clientSecret: string; intentType?: string }>(
+      post<{ clientSecret: string; intentType?: string } & Partial<Amounts>>(
         `${apiBase}/api/checkout/stripe-intent`,
-        { priceId, planName, email: email ?? null, leadId: leadId ?? null },
+        { priceId, planName, email: email ?? null, leadId: leadId ?? null, product: product ?? null, dose: dose ?? null, applyReward },
       ),
     ])
       .then(([, d]) => {
@@ -76,9 +102,20 @@ function StripeMount({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pe = (elements as any).create('payment', {
           layout: 'tabs',
-          defaultValues: { billingDetails: { email: email ?? '' } },
+          // Name, email and address come from our own form (passed at confirm time).
+          fields: { billingDetails: { name: 'never', email: 'never', address: 'never' } },
         });
         (peRef as { current: unknown }).current = pe;
+        confirmRef.current = (billing) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stripe as any).confirmPayment({
+            elements,
+            confirmParams: {
+              return_url: `${window.location.origin}/checkout/success`,
+              payment_method_data: { billing_details: billing },
+            },
+          });
+        onAmounts({ amountDueCents: d.amountDueCents ?? null, discountCents: d.discountCents ?? 0, currency: d.currency ?? null });
         mount.innerHTML = '';
         pe.mount(mount);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,10 +142,12 @@ function PayseraMount({
   onSelect: (key: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
 
   useEffect(() => {
     const box = ref.current;
-    if (!box) return;
+    if (!box || started.current) return;
+    started.current = true;
     box.innerHTML = '<div class="pv-skel"></div><div class="pv-skel"></div>';
 
     const apiBase = CONFIG.API_BASE;
@@ -177,6 +216,9 @@ function PayseraMount({
   return <div ref={ref} />;
 }
 
+
+const parseAmount = (label: string) => parseFloat(label.replace(/[^0-9.]/g, '')) || 0;
+
 /* ── Inner component uses useSearchParams (must be inside Suspense) ── */
 function CheckoutInner() {
   const searchParams = useSearchParams();
@@ -194,6 +236,13 @@ function CheckoutInner() {
 
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState('');
+  const [amounts, setAmounts] = useState<Amounts | null>(null);
+  const confirmRef = useRef<ConfirmFn | null>(null);
+
+  const [shipping, setShipping] = useState<Shipping>({ name: '', line1: '', city: '', postalCode: '', country: 'XK' });
+  const [touched, setTouched] = useState(false);
+  const [reward, setReward] = useState<Reward | null>(null);
+  const [rewardApplied, setRewardApplied] = useState(false);
 
   useEffect(() => {
     const s = loadAssessment();
@@ -202,37 +251,78 @@ function CheckoutInner() {
     setPlanKey(key);
     setReady(true);
     if (key) mergeAssessment({ plan: key });
-    if (s?.method) {
-      setChosen(s.method as PayMethod);
-    }
+    setChosen((s?.method as PayMethod | undefined) ?? 'stripe');
     if (s?.payseraMethod) setPayseraMethod(s.payseraMethod);
+    const fullName = [s?.firstName, s?.lastName].filter(Boolean).join(' ');
+    if (fullName) setShipping((v) => ({ ...v, name: fullName }));
+
+    if (s?.leadId) {
+      fetch(`${CONFIG.API_BASE}/api/checkout/rewards?leadId=${encodeURIComponent(s.leadId)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { referralReward: Reward | null } | null) => setReward(d?.referralReward ?? null))
+        .catch(() => {});
+    }
   }, [planKeyParam]);
 
   const plan = planKey ? CONFIG.PLANS[planKey] : null;
-  const eligible = !!session?.passed && !!plan && plan.product === session?.product;
+  // A payment without a saved lead would never get a patient account created.
+  const eligible = !!session?.passed && !!session?.leadId && !!plan && plan.product === session?.product;
+  const shippingValid = !!(shipping.name.trim() && shipping.line1.trim() && shipping.city.trim() && shipping.postalCode.trim());
 
   const canPay = useCallback(() => {
+    if (!shippingValid) return false;
     if (chosen === 'stripe') return stripeMode === 'redirect' || (stripeMode === 'element' && stripeComplete);
     if (chosen === 'paysera') return payseraMode === 'redirect' || (payseraMode === 'list' && !!payseraMethod);
     return false;
-  }, [chosen, stripeMode, stripeComplete, payseraMode, payseraMethod]);
+  }, [shippingValid, chosen, stripeMode, stripeComplete, payseraMode, payseraMethod]);
+
+  const toggleReward = () => {
+    // The card form is created with (or without) the reward, so it restarts.
+    setRewardApplied((v) => !v);
+    setStripeComplete(false);
+    setStripeMode(null);
+    setAmounts(null);
+    setPayError('');
+  };
 
   const handlePay = async () => {
-    if (!canPay() || !plan || !planKey) return;
+    if (!plan || !planKey) return;
+    if (!shippingValid) {
+      setTouched(true);
+      setPayError('Please fill in your name and delivery address.');
+      return;
+    }
+    if (!canPay()) return;
     setPayError('');
     setPaying(true);
 
+    const shippingBody = {
+      name: shipping.name.trim(),
+      line1: shipping.line1.trim(),
+      city: shipping.city.trim(),
+      postalCode: shipping.postalCode.trim(),
+      country: shipping.country,
+    };
+
     try {
       if (chosen === 'stripe' && stripeMode === 'redirect') {
-        const d = await post<{ url: string }>('/api/checkout', { priceId: plan.priceId, planName: plan.name });
+        const d = await post<{ url: string }>(`${CONFIG.API_BASE}/api/checkout`, {
+          priceId: plan.priceId,
+          planName: plan.name,
+          leadId: session?.leadId ?? null,
+          email: session?.email ?? null,
+          product: session?.productName ?? null,
+          dose: session?.dose ?? null,
+          applyReward: rewardApplied,
+          shipping: shippingBody,
+        });
         if (!d?.url) throw new Error('No payment URL');
         window.location.href = d.url;
         return;
       }
 
       if (chosen === 'paysera') {
-        const apiBase = CONFIG.API_BASE;
-        const d = await post<{ url: string }>(`${apiBase}/api/checkout/paysera`, {
+        const d = await post<{ url: string }>(`${CONFIG.API_BASE}/api/checkout/paysera`, {
           planKey,
           planName: plan.name,
           productKind: plan.product,
@@ -245,12 +335,20 @@ function CheckoutInner() {
         return;
       }
 
-      // Stripe element: confirmPayment handled by Stripe SDK
-      // (the onSubmit of the Stripe element takes care of redirect to success URL)
-      // This branch only fires if user clicks Pay when mode=element; the
-      // SDK handles it. We just signal to confirm:
-      const stripeEl = document.querySelector<HTMLElement>('[data-stripe-confirm]');
-      if (stripeEl) stripeEl.click();
+      // Inline Stripe Element: save the delivery details, then confirm. Stripe
+      // redirects to /checkout/success on success and only comes back with an error.
+      await post(`${CONFIG.API_BASE}/api/checkout/details`, {
+        leadId: session?.leadId ?? null,
+        email: session?.email ?? null,
+        shipping: shippingBody,
+      });
+      const result = await confirmRef.current?.({
+        name: shippingBody.name,
+        email: session?.email ?? '',
+        // Stripe requires every address field once its own address inputs are hidden.
+        address: { line1: shippingBody.line1, line2: '', city: shippingBody.city, state: '', postal_code: shippingBody.postalCode, country: shippingBody.country },
+      });
+      if (result?.error) setPayError(result.error.message ?? 'Your payment could not be completed.');
     } catch (ex) {
       console.error('[checkout] pay failed:', ex);
       setPayError("We couldn't start the payment. Please try again, or choose the other payment method.");
@@ -280,6 +378,7 @@ function CheckoutInner() {
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <Link href="/hrt-eligibility" className="btn-secondary">HRT assessment</Link>
                 <Link href="/glp1-eligibility" className="btn-primary">GLP-1 assessment</Link>
+                <Link href="/trt-eligibility" className="btn-secondary">TRT assessment</Link>
               </div>
             </div>
           </div>
@@ -288,18 +387,31 @@ function CheckoutInner() {
     );
   }
 
+  const eligUrl = plan!.product === 'HRT' ? '/hrt-eligibility' : plan!.product === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility';
+  const storeProduct = STORE_PRODUCTS.find((p) => p.slug === session?.productSlug);
   const medName =
-    plan!.product === 'GLP1' && session?.med && CONFIG.MEDICATIONS[session.med]
-      ? CONFIG.MEDICATIONS[session.med]
-      : null;
+    plan!.product === 'GLP1' && !storeProduct && session?.med && CONFIG.MEDICATIONS[session.med] ? CONFIG.MEDICATIONS[session.med] : null;
 
-  const eligUrl = plan!.product === 'HRT' ? '/hrt-eligibility' : '/glp1-eligibility';
+  const currencySymbol = plan!.price.match(/^[^\d]+/)?.[0] ?? '£';
+  const planAmount = parseAmount(plan!.price);
+  const rewardOff = reward?.amountOffCents != null ? reward.amountOffCents / 100 : reward?.percentOff != null ? (planAmount * reward.percentOff) / 100 : 0;
+  const rewardLabel =
+    reward?.amountOffCents != null ? money(reward.amountOffCents, reward.currency) : reward?.percentOff != null ? `${reward.percentOff}%` : '';
+  // Prefer Stripe's own total once the card form has created the payment.
+  const dueToday =
+    rewardApplied && amounts?.amountDueCents != null
+      ? money(amounts.amountDueCents, amounts.currency)
+      : `${currencySymbol}${Math.max(0, planAmount - (rewardApplied ? rewardOff : 0)).toFixed(2)}`;
 
   const btnLabel = paying
-    ? 'Redirecting to secure payment…'
+    ? 'Processing…'
     : chosen
-    ? `Pay with ${chosen === 'stripe' ? 'Stripe' : 'Paysera'} · ${plan!.price}${plan!.per}`
+    ? `Pay ${dueToday}${plan!.per} with ${chosen === 'stripe' ? 'card' : 'Paysera'}`
     : 'Select a payment method';
+
+  const setField = (k: keyof Shipping) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setShipping((v) => ({ ...v, [k]: e.target.value }));
+  const invalid = (v: string) => touched && !v.trim();
 
   return (
     <>
@@ -312,111 +424,181 @@ function CheckoutInner() {
           </div>
         </div>
 
-        <div style={{ maxWidth: 520, margin: '40px auto 80px', padding: '0 var(--px)' }}>
-          {/* Order summary */}
-          <div className="th-co-card" style={{ marginBottom: 20 }}>
-            <div className="th-co-sum-label">Your plan</div>
-            <div className="th-co-sum-name">{plan!.name}</div>
-            <div className="th-co-sum-desc">
-              {plan!.desc}
-              {medName ? ` · Preferred medicine: ${medName} (your doctor confirms the final prescription)` : ''}
+        <div className="th-co-grid">
+          <div className="th-co-main">
+            {/* Delivery details */}
+            <div className="th-co-card">
+              <div className="th-co-section-label">Delivery details</div>
+              <div className="th-co-fields">
+                <div className="th-co-field full">
+                  <label htmlFor="co-name">Full name</label>
+                  <input id="co-name" autoComplete="name" value={shipping.name} onChange={setField('name')} aria-invalid={invalid(shipping.name)} />
+                </div>
+                <div className="th-co-field full">
+                  <label htmlFor="co-line1">Street address</label>
+                  <input id="co-line1" autoComplete="address-line1" value={shipping.line1} onChange={setField('line1')} aria-invalid={invalid(shipping.line1)} />
+                </div>
+                <div className="th-co-field">
+                  <label htmlFor="co-city">City</label>
+                  <input id="co-city" autoComplete="address-level2" value={shipping.city} onChange={setField('city')} aria-invalid={invalid(shipping.city)} />
+                </div>
+                <div className="th-co-field">
+                  <label htmlFor="co-zip">ZIP / postal code</label>
+                  <input id="co-zip" autoComplete="postal-code" value={shipping.postalCode} onChange={setField('postalCode')} aria-invalid={invalid(shipping.postalCode)} />
+                </div>
+                <div className="th-co-field full">
+                  <label htmlFor="co-country">Country</label>
+                  <select id="co-country" autoComplete="country" value={shipping.country} onChange={setField('country')}>
+                    {COUNTRIES.map(([code, name]) => (
+                      <option key={code} value={code}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="th-co-sum-price">{plan!.price}<small>{plan!.per}</small></div>
-            <div className="th-co-divider" />
-            <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
-              ← Change plan
-            </Link>
+
+            {/* Payment methods */}
+            <div className="th-co-card">
+              <div className="th-co-section-label">Payment method</div>
+
+              <button
+                type="button"
+                className="th-co-method"
+                data-th-method="paysera"
+                role="radio"
+                aria-checked={chosen === 'paysera'}
+                onClick={() => chooseMethod('paysera')}
+                style={{
+                  borderColor: chosen === 'paysera' ? '#1E4FD8' : undefined,
+                  background: chosen === 'paysera' ? '#EEF4FF' : undefined,
+                  borderBottomLeftRadius: chosen === 'paysera' ? 0 : undefined,
+                  borderBottomRightRadius: chosen === 'paysera' ? 0 : undefined,
+                }}
+              >
+                <div className="th-method-dot" style={{ border: chosen === 'paysera' ? '7px solid #1E4FD8' : undefined }} />
+                <div>
+                  <div className="th-co-method-label">Pay with Paysera</div>
+                  <div className="th-co-method-desc">Bank transfer &amp; local payment methods</div>
+                </div>
+              </button>
+              {chosen === 'paysera' && (
+                <div className="th-co-panel">
+                  <PayseraMount
+                    planKey={planKey!}
+                    savedMethod={session?.payseraMethod}
+                    onReady={(mode) => setPayseraMode(mode)}
+                    onSelect={(key) => setPayseraMethod(key)}
+                  />
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="th-co-method"
+                data-th-method="stripe"
+                role="radio"
+                aria-checked={chosen === 'stripe'}
+                onClick={() => chooseMethod('stripe')}
+                style={{
+                  borderColor: chosen === 'stripe' ? '#1E4FD8' : undefined,
+                  background: chosen === 'stripe' ? '#EEF4FF' : undefined,
+                  borderBottomLeftRadius: chosen === 'stripe' ? 0 : undefined,
+                  borderBottomRightRadius: chosen === 'stripe' ? 0 : undefined,
+                }}
+              >
+                <div className="th-method-dot" style={{ border: chosen === 'stripe' ? '7px solid #1E4FD8' : undefined }} />
+                <div>
+                  <div className="th-co-method-label">Pay by card</div>
+                  <div className="th-co-method-desc">Visa, Mastercard &amp; more — powered by Stripe</div>
+                </div>
+              </button>
+              {chosen === 'stripe' && (
+                <div className="th-co-panel">
+                  <StripeMount
+                    key={rewardApplied ? 'reward' : 'full'}
+                    priceId={plan!.priceId}
+                    planName={plan!.name}
+                    email={session?.email}
+                    leadId={session?.leadId}
+                    product={session?.productName}
+                    dose={session?.dose}
+                    applyReward={rewardApplied}
+                    confirmRef={confirmRef}
+                    onReady={(mode) => setStripeMode(mode)}
+                    onComplete={(complete) => setStripeComplete(complete)}
+                    onAmounts={setAmounts}
+                  />
+                </div>
+              )}
+
+              <button
+                className="th-co-pay-btn"
+                aria-disabled={!canPay() || paying ? 'true' : undefined}
+                aria-busy={paying ? 'true' : undefined}
+                onClick={handlePay}
+              >
+                {btnLabel}
+              </button>
+              {payError && <div className="th-co-pay-error">{payError}</div>}
+              <p className="th-co-secure">Payments are processed securely by Paysera and Stripe. We never see or store your card details.</p>
+            </div>
           </div>
 
-          {/* Payment methods */}
-          <div className="th-co-card">
-            <div className="th-co-section-label">Payment method</div>
-
-            {/* Paysera (Kosovo) */}
-            <button
-              type="button"
-              className="th-co-method"
-              data-th-method="paysera"
-              role="radio"
-              aria-checked={chosen === 'paysera'}
-              onClick={() => chooseMethod('paysera')}
-              style={{
-                borderColor: chosen === 'paysera' ? '#1E4FD8' : undefined,
-                background: chosen === 'paysera' ? '#EEF4FF' : undefined,
-                borderBottomLeftRadius: chosen === 'paysera' ? 0 : undefined,
-                borderBottomRightRadius: chosen === 'paysera' ? 0 : undefined,
-              }}
-            >
-              <div
-                className="th-method-dot"
-                style={{ border: chosen === 'paysera' ? '7px solid #1E4FD8' : undefined }}
-              />
-              <div>
-                <div className="th-co-method-label">Pay with Paysera</div>
-                <div className="th-co-method-desc">Bank transfer &amp; local payment methods</div>
-              </div>
-            </button>
-            {chosen === 'paysera' && (
-              <div className="th-co-panel">
-                <PayseraMount
-                  planKey={planKey!}
-                  savedMethod={session?.payseraMethod}
-                  onReady={(mode) => setPayseraMode(mode)}
-                  onSelect={(key) => setPayseraMethod(key)}
+          {/* Order summary + rewards */}
+          <aside className="th-co-side">
+            <div className="th-co-card">
+              <div className="th-co-section-label">Your order</div>
+              {storeProduct && (
+                <div
+                  className="th-co-sum-img"
+                  style={{ backgroundImage: `url(${CONFIG.IMAGES[storeProduct.image]})` }}
+                  role="img"
+                  aria-label={storeProduct.brand}
                 />
+              )}
+              {session?.productName && (
+                <div className="th-co-sum-product">
+                  {session.productName}
+                  {storeProduct ? <span> · {storeProduct.generic}</span> : null}
+                </div>
+              )}
+              {(session?.dose || session?.addProgesterone) && (
+                <div className="th-co-sum-chips">
+                  {session?.dose && <span className="th-co-chip">{session.dose}</span>}
+                  {session?.addProgesterone && <span className="th-co-chip">+ Progesterone</span>}
+                </div>
+              )}
+              <div className="th-co-sum-name">{plan!.name}</div>
+              <div className="th-co-sum-desc">
+                {plan!.desc}
+                {medName ? ` · Preferred medicine: ${medName} (your doctor confirms the final prescription)` : ''}
+              </div>
+              <div className="th-co-divider" />
+              <div className="th-co-row"><span>{plan!.name} · billed monthly</span><span>{plan!.price}</span></div>
+              {rewardApplied && reward && (
+                <div className="th-co-row reward"><span>Referral reward</span><span>−{rewardLabel}</span></div>
+              )}
+              <div className="th-co-row total"><span>Due today</span><span>{dueToday}</span></div>
+              <p className="th-co-note">Your doctor reviews your assessment first. If they can&apos;t prescribe, you&apos;re refunded.</p>
+              <div className="th-co-divider" />
+              <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
+                ← Change plan
+              </Link>
+            </div>
+
+            {reward && (
+              <div className={`th-co-card th-reward${rewardApplied ? ' applied' : ''}`}>
+                <div className="th-reward-icon">🎁</div>
+                <div className="th-reward-body">
+                  <div className="th-reward-title">{rewardLabel} off your first order</div>
+                  <div className="th-reward-desc">{reward.title} · {reward.description}</div>
+                </div>
+                <button type="button" className={`th-reward-btn${rewardApplied ? ' remove' : ''}`} onClick={toggleReward}>
+                  {rewardApplied ? 'Remove' : 'Apply'}
+                </button>
               </div>
             )}
-
-            {/* Stripe */}
-            <button
-              type="button"
-              className="th-co-method"
-              data-th-method="stripe"
-              role="radio"
-              aria-checked={chosen === 'stripe'}
-              onClick={() => chooseMethod('stripe')}
-              style={{
-                borderColor: chosen === 'stripe' ? '#1E4FD8' : undefined,
-                background: chosen === 'stripe' ? '#EEF4FF' : undefined,
-                borderBottomLeftRadius: chosen === 'stripe' ? 0 : undefined,
-                borderBottomRightRadius: chosen === 'stripe' ? 0 : undefined,
-              }}
-            >
-              <div
-                className="th-method-dot"
-                style={{ border: chosen === 'stripe' ? '7px solid #1E4FD8' : undefined }}
-              />
-              <div>
-                <div className="th-co-method-label">Pay by card</div>
-                <div className="th-co-method-desc">Visa, Mastercard &amp; more — powered by Stripe</div>
-              </div>
-            </button>
-            {chosen === 'stripe' && (
-              <div className="th-co-panel">
-                <StripeMount
-                  priceId={plan!.priceId}
-                  planName={plan!.name}
-                  email={session?.email}
-                  leadId={session?.leadId}
-                  onReady={(mode) => setStripeMode(mode)}
-                  onComplete={(complete) => setStripeComplete(complete)}
-                />
-              </div>
-            )}
-
-            <button
-              className="th-co-pay-btn"
-              aria-disabled={!canPay() || paying ? 'true' : undefined}
-              aria-busy={paying ? 'true' : undefined}
-              onClick={handlePay}
-            >
-              {btnLabel}
-            </button>
-            {payError && <div className="th-co-pay-error">{payError}</div>}
-            <p className="th-co-secure">
-              Payments are processed securely by Paysera and Stripe. We never see or store your card details.
-            </p>
-          </div>
+          </aside>
         </div>
       </main>
     </>

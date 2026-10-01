@@ -1,6 +1,11 @@
 export const CONFIG = {
   API_BASE: process.env.NEXT_PUBLIC_API_BASE ?? '',
   STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '',
+  // Patient portal (the `web` app) — where new patients set their password.
+  PORTAL_URL: process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3000',
+  // Mobile app store links; the badges stay hidden until these are set.
+  APP_STORE_URL: process.env.NEXT_PUBLIC_APP_STORE_URL ?? '',
+  PLAY_STORE_URL: process.env.NEXT_PUBLIC_PLAY_STORE_URL ?? '',
   CONTACT: {
     email: 'primaverahealthcare@gmail.com',
     phones: [
@@ -30,7 +35,7 @@ export const CONFIG = {
       product: 'GLP1' as const,
       priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GLP1_STARTER ?? 'price_REPLACE_GLP1_STARTER',
       name: 'GLP-1 Starter',
-      desc: 'Semaglutide 0.25 mg → 0.5 mg titration',
+      desc: 'Starting doses while your body adjusts',
       price: '£149',
       per: '/mo',
     },
@@ -38,8 +43,17 @@ export const CONFIG = {
       product: 'GLP1' as const,
       priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GLP1_ADVANCED ?? 'price_REPLACE_GLP1_ADVANCED',
       name: 'GLP-1 Advanced',
-      desc: 'Semaglutide 1 mg maintenance',
+      desc: 'Higher maintenance doses',
       price: '£199',
+      per: '/mo',
+    },
+    TRT_STANDARD: {
+      product: 'TRT' as const,
+      priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_TRT_STANDARD ?? 'price_REPLACE_TRT_STANDARD',
+      name: 'TRT Standard',
+      desc: 'Testosterone replacement therapy',
+      // Set the real monthly price here (it must match the Stripe price above).
+      price: process.env.NEXT_PUBLIC_PRICE_TRT_STANDARD ?? '£—',
       per: '/mo',
     },
   },
@@ -58,4 +72,4 @@ export const CONFIG = {
 };
 
 export type PlanKey = keyof typeof CONFIG.PLANS;
-export type ProductKind = 'HRT' | 'GLP1';
+export type ProductKind = 'HRT' | 'GLP1' | 'TRT';

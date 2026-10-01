@@ -149,4 +149,65 @@ export const QUIZZES: Record<ProductKind, QuizQuestion[]> = {
       ],
     },
   ],
+
+  // Mirrors TRT_ELIGIBILITY in backend/src/questionnaires/definitions.ts: the
+  // backend's "critical" flags are disqualifiers here, "warning" flags are not.
+  // Clinical wording - have a clinician review before go-live.
+  TRT: [
+    {
+      id: 'age',
+      q: 'What is your age?',
+      type: 'single',
+      options: [
+        { l: 'Under 18', dq: 'TRT through our service is only available to adults aged 18 to 65.' },
+        { l: '18 to 39' },
+        { l: '40 to 54' },
+        { l: '55 to 65' },
+        { l: 'Over 65', dq: 'TRT through our service is only available to adults aged 18 to 65. Your own doctor can advise on options after 65.' },
+      ],
+    },
+    {
+      id: 'symptoms',
+      q: 'Which symptoms are you experiencing?',
+      help: 'Select all that apply.',
+      type: 'multi',
+      options: [
+        { l: 'Low energy or fatigue' },
+        { l: 'Low libido' },
+        { l: 'Erectile dysfunction' },
+        { l: 'Loss of muscle mass or strength' },
+        { l: 'Low mood or irritability' },
+        { l: NONE, x: true, dq: "TRT is prescribed to treat the symptoms of low testosterone, so it isn't the right treatment if you're not experiencing any." },
+      ],
+    },
+    {
+      id: 'medical_history',
+      q: 'Have you ever had any of the following?',
+      help: 'Select all that apply.',
+      type: 'multi',
+      options: [
+        { l: 'Prostate cancer', dq: HIST },
+        { l: 'Breast cancer', dq: HIST },
+        { l: 'Polycythemia (high red blood cell count)' },
+        { l: 'Sleep apnea' },
+        { l: NONE, x: true },
+      ],
+    },
+    {
+      id: 'trying_to_conceive',
+      q: 'Are you trying to have a child in the next 12 months?',
+      help: 'Testosterone treatment can reduce fertility. Your doctor will talk this through with you.',
+      type: 'single',
+      options: [{ l: 'Yes' }, { l: 'No' }],
+    },
+    {
+      id: 'recent_cvd',
+      q: 'Have you had a stroke or heart attack in the past 6 months?',
+      type: 'single',
+      options: [
+        { l: 'Yes', dq: 'Based on your medical history, it would not be safe for us to prescribe TRT online right now.' },
+        { l: 'No' },
+      ],
+    },
+  ],
 };

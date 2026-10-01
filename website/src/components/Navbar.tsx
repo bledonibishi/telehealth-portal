@@ -21,6 +21,9 @@ export default function Navbar() {
           <Link href="/hrt-eligibility" className="pv-nav-btn outline">
             Start HRT
           </Link>
+          <Link href="/trt-eligibility" className="pv-nav-btn outline">
+            Start TRT
+          </Link>
           <Link href="/glp1-eligibility" className="pv-nav-btn solid">
             Start GLP-1
           </Link>

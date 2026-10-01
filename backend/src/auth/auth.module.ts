@@ -4,6 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, minutes } from '@nestjs/throttler';
 import { AuditModule } from '../audit/audit.module';
+import { EmailModule } from '../email/email.module';
 import { AuthService } from './auth.service';
 import { AuthResolver } from './auth.resolver';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -15,6 +16,7 @@ import { PrismaThrottlerStorage } from './guards/prisma-throttler.storage';
   imports: [
     PassportModule,
     AuditModule,
+    EmailModule,
     ThrottlerModule.forRootAsync({
       inject: [PrismaService],
       useFactory: (prisma: PrismaService) => ({

@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import { AuthService } from './auth.service';
@@ -8,7 +8,11 @@ jest.mock('bcryptjs');
 jest.mock('otplib', () => ({ authenticator: { verify: jest.fn() } }));
 
 describe('AuthService', () => {
-  let prisma: { clinician: { findUnique: jest.Mock; update: jest.Mock }; patient: { findUnique: jest.Mock } };
+  let prisma: {
+    clinician: { findUnique: jest.Mock; update: jest.Mock };
+    patient: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+  };
+  let email: { sendActivationEmail: jest.Mock };
   let jwtService: { sign: jest.Mock; verify: jest.Mock };
   let audit: { log: jest.Mock };
   let posthog: { identify: jest.Mock; capture: jest.Mock };
@@ -38,13 +42,14 @@ describe('AuthService', () => {
   beforeEach(() => {
     prisma = {
       clinician: { findUnique: jest.fn(), update: jest.fn() },
-      patient: { findUnique: jest.fn() },
+      patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     };
+    email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined) };
     jwtService = { sign: jest.fn().mockReturnValue('signed-token'), verify: jest.fn() };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     posthog = { identify: jest.fn(), capture: jest.fn() };
     config = { get: jest.fn().mockReturnValue('7d') };
-    service = new AuthService(prisma as any, jwtService as any, audit as any, posthog as any, config as any);
+    service = new AuthService(prisma as any, jwtService as any, audit as any, posthog as any, config as any, email as any);
     jest.clearAllMocks();
   });
 
@@ -227,6 +232,98 @@ describe('AuthService', () => {
       prisma.patient.findUnique.mockResolvedValue(null);
 
       await expect(service.refreshAccessToken('token')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+  describe('requestActivationLink', () => {
+    const PENDING = { ...PATIENT, activatedAt: null };
+
+    it('emails a fresh link to a patient who has not activated yet', async () => {
+      prisma.patient.findFirst.mockResolvedValue(PENDING);
+      prisma.patient.update.mockResolvedValue(PENDING);
+      config.get.mockImplementation((key: string) => (key === 'PATIENT_APP_URL' ? 'https://app.example.com' : '7d'));
+
+      await expect(service.requestActivationLink(' Pat@Example.com ')).resolves.toBe(true);
+
+      const saved = prisma.patient.update.mock.calls[0][0].data;
+      expect(saved.activationToken).toMatch(/^[0-9a-f]{64}$/);
+      expect(saved.activationTokenExpiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(email.sendActivationEmail).toHaveBeenCalledWith(
+        PENDING.email,
+        PENDING.firstName,
+        `https://app.example.com/activate?token=${saved.activationToken}`,
+      );
+    });
+
+    it('still resolves true but sends nothing for an unknown address', async () => {
+      prisma.patient.findFirst.mockResolvedValue(null);
+      await expect(service.requestActivationLink('nobody@example.com')).resolves.toBe(true);
+      expect(email.sendActivationEmail).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing to an already-activated patient', async () => {
+      prisma.patient.findFirst.mockResolvedValue(PATIENT);
+      await expect(service.requestActivationLink(PATIENT.email)).resolves.toBe(true);
+      expect(prisma.patient.update).not.toHaveBeenCalled();
+      expect(email.sendActivationEmail).not.toHaveBeenCalled();
+    });
+
+    it('swallows a mail failure so the response does not reveal the account', async () => {
+      prisma.patient.findFirst.mockResolvedValue(PENDING);
+      prisma.patient.update.mockResolvedValue(PENDING);
+      email.sendActivationEmail.mockRejectedValue(new Error('Resend down'));
+      await expect(service.requestActivationLink(PENDING.email)).resolves.toBe(true);
+    });
+  });
+
+  describe('activateAccount', () => {
+    const GOOD_PASSWORD = 'a-long-enough-password';
+    const PENDING = { ...PATIENT, activatedAt: null, activationToken: 'tok', activationTokenExpiresAt: new Date(Date.now() + 60_000) };
+
+    beforeEach(() => {
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new-hash');
+      prisma.patient.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('sets the password, activates, clears the token and signs the patient in', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PENDING);
+
+      const result = await service.activateAccount('tok', GOOD_PASSWORD);
+
+      expect(prisma.patient.updateMany).toHaveBeenCalledWith({
+        where: { id: PENDING.id, activationToken: 'tok' },
+        data: {
+          passwordHash: 'new-hash',
+          activatedAt: expect.any(Date),
+          activationToken: null,
+          activationTokenExpiresAt: null,
+        },
+      });
+      expect(result.accessToken).toBe('signed-token');
+      expect(result.patient.activatedAt).toBeInstanceOf(Date);
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_ACCOUNT_ACTIVATED', resourceId: PENDING.id }));
+    });
+
+    it('rejects an unknown token', async () => {
+      prisma.patient.findUnique.mockResolvedValue(null);
+      await expect(service.activateAccount('nope', GOOD_PASSWORD)).rejects.toThrow(UnauthorizedException);
+      expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects an expired token', async () => {
+      prisma.patient.findUnique.mockResolvedValue({ ...PENDING, activationTokenExpiresAt: new Date(Date.now() - 1000) });
+      await expect(service.activateAccount('tok', GOOD_PASSWORD)).rejects.toThrow(UnauthorizedException);
+      expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a token that was spent by a concurrent request', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PENDING);
+      prisma.patient.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.activateAccount('tok', GOOD_PASSWORD)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it.each(['short', 'x'.repeat(73)])('rejects a password outside 10-72 characters (%#)', async (password) => {
+      await expect(service.activateAccount('tok', password)).rejects.toThrow(BadRequestException);
+      expect(prisma.patient.findUnique).not.toHaveBeenCalled();
     });
   });
 });

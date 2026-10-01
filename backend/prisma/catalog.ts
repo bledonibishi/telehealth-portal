@@ -76,6 +76,28 @@ export const CATALOG: ProductSeed[] = [
     ],
   },
   {
+    // Tirzepatide dose steps follow the licensed 4-weekly escalation. Clinical
+    // data: confirm with the prescribing clinician / partner pharmacy before go-live.
+    slug: 'tirzepatide-mounjaro',
+    name: 'Tirzepatide',
+    brandName: 'Mounjaro',
+    kind: ConsultationKind.GLP1,
+    category: ProductCategory.GLP1,
+    form: ProductForm.INJECTION_PEN,
+    coldChain: true,
+    weeksPerStep: 4,
+    doseIntervalDays: 7,
+    directions: WEEKLY_INJECTION,
+    strengths: [
+      { label: '2.5 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 1 },
+      { label: '5 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 2 },
+      { label: '7.5 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 3 },
+      { label: '10 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 4 },
+      { label: '12.5 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 5 },
+      { label: '15 mg', pack: 'Pre-filled pen, 4 weekly doses', step: 6 },
+    ],
+  },
+  {
     slug: 'estradiol-gel-oestrogel',
     name: 'Estradiol gel 0.06%',
     brandName: 'Oestrogel',

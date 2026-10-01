@@ -216,6 +216,9 @@ model Lead {
   // The referrer's code this lead arrived with, if any — kept even before a
   // Referral row exists, since LeadsService validates it at creation time.
   referralCode    String?          @map("referral_code")
+  // Delivery details and whether the referral reward was applied, captured at
+  // checkout and copied onto the Patient when the first payment succeeds.
+  checkoutDetails Json?            @map("checkout_details")
   convertedAt     DateTime?        @map("converted_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")

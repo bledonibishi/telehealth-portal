@@ -176,9 +176,9 @@ export default function HomePage() {
           <div className="container">
             <div className="th-section-head pv-anim">
               <div className="th-section-tag">Treatments</div>
-              <h2 className="th-section-h2">Two paths to better health</h2>
+              <h2 className="th-section-h2">Three paths to better health</h2>
               <p className="th-section-lead">
-                We specialise in two evidence-based prescription treatments, assessed and prescribed
+                We specialise in three evidence-based prescription treatments, assessed and prescribed
                 by our licensed clinicians.
               </p>
             </div>
@@ -240,6 +240,34 @@ export default function HomePage() {
                     <sup>£</sup>149<small>/mo</small>
                   </div>
                   <Link href="/glp1-eligibility" className="btn-primary btn-sm">
+                    Check eligibility →
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* TRT Card */}
+            <div className="th-product-card-hrt pv-anim">
+              <div
+                className="th-product-img"
+                style={{ backgroundImage: `url(${CONFIG.IMAGES['products']})` }}
+              >
+                <div className="th-product-badge">Testosterone</div>
+              </div>
+              <div className="th-product-body">
+                <span className="th-product-tag">TRT</span>
+                <h3 className="th-product-name">Testosterone Replacement Therapy</h3>
+                <p className="th-product-desc">
+                  For men with symptoms of low testosterone — low energy, low libido, loss of muscle
+                  and mood changes. Clinician-led assessment, monitored treatment.
+                </p>
+                <div className="th-product-meds">
+                  <span className="th-product-med">Tostran gel</span>
+                  <span className="th-product-med">Sustanon 250</span>
+                  <span className="th-product-med">Testopel</span>
+                </div>
+                <div className="th-product-cta">
+                  <Link href="/trt-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
                   </Link>
                 </div>
