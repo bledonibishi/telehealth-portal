@@ -45,7 +45,11 @@ export function clearProgress(product: ProductKind, store: Store | null = browse
   }
 }
 
-const isBmiAnswer = (q: QuizQuestion, sel: string[]) => q.id === 'bmi' && sel.length === 1 && /^BMI \d/.test(sel[0]);
+// A BMI worked out by the calculator. One under 27 ruled the visitor out, so it is never put back.
+const isBmiAnswer = (q: QuizQuestion, sel: string[]) => {
+  const m = q.id === 'bmi' && sel.length === 1 ? /^BMI (\d+(?:\.\d+)?)/.exec(sel[0]) : null;
+  return !!m && Number(m[1]) >= 27;
+};
 
 /**
  * What was saved, checked against the current quiz: answers to questions that no longer exist or
