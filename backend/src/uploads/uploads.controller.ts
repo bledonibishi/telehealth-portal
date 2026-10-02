@@ -19,6 +19,7 @@ import { UploadKind } from '@prisma/client';
 import { UploadsService } from './uploads.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
+import type { AuthUser } from '../auth/access-roles';
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
@@ -33,7 +34,7 @@ export class UploadsController {
   @Post()
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_BYTES } }))
   async upload(
-    @Req() req: Request & { user: { id: string; role: string } },
+    @Req() req: Request & { user: AuthUser },
     @Body('kind') kind: string,
     @UploadedFileDecorator() file: Express.Multer.File,
   ) {
@@ -50,7 +51,7 @@ export class UploadsController {
   @UseGuards(AuthGuard('jwt'))
   @Get(':id/file')
   async getFile(
-    @Req() req: Request & { user: { id: string; role: string } },
+    @Req() req: Request & { user: AuthUser },
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -62,7 +63,8 @@ export class UploadsController {
       action: 'FILE_VIEWED',
       resourceType: 'UploadedFile',
       resourceId: id,
-      metadata: { kind: file.kind, patientId: file.patientId },
+      patientId: file.patientId,
+      metadata: { kind: file.kind },
     });
     const contents = await this.uploads.readContents(file);
     res.setHeader('Content-Type', file.mimeType);

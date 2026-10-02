@@ -21,6 +21,12 @@ export class AuditLogEntryModel {
   @Field()
   resourceId: string;
 
+  @Field(() => String, { nullable: true })
+  patientId?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'What changed, as JSON text' })
+  metadata?: string | null;
+
   @Field()
   timestamp: Date;
 }

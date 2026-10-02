@@ -6,6 +6,8 @@ import { QUIZZES, type QuizQuestion } from '@/lib/quiz-data';
 import { loadAssessment, mergeAssessment, saveAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { loadReferralCode } from '@/lib/referral';
+import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
+import { track } from '@/lib/analytics';
 import ProductPicker from './ProductPicker';
 
 /* ── Types ── */
@@ -18,16 +20,20 @@ interface QuizState {
 }
 
 type Screen = 'quiz' | 'plans' | 'ineligible';
+const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q' };
 
 /* ── GraphQL mutation ── */
-const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id } }`;
+const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id riskTag riskReasons } }`;
+
+/** What the server made of the answers: RED may not go on to plans or payment. */
+interface LeadResult { id: string; riskTag: 'RED' | 'ORANGE' | 'GREEN'; riskReasons: string[] }
 
 async function createLead(
   product: ProductKind,
   visibleQs: QuizQuestion[],
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
-): Promise<string | null> {
+): Promise<LeadResult | null> {
   const apiBase = CONFIG.API_BASE;
   if (!apiBase) return null;
 
@@ -66,9 +72,9 @@ async function createLead(
     });
     const json = await res.json();
     if (json.errors?.length) throw new Error(json.errors[0].message);
-    const id = json.data?.createLead?.id;
-    if (!id) throw new Error('No lead ID in response');
-    return id as string;
+    const lead = json.data?.createLead;
+    if (!lead?.id) throw new Error('No lead ID in response');
+    return lead as LeadResult;
   } catch (err) {
     console.error('[quiz] createLead failed:', err);
     return null;
@@ -78,11 +84,15 @@ async function createLead(
 /* ── Ineligible component ── */
 function Ineligible({
   reason,
+  reasons,
   onBack,
   onRestart,
 }: {
   reason: string;
-  onBack: () => void;
+  /** Why the server ruled the answers out, when it did. */
+  reasons?: string[];
+  /** Back to the question that ruled the visitor out; absent when no single question did. */
+  onBack?: () => void;
   onRestart: () => void;
 }) {
   return (
@@ -90,10 +100,22 @@ function Ineligible({
       <div className="th-ineligible-icon">✕</div>
       <h2 className="th-ineligible-h2">We're sorry</h2>
       <p className="th-ineligible-reason">{reason}</p>
+      {reasons && reasons.length > 0 && (
+        <ul className="th-ineligible-list">
+          {reasons.map((r) => <li key={r}>{r}</li>)}
+        </ul>
+      )}
+      <p className="th-ineligible-note">
+        Some treatments aren't safe for everyone, and we only prescribe when a doctor can be confident they are.
+        This isn't a judgement on you. Please speak to your own doctor or pharmacist, who can examine you and
+        review your full history. If any of your answers were a mistake, you can retake the assessment.
+      </p>
       <div className="th-ineligible-actions">
-        <button className="btn-secondary" onClick={onBack}>
-          ← Change my answer
-        </button>
+        {onBack && (
+          <button className="btn-secondary" onClick={onBack}>
+            ← Change my answer
+          </button>
+        )}
         <a href="/#contact" className="btn-primary btn-sm">
           Talk to us
         </a>
@@ -116,11 +138,30 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   const [screen, setScreen] = useState<Screen>('quiz');
   const [ineligReason, setIneligReason] = useState('');
+  const [ineligReasons, setIneligReasons] = useState<string[]>([]);
   const [dqIdx, setDqIdx] = useState(0);
-  const [st, setSt] = useState<QuizState>({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
+  const [st, setSt] = useState<QuizState>(INITIAL);
+  // Whether a saved place was put back, and whether the saved copy has been read yet.
+  const [restored, setRestored] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [calcErr, setCalcErr] = useState('');
   const [detailsErr, setDetailsErr] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // On arrival, pick up where this visitor left off (a refresh, or coming back later).
+  useEffect(() => {
+    const saved = loadProgress(product, questions);
+    if (saved) {
+      setSt(saved);
+      setRestored(true);
+    }
+    setHydrated(true);
+  }, [product, questions]);
+
+  // Keep the saved copy in step with every answer, as it is given.
+  useEffect(() => {
+    if (hydrated && screen === 'quiz' && Object.keys(st.answers).length) saveProgress(product, st);
+  }, [st, hydrated, screen, product]);
 
   /* Refs for BMI calc inputs — avoids losing values on error re-render */
   const hInputRef = useRef<HTMLInputElement>(null);
@@ -139,9 +180,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
     [questions, st.bmiBand],
   );
 
-  const goIneligible = (reason: string, idx: number) => {
+  const goIneligible = (reason: string, idx: number | null, reasons: string[] = []) => {
     setIneligReason(reason);
-    setDqIdx(idx);
+    setIneligReasons(reasons);
+    setDqIdx(idx ?? -1);
     setScreen('ineligible');
   };
 
@@ -160,8 +202,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* Restart: clear stored eligibility so an old "passed" session can't bypass checkout guard */
   const restart = () => {
+    clearProgress(product);
+    setRestored(false);
     saveAssessment({ passed: false, plan: null, leadId: null });
-    setSt({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
+    setSt(INITIAL);
     setScreen('quiz');
     setCalcErr('');
     setDetailsErr('');
@@ -194,6 +238,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
   /* ── Pick an answer ── */
   const pick = (q: QuizQuestion, optIdx: number) => {
     const o = q.options[optIdx];
+    if (Object.keys(st.answers).length === 0) track('quiz_started', { product });
+    setRestored(false);
 
     if (q.type === 'single') {
       if (o.calc) { setSt((s) => ({ ...s, view: 'calc' })); return; }
@@ -263,14 +309,23 @@ export default function Quiz({ product }: { product: ProductKind }) {
   /* ── Details form submit — block on failed lead creation ── */
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
     setSaving(true);
-    const id = await createLead(product, visible(), st.answers, { firstName, lastName, email });
-    if (!id) {
+    const lead = await createLead(product, visible(), st.answers, { firstName, lastName, email });
+    if (!lead) {
       // Without a saved lead the payment webhook can't create the patient's
       // account, so never let someone continue to pay from here.
       setDetailsErr("We couldn't save your details. Please check your connection and try again.");
       setSaving(false);
       return;
     }
+    // The server has the final say on eligibility: a RED answer set never reaches plans or payment.
+    if (lead.riskTag === 'RED') {
+      clearProgress(product);
+      setSaving(false);
+      goIneligible("Based on your answers, we can't prescribe this treatment online.", null, lead.riskReasons);
+      return;
+    }
+    clearProgress(product);
+    const id = lead.id;
     mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null });
     setScreen('plans');
     setSaving(false);
@@ -278,7 +333,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   };
 
   /* ── Render screens ── */
-  if (screen === 'ineligible') return <Ineligible reason={ineligReason} onBack={backToDqQuestion} onRestart={restart} />;
+  if (screen === 'ineligible') return <Ineligible reason={ineligReason} reasons={ineligReasons} onBack={dqIdx >= 0 ? backToDqQuestion : undefined} onRestart={restart} />;
   if (screen === 'plans') return <ProductPicker product={product} onRestart={restart} />;
 
   /* ── Quiz screens ── */
@@ -385,6 +440,12 @@ export default function Quiz({ product }: { product: ProductKind }) {
         </div>
         <div className="thq-count">Question {st.idx + 1} / {n}</div>
       </div>
+      {restored && (
+        <div className="thq-restored" role="status">
+          Welcome back — we've kept your answers.{' '}
+          <button type="button" onClick={restart}>Start over</button>
+        </div>
+      )}
       <div className="thq-time">◷ Takes less than 2 minutes</div>
       <h2 className="thq-q">{q.q}</h2>
       {q.help ? <p className="thq-help">{q.help}</p> : <div className="thq-spacer" />}

@@ -23,6 +23,8 @@ export const SALES_FUNNEL = gql`
   query SalesFunnel($days: Int) {
     salesFunnel(days: $days) {
       periodDays
+      visitorsConfigured
+      visitorsError
       stages { key count percentOfPrevious percentOfFirst }
     }
   }

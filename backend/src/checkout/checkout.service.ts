@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { ConsultationKind, RiskTag } from '../common/enums';
+import { triageEligibility } from '../questionnaires/triage';
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
 // which posts here directly rather than through GraphQL. Two Stripe flows:
@@ -220,10 +222,14 @@ export class CheckoutService {
     if (!leadId) throw new BadRequestException('Missing leadId.');
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, email: true, convertedAt: true, quizAnswers: true, checkoutDetails: true },
+      select: { id: true, email: true, convertedAt: true, productKind: true, quizAnswers: true, checkoutDetails: true },
     });
     if (!lead) throw new BadRequestException('Unknown lead.');
     if (lead.convertedAt) throw new BadRequestException('This order has already been paid.');
+    // The website stops these people at the quiz; this is the same check on the server, so skipping the page doesn't skip it.
+    if (Array.isArray(lead.quizAnswers) && triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]).riskTag === RiskTag.RED) {
+      throw new BadRequestException('Based on your answers, we can’t offer this treatment online.');
+    }
     const patient = await this.prisma.patient.findFirst({
       where: { email: { equals: lead.email, mode: 'insensitive' } },
       select: { id: true },

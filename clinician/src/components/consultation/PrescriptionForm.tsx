@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useLazyQuery, useQuery } from '@apollo/client';
-import { PRODUCTS } from '@/graphql/catalog';
+import { PRESCRIPTION_TEMPLATES, PRODUCTS } from '@/graphql/catalog';
 import { PRESCRIBING_CHECK } from '@/graphql/consultations';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -13,6 +13,10 @@ type Product = {
 };
 export type Row = { productId: string; strengthId: string; quantity: number; directions: string };
 type Violation = { code: string; message: string; overridable: boolean };
+type Template = {
+  id: string; name: string; description: string; validityDays: number; refillsAllowed: number; notes?: string | null;
+  items: Row[];
+};
 
 export type PrescriptionSubmission = {
   items: Row[];
@@ -47,6 +51,12 @@ export function PrescriptionForm({
   const { t } = useI18n();
   const { data, loading } = useQuery(PRODUCTS, { variables: { kind } });
   const products: Product[] = data?.products ?? [];
+
+  // One-click starting points (e.g. the 4-week semaglutide starter pack); not offered when
+  // continuing a patient's current medicines at a check-in.
+  const { data: templateData } = useQuery(PRESCRIPTION_TEMPLATES, { variables: { kind }, skip: !!initialItems?.length });
+  const templates: Template[] = templateData?.prescriptionTemplates ?? [];
+  const [templateId, setTemplateId] = useState<string | null>(null);
 
   const [rows, setRows] = useState<Row[]>([EMPTY_ROW]);
   const [seeded, setSeeded] = useState(false);
@@ -104,6 +114,16 @@ export function PrescriptionForm({
     });
   };
 
+  // Fills in medicines, doses, directions, validity and repeats; everything stays editable.
+  const applyTemplate = (tpl: Template) => {
+    setTemplateId(tpl.id);
+    setRows(tpl.items.map((i) => ({ productId: i.productId, strengthId: i.strengthId, quantity: i.quantity, directions: i.directions })));
+    setValidityDays(tpl.validityDays);
+    setRefillsAllowed(tpl.refillsAllowed);
+    setNotes(tpl.notes ?? '');
+    setOverrideReason('');
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
@@ -121,6 +141,26 @@ export function PrescriptionForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {templates.length > 0 && (
+        <div>
+          <span className="block text-xs font-medium text-gray-700 mb-1">{t('Start from a template')}</span>
+          <div className="grid gap-2">
+            {templates.map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => applyTemplate(tpl)}
+                aria-pressed={templateId === tpl.id}
+                className={`text-left border rounded px-3 py-2 text-sm hover:border-brand-500 ${templateId === tpl.id ? 'border-brand-500 bg-brand-50' : 'border-gray-200'}`}
+              >
+                <span className="block font-medium text-gray-900">{tpl.name}</span>
+                <span className="block text-xs text-gray-500">{tpl.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {rows.map((row, i) => {
         const product = productById.get(row.productId);
         const strength = product?.strengths.find((s) => s.id === row.strengthId);

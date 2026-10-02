@@ -21,6 +21,7 @@ const toPoint = (m: any): Point => ({
   changeKg: m.changeKg,
   note: m.note,
   feeling: m.feeling,
+  hasPhoto: m.hasPhoto,
 });
 const ms = (v: string | null | undefined) => (v ? Date.parse(v) : null);
 

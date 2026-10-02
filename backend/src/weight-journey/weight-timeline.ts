@@ -10,6 +10,7 @@ export interface RawMeasurement {
   kind: MeasurementKind;
   note?: string;
   feeling?: string;
+  hasPhoto?: boolean;
 }
 
 export interface Measurement extends RawMeasurement {

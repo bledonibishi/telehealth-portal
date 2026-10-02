@@ -3,7 +3,6 @@ dist/
 .next/
 build/
 *.env
-!*.env.example
 .turbo/
 .DS_Store
 *.tsbuildinfo
@@ -25,3 +24,7 @@ backend/src/schema.gql
 # Local env overrides (hold real keys)
 .env.local
 .env*.local
+
+# Example env files (.env.example, .env.local.example) are not tracked either
+.env.example
+.env*.example

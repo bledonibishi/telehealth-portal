@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Context, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { ForbiddenException } from '@nestjs/common';
 import { ConsultationsService } from './consultations.service';
@@ -9,7 +9,8 @@ import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
-import { ClinicianRole } from '../common/enums';
+import { ClinicianRole, RiskTag } from '../common/enums';
+import { triage } from '../questionnaires/triage';
 
 const isAdmin = (user: AuthUser) => user.clinicianRole === ClinicianRole.ADMIN;
 
@@ -17,8 +18,14 @@ const isAdmin = (user: AuthUser) => user.clinicianRole === ClinicianRole.ADMIN;
 export class ConsultationsResolver {
   constructor(private consultationsService: ConsultationsService) {}
 
+  // From the stored flags, so it can never disagree with what the doctor sees listed.
+  @ResolveField(() => RiskTag)
+  riskTag(@Parent() consultation: ConsultationModel) {
+    return triage(consultation.redFlags ?? []).riskTag;
+  }
+
   @Authorized(...PRESCRIBERS)
-  @Query(() => [ConsultationModel], { description: 'Review queue — critical red flags pinned first, then sorted by wait time' })
+  @Query(() => [ConsultationModel], { description: 'Review queue — RED first, then ORANGE, then GREEN, each by wait time' })
   consultationQueue() {
     return this.consultationsService.findQueue();
   }

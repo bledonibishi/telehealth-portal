@@ -112,3 +112,27 @@ export const MISSED_DOSE_ALERTS = gql`
     }
   }
 `;
+
+export const SIDE_EFFECT_ALERTS = gql`
+  query SideEffectAlerts {
+    sideEffectAlerts {
+      id
+      patientId
+      patientName
+      effects
+      severity
+      note
+      medication
+      createdAt
+    }
+  }
+`;
+
+export const ACKNOWLEDGE_SIDE_EFFECT = gql`
+  mutation AcknowledgeSideEffect($id: ID!) {
+    acknowledgeSideEffect(id: $id) {
+      id
+      acknowledgedAt
+    }
+  }
+`;

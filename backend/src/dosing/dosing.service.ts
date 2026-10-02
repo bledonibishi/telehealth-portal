@@ -8,6 +8,7 @@ import { DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums
 import { DosePattern, dosePattern, nextDoseDates } from './dose-pattern';
 import { missedStreak, needsRetitrationReview } from './missed-doses';
 import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
+import { DoseSummaryModel } from './models/dose-summary.model';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -110,6 +111,28 @@ export class DosingService {
       include: { prescriptionItem: { include: { product: true, strength: true } } },
       orderBy: { scheduledFor: 'asc' },
     });
+  }
+
+  /**
+   * The dose the patient is on and the date of the next one — for the dashboard. Null when they have
+   * no active prescription. A dose still within a day of its scheduled time counts as "next".
+   */
+  async summaryFor(patientId: string): Promise<DoseSummaryModel | null> {
+    const rx = await this.prisma.prescription.findFirst({
+      where: { patientId, status: PrescriptionStatus.ACTIVE },
+      orderBy: { issuedAt: 'desc' },
+      select: { medication: true, dosage: true, items: { select: { id: true, product: { select: { name: true, brandName: true } }, strength: { select: { label: true } } } } },
+    });
+    if (!rx) return null;
+
+    const next = await this.prisma.doseEvent.findFirst({
+      where: { patientId, prescriptionItemId: { in: rx.items.map((i) => i.id) }, status: DoseStatus.SCHEDULED, scheduledFor: { gte: new Date(Date.now() - 24 * 3_600_000) } },
+      orderBy: { scheduledFor: 'asc' },
+      include: { prescriptionItem: { include: { product: true, strength: true } } },
+    });
+    const item = next?.prescriptionItem ?? rx.items[0];
+    const current = item ? `${item.product.brandName ?? item.product.name} ${item.strength.label}` : `${rx.medication} ${rx.dosage}`.trim();
+    return { current, nextDoseId: next?.id, nextDoseAt: next?.scheduledFor };
   }
 
   /**

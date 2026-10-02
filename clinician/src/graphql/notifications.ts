@@ -9,6 +9,7 @@ export const GET_NOTIFICATION_COUNTS = gql`
       pendingOrders
       missedDoseAlerts
       shipmentsDue
+      sideEffectAlerts
     }
   }
 `;

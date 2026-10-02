@@ -7,6 +7,7 @@ import { AuditRead } from '../audit/audit-read.interceptor';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
 import { MissedDoseAlertModel, MissedDoseStatusModel } from './models/missed-dose-alert.model';
+import { DoseSummaryModel } from './models/dose-summary.model';
 
 type ParentEvent = { prescriptionItem?: { product: ProductModel; strength: ProductStrengthModel } };
 
@@ -33,6 +34,12 @@ export class DosingResolver {
     @Args('toDays', { type: () => Int, nullable: true }) toDays?: number,
   ) {
     return this.dosing.calendarFor(patientId, { fromDays, toDays });
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => DoseSummaryModel, { nullable: true, description: 'The dose the signed-in patient is on and when the next one is due. Null without an active prescription.' })
+  myDoseSummary(@CurrentUser() user: AuthUser) {
+    return this.dosing.summaryFor(user.id);
   }
 
   @Authorized('PATIENT')

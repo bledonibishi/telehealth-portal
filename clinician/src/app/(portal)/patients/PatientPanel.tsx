@@ -204,7 +204,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const { data: ordersData } = useQuery(PATIENT_ORDERS, { variables: { patientId } });
   const { data: prescriptionsData } = useQuery(PATIENT_PRESCRIPTIONS, { variables: { patientId } });
   // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
-  const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId } });
+  const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId }, skip: !hasAccess(['ADMIN', 'DOCTOR']) });
   const { data: symptomsData } = useQuery(PATIENT_SYMPTOM_ASSESSMENTS, { variables: { patientId } });
   const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],

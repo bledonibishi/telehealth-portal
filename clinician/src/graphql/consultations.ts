@@ -51,6 +51,7 @@ const CONSULTATION_FRAGMENT = gql`
     updatedAt
     declineReason
     refundStatus
+    riskTag
     patient {
       id
       firstName

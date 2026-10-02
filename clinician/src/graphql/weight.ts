@@ -65,6 +65,7 @@ export const GET_WEIGHT_TIMELINE = gql`
         changeKg
         note
         feeling
+        hasPhoto
       }
     }
   }
@@ -101,6 +102,17 @@ export const GET_WEIGHT_CHART = gql`
         weightKg
         kind
       }
+    }
+  }
+`;
+
+export const PROGRESS_PHOTOS_FOR_PATIENT = gql`
+  query ProgressPhotosForPatient($patientId: ID!) {
+    progressPhotosForPatient(patientId: $patientId) {
+      entryId
+      measuredAt
+      weightKg
+      photoFileId
     }
   }
 `;

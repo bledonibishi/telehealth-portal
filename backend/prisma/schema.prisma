@@ -60,6 +60,21 @@ enum CheckInFeeling {
 enum WeightEntrySource {
   PATIENT
   STAFF
+  // Sent by a connected device or health app (smart scale, Apple Health, Google Fit).
+  DEVICE
+}
+
+enum SideEffectSeverity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum DeviceProvider {
+  APPLE_HEALTH
+  GOOGLE_FIT
+  SMART_SCALE
+  OTHER
 }
 
 enum UploadKind {
@@ -68,6 +83,8 @@ enum UploadKind {
   BODY_PHOTO_FRONT
   BODY_PHOTO_SIDE
   PRESCRIPTION_PROOF
+  // A photo taken alongside a weighing, to see progress over time.
+  PROGRESS_PHOTO
 }
 
 enum OnboardingStatus {
@@ -248,6 +265,9 @@ model Patient {
   activatedAt              DateTime? @map("activated_at")
   stripeCustomerId         String?   @map("stripe_customer_id")
   stripeSubscriptionId     String?   @map("stripe_subscription_id")
+  // Set when Stripe reports the subscription has ended (the patient cancelled in the billing
+  // portal, or it was cancelled by us): no further supplies are shipped.
+  subscriptionEndedAt      DateTime? @map("subscription_ended_at")
   // This patient's own shareable referral code — generated lazily on first use.
   referralCode             String?   @unique @map("referral_code")
   // Whether a reward this patient earns is credited automatically, or left for
@@ -273,6 +293,8 @@ model Patient {
   consents           Consent[]
   weightGoal         WeightGoal?
   weightEntries      WeightEntry[]
+  deviceConnections  DeviceConnection[]
+  sideEffectReports  SideEffectReport[]
   doseEvents         DoseEvent[]
   symptomAssessments SymptomAssessment[]
   labResults         LabResult[]
@@ -577,10 +599,14 @@ model AuditLogEntry {
   action       String
   resourceType String   @map("resource_type")
   resourceId   String   @map("resource_id")
+  // The patient the action concerns, when there is one — so a patient's whole
+  // medical trail comes back from one indexed query.
+  patientId    String?  @map("patient_id")
   metadata     Json?
-  timestamp    DateTime @default(now())
+  timestamp    DateTime @default(now()) @map("created_at")
 
-  @@map("audit_log_entries")
+  @@index([patientId, timestamp])
+  @@map("audit_logs")
 }
 
 model UploadedFile {
@@ -592,7 +618,8 @@ model UploadedFile {
   storageKey String     @map("storage_key")
   createdAt  DateTime   @default(now()) @map("created_at")
 
-  patient Patient @relation(fields: [patientId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  weightEntry WeightEntry?
 
   @@map("uploaded_files")
 }
@@ -660,28 +687,79 @@ model WeightGoal {
 // edited or deleted; a mistake is voided, and staff fix one by voiding it and adding a
 // replacement that points back at it. A trigger enforces this for every client.
 model WeightEntry {
-  id              String            @id @default(cuid())
-  patientId       String            @map("patient_id")
-  weightKg        Decimal           @map("weight_kg") @db.Decimal(4, 1)
+  id                 String            @id @default(cuid())
+  patientId          String            @map("patient_id")
+  weightKg           Decimal           @map("weight_kg") @db.Decimal(4, 1)
   // When the weighing happened (chosen by the patient, default now) vs. when it was saved.
-  measuredAt      DateTime          @map("measured_at")
-  recordedAt      DateTime          @default(now()) @map("recorded_at")
-  source          WeightEntrySource @default(PATIENT)
-  note            String?
+  measuredAt         DateTime          @map("measured_at")
+  recordedAt         DateTime          @default(now()) @map("recorded_at")
+  source             WeightEntrySource @default(PATIENT)
+  note               String?
   // Client-generated id so a double tap or retry can't record the same weighing twice.
-  clientRequestId String?           @map("client_request_id")
-  correctsId      String?           @unique @map("corrects_id")
-  voidedAt        DateTime?         @map("voided_at")
-  voidedById      String?           @map("voided_by_id")
-  voidReason      String?           @map("void_reason")
+  clientRequestId    String?           @map("client_request_id")
+  correctsId         String?           @unique @map("corrects_id")
+  voidedAt           DateTime?         @map("voided_at")
+  voidedById         String?           @map("voided_by_id")
+  voidReason         String?           @map("void_reason")
+  // An optional progress photo taken with this weighing (an UploadedFile of kind PROGRESS_PHOTO).
+  photoFileId        String?           @unique @map("photo_file_id")
+  // Set when the weight came from a connected device; `externalId` is that device's own id for
+  // the reading, so sending the same reading twice records it once.
+  deviceConnectionId String?           @map("device_connection_id")
+  externalId         String?           @map("external_id")
 
-  patient     Patient      @relation(fields: [patientId], references: [id])
-  corrects    WeightEntry? @relation("WeightEntryCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
-  correctedBy WeightEntry? @relation("WeightEntryCorrection")
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  photoFile        UploadedFile?     @relation(fields: [photoFileId], references: [id])
+  deviceConnection DeviceConnection? @relation(fields: [deviceConnectionId], references: [id])
+  corrects         WeightEntry?      @relation("WeightEntryCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
+  correctedBy      WeightEntry?      @relation("WeightEntryCorrection")
 
   @@unique([patientId, clientRequestId])
+  @@unique([deviceConnectionId, externalId])
   @@index([patientId, measuredAt])
   @@map("weight_entries")
+}
+
+// A device or health app a patient has allowed to send their weight (see DeviceReadingsController).
+// Only a hash of its token is kept: the token itself is shown once, when the connection is made.
+model DeviceConnection {
+  id         String         @id @default(cuid())
+  patientId  String         @map("patient_id")
+  provider   DeviceProvider
+  label      String
+  tokenHash  String         @unique @map("token_hash")
+  // The last characters of the token, so the patient can tell their connections apart.
+  tokenHint  String         @map("token_hint")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  lastUsedAt DateTime?      @map("last_used_at")
+  revokedAt  DateTime?      @map("revoked_at")
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  weightEntries WeightEntry[]
+
+  @@index([patientId])
+  @@map("device_connections")
+}
+
+// A side effect the patient reported between check-ins, for the doctor to acknowledge.
+model SideEffectReport {
+  id               String             @id @default(cuid())
+  patientId        String             @map("patient_id")
+  // Keys of the effects chosen, e.g. ["nausea", "fatigue"].
+  effects          String[]
+  severity         SideEffectSeverity
+  note             String?
+  // What the patient was on when they reported it, e.g. "Semaglutide (Wegovy) 0.25 mg".
+  medication       String?
+  createdAt        DateTime           @default(now()) @map("created_at")
+  acknowledgedAt   DateTime?          @map("acknowledged_at")
+  acknowledgedById String?            @map("acknowledged_by_id")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([acknowledgedAt, createdAt])
+  @@index([patientId, createdAt])
+  @@map("side_effect_reports")
 }
 
 model OnboardingSubmission {

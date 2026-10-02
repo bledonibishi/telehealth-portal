@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OPEN_ALERTS_WHERE } from '../side-effects/side-effects';
 import { DosingService } from '../dosing/dosing.service';
 import { ShipmentsService } from '../prescriptions/shipments.service';
 
@@ -19,10 +20,10 @@ export class NotificationsService {
   ) {}
 
   /** Adherence counts are prescriber-only, like the list behind them; other staff get 0. */
-  async getCounts({ includeMissedDoses = false, includeShipments = false }: { includeMissedDoses?: boolean; includeShipments?: boolean } = {}) {
+  async getCounts({ includeMissedDoses = false, includeShipments = false, includeSideEffects = false }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, missedDoseAlerts, shipmentsDue] =
+    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, missedDoseAlerts, shipmentsDue, sideEffectAlerts] =
       await Promise.all([
         // Leads created in the last 24h
         this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
@@ -53,13 +54,16 @@ export class NotificationsService {
 
         // Next supplies that are due or late
         includeShipments ? this.countShipmentsDue() : 0,
+
+        // Side effects patients reported that no doctor has acknowledged yet
+        includeSideEffects ? this.prisma.sideEffectReport.count({ where: OPEN_ALERTS_WHERE }) : 0,
       ]);
 
     const patientMessages = consultationsWithMessages.filter(
       (c) => c.messages[0]?.senderRole === 'PATIENT',
     ).length;
 
-    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue };
+    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts };
   }
 
   private async countMissedDoseAlerts() {

@@ -49,7 +49,9 @@ export class RevenueOverviewModel {
 }
 
 export enum FunnelStageKey {
-  QUIZ_COMPLETED = 'QUIZ_COMPLETED',
+  LANDING_VISITORS = 'LANDING_VISITORS',
+  QUIZ_STARTED = 'QUIZ_STARTED',
+  PASSED_ELIGIBILITY = 'PASSED_ELIGIBILITY',
   PAID = 'PAID',
   ACCOUNT_ACTIVATED = 'ACCOUNT_ACTIVATED',
   CONSULTATION_SUBMITTED = 'CONSULTATION_SUBMITTED',
@@ -80,6 +82,12 @@ export class SalesFunnelModel {
 
   @Field(() => [FunnelStageModel])
   stages: FunnelStageModel[];
+
+  @Field({ description: 'False when PostHog is not connected, so the visitor and quiz-start stages are left out' })
+  visitorsConfigured: boolean;
+
+  @Field({ nullable: true, description: 'Set when PostHog is connected but refused the request, e.g. a wrong key' })
+  visitorsError?: string;
 }
 
 export enum ClinicianActivity {

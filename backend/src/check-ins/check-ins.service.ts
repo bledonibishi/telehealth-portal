@@ -9,6 +9,7 @@ import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
+import { noteFlags } from './note-signals';
 
 const CHECK_IN_INTERVAL_DAYS = 30;
 const TOKEN_EXPIRY_DAYS = 14;
@@ -190,6 +191,11 @@ export class CheckInsService {
     const questionnaire = findQuestionnaire(kind, 'CHECKIN');
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+
+    // What the patient wrote in their own words: a keyword pass flags anxiety, low motivation,
+    // trouble with the dose or distress, so the doctor reads those check-ins first.
+    const textIds = new Set(questionnaire.questions.filter((q) => q.type === 'text').map((q) => q.id));
+    evaluation.flags.push(...noteFlags(evaluation.answers.filter((a) => textIds.has(a.questionId)).map((a) => a.answer)));
 
     if (kind === ConsultationKind.GLP1 && prescription) {
       const titrationFlag = this.glp1TitrationRiskFlag(prescription, evaluation.answers);

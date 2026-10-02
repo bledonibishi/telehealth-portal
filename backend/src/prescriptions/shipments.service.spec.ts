@@ -36,6 +36,12 @@ describe('ShipmentsService', () => {
     expect(where.OR).toEqual([{ patientId: 'p-1', completedAt: new Date(NOW.getTime() - 3 * DAY) }]);
   });
 
+  it('leaves out patients whose subscription has ended', async () => {
+    const { service, prisma } = build();
+    await service.nextShipments(NOW);
+    expect(prisma.prescription.findMany.mock.calls[0][0].where.patient).toEqual({ activatedAt: { not: null }, subscriptionEndedAt: null });
+  });
+
   it('does not read check-ins at all when nobody has an active shipped prescription', async () => {
     const { service, prisma } = build();
     prisma.prescription.findMany.mockResolvedValue([]);

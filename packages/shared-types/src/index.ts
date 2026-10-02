@@ -30,6 +30,13 @@ export enum RedFlagSeverity {
   WARNING = 'WARNING',
 }
 
+/** Triage of a patient's answers: RED can't be treated online, ORANGE needs the doctor's closer look, GREEN is standard. */
+export enum RiskTag {
+  RED = 'RED',
+  ORANGE = 'ORANGE',
+  GREEN = 'GREEN',
+}
+
 export enum OnboardingStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   PENDING_REVIEW = 'PENDING_REVIEW',

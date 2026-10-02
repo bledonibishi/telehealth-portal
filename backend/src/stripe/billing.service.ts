@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
@@ -26,6 +26,26 @@ export class BillingService {
     const secretKey = config.get<string>('STRIPE_SECRET_KEY');
     this.configured = Boolean(secretKey);
     this.stripe = new Stripe(secretKey ?? '', { apiVersion: '2023-10-16' as any });
+  }
+
+  /**
+   * A one-time link to Stripe's customer portal, where the patient updates their card, reads past
+   * invoices, or cancels. The customer is always the patient's own — never one named by a request.
+   * What the portal offers (invoices, cancelling, …) is switched on in the Stripe Dashboard
+   * under Settings → Billing → Customer portal.
+   */
+  async createPortalSession(patient: BillingPatient, returnUrl: string): Promise<string> {
+    if (!this.configured) throw new ServiceUnavailableException('Subscription management isn’t available right now. Please message us and we’ll help.');
+    const customerId = patient.stripeCustomerId ?? (await this.findCustomerIdByEmail(patient.email));
+    if (!customerId) throw new NotFoundException('We couldn’t find a subscription on your account. Please message us and we’ll help.');
+    try {
+      const session = await this.stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
+      return session.url;
+    } catch (err: any) {
+      // Typically: the portal hasn't been configured in the Stripe Dashboard yet.
+      this.logger.error(`Billing portal session for ${patient.email} failed: ${err.message}`);
+      throw new ServiceUnavailableException('Subscription management isn’t available right now. Please message us and we’ll help.');
+    }
   }
 
   async cancelAndRefund(patient: BillingPatient): Promise<RefundOutcome> {
@@ -135,11 +155,15 @@ export class BillingService {
   }
 
   // Patients who paid before stripe ids were recorded on the patient row.
-  private async findSubscriptionByEmail(email: string): Promise<string | null> {
+  private async findCustomerIdByEmail(email: string): Promise<string | null> {
     const customers = await this.stripe.customers.list({ email, limit: 1 });
-    const customer = customers.data[0];
-    if (!customer) return null;
-    const subs = await this.stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 1 });
+    return customers.data[0]?.id ?? null;
+  }
+
+  private async findSubscriptionByEmail(email: string): Promise<string | null> {
+    const customerId = await this.findCustomerIdByEmail(email);
+    if (!customerId) return null;
+    const subs = await this.stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 1 });
     return subs.data[0]?.id ?? null;
   }
 }

@@ -1,9 +1,10 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { CatalogService } from './catalog.service';
 import { ProductModel } from './models/product.model';
+import { PrescriptionTemplateModel } from './models/prescription-template.model';
 import { ClinicianRole, ConsultationKind } from '../common/enums';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { STAFF } from '../auth/access-roles';
+import { PRESCRIBERS, STAFF } from '../auth/access-roles';
 
 @Resolver(() => ProductModel)
 export class CatalogResolver {
@@ -16,6 +17,12 @@ export class CatalogResolver {
     @Args('includeInactive', { nullable: true, defaultValue: false }) includeInactive?: boolean,
   ) {
     return this.catalog.findProducts({ kind, includeInactive });
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Query(() => [PrescriptionTemplateModel], { description: 'One-click prescription templates for a programme, matched to the live catalog' })
+  prescriptionTemplates(@Args('kind', { type: () => ConsultationKind }) kind: ConsultationKind) {
+    return this.catalog.findTemplates(kind);
   }
 
   @Authorized(ClinicianRole.ADMIN)

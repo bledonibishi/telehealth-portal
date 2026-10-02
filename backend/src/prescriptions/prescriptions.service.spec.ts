@@ -48,7 +48,7 @@ describe('PrescriptionsService', () => {
 
   describe('cancel', () => {
     it('cancels an active prescription and audits the reason', async () => {
-      prisma.prescription.findUnique.mockResolvedValue({ id: 'rx-1', status: 'ACTIVE' });
+      prisma.prescription.findUnique.mockResolvedValue(ACTIVE_RX);
       prisma.prescription.update.mockResolvedValue({ id: 'rx-1', status: 'CANCELLED' });
 
       await service.cancel('doc-1', 'rx-1', ' Side effects ');
@@ -57,7 +57,11 @@ describe('PrescriptionsService', () => {
         where: { id: 'rx-1' },
         data: expect.objectContaining({ status: 'CANCELLED', cancelReason: 'Side effects' }),
       });
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'PRESCRIPTION_CANCELLED' }));
+      // Recorded in the same transaction as the cancellation, against the patient.
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'PRESCRIPTION_CANCELLED', patientId: 'p-1' }),
+        prisma,
+      );
     });
 
     it('cancels orders and scheduled doses the pharmacy/patient have not acted on yet', async () => {
@@ -112,7 +116,8 @@ describe('PrescriptionsService', () => {
     it('audits the change with the clinical reason', async () => {
       await service.changeDose('doc-1', input as any);
       expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'DOSE_CHANGED', resourceId: 'rx-2', metadata: expect.objectContaining({ supersedes: 'rx-1', reason: input.reasonForChange }) }),
+        expect.objectContaining({ action: 'DOSE_CHANGED', resourceId: 'rx-2', patientId: 'p-1', metadata: expect.objectContaining({ supersedes: 'rx-1', reason: input.reasonForChange }) }),
+        prisma,
       );
     });
 

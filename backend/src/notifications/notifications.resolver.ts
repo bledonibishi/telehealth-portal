@@ -15,6 +15,7 @@ export class NotificationsResolver {
     const role = accessRoleOf(user);
     return this.notificationsService.getCounts({
       includeMissedDoses: !!role && PRESCRIBERS.includes(role),
+      includeSideEffects: !!role && PRESCRIBERS.includes(role),
       includeShipments: !!role && (PRESCRIBERS.includes(role) || FULFILMENT.includes(role)),
     });
   }

@@ -1,5 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { ConsultationStatus, ConsultationKind, RedFlagSeverity, RefundStatus } from '../../common/enums';
+import { ConsultationStatus, ConsultationKind, RedFlagSeverity, RefundStatus, RiskTag } from '../../common/enums';
 import { ClinicianModel } from '../../clinicians/models/clinician.model';
 import { PatientModel } from '../../patients/models/patient.model';
 import { PrescriptionModel } from '../../prescriptions/models/prescription.model';
@@ -57,6 +57,9 @@ export class ConsultationModel {
 
   @Field(() => [RedFlagModel])
   redFlags: RedFlagModel[];
+
+  @Field(() => RiskTag, { description: 'Triage of the answers: RED = disqualifying flag, ORANGE = needs a closer look, GREEN = standard' })
+  riskTag: RiskTag;
 
   @Field(() => PrescriptionModel, { nullable: true })
   prescription?: PrescriptionModel;

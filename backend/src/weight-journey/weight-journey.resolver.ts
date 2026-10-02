@@ -4,7 +4,7 @@ import { WeightJourneyModel } from './models/weight-journey.model';
 import { CorrectCheckInWeightInput, CorrectWeightGoalInput } from './dto/weight-journey.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS } from '../auth/access-roles';
 import { AuditRead } from '../audit/audit-read.interceptor';
 
 @Resolver(() => WeightJourneyModel)
@@ -23,7 +23,8 @@ export class WeightJourneyResolver {
     return this.journey.setTarget(user.id, targetWeightKg);
   }
 
-  @Authorized(...STAFF)
+  // Weight history is clinical: doctors only, not support or fulfilment staff.
+  @Authorized(...PRESCRIBERS)
   @AuditRead('WeightJourney', 'patientId')
   @Query(() => WeightJourneyModel, { nullable: true })
   weightJourneyForPatient(@Args('patientId', { type: () => ID }) patientId: string) {

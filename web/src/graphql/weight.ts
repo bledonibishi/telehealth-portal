@@ -63,6 +63,7 @@ export const MY_WEIGHT_TIMELINE = gql`
         changeKg
         note
         feeling
+        hasPhoto
       }
     }
   }
@@ -82,6 +83,34 @@ export const VOID_MY_WEIGHT = gql`
   mutation VoidMyWeight($entryId: ID!) {
     voidMyWeight(entryId: $entryId) {
       ...WeightJourneyFields
+    }
+  }
+`;
+
+export const MY_PROGRESS_PHOTOS = gql`
+  query MyProgressPhotos {
+    myProgressPhotos {
+      entryId
+      measuredAt
+      weightKg
+      photoFileId
+    }
+  }
+`;
+
+export const MY_WEIGHT_FORECAST = gql`
+  query MyWeightForecast {
+    myWeightForecast {
+      available
+      reason
+      basedOnPoints
+      basedOnDays
+      kgPerWeek
+      confidence
+      fromAt
+      fromWeightKg
+      reachesTargetAt
+      points { at monthsAhead weightKg }
     }
   }
 `;
