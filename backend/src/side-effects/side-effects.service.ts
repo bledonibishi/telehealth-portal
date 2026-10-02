@@ -3,7 +3,7 @@ import { PrescriptionStatus, UserRole } from '../common/enums';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportSideEffectsInput, SideEffectAlertModel, SideEffectReportModel } from './models/side-effect.model';
-import { MAX_NOTE_LENGTH, MAX_REPORTS_PER_DAY, SIDE_EFFECT_KEYS, adviceFor, byUrgency } from './side-effects';
+import { MAX_NOTE_LENGTH, MAX_REPORTS_PER_DAY, OPEN_ALERTS_WHERE, SIDE_EFFECT_KEYS, adviceFor, byUrgency } from './side-effects';
 
 @Injectable()
 export class SideEffectsService {
@@ -57,9 +57,11 @@ export class SideEffectsService {
   /** Reports no doctor has looked at yet: the most severe first, then the longest waiting. */
   async alerts(): Promise<SideEffectAlertModel[]> {
     const rows = await this.prisma.sideEffectReport.findMany({
-      where: { acknowledgedAt: null, patient: { activatedAt: { not: null } } },
+      where: OPEN_ALERTS_WHERE,
       include: { patient: { select: { id: true, firstName: true, lastName: true } } },
-      orderBy: { createdAt: 'asc' },
+      // Severity first, so the limit can only ever cut off the mildest, newest ones. (The enum is
+      // declared MILD, MODERATE, SEVERE, so descending puts SEVERE first.)
+      orderBy: [{ severity: 'desc' }, { createdAt: 'asc' }],
       take: 200,
     });
     return rows

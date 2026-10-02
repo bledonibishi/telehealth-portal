@@ -55,6 +55,13 @@ export class WeightMeasurementsService {
     const clientRequestId = input.clientRequestId?.trim() || null;
     if (clientRequestId && clientRequestId.length > 100) throw new BadRequestException('Invalid request id');
 
+    // The same submission arriving again (double tap, or a retry after a lost response): it is already
+    // saved — with its photo, which would otherwise look "already attached" — so succeed quietly.
+    if (clientRequestId) {
+      const saved = await this.prisma.weightEntry.findFirst({ where: { patientId, clientRequestId }, select: { id: true } });
+      if (saved) return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
+    }
+
     const photoFileId = input.photoFileId?.trim() || null;
     if (photoFileId) await this.assertPhotoIsTheirs(patientId, photoFileId);
 

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 
 /**
@@ -8,6 +8,8 @@ import { dirname, join } from 'path';
 export interface FileStorage {
   put(key: string, body: Buffer): Promise<void>;
   get(key: string): Promise<Buffer>;
+  /** Removes the stored bytes; removing something that is already gone is not an error. */
+  delete(key: string): Promise<void>;
 }
 
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
@@ -24,6 +26,42 @@ export class LocalFileStorage implements FileStorage {
 
   get(key: string) {
     return readFile(join(this.root, key));
+  }
+
+  async delete(key: string) {
+    await rm(join(this.root, key), { force: true });
+  }
+}
+
+/** The error a storage backend gives for a file it simply does not have (as opposed to a failure). */
+export class FileNotFoundError extends Error {}
+
+/**
+ * New files go to `primary` (S3); a file `primary` does not have is looked for in `legacy` (the server's
+ * disk). So switching to S3 doesn't make files uploaded before it unreadable, with or without moving them.
+ */
+export class FallbackFileStorage implements FileStorage {
+  constructor(
+    private primary: FileStorage,
+    private legacy: FileStorage,
+  ) {}
+
+  put(key: string, body: Buffer) {
+    return this.primary.put(key, body);
+  }
+
+  async get(key: string) {
+    try {
+      return await this.primary.get(key);
+    } catch (err) {
+      if (!(err instanceof FileNotFoundError)) throw err;
+      return this.legacy.get(key);
+    }
+  }
+
+  async delete(key: string) {
+    await this.primary.delete(key);
+    await this.legacy.delete(key);
   }
 }
 
@@ -64,8 +102,18 @@ export class S3FileStorage implements FileStorage {
 
   async get(key: string) {
     const { client, commands } = await this.load();
-    const res = await client.send(new commands.GetObjectCommand({ Bucket: this.bucket, Key: key }));
-    if (!res.Body) throw new Error(`S3 returned no body for ${key}`);
-    return Buffer.from(await res.Body.transformToByteArray());
+    try {
+      const res = await client.send(new commands.GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!res.Body) throw new Error(`S3 returned no body for ${key}`);
+      return Buffer.from(await res.Body.transformToByteArray());
+    } catch (err: any) {
+      if (err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404) throw new FileNotFoundError(`No object ${key}`);
+      throw err;
+    }
+  }
+
+  async delete(key: string) {
+    const { client, commands } = await this.load();
+    await client.send(new commands.DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 }

@@ -72,6 +72,23 @@ describe('WeightMeasurementsService', () => {
       await expect(service.add('p-1', { weightKg: 100 })).rejects.toThrow(/lot of weights/);
     });
 
+    describe('retrying a submission', () => {
+      it('succeeds without creating a second entry when the request id was already saved — even though its photo is attached', async () => {
+        prisma.weightEntry.findFirst.mockResolvedValue({ id: 'w-saved' });
+        prisma.uploadedFile.findFirst.mockResolvedValue({ weightEntry: { id: 'w-saved' } }); // the photo is on that entry
+        await expect(service.add('p-1', { weightKg: 100, photoFileId: 'f-1', clientRequestId: 'req-12345678' })).resolves.toEqual({ patientId: 'p-1' });
+        expect(prisma.weightEntry.findFirst).toHaveBeenCalledWith({ where: { patientId: 'p-1', clientRequestId: 'req-12345678' }, select: { id: true } });
+        expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+        expect(prisma.uploadedFile.findFirst).not.toHaveBeenCalled();
+      });
+
+      it('still refuses an attached photo for a different submission', async () => {
+        prisma.weightEntry.findFirst.mockResolvedValue(null);
+        prisma.uploadedFile.findFirst.mockResolvedValue({ weightEntry: { id: 'w-other' } });
+        await expect(service.add('p-1', { weightKg: 100, photoFileId: 'f-1', clientRequestId: 'req-new-99999' })).rejects.toThrow(/already attached/);
+      });
+    });
+
     describe('progress photo', () => {
       it('keeps the patient’s own, unattached progress photo with the weighing', async () => {
         await service.add('p-1', { weightKg: 100, photoFileId: 'f-1' });

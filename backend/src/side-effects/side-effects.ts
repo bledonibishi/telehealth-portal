@@ -33,3 +33,6 @@ const RANK = { SEVERE: 0, MODERATE: 1, MILD: 2 } as const;
 /** Most severe first, then the one waiting longest. */
 export const byUrgency = (a: { severity: keyof typeof RANK; createdAt: Date }, b: { severity: keyof typeof RANK; createdAt: Date }) =>
   RANK[a.severity] - RANK[b.severity] || a.createdAt.getTime() - b.createdAt.getTime();
+
+/** Which reports count as open alerts. The list and the bell's number must both use this, or they drift apart. */
+export const OPEN_ALERTS_WHERE = { acknowledgedAt: null, patient: { activatedAt: { not: null } } } as const;

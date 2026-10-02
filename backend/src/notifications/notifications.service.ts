@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OPEN_ALERTS_WHERE } from '../side-effects/side-effects';
 import { DosingService } from '../dosing/dosing.service';
 import { ShipmentsService } from '../prescriptions/shipments.service';
 
@@ -55,7 +56,7 @@ export class NotificationsService {
         includeShipments ? this.countShipmentsDue() : 0,
 
         // Side effects patients reported that no doctor has acknowledged yet
-        includeSideEffects ? this.prisma.sideEffectReport.count({ where: { acknowledgedAt: null } }) : 0,
+        includeSideEffects ? this.prisma.sideEffectReport.count({ where: OPEN_ALERTS_WHERE }) : 0,
       ]);
 
     const patientMessages = consultationsWithMessages.filter(

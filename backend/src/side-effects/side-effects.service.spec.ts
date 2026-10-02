@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { MAX_REPORTS_PER_DAY, SIDE_EFFECT_KEYS, adviceFor, byUrgency } from './side-effects';
+import { MAX_REPORTS_PER_DAY, OPEN_ALERTS_WHERE, SIDE_EFFECT_KEYS, adviceFor, byUrgency } from './side-effects';
 import { SideEffectsService } from './side-effects.service';
 
 describe('SideEffectsService', () => {
@@ -83,7 +83,9 @@ describe('SideEffectsService', () => {
         row({ id: 'old-severe', severity: 'SEVERE', createdAt: new Date('2026-10-01'), patient }),
       ]);
       const alerts = await service.alerts();
-      expect(prisma.sideEffectReport.findMany.mock.calls[0][0].where).toMatchObject({ acknowledgedAt: null });
+      expect(prisma.sideEffectReport.findMany.mock.calls[0][0].where).toBe(OPEN_ALERTS_WHERE);
+      // severity decides before the limit does, so a newer severe report can't be cut off by older mild ones
+      expect(prisma.sideEffectReport.findMany.mock.calls[0][0].orderBy).toEqual([{ severity: 'desc' }, { createdAt: 'asc' }]);
       expect(alerts.map((a) => a.id)).toEqual(['old-severe', 'new-severe', 'mid-moderate', 'old-mild']);
       expect(alerts[0]).toMatchObject({ patientId: 'p-1', patientName: 'Tia Berisha' });
     });

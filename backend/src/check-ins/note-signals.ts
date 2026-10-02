@@ -47,9 +47,10 @@ const NEGATION_REACH = 3; // words
 const normalise = (text: string) =>
   text
     .toLowerCase()
+    // German letters first: stripping accents would turn ä into a, and "aengst" would never match "ängstlich".
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
-    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
     .replace(/[’'`]/g, '')
     .replace(/[^a-z0-9*\s-]/g, ' ');
 

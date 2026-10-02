@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { LocalFileStorage } from './file-storage';
+import { FallbackFileStorage, FileNotFoundError, LocalFileStorage } from './file-storage';
 import { UploadsService, looksLikeImage, safeFilename, staffMayView } from './uploads.service';
 
 describe('safeFilename', () => {
@@ -54,7 +54,7 @@ describe('UploadsService storage', () => {
   const config = { get: jest.fn((name: string) => (name === 'UPLOAD_ENCRYPTION_KEY' ? KEY : undefined)) } as any;
   const memory = () => {
     const files = new Map<string, Buffer>();
-    return { files, put: jest.fn(async (k: string, b: Buffer) => void files.set(k, b)), get: jest.fn(async (k: string) => files.get(k)!) };
+    return { files, put: jest.fn(async (k: string, b: Buffer) => void files.set(k, b)), get: jest.fn(async (k: string) => files.get(k)!), delete: jest.fn(async (k: string) => void files.delete(k)) };
   };
 
   it('hands the storage backend only ciphertext, and decrypts what it returns', async () => {
@@ -97,7 +97,7 @@ describe('UploadsService.findForAccess', () => {
   const FILE = (kind: string) => ({ id: 'f-1', patientId: 'p-1', kind, storageKey: 'k', mimeType: 'image/jpeg' });
   const service = (kind: string) => {
     const prisma: any = { uploadedFile: { findUnique: jest.fn().mockResolvedValue(FILE(kind)) } };
-    return new UploadsService(prisma, { get: jest.fn() } as any, { put: jest.fn(), get: jest.fn() });
+    return new UploadsService(prisma, { get: jest.fn() } as any, { put: jest.fn(), get: jest.fn(), delete: jest.fn() });
   };
   const staff = (clinicianRole: string) => ({ id: 'c-1', role: 'CLINICIAN', clinicianRole }) as any;
   const patient = (id: string) => ({ id, role: 'PATIENT' }) as any;
@@ -120,5 +120,45 @@ describe('UploadsService.findForAccess', () => {
 
   it('keeps identity documents open to all staff, as the onboarding review needs', () => {
     for (const role of ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER']) expect(staffMayView('ID_DOCUMENT' as any, staff(role))).toBe(true);
+  });
+});
+
+describe('FallbackFileStorage (S3 with the old disk behind it)', () => {
+  const store = (files: Record<string, string> = {}) => {
+    const map = new Map<string, Buffer>(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)] as [string, Buffer]));
+    return {
+      put: jest.fn(async (k: string, b: Buffer) => void map.set(k, b)),
+      get: jest.fn(async (k: string): Promise<Buffer> => { if (!map.has(k)) throw new FileNotFoundError(k); return map.get(k)!; }),
+      delete: jest.fn(async (k: string) => void map.delete(k)),
+    };
+  };
+
+  it('writes new files to the primary only', async () => {
+    const primary = store(), legacy = store();
+    await new FallbackFileStorage(primary, legacy).put('p/new', Buffer.from('x'));
+    expect(primary.put).toHaveBeenCalled();
+    expect(legacy.put).not.toHaveBeenCalled();
+  });
+
+  it('reads a file uploaded before the switch from the old disk, and never asks it for one the primary has', async () => {
+    const primary = store({ 'p/new': 'in s3' }), legacy = store({ 'p/old': 'on disk' });
+    const storage = new FallbackFileStorage(primary, legacy);
+    expect((await storage.get('p/new')).toString()).toBe('in s3');
+    expect(legacy.get).not.toHaveBeenCalled();
+    expect((await storage.get('p/old')).toString()).toBe('on disk');
+  });
+
+  it('does not hide a real failure of the primary behind the old disk', async () => {
+    const primary = store(), legacy = store({ 'p/x': 'old' });
+    primary.get.mockRejectedValue(new Error('S3 is down'));
+    await expect(new FallbackFileStorage(primary, legacy).get('p/x')).rejects.toThrow('S3 is down');
+    expect(legacy.get).not.toHaveBeenCalled();
+  });
+
+  it('deletes from both', async () => {
+    const primary = store({ a: '1' }), legacy = store({ a: '1' });
+    await new FallbackFileStorage(primary, legacy).delete('a');
+    expect(primary.delete).toHaveBeenCalledWith('a');
+    expect(legacy.delete).toHaveBeenCalledWith('a');
   });
 });
