@@ -15,6 +15,15 @@ export const ORDER_FIELDS = gql`
     deliveredAt
     cancelledAt
     cancelReason
+    partnerTransmission {
+      status
+      event
+      channels
+      attempts
+      lastError
+      lastAttemptAt
+      sentAt
+    }
     shippingAddress {
       name
       phone
@@ -121,6 +130,49 @@ export const CREATE_REPEAT_ORDER = gql`
   mutation CreateRepeatOrder($prescriptionId: ID!) {
     createRepeatOrder(prescriptionId: $prescriptionId) {
       ...OrderFields
+    }
+  }
+`;
+
+export const PARTNER_INTEGRATION_STATUS = gql`
+  query PartnerIntegrationStatus {
+    partnerIntegrationStatus {
+      webhookConfigured
+      emailConfigured
+      partnerName
+      configurationProblem
+    }
+  }
+`;
+
+export const ORDER_PARTNER_PAYLOAD = gql`
+  query OrderPartnerPayload($orderId: ID!) {
+    orderPartnerPayload(orderId: $orderId)
+  }
+`;
+
+export const SEND_ORDER_TO_PARTNER = gql`
+  ${ORDER_FIELDS}
+  mutation SendOrderToPartner($orderId: ID!) {
+    sendOrderToPartner(orderId: $orderId) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const NEXT_SHIPMENT_ALERTS = gql`
+  query NextShipmentAlerts {
+    nextShipmentAlerts {
+      prescriptionId
+      patientId
+      patientName
+      medication
+      lastShippedAt
+      nextDueAt
+      daysUntilDue
+      urgency
+      blocker
+      repeatsLeft
     }
   }
 `;

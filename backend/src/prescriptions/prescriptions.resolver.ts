@@ -8,6 +8,8 @@ import { PrescriptionModel } from './models/prescription.model';
 import { PrescribingViolationModel } from './models/prescribing-check.model';
 import { OrderModel } from './models/order.model';
 import { OrdersService } from './orders.service';
+import { ShipmentsService } from './shipments.service';
+import { ShipmentAlertModel } from './models/shipment-alert.model';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { ChangeDoseInput } from './dto/change-dose.input';
 import { ConsultationKind, OrderStatus } from '../common/enums';
@@ -22,6 +24,7 @@ export class PrescriptionsResolver {
     private prescribing: PrescribingService,
     private prisma: PrismaService,
     private ordersService: OrdersService,
+    private shipments: ShipmentsService,
   ) {}
 
   @Authorized(...STAFF, 'PATIENT')
@@ -99,23 +102,33 @@ export class PrescriptionsResolver {
   @Authorized('PATIENT')
   @Query(() => [OrderModel])
   myOrders(@CurrentUser() user: AuthUser) {
-    return this.ordersService.findByPatient(user.id);
+    return this.ordersService.findOwn(user.id);
+  }
+
+  @Authorized(...FULFILMENT, ...PRESCRIBERS)
+  @Query(() => [ShipmentAlertModel], { description: 'Patients whose next supply is coming up or late, most urgent first, with what is holding it up' })
+  nextShipmentAlerts() {
+    return this.shipments.nextShipments();
   }
 
   @Authorized(...PRESCRIBERS)
   @Mutation(() => OrderModel, { description: "Queue another supply against the prescription's repeats" })
-  createRepeatOrder(@CurrentUser() user: AuthUser, @Args('prescriptionId', { type: () => ID }) prescriptionId: string) {
-    return this.ordersService.createRepeat(user.id, prescriptionId);
+  async createRepeatOrder(@CurrentUser() user: AuthUser, @Args('prescriptionId', { type: () => ID }) prescriptionId: string) {
+    const order = await this.ordersService.createRepeat(user.id, prescriptionId);
+    this.shipments.invalidate(); // the alert for this supply is now an order, not a reminder
+    return order;
   }
 
   @Authorized(...FULFILMENT)
   @Mutation(() => OrderModel)
-  dispatchOrder(
+  async dispatchOrder(
     @CurrentUser() user: AuthUser,
     @Args('id', { type: () => ID }) id: string,
     @Args('pharmacyRef') pharmacyRef: string,
   ) {
-    return this.ordersService.dispatch(user.id, id, pharmacyRef);
+    const order = await this.ordersService.dispatch(user.id, id, pharmacyRef);
+    this.shipments.invalidate();
+    return order;
   }
 
   @Authorized(...FULFILMENT)
@@ -138,7 +151,9 @@ export class PrescriptionsResolver {
 
   @Authorized(...FULFILMENT, ...PRESCRIBERS)
   @Mutation(() => OrderModel, { description: 'Stop an order that has not been dispatched' })
-  cancelOrder(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string, @Args('reason') reason: string) {
-    return this.ordersService.cancel(user.id, id, reason);
+  async cancelOrder(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string, @Args('reason') reason: string) {
+    const order = await this.ordersService.cancel(user.id, id, reason);
+    this.shipments.invalidate();
+    return order;
   }
 }

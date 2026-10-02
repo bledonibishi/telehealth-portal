@@ -2,6 +2,7 @@ import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { OrderStatus } from '../../common/enums';
 import { PatientModel } from '../../patients/models/patient.model';
 import { PrescriptionModel } from './prescription.model';
+import { PartnerTransmissionModel } from './partner-transmission.model';
 
 @ObjectType('DeliveryAddress')
 export class DeliveryAddressModel {
@@ -73,6 +74,9 @@ export class OrderModel {
 
   @Field()
   createdAt: Date;
+
+  @Field(() => PartnerTransmissionModel, { nullable: true, description: 'Whether the order summary reached the external pharmacy partner' })
+  partnerTransmission?: PartnerTransmissionModel;
 
   @Field(() => PatientModel)
   patient: PatientModel;

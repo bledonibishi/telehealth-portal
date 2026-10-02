@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_DASHBOARD_METRICS } from '@/graphql/dashboard';
 import { getCurrentRole } from '@/lib/role';
+import RevenuePanel from '@/components/insights/RevenuePanel';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Metrics = {
@@ -99,6 +100,8 @@ export default function DashboardPage() {
         <h1 className="text-xl font-semibold text-gray-900">{t('Good morning')}</h1>
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
+
+      <RevenuePanel />
 
       <Section title="Leads">
         {loading ? (

@@ -31,6 +31,7 @@ import { DosingModule } from './dosing/dosing.module';
 import { SymptomsModule } from './symptoms/symptoms.module';
 import { TrendsModule } from './trends/trends.module';
 import { LabsModule } from './labs/labs.module';
+import { InsightsModule } from './insights/insights.module';
 
 @Module({
   imports: [
@@ -79,7 +80,8 @@ import { LabsModule } from './labs/labs.module';
     DosingModule,
     SymptomsModule,
     TrendsModule,
-    LabsModule
+    LabsModule,
+    InsightsModule,
   ],
 })
 export class AppModule {}
