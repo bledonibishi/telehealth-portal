@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useQuery } from '@apollo/client';
-import { GET_ORDERS } from '@/graphql/orders';
+import { GET_ORDERS, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
+import NextShipments from '@/components/orders/NextShipments';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 const FILTERS = [
@@ -27,12 +28,15 @@ const EMPTY: Record<FilterKey, string> = {
 export default function OrdersPage() {
   const { t } = useI18n();
   const { data, loading, error } = useQuery(GET_ORDERS, { pollInterval: 60_000 });
-  const [filter, setFilter] = useState<FilterKey>('pending');
+  const [filter, setFilter] = useState<FilterKey | 'shipments'>('pending');
+  const { data: shipmentData } = useQuery(NEXT_SHIPMENT_ALERTS, { pollInterval: 60_000 });
+  const shipmentsDue = (shipmentData?.nextShipmentAlerts ?? []).filter((a: any) => a.urgency !== 'UPCOMING').length;
+  const shipmentsSoon = (shipmentData?.nextShipmentAlerts ?? []).length;
 
   const allOrders: any[] = data?.orders ?? [];
   const countFor = (statuses: readonly string[] | null) =>
     statuses ? allOrders.filter((o) => statuses.includes(o.status)).length : allOrders.length;
-  const active = FILTERS.find((f) => f.key === filter)!;
+  const active = FILTERS.find((f) => f.key === filter) ?? FILTERS[0];
   const orders = active.statuses ? allOrders.filter((o) => (active.statuses as readonly string[]).includes(o.status)) : allOrders;
 
   return (
@@ -46,6 +50,10 @@ export default function OrdersPage() {
           <div className="text-center">
             <p className="font-semibold text-amber-600">{countFor(['PENDING'])}</p>
             <p className="text-xs text-gray-400">{t('To dispatch')}</p>
+          </div>
+          <div className="text-center">
+            <p className={`font-semibold ${shipmentsDue ? 'text-red-600' : 'text-gray-400'}`}>{shipmentsDue}</p>
+            <p className="text-xs text-gray-400">{t('Shipments due')}</p>
           </div>
           <div className="text-center">
             <p className="font-semibold text-blue-600">{countFor(['DISPATCHED', 'OUT_FOR_DELIVERY'])}</p>
@@ -70,7 +78,25 @@ export default function OrdersPage() {
             {t(f.label)}
           </button>
         ))}
+        <button
+          onClick={() => setFilter('shipments')}
+          className={`py-2.5 mr-6 text-sm border-b-2 transition-colors flex items-center gap-1.5 ${
+            filter === 'shipments' ? 'border-brand-500 text-brand-900 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('Next shipments')}
+          {shipmentsSoon > 0 && (
+            <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${shipmentsDue ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}>
+              {shipmentsSoon}
+            </span>
+          )}
+        </button>
       </div>
+
+      {filter === 'shipments' ? (
+        <NextShipments />
+      ) : (
+        <>
 
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
@@ -79,8 +105,10 @@ export default function OrdersPage() {
         {orders.map((order) => (
           <OrderCard key={order.id} order={order} refetchQueries={[{ query: GET_ORDERS }]} />
         ))}
-        {!loading && orders.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{t(EMPTY[filter])}</div>}
+        {!loading && orders.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{t(EMPTY[filter as FilterKey])}</div>}
       </div>
+        </>
+      )}
     </div>
   );
 }

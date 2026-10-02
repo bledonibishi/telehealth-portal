@@ -25,6 +25,7 @@ type NotifCounts = {
   pendingConsultations: number;
   patientMessages: number;
   pendingOrders: number;
+  shipmentsDue: number;
 };
 
 const NAV: NavItem[] = [
@@ -56,7 +57,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
   const counts: NotifCounts = data?.notificationCounts ?? {
-    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0,
+    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0,
   };
 
   useEffect(() => {
@@ -88,7 +89,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               item.href === '/'
                 ? pathname === '/'
                 : pathname === item.href || pathname.startsWith(item.href + '/');
-            const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
+            // The Orders badge also counts shipments that are due, so operations see them without opening the page.
+            const badgeCount = item.badgeKey ? counts[item.badgeKey] + (item.badgeKey === 'pendingOrders' ? counts.shipmentsDue : 0) : 0;
             return (
               <Link
                 key={item.href}

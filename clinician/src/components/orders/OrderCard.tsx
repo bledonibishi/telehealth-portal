@@ -7,6 +7,7 @@ import { CANCEL_ORDER, DISPATCH_ORDER, MARK_ORDER_DELIVERED, MARK_ORDER_OUT_FOR_
 import { openAuthedDocument } from '@/lib/documents';
 import { hasAccess } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import PartnerStatus from './PartnerStatus';
 
 const KIND_BADGE: Record<string, string> = {
   HRT: 'bg-violet-100 text-violet-700',
@@ -24,13 +25,14 @@ export function orderStage(order: { status: string }) {
 }
 
 function StageTracker({ current }: { current: number }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center max-w-md">
       {STAGES.map((stage, i) => (
         <div key={stage} className="flex items-center flex-1 last:flex-none">
           <div className="flex flex-col items-center">
             <div className={`w-2.5 h-2.5 rounded-full ${i <= current ? 'bg-brand-500' : 'bg-gray-200'} ${i === current ? 'ring-4 ring-brand-50' : ''}`} />
-            <span className={`text-[10px] mt-1 whitespace-nowrap ${i <= current ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>{stage}</span>
+            <span className={`text-[10px] mt-1 whitespace-nowrap ${i <= current ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>{t(stage)}</span>
           </div>
           {i < STAGES.length - 1 && <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-brand-500' : 'bg-gray-200'}`} />}
         </div>
@@ -109,6 +111,8 @@ export function OrderCard({
           </p>
 
           {!cancelled && <div className="mt-3"><StageTracker current={stage} /></div>}
+
+          {canFulfil && <PartnerStatus order={order} />}
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-gray-400">
             <span>{t('Ordered {when}', { when: timeAgo(order.createdAt) })}</span>
