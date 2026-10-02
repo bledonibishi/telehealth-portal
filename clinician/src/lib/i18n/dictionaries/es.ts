@@ -641,4 +641,10 @@ export const es: Record<string, string> = {
   "Shipments due or late": "Envíos pendientes o atrasados",
   "Stripe could not be read: {message}": "No se pudo leer Stripe: {message}",
   "Check STRIPE_SECRET_KEY in the backend settings.": "Revisa STRIPE_SECRET_KEY en la configuración del backend.",
+  "{partner} was told to cancel this order {when}": "Se indicó a {partner} que cancelara este pedido {when}",
+  "Could not tell {partner} to cancel (attempt {n})": "No se pudo avisar a {partner} de la cancelación (intento {n})",
+  "Waiting to tell {partner} to cancel this order": "A la espera de avisar a {partner} de que cancele este pedido",
+  "Webhook is not fully set up: add PARTNER_WEBHOOK_SECRET": "El webhook no está del todo configurado: añade PARTNER_WEBHOOK_SECRET",
+  "Make sure no patient runs out of medicine before the next supply reaches them": "Asegúrate de que ningún paciente se quede sin medicamento antes de que le llegue el siguiente suministro",
+  "One amount per currency, not added together. List prices, before discounts": "Un importe por moneda, sin sumar. Precios de lista, antes de descuentos",
 };

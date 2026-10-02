@@ -17,6 +17,7 @@ export const ORDER_FIELDS = gql`
     cancelReason
     partnerTransmission {
       status
+      event
       channels
       attempts
       lastError
@@ -139,6 +140,7 @@ export const PARTNER_INTEGRATION_STATUS = gql`
       webhookConfigured
       emailConfigured
       partnerName
+      configurationProblem
     }
   }
 `;

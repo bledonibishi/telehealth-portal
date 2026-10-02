@@ -641,4 +641,10 @@ export const sq: Record<string, string> = {
   "Shipments due or late": "Dërgesa për t’u bërë ose me vonesë",
   "Stripe could not be read: {message}": "Stripe nuk u lexua dot: {message}",
   "Check STRIPE_SECRET_KEY in the backend settings.": "Kontrollo STRIPE_SECRET_KEY te cilësimet e backend-it.",
+  "{partner} was told to cancel this order {when}": "{partner} u njoftua ta anulojë këtë porosi {when}",
+  "Could not tell {partner} to cancel (attempt {n})": "Nuk u njoftua dot {partner} për anulimin (përpjekja {n})",
+  "Waiting to tell {partner} to cancel this order": "Në pritje për ta njoftuar {partner} që ta anulojë këtë porosi",
+  "Webhook is not fully set up: add PARTNER_WEBHOOK_SECRET": "Webhook-u nuk është konfiguruar plotësisht: shtoni PARTNER_WEBHOOK_SECRET",
+  "Make sure no patient runs out of medicine before the next supply reaches them": "Sigurohuni që asnjë pacient të mos mbetet pa ilaç para se t’i arrijë furnizimi i radhës",
+  "One amount per currency, not added together. List prices, before discounts": "Një shumë për çdo monedhë, jo të mbledhura bashkë. Çmime listë, para zbritjeve",
 };

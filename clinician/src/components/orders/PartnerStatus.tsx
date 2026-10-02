@@ -29,14 +29,23 @@ export default function PartnerStatus({ order }: { order: any }) {
 
   const tx = order.partnerTransmission;
   const waiting = order.status === 'PENDING';
+  // After a cancellation the record is about telling the partner not to dispatch.
+  const withdrawing = tx?.event === 'order.cancelled';
   // Dispatched or cancelled orders are the pharmacy's now — only show whether it went through.
   if (!waiting && !tx) return null;
 
   let chip: { cls: string; text: string };
-  if (tx?.status === 'SENT') chip = { cls: 'bg-green-50 text-green-700', text: t('Sent to {partner} {when}', { partner, when: timeAgo(tx.sentAt) }) };
+  if (withdrawing) {
+    if (tx.status === 'SENT') chip = { cls: 'bg-green-50 text-green-700', text: t('{partner} was told to cancel this order {when}', { partner, when: timeAgo(tx.sentAt) }) };
+    else if (tx.status === 'FAILED') chip = { cls: 'bg-red-50 text-red-700', text: t('Could not tell {partner} to cancel (attempt {n})', { partner, n: tx.attempts }) };
+    else chip = { cls: 'bg-amber-50 text-amber-700', text: t('Waiting to tell {partner} to cancel this order', { partner }) };
+  } else if (tx?.status === 'SENT') chip = { cls: 'bg-green-50 text-green-700', text: t('Sent to {partner} {when}', { partner, when: timeAgo(tx.sentAt) }) };
   else if (tx?.status === 'FAILED') chip = { cls: 'bg-red-50 text-red-700', text: t('Could not reach {partner} (attempt {n})', { partner, n: tx.attempts }) };
   else if (automatic) chip = { cls: 'bg-amber-50 text-amber-700', text: t('Waiting to be sent to {partner}', { partner }) };
   else chip = { cls: 'bg-gray-100 text-gray-600', text: t('Not sent automatically — copy the order for {partner}', { partner }) };
+
+  // A cancellation that has not gone through can be pushed by hand, like an order.
+  const canSend = automatic && (withdrawing ? tx.status !== 'SENT' : waiting);
 
   const open = () => { setShowPayload(true); setCopied(false); loadPayload({ variables: { orderId: order.id } }); };
   const payload: string | undefined = payloadData?.orderPartnerPayload;
@@ -49,14 +58,17 @@ export default function PartnerStatus({ order }: { order: any }) {
     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
       <span className={`px-2 py-0.5 rounded-full font-medium ${chip.cls}`}>{chip.text}</span>
       {tx?.status === 'FAILED' && tx.lastError && <span className="text-red-600" title={tx.lastError}>{tx.lastError.length > 60 ? tx.lastError.slice(0, 60) + '…' : tx.lastError}</span>}
-      {waiting && automatic && (
+      {canSend && (
         <button
           onClick={() => { setError(''); send({ variables: { orderId: order.id } }); }}
           disabled={sending}
           className="text-brand-500 hover:text-brand-900 disabled:opacity-50"
         >
-          {sending ? t('Sending…') : tx ? t('Send again') : t('Send now')}
+          {sending ? t('Sending…') : tx && (withdrawing || tx.status !== 'PENDING') ? t('Send again') : t('Send now')}
         </button>
+      )}
+      {status?.configurationProblem && (
+        <span className="text-amber-700" title={status.configurationProblem}>{t('Webhook is not fully set up: add PARTNER_WEBHOOK_SECRET')}</span>
       )}
       {waiting && <button onClick={open} className="text-brand-500 hover:text-brand-900">{t('View order for partner')}</button>}
       {error && <span className="text-red-600">{error}</span>}

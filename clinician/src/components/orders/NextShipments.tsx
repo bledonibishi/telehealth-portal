@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
-import { CREATE_REPEAT_ORDER, GET_ORDERS, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
+import { CREATE_REPEAT_ORDER, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { hasAccess } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -31,7 +31,9 @@ export default function NextShipments() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [create, { loading: creating }] = useMutation(CREATE_REPEAT_ORDER, {
-    refetchQueries: [{ query: NEXT_SHIPMENT_ALERTS }, { query: GET_ORDERS }],
+    // The orders list is fulfilment-only (doctors can't read it), so it is refreshed by name where it is open,
+    // and the Orders page re-checks whenever it is opened.
+    refetchQueries: [{ query: NEXT_SHIPMENT_ALERTS }, 'GetOrders'],
     onError: (e) => setErrorFor({ id: pendingRef.current ?? '', message: e.message }),
     onCompleted: () => setErrorFor(null),
   });

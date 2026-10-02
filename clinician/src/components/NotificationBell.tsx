@@ -15,7 +15,7 @@ const ITEMS: Item[] = [
   { label: 'Patient messages with no reply', count: 0, href: '/patients', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] },
   { label: 'Orders pending dispatch',   count: 0, href: '/orders',   roles: ['ADMIN', 'PROVIDER'] },
   { label: 'GLP-1 patients with missed doses', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
-  { label: 'Shipments due or late', count: 0, href: '/orders', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'] },
+  { label: 'Shipments due or late', count: 0, href: '/shipments', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'] },
 ];
 
 export function NotificationBell() {

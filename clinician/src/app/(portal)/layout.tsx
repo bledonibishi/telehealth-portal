@@ -36,6 +36,7 @@ const NAV: NavItem[] = [
   { href: '/check-ins', label: 'Check-ins',     icon: '🩺', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/labs',     label: 'Labs',           icon: '🧪', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
+  { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'],                    badgeKey: 'shipmentsDue' },
   { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
 ];
 
@@ -89,8 +90,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               item.href === '/'
                 ? pathname === '/'
                 : pathname === item.href || pathname.startsWith(item.href + '/');
-            // The Orders badge also counts shipments that are due, so operations see them without opening the page.
-            const badgeCount = item.badgeKey ? counts[item.badgeKey] + (item.badgeKey === 'pendingOrders' ? counts.shipmentsDue : 0) : 0;
+            const badgeCount = item.badgeKey ? counts[item.badgeKey] : 0;
             return (
               <Link
                 key={item.href}

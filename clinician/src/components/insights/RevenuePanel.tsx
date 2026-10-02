@@ -15,11 +15,20 @@ const STAGE_LABEL: Record<string, string> = {
   FIRST_SHIPMENT: 'First shipment sent',
 };
 
-function Card({ label, value, sub, tone = 'text-gray-900' }: { label: string; value: string; sub?: string; tone?: string }) {
+function Card({ label, value, sub, tone = 'text-gray-900' }: { label: string; value: string | string[]; sub?: string; tone?: string }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-1">
       <p className="text-sm font-medium text-gray-700">{label}</p>
-      <p className={`text-3xl font-bold ${tone}`}>{value}</p>
+      {Array.isArray(value) ? (
+        // One line per currency: they can't be added together, so none may stand in for the total.
+        <div className="flex flex-col">
+          {value.map((v, i) => (
+            <p key={i} className={`font-bold tabular-nums ${tone} ${value.length > 1 ? 'text-xl leading-tight' : 'text-3xl'}`}>{v}</p>
+          ))}
+        </div>
+      ) : (
+        <p className={`text-3xl font-bold ${tone}`}>{value}</p>
+      )}
       {sub && <p className="text-xs text-gray-400">{sub}</p>}
     </div>
   );
@@ -38,7 +47,7 @@ export default function RevenuePanel() {
 
   const money = (cents: number, currency: string) =>
     new Intl.NumberFormat({ sq: 'sq-AL', en: 'en-GB', de: 'de-DE', es: 'es-ES' }[locale], { style: 'currency', currency, maximumFractionDigits: 0 }).format(cents / 100);
-  const mrr = r?.mrr?.[0];
+  const mrr: Array<{ currency: string; amountCents: number }> = r?.mrr ?? [];
 
   return (
     <section>
@@ -63,7 +72,12 @@ export default function RevenuePanel() {
       {r?.configured && !r.error && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            <Card label={t('Monthly recurring revenue')} value={mrr ? money(mrr.amountCents, mrr.currency) : '—'} sub={t('List prices, before discounts')} tone="text-green-700" />
+            <Card
+              label={t('Monthly recurring revenue')}
+              value={mrr.length ? mrr.map((m) => money(m.amountCents, m.currency)) : '—'}
+              sub={mrr.length > 1 ? t('One amount per currency, not added together. List prices, before discounts') : t('List prices, before discounts')}
+              tone="text-green-700"
+            />
             <Card label={t('Active subscribers')} value={String(r.activeSubscribers)} sub={r.pastDueSubscribers ? t('{n} with a failed payment', { n: r.pastDueSubscribers }) : undefined} />
             <Card label={t('New subscribers')} value={String(r.newSubscribers)} sub={t('Last {n} days', { n: days })} tone="text-blue-700" />
             <Card
