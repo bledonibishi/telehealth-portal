@@ -6,7 +6,10 @@ export interface SubscriptionLike {
   status: string;
   /** Unix seconds. */
   created: number;
+  /** When cancellation was requested. For cancel-at-period-end this is well before the subscription really stops. */
   canceled_at: number | null;
+  /** When the subscription actually ended. */
+  ended_at?: number | null;
   items: Array<{
     quantity?: number | null;
     price: { unit_amount: number | null; currency: string; recurring?: { interval: string; interval_count?: number | null } | null };
@@ -65,7 +68,9 @@ export function summariseSubscriptions(subs: SubscriptionLike[], now: Date, peri
     }
     if (s.created >= since) created++;
 
-    const endedInPeriod = s.status === 'canceled' && s.canceled_at !== null && s.canceled_at >= since;
+    // It counts as lost when it really stopped, not when the cancellation was asked for.
+    const endedAt = s.ended_at ?? s.canceled_at;
+    const endedInPeriod = s.status === 'canceled' && endedAt !== null && endedAt >= since;
     if (endedInPeriod) canceledIds.push(s.id);
 
     // Counted at the start if it already existed and had not ended before the period began.

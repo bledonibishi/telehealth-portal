@@ -66,6 +66,36 @@ describe('summariseSubscriptions', () => {
     expect(s.canceledFromStartIds).toEqual(['left']);
     expect(s.cancellations).toBe(2);
   });
+
+  describe('cancel at period end (canceled_at is the request, ended_at is when it really stopped)', () => {
+    it('counts it in the period it actually ended, not the one it was requested in', () => {
+      const s = summariseSubscriptions([
+        sub('asked-last-month-ended-now', { status: 'canceled', canceled_at: ago(45), ended_at: ago(10), created: ago(200) }),
+        sub('asked-now-ends-later', { status: 'active', canceled_at: ago(5), created: ago(200) }), // still running until period end
+      ], NOW, 30);
+      expect(s.canceledIds).toEqual(['asked-last-month-ended-now']);
+    });
+
+    it('was still part of the starting group, and is a loss from it', () => {
+      const s = summariseSubscriptions([
+        sub('asked-last-month-ended-now', { status: 'canceled', canceled_at: ago(45), ended_at: ago(10), created: ago(200) }),
+        sub('stayed', { created: ago(200) }),
+      ], NOW, 30);
+      expect(s.startSubscribers).toBe(2);
+      expect(s.canceledFromStartIds).toEqual(['asked-last-month-ended-now']);
+    });
+
+    it('does not count one that ended before the period even if it was requested inside it', () => {
+      // (not possible in Stripe, but the end date wins)
+      const s = summariseSubscriptions([sub('x', { status: 'canceled', canceled_at: ago(5), ended_at: ago(50), created: ago(200) })], NOW, 30);
+      expect(s.cancellations).toBe(0);
+    });
+
+    it('falls back to canceled_at when Stripe gave no end date', () => {
+      const s = summariseSubscriptions([sub('x', { status: 'canceled', canceled_at: ago(10), ended_at: null, created: ago(200) })], NOW, 30);
+      expect(s.canceledIds).toEqual(['x']);
+    });
+  });
 });
 
 describe('churnRate', () => {

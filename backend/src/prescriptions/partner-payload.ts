@@ -51,6 +51,38 @@ export interface PartnerOrderPayload {
 
 export const partnerReference = (orderId: string) => `TH-${orderId.slice(-8).toUpperCase()}`;
 
+export type PartnerEvent = 'order.created' | 'order.cancelled';
+
+/**
+ * Tells the pharmacy to NOT dispatch an order it was already given. Deliberately carries no reason
+ * text (cancellation reasons are internal and can be clinical) — only a coarse code.
+ */
+export interface PartnerCancelPayload {
+  schemaVersion: number;
+  event: 'order.cancelled';
+  reference: string;
+  orderId: string;
+  cancelledAt: string;
+  /** PRESCRIPTION_WITHDRAWN: the prescription was stopped or replaced. ORDER_WITHDRAWN: the order alone was withdrawn. */
+  reason: 'PRESCRIPTION_WITHDRAWN' | 'ORDER_WITHDRAWN';
+}
+
+export type PartnerMessage = PartnerOrderPayload | PartnerCancelPayload;
+
+export function buildCancelPayload(order: { id: string; cancelledAt: Date | null; cancelReason: string | null }): PartnerCancelPayload {
+  return {
+    schemaVersion: PARTNER_PAYLOAD_VERSION,
+    event: 'order.cancelled',
+    reference: partnerReference(order.id),
+    orderId: order.id,
+    cancelledAt: (order.cancelledAt ?? new Date()).toISOString(),
+    reason:
+      order.cancelReason?.startsWith('Prescription cancelled') || order.cancelReason?.startsWith('Superseded')
+        ? 'PRESCRIPTION_WITHDRAWN'
+        : 'ORDER_WITHDRAWN',
+  };
+}
+
 /**
  * Everything a pharmacy needs to dispense and ship one supply — and nothing more:
  * no questionnaire answers, no clinical notes, no email address.
@@ -128,4 +160,15 @@ export function partnerEmailSummary(p: PartnerOrderPayload): { subject: string; 
       <p style="color:#94a3b8;font-size:12px">The full structured order is attached as JSON.</p>
     </div>`;
   return { subject: `New order ${p.reference}${p.prescription.requiresColdChain ? ' (cold chain)' : ''}`, html };
+}
+
+/** The email for a withdrawn order: short and unmissable, with the JSON attached. */
+export function partnerCancelEmailSummary(p: PartnerCancelPayload): { subject: string; html: string } {
+  const html = `
+    <div style="font-family:sans-serif;max-width:620px">
+      <h2 style="margin:0 0 4px;color:#b91c1c">Order ${p.reference} CANCELLED — do not dispatch</h2>
+      <p style="color:#475569;margin:0 0 16px">The order we sent you earlier has been withdrawn${p.reason === 'PRESCRIPTION_WITHDRAWN' ? ' because its prescription was stopped or replaced' : ''}. If it has not left your premises, please do not ship it. If it already has, let us know.</p>
+      <p style="color:#94a3b8;font-size:12px">Order id ${p.orderId}. The structured message is attached as JSON.</p>
+    </div>`;
+  return { subject: `CANCELLED: order ${p.reference} — do not dispatch`, html };
 }

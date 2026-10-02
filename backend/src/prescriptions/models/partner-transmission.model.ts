@@ -12,7 +12,10 @@ export class PartnerTransmissionModel {
   @Field(() => PartnerTransmissionStatus)
   status: PartnerTransmissionStatus;
 
-  @Field(() => [String], { description: 'Channels that accepted the order: WEBHOOK, EMAIL' })
+  @Field({ description: 'Which message this is about: order.created, or order.cancelled once a withdrawn order is being reported to the partner' })
+  event: string;
+
+  @Field(() => [String], { description: 'Channels that accepted the message: WEBHOOK, EMAIL' })
   channels: string[];
 
   @Field(() => Int)
@@ -38,4 +41,7 @@ export class PartnerIntegrationStatusModel {
 
   @Field({ nullable: true, description: 'PARTNER_NAME, for display' })
   partnerName?: string;
+
+  @Field({ nullable: true, description: 'Set when delivery is only half set up, e.g. a webhook URL without its secret' })
+  configurationProblem?: string;
 }

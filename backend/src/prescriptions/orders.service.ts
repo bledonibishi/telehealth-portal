@@ -9,10 +9,21 @@ import { OrderStatus, PrescriptionStatus, UserRole } from '../common/enums';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
+/** Delivery state for staff — never the stored payload (it holds the patient's address and is fetched on demand). */
+const PARTNER_STATUS_SELECT = {
+  select: { status: true, event: true, channels: true, attempts: true, lastError: true, lastAttemptAt: true, sentAt: true },
+} as const;
+
 export const ORDER_INCLUDE = {
   patient: true,
   prescription: { include: { consultation: true } },
-  partnerTransmission: true,
+  partnerTransmission: PARTNER_STATUS_SELECT,
+} satisfies Prisma.OrderInclude;
+
+/** What a patient may see of their own orders: no pharmacy-partner delivery details (they can carry internal errors). */
+export const PATIENT_ORDER_INCLUDE = {
+  patient: true,
+  prescription: { include: { consultation: true } },
 } satisfies Prisma.OrderInclude;
 
 export { deliveryAddressOf, type DeliveryAddress } from './delivery-address';
@@ -39,6 +50,11 @@ export class OrdersService {
 
   findByPatient(patientId: string) {
     return this.prisma.order.findMany({ where: { patientId }, include: ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
+  }
+
+  /** A patient's own orders, without staff-only fulfilment details. */
+  findOwn(patientId: string) {
+    return this.prisma.order.findMany({ where: { patientId }, include: PATIENT_ORDER_INCLUDE, orderBy: { createdAt: 'desc' } });
   }
 
   /** The first supply, created alongside the prescription. */
@@ -114,15 +130,26 @@ export class OrdersService {
       cancelReason: reason.trim(),
     });
     await this.log(actorId, 'ORDER_CANCELLED', id, { reason: reason.trim() });
+    // If the pharmacy partner was already given this order, tell it not to dispatch.
+    await this.partner.markCancelled([id]);
+    await this.partner.flushCancellations();
     return this.find(id);
   }
 
-  /** Stops anything not yet dispatched when its prescription is cancelled. */
-  cancelPendingFor(prescriptionId: string, reason: string, db: Db = this.prisma) {
-    return db.order.updateMany({
-      where: { prescriptionId, status: OrderStatus.PENDING },
+  /**
+   * Stops anything not yet dispatched when its prescription is cancelled. Orders the pharmacy
+   * partner already has are queued for a cancellation message in the same transaction; the caller
+   * should call `partner.flushCancellations()` once it has committed (the scheduled sweep is the net).
+   */
+  async cancelPendingFor(prescriptionId: string, reason: string, db: Db = this.prisma) {
+    const pending = await db.order.findMany({ where: { prescriptionId, status: OrderStatus.PENDING }, select: { id: true } });
+    const result = await db.order.updateMany({
+      where: { id: { in: pending.map((o) => o.id) }, status: OrderStatus.PENDING },
       data: { status: OrderStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason },
     });
+    await this.partner.markCancelled(pending.map((o) => o.id), db);
+    if (db === this.prisma) await this.partner.flushCancellations();
+    return result;
   }
 
   private assertDispensable(rx: { status: string; validUntil: Date | null }) {

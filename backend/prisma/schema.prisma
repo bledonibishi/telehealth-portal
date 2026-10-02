@@ -404,20 +404,28 @@ model PrescriptionItem {
   @@map("prescription_items")
 }
 
-// Medicines a clinician can prescribe. Seeded; review with the partner
-// pharmacy before go-live.
 // One row per order: whether the structured order summary reached the external
 // pharmacy partner (webhook and/or email), how many attempts it took, and the
-// exact payload that was sent.
+// exact payload that was sent. If the order is cancelled after it went out, the
+// same row carries the cancellation message ("order.cancelled") the same way.
 model PartnerTransmission {
   id            String                    @id @default(cuid())
   orderId       String                    @unique @map("order_id")
   status        PartnerTransmissionStatus @default(PENDING)
-  // Channels that accepted the payload, e.g. ["WEBHOOK", "EMAIL"].
+  // Which message this row is delivering: "order.created" or "order.cancelled".
+  event         String                    @default("order.created")
+  // Channels that accepted the current message, e.g. ["WEBHOOK", "EMAIL"].
   channels      String[]
+  // Channels the current message must reach; empty means every configured one.
+  // A cancellation goes only where the order itself was delivered.
+  targets       String[]
   attempts      Int                       @default(0)
   lastError     String?                   @map("last_error")
   lastAttemptAt DateTime?                 @map("last_attempt_at")
+  // Earliest time the scheduled sweep may try again (back-off).
+  nextAttemptAt DateTime?                 @map("next_attempt_at")
+  // Set while a sender is delivering this row, so two senders never post the same message.
+  claimedAt     DateTime?                 @map("claimed_at")
   sentAt        DateTime?                 @map("sent_at")
   payload       Json
   createdAt     DateTime                  @default(now()) @map("created_at")
@@ -425,10 +433,12 @@ model PartnerTransmission {
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  @@index([status])
+  @@index([status, nextAttemptAt])
   @@map("partner_transmissions")
 }
 
+// Medicines a clinician can prescribe. Seeded; review with the partner
+// pharmacy before go-live.
 model Product {
   id                String           @id @default(cuid())
   slug              String           @unique

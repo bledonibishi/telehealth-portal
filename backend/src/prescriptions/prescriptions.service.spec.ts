@@ -11,9 +11,11 @@ describe('PrescriptionsService', () => {
   let messaging: { send: jest.Mock };
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let audit: { log: jest.Mock };
+  let partner: { trySendForPrescription: jest.Mock; flushCancellations: jest.Mock };
   let service: PrescriptionsService;
 
   beforeEach(() => {
+    partner = { trySendForPrescription: jest.fn(), flushCancellations: jest.fn() };
     audit = { log: jest.fn() };
     prisma = {
       prescription: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -40,7 +42,7 @@ describe('PrescriptionsService', () => {
       messaging as any,
       email as any,
       { get: jest.fn() } as any,
-      { trySendForPrescription: jest.fn() } as any,
+      partner as any,
     );
   });
 
@@ -63,6 +65,15 @@ describe('PrescriptionsService', () => {
       await service.cancel('doc-1', 'rx-1', 'Side effects');
       expect(orders.cancelPendingFor).toHaveBeenCalledWith('rx-1', 'Prescription cancelled: Side effects', prisma);
       expect(dosing.cancelForPrescription).toHaveBeenCalledWith('rx-1', prisma);
+    });
+
+    it('tells the pharmacy partner about the withdrawn orders once the change is saved', async () => {
+      prisma.prescription.findUnique.mockResolvedValue({ id: 'rx-1', status: 'ACTIVE' });
+      const order: string[] = [];
+      prisma.$transaction.mockImplementation(async (fn: any) => { const r = await fn(prisma); order.push('committed'); return r; });
+      partner.flushCancellations.mockImplementation(async () => { order.push('flushed'); });
+      await service.cancel('doc-1', 'rx-1', 'Side effects');
+      expect(order).toEqual(['committed', 'flushed']);
     });
 
     it('refuses without a reason', async () => {

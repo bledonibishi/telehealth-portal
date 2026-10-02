@@ -52,6 +52,8 @@ export class PrescriptionsService {
         data: { status: PrescriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason.trim() },
       });
     });
+    // Orders already handed to the pharmacy partner are withdrawn there too.
+    await this.partner.flushCancellations();
     await this.audit.log({
       actorId: clinicianId,
       actorRole: UserRole.CLINICIAN,

@@ -78,6 +78,43 @@ describe('evaluateShipment', () => {
     it('says nothing when the doctor put this month on hold', () => {
       expect(alertFor({ orders: due, hasCheckIns: true, latestCheckIn: done(3, 2, 'HOLD') })).toBeNull();
     });
+
+    describe('after a hold', () => {
+      // Shipped 62 days ago; the doctor held month 1 (check-in completed 33 days ago, i.e. 29 days after shipping).
+      const held = [{ status: 'DELIVERED', dispatchedAt: daysAgo(62) }];
+      const hold = done(33, 32, 'HOLD');
+
+      it('does not silence the following month: the alert returns when that one is due', () => {
+        const a = alertFor({ orders: held, hasCheckIns: true, latestCheckIn: hold });
+        expect(a).toMatchObject({ urgency: 'DUE', daysUntilDue: -2 });
+        expect(a!.nextDueAt.getTime()).toBe(daysAgo(62).getTime() + 60 * DAY);
+      });
+
+      it('waits on the next scheduled check-in, which the old hold does not satisfy', () => {
+        // The next month's check-in exists (scheduled/sent) but is not completed yet.
+        expect(alertFor({ orders: held, hasCheckIns: true, latestCheckIn: hold })?.blocker).toBe('AWAITING_CHECKIN');
+      });
+
+      it('moves on to the doctor and then to ready as the next check-in is done and reviewed', () => {
+        expect(alertFor({ orders: held, hasCheckIns: true, latestCheckIn: done(1, null, null) })?.blocker).toBe('AWAITING_REVIEW');
+        expect(alertFor({ orders: held, hasCheckIns: true, latestCheckIn: done(2, 1, 'REPEAT') })?.blocker).toBe('NONE');
+      });
+
+      it('stays quiet while the held month is still the nearest one', () => {
+        // Shipped 28 days ago, held two days ago: the skipped month is not nagged about, nor is the next, 32 days away.
+        expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(28) }], hasCheckIns: true, latestCheckIn: done(2, 1, 'HOLD') })).toBeNull();
+      });
+
+      it('skips two cycles when the hold was made after the first one was already late', () => {
+        // Held 45 days after shipping: that belongs to month 2 (due at day 60), so month 3 (day 90) is next.
+        const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(88) }], hasCheckIns: true, latestCheckIn: done(43, 42, 'HOLD') });
+        expect(a!.nextDueAt.getTime()).toBe(daysAgo(88).getTime() + 90 * DAY);
+      });
+
+      it('does not treat a hold that is still awaiting review as a skipped month', () => {
+        expect(alertFor({ orders: due, hasCheckIns: true, latestCheckIn: done(3, null, 'HOLD') })?.blocker).toBe('AWAITING_REVIEW');
+      });
+    });
   });
 });
 

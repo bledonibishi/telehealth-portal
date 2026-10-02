@@ -45,7 +45,8 @@ const SHIPPED = ['DISPATCHED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
 /**
  * Decides whether a patient's next supply deserves an alert right now, and what is holding it up.
  * Returns null when there is nothing to flag: no supply has gone out yet, an order is already
- * waiting for the pharmacy, the shipment isn't near, or the doctor put this month on hold.
+ * waiting for the pharmacy, or the shipment isn't near (including when the doctor put this month on
+ * hold: that pushes the next supply back a cycle, and the alert returns when that one gets close).
  */
 export function evaluateShipment(
   input: ShipmentInput,
@@ -64,16 +65,24 @@ export function evaluateShipment(
   if (shippedAt.length === 0) return null; // the first supply is the orders queue's job
 
   const lastShippedAt = new Date(Math.max(...shippedAt.map((d) => d.getTime())));
-  const nextDueAt = new Date(lastShippedAt.getTime() + cycleDays * DAY_MS);
+  const cycleMs = cycleDays * DAY_MS;
+  const latest = input.latestCheckIn?.completedAt && input.latestCheckIn.completedAt > lastShippedAt ? input.latestCheckIn : null;
+
+  // A reviewed HOLD means the doctor skipped one particular month, the one this check-in was made for.
+  // Skipping it moves the next supply on by a cycle — it must not silence every month after it.
+  let skippedCycles = 0;
+  let check = latest;
+  if (latest?.outcome === 'HOLD' && latest.reviewedAt) {
+    const elapsed = latest.completedAt!.getTime() - lastShippedAt.getTime() - OVERDUE_AFTER_DAYS * DAY_MS;
+    skippedCycles = Math.max(Math.floor(elapsed / cycleMs), 0) + 1;
+    check = null; // that check-in belongs to the month that was skipped, not to the next one
+  }
+
+  const nextDueAt = new Date(lastShippedAt.getTime() + (1 + skippedCycles) * cycleMs);
   const daysUntilDue = Math.ceil((nextDueAt.getTime() - now.getTime()) / DAY_MS);
   if (daysUntilDue > leadDays) return null;
 
   const repeatsLeft = Math.max(input.prescription.refillsAllowed - (input.orders.length - 1), 0);
-  // A check-in done since the last supply is this cycle's; anything older belongs to the cycle before.
-  const check = input.latestCheckIn?.completedAt && input.latestCheckIn.completedAt > lastShippedAt ? input.latestCheckIn : null;
-
-  // The doctor deliberately skipped this month — don't nag operations about it.
-  if (check?.outcome === 'HOLD' && check.reviewedAt) return null;
 
   let blocker: ShipmentBlocker;
   if (repeatsLeft === 0) blocker = 'NO_REPEATS_LEFT';
