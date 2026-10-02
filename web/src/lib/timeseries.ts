@@ -9,6 +9,7 @@ export interface Point {
   changeKg?: number | null;
   note?: string | null;
   feeling?: string | null;
+  hasPhoto?: boolean;
 }
 
 export type View = [number, number];

@@ -351,6 +351,10 @@ ul,ol{list-style:none}
 .th-ineligible-icon{width:72px;height:72px;border-radius:50%;background:#FEF2F2;color:#B42318;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;font-size:32px}
 .th-ineligible-h2{font-family:var(--f-head);font-size:28px;font-weight:800;color:var(--c-dark);margin-bottom:12px}
 .th-ineligible-reason{font-size:16px;color:var(--c-secondary);line-height:1.6;max-width:400px;margin:0 auto 32px}
+.th-ineligible-list{list-style:disc;text-align:left;font-size:15px;color:var(--c-dark);line-height:1.6;max-width:400px;margin:0 auto 20px;padding-left:20px}
+.th-ineligible-note{font-size:14px;color:var(--c-secondary);line-height:1.6;max-width:440px;margin:0 auto 32px}
+.thq-restored{font-size:14px;color:#52607A;background:#F4F7FB;border-radius:10px;padding:10px 14px;margin-bottom:14px}
+.thq-restored button{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
 .th-ineligible-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 
 /* =========================================================

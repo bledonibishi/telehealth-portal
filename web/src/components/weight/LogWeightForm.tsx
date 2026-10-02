@@ -3,7 +3,9 @@
 import { useRef, useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { format } from 'date-fns';
-import { ADD_MY_WEIGHT, MY_WEIGHT_JOURNEY } from '@/graphql/weight';
+import { ADD_MY_WEIGHT, MY_PROGRESS_PHOTOS, MY_WEIGHT_JOURNEY } from '@/graphql/weight';
+import { uploadFile } from '@/lib/upload';
+import { prepareProgressPhoto } from '@/lib/image';
 
 const MIN_KG = 30;
 const MAX_KG = 300;
@@ -25,7 +27,29 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
   const [problem, setProblem] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const requestId = useRef(newRequestId());
-  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }], awaitRefetchQueries: true });
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // Uploaded once and kept across retries, so a failed save doesn't upload the same photo twice.
+  const uploaded = useRef<{ file: File; id: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }], awaitRefetchQueries: true });
+
+  const choosePhoto = (file: File | undefined) => {
+    if (!file) return;
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    uploaded.current = null;
+    setProblem(null);
+  };
+  const clearPhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhoto(null);
+    setPhotoPreview(null);
+    uploaded.current = null;
+    if (photoInput.current) photoInput.current.value = '';
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,9 +62,23 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
     if (at.getTime() > Date.now() + 5 * 60_000) return setProblem('The date and time can’t be in the future.');
     setProblem(null);
     try {
-      await save({ variables: { input: { weightKg: kgValue, measuredAt: at.toISOString(), note: note.trim() || undefined, clientRequestId: requestId.current } } });
+      let photoFileId: string | undefined;
+      if (photo) {
+        if (uploaded.current?.file !== photo) {
+          setUploading(true);
+          try {
+            uploaded.current = { file: photo, id: await uploadFile('PROGRESS_PHOTO', await prepareProgressPhoto(photo)) };
+          } catch (err: any) {
+            return setProblem(`Couldn’t upload the photo: ${err?.message ?? 'please try again'}. You can remove it and save just your weight.`);
+          } finally {
+            setUploading(false);
+          }
+        }
+        photoFileId = uploaded.current.id;
+      }
+      await save({ variables: { input: { weightKg: kgValue, measuredAt: at.toISOString(), note: note.trim() || undefined, clientRequestId: requestId.current, photoFileId } } });
       setSaved(`Saved ${kgValue.toFixed(1)} kg · ${format(at, 'MMM d, HH:mm')}`);
-      setWeight(''); setNote(''); setShowNote(false); setWhen(nowLocal());
+      setWeight(''); setNote(''); setShowNote(false); setWhen(nowLocal()); clearPhoto();
       requestId.current = newRequestId(); // the next weighing is a new one
       onSaved?.(at.getTime());
     } catch (err: any) {
@@ -71,9 +109,29 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
         <button type="button" onClick={() => setShowNote(true)} className="text-xs font-medium text-brand-600 hover:text-brand-700">+ Add a note</button>
       )}
 
+      <div>
+        <input ref={photoInput} id="log-photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="sr-only" onChange={(e) => choosePhoto(e.target.files?.[0])} />
+        {photoPreview ? (
+          <div className="flex items-center gap-3">
+            <img src={photoPreview} alt="Your progress photo, ready to save" className="w-14 h-[4.5rem] object-cover rounded-lg border border-slate-200" />
+            <div className="text-xs">
+              <p className="text-slate-600">Photo ready to save with this weight.</p>
+              <button type="button" onClick={clearPhoto} className="text-slate-400 hover:text-slate-600 underline mt-0.5">Remove photo</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <label htmlFor="log-photo" className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-700 cursor-pointer">
+              <span aria-hidden>📷</span> Add a progress photo <span className="text-slate-400 font-normal">(optional, but it helps)</span>
+            </label>
+            <p className="text-xs text-slate-400 mt-0.5">Seeing the change side by side keeps you motivated. Only you and your doctor can see your photos.</p>
+          </>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">
-          {loading ? 'Saving…' : 'Save weight'}
+        <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">
+          {uploading ? 'Uploading photo…' : loading ? 'Saving…' : 'Save weight'}
         </button>
         {onCancel && <button type="button" onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">Close</button>}
       </div>

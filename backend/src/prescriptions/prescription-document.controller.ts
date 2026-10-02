@@ -29,6 +29,7 @@ export class PrescriptionDocumentController {
       action: 'PRESCRIPTION_DOCUMENT_VIEWED',
       resourceType: 'Prescription',
       resourceId: id,
+      patientId: rx.patientId,
     });
 
     const pdf = await this.documents.render(rx);

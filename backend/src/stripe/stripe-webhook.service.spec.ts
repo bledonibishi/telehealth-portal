@@ -17,12 +17,13 @@ function build(leadOver: Record<string, unknown> = {}) {
   const patient = { id: 'p-1', email: 'buyer@b.com', firstName: 'Ann' };
   const prisma = {
     lead: { findUnique: jest.fn().mockResolvedValue(lead), update: jest.fn().mockResolvedValue({}) },
-    patient: { upsert: jest.fn().mockResolvedValue(patient), updateMany: jest.fn() },
+    patient: { upsert: jest.fn().mockResolvedValue(patient), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn().mockResolvedValue({ id: 'p-1' }) },
   };
   const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined) };
   const referrals = { handleConversion: jest.fn().mockResolvedValue(undefined) };
-  const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any);
-  return { service, prisma, referrals, lead };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any, audit as any);
+  return { service, prisma, referrals, lead, audit };
 }
 
 const sessionEvent = (amountDiscount: number) =>
@@ -64,5 +65,32 @@ describe('StripeWebhookService reward detection', () => {
     const { service, prisma } = build();
     await service.handle(sessionEvent(0));
     expect(prisma.patient.upsert.mock.calls[0][0].create).toMatchObject({ addressLine1: '1 Main St', city: 'Pristina', postcode: '10000', country: 'XK' });
+  });
+});
+
+describe('StripeWebhookService subscription ended', () => {
+  const deleted = { type: 'customer.subscription.deleted', data: { object: { id: 'sub_1', customer: 'cus_1' } } } as any;
+
+  it('stops further supplies and records it when a patient’s subscription ends', async () => {
+    const { service, prisma, audit } = build();
+    await service.handle(deleted);
+    expect(prisma.patient.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { stripeSubscriptionId: 'sub_1' } }));
+    expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'p-1', subscriptionEndedAt: null }, data: { subscriptionEndedAt: expect.any(Date) } });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SUBSCRIPTION_ENDED', resourceType: 'Patient', resourceId: 'p-1' }));
+  });
+
+  it('ignores a subscription that belongs to no patient (an abandoned checkout)', async () => {
+    const { service, prisma, audit } = build();
+    prisma.patient.findFirst.mockResolvedValue(null);
+    await service.handle(deleted);
+    expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('records it once when Stripe delivers the event twice', async () => {
+    const { service, prisma, audit } = build();
+    prisma.patient.updateMany.mockResolvedValue({ count: 0 });
+    await service.handle(deleted);
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
 import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
-import { ConsentType, ConsultationKind, ConsultationStatus, UserRole } from '../common/enums';
+import { ConsentType, ConsultationKind, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
 import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
@@ -16,12 +16,15 @@ import { MessagingService } from '../messaging/messaging.service';
 import { EmailService } from '../email/email.service';
 import { ConsentsService, RequestMeta } from '../consents/consents.service';
 import { StoredAnswer, evaluateAnswers } from '../questionnaires/evaluate';
+import { triage } from '../questionnaires/triage';
 
 const REVIEWABLE = [
   ConsultationStatus.SUBMITTED,
   ConsultationStatus.IN_REVIEW,
   ConsultationStatus.MORE_INFO_REQUESTED,
 ] as const;
+
+const RISK_RANK: Record<RiskTag, number> = { [RiskTag.RED]: 0, [RiskTag.ORANGE]: 1, [RiskTag.GREEN]: 2 };
 
 @Injectable()
 export class ConsultationsService {
@@ -77,6 +80,7 @@ export class ConsultationsService {
       action: 'CONSULTATION_CLAIMED',
       resourceType: 'Consultation',
       resourceId: consultationId,
+      patientId: c.patientId,
       metadata: c.clinicianId && c.clinicianId !== clinicianId ? { takenFrom: c.clinicianId } : undefined,
     });
     return this.findById(consultationId);
@@ -87,16 +91,22 @@ export class ConsultationsService {
     if (c.status !== ConsultationStatus.IN_REVIEW) throw new ForbiddenException('Consultation is not claimed');
     this.assertMayDecide(c, clinicianId, isAdmin);
 
-    await this.prisma.consultation.update({
-      where: { id: consultationId },
-      data: { status: ConsultationStatus.SUBMITTED, clinicianId: null },
-    });
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_RELEASED',
-      resourceType: 'Consultation',
-      resourceId: consultationId,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.consultation.update({
+        where: { id: consultationId },
+        data: { status: ConsultationStatus.SUBMITTED, clinicianId: null },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_RELEASED',
+          resourceType: 'Consultation',
+          resourceId: consultationId,
+          patientId: c.patientId,
+        },
+        tx,
+      );
     });
     return this.findById(consultationId);
   }
@@ -129,13 +139,9 @@ export class ConsultationsService {
       orderBy: { submittedAt: 'asc' },
     });
 
-    return rows.sort((a, b) => {
-      const aCtitical = a.redFlags.some((f) => f.severity === 'CRITICAL');
-      const bCritical = b.redFlags.some((f) => f.severity === 'CRITICAL');
-      if (aCtitical && !bCritical) return -1;
-      if (!aCtitical && bCritical) return 1;
-      return 0;
-    });
+    // Stable sort: within a tag, the longest wait stays first.
+    const rank = (c: (typeof rows)[number]) => RISK_RANK[triage(c.redFlags).riskTag];
+    return rows.sort((a, b) => rank(a) - rank(b));
   }
 
   async findById(id: string) {
@@ -241,6 +247,7 @@ export class ConsultationsService {
       action: open ? 'CONSULTATION_RESUBMITTED' : 'CONSULTATION_SUBMITTED',
       resourceType: 'Consultation',
       resourceId: consultation.id,
+      patientId,
       metadata: { questionnaireVersion: data.questionnaireVersion, redFlags: flags.length },
     });
 
@@ -285,26 +292,31 @@ export class ConsultationsService {
         },
         tx,
       );
-      return tx.consultation.update({
+      const consultation = await tx.consultation.update({
         where: { id: input.consultationId },
         data: { status: ConsultationStatus.APPROVED, clinicianId },
         include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
-      }).then((consultation) => ({ ...consultation, prescription }));
-    });
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_APPROVED',
-      resourceType: 'Consultation',
-      resourceId: input.consultationId,
-      metadata: {
-        prescriptionId: updated.prescription.id,
-        medication: updated.prescription.medication,
-        dosage: updated.prescription.dosage,
-        contentHash: updated.prescription.contentHash,
-        overrideReason: updated.prescription.overrideReason,
-      },
+      });
+      // Same transaction as the decision: an approval that can't be recorded doesn't happen.
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_APPROVED',
+          resourceType: 'Consultation',
+          resourceId: input.consultationId,
+          patientId: c.patientId,
+          metadata: {
+            prescriptionId: prescription.id,
+            medication: prescription.medication,
+            dosage: prescription.dosage,
+            contentHash: prescription.contentHash,
+            overrideReason: prescription.overrideReason,
+          },
+        },
+        tx,
+      );
+      return { ...consultation, prescription };
     });
 
     await this.notifyPatient(updated.patient, 'Your treatment has been approved');
@@ -337,24 +349,30 @@ export class ConsultationsService {
 
     const refund = await this.refundIfNothingPrescribed(c.patientId, c.id, c.patient);
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: input.consultationId },
-      data: {
-        status: ConsultationStatus.DECLINED,
-        clinicianId,
-        declineReason: input.reason,
-        refundStatus: refund.status,
-      },
-      include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
-    });
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_DECLINED',
-      resourceType: 'Consultation',
-      resourceId: input.consultationId,
-      metadata: { reason: input.reason, refund },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const declined = await tx.consultation.update({
+        where: { id: input.consultationId },
+        data: {
+          status: ConsultationStatus.DECLINED,
+          clinicianId,
+          declineReason: input.reason,
+          refundStatus: refund.status,
+        },
+        include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_DECLINED',
+          resourceType: 'Consultation',
+          resourceId: input.consultationId,
+          patientId: c.patientId,
+          metadata: { reason: input.reason, refund },
+        },
+        tx,
+      );
+      return declined;
     });
 
     await this.notifyPatient(updated.patient, 'An update on your consultation', {
@@ -406,18 +424,24 @@ export class ConsultationsService {
     }
     this.assertMayDecide(c, clinicianId, isAdmin);
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
-      data: { status: ConsultationStatus.MORE_INFO_REQUESTED, clinicianId },
-      include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
-    });
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_MORE_INFO_REQUESTED',
-      resourceType: 'Consultation',
-      resourceId: consultationId,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const requested = await tx.consultation.update({
+        where: { id: consultationId },
+        data: { status: ConsultationStatus.MORE_INFO_REQUESTED, clinicianId },
+        include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_MORE_INFO_REQUESTED',
+          resourceType: 'Consultation',
+          resourceId: consultationId,
+          patientId: c.patientId,
+        },
+        tx,
+      );
+      return requested;
     });
 
     await this.notifyPatient(updated.patient, 'Your clinician has a question', {

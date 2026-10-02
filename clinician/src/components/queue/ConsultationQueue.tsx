@@ -38,7 +38,7 @@ export function ConsultationQueue() {
               <th className="px-6 py-3">{t('Type')}</th>
               <th className="px-6 py-3">{t('Status')}</th>
               <th className="px-6 py-3">{t('Submitted')}</th>
-              <th className="px-6 py-3">{t('Flags')}</th>
+              <th className="px-6 py-3">{t('Risk')}</th>
               <th className="px-6 py-3"></th>
             </tr>
           </thead>

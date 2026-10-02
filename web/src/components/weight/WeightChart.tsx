@@ -21,6 +21,8 @@ export interface WeightChartProps {
   start?: { t: number; w: number } | null;
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
+  /** Where the pace so far leads: drawn dashed from the trend line's start, with the 3- and 6-month values marked. */
+  forecast?: { from: { t: number; w: number }; points: Array<{ t: number; w: number; m: number }> } | null;
 }
 
 type Gesture =
@@ -32,7 +34,7 @@ type Gesture =
  * measurement; drag pans, Ctrl/⌘ + scroll or pinch zooms, arrow keys step through points.
  * Plain SVG, no chart library; long histories are thinned to the pixel width before drawing.
  */
-export function WeightChart({ points, view, bounds, onViewChange, onReset, target, start, selectedId, onSelect }: WeightChartProps) {
+export function WeightChart({ points, view, bounds, onViewChange, onReset, target, start, selectedId, onSelect, forecast }: WeightChartProps) {
   const clipId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -51,7 +53,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
     return () => ro.disconnect();
   }, []);
 
-  const height = width < 480 ? 250 : 320;
+  const height = width < 480 ? 220 : 260;
   const pw = width - M.l - M.r;
   const ph = height - M.t - M.b;
   const span = view[1] - view[0];
@@ -61,9 +63,17 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
   const inView = useMemo(() => near.filter((p) => p.t >= view[0] && p.t <= view[1]), [near, view]);
   const startInView = start && start.t >= view[0] && start.t <= view[1] ? start : null;
 
+  const forecastInView = useMemo(
+    () => (forecast ? [forecast.from, ...forecast.points].filter((p) => p.t >= view[0] && p.t <= view[1]) : []),
+    [forecast, view],
+  );
   const [dLo, dHi] = useMemo(
-    () => weightDomain(inView.length ? inView : near, target, startInView ? startInView.w : null),
-    [inView, near, target, startInView],
+    () => weightDomain(
+      [...(inView.length ? inView : near), ...forecastInView.map((p, i) => ({ id: `f${i}`, t: p.t, w: p.w, kind: 'DAILY' as const }))],
+      target,
+      startInView ? startInView.w : null,
+    ),
+    [inView, near, target, startInView, forecastInView],
   );
   const axis = useMemo(() => weightAxis(dLo, dHi, width < 480 ? 4 : 5), [dLo, dHi, width]);
   const y = useCallback((w: number) => M.t + ((axis.hi - w) / (axis.hi - axis.lo)) * ph, [axis, ph]);
@@ -71,6 +81,10 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
   const xTicks = useMemo(() => timeTicks(view, Math.max(Math.floor(pw / 90), 3)), [view, pw]);
   const drawn = useMemo(() => decimate(near, view, Math.max(Math.floor(pw), 50)), [near, view, pw]);
   const path = useMemo(() => drawn.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.w).toFixed(1)}`).join(''), [drawn, x, y]);
+  const forecastPath = useMemo(
+    () => (forecast ? [forecast.from, ...forecast.points].map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.w).toFixed(1)}`).join('') : ''),
+    [forecast, x, y],
+  );
   // Dots only where there's room for them; in a dense stretch the line alone reads better (check-ins always show).
   const showDots = inView.length * 9 <= pw;
 
@@ -221,9 +235,16 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
           {typeof target === 'number' && targetInside && (
             <g>
               <line x1={M.l} x2={M.l + pw} y1={y(target)} y2={y(target)} strokeDasharray="6 5" strokeWidth="1.5" className="stroke-slate-400" />
-              <text x={M.l + pw - 4} y={y(target) - 6} textAnchor="end" className="fill-slate-500 text-[11px]">Target {kg(target)}</text>
+              <text x={forecast ? M.l + 4 : M.l + pw - 4} y={y(target) + 14} textAnchor={forecast ? 'start' : 'end'} className="fill-slate-500 text-[11px]">Target {kg(target)}</text>
             </g>
           )}
+          {forecastPath && <path d={forecastPath} fill="none" strokeWidth="2.25" strokeDasharray="7 6" strokeLinecap="round" className="stroke-brand-600" opacity="0.55" />}
+          {forecast?.points.filter((p) => (p.m === 3 || p.m === 6) && p.t >= view[0] && p.t <= view[1]).map((p) => (
+            <g key={p.m}>
+              <circle cx={x(p.t)} cy={y(p.w)} r="4.5" className="fill-white stroke-brand-600" strokeWidth="2" />
+              <text x={x(p.t) + (x(p.t) > M.l + pw - 90 ? -8 : 0)} y={y(p.w) - 10} textAnchor={x(p.t) > M.l + pw - 90 ? 'end' : 'middle'} className="fill-slate-600 text-[11px] font-medium">{p.m} mo · {Number(p.w.toFixed(1))} kg</text>
+            </g>
+          ))}
           {path && <path d={path} fill="none" strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" className="stroke-brand-600" />}
           {startInView && (
             <g>
@@ -305,6 +326,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
         <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-brand-600" /> Your weight</span>
         <span className="inline-flex items-center gap-1.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700" /> Monthly check-in</span>
         {typeof target === 'number' && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-400" /> Target</span>}
+        {forecast && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-brand-600/60" /> If you keep the same pace</span>}
         {/* Hint for the input the device actually has: a mouse, or fingers. */}
         <span className="hidden [@media(pointer:fine)]:inline ml-auto">Drag to pan · Ctrl/⌘ + scroll to zoom</span>
         <span className="[@media(pointer:fine)]:hidden ml-auto">Drag to pan · pinch to zoom</span>

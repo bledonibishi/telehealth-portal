@@ -14,6 +14,7 @@ describe('ConsultationsService', () => {
   let messaging: { send: jest.Mock };
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let consents: { record: jest.Mock };
+  let audit: { log: jest.Mock };
   let service: ConsultationsService;
 
   beforeEach(() => {
@@ -42,9 +43,10 @@ describe('ConsultationsService', () => {
     messaging = { send: jest.fn() };
     email = { sendConsultationUpdateEmail: jest.fn() };
     consents = { record: jest.fn() };
+    audit = { log: jest.fn() };
     service = new ConsultationsService(
       prisma,
-      { log: jest.fn() } as any,
+      audit as any,
       { capture: jest.fn() } as any,
       { info: jest.fn() } as any,
       billing as any,
@@ -83,6 +85,25 @@ describe('ConsultationsService', () => {
       );
     });
 
+    it('records the approval against the patient, in the same transaction as the decision', async () => {
+      await service.approve('doc-1', approveInput);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CONSULTATION_APPROVED',
+          actorId: 'doc-1',
+          resourceId: 'consult-1',
+          patientId: PATIENT.id,
+          metadata: expect.objectContaining({ prescriptionId: 'rx-1', contentHash: 'abc' }),
+        }),
+        prisma,
+      );
+    });
+
+    it('fails the approval when the audit row cannot be written', async () => {
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(service.approve('doc-1', approveInput)).rejects.toThrow('Audit log write failed');
+    });
+
     it('does not approve when the prescription is rejected', async () => {
       prescribing.issue.mockRejectedValue(new Error('Record a clinical reason'));
       await expect(service.approve('doc-1', approveInput)).rejects.toThrow('Record a clinical reason');
@@ -103,6 +124,17 @@ describe('ConsultationsService', () => {
     });
   });
 
+  describe('findQueue', () => {
+    it('puts RED first, then ORANGE, then GREEN, keeping the longest wait first within a tag', async () => {
+      const row = (id: string, ...severities: string[]) => ({ id, redFlags: severities.map((severity) => ({ severity, description: id })) });
+      prisma.consultation.findMany = jest.fn().mockResolvedValue([
+        row('green-old'), row('orange-old', 'WARNING'), row('red-new', 'WARNING', 'CRITICAL'), row('green-new'), row('red-newest', 'CRITICAL'),
+      ]);
+      const queue = await service.findQueue();
+      expect(queue.map((c: any) => c.id)).toEqual(['red-new', 'red-newest', 'orange-old', 'green-old', 'green-new']);
+    });
+  });
+
   describe('decline', () => {
     it('refunds and records the reason when nothing else is prescribed', async () => {
       await service.decline('doc-1', { consultationId: 'consult-1', reason: 'Contraindicated' });
@@ -112,6 +144,18 @@ describe('ConsultationsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({ declineReason: 'Contraindicated', refundStatus: 'REFUNDED' }),
         }),
+      );
+    });
+
+    it('records the decline with its reason and refund against the patient', async () => {
+      await service.decline('doc-1', { consultationId: 'consult-1', reason: 'Contraindicated' });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CONSULTATION_DECLINED',
+          patientId: PATIENT.id,
+          metadata: expect.objectContaining({ reason: 'Contraindicated' }),
+        }),
+        prisma,
       );
     });
 

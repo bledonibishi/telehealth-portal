@@ -7,7 +7,9 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import PeriodSelect, { type Period } from './PeriodSelect';
 
 const STAGE_LABEL: Record<string, string> = {
-  QUIZ_COMPLETED: 'Completed the eligibility quiz',
+  LANDING_VISITORS: 'Visited the landing page',
+  QUIZ_STARTED: 'Started the quiz',
+  PASSED_ELIGIBILITY: 'Passed the eligibility check',
   PAID: 'Paid at checkout',
   ACCOUNT_ACTIVATED: 'Activated their account',
   CONSULTATION_SUBMITTED: 'Submitted the medical questionnaire',
@@ -42,7 +44,8 @@ export default function RevenuePanel() {
   const funnel = useQuery(SALES_FUNNEL, { variables: { days }, pollInterval: 5 * 60_000 });
 
   const r = revenue.data?.revenueOverview;
-  const stages: any[] = funnel.data?.salesFunnel?.stages ?? [];
+  const funnelData = funnel.data?.salesFunnel;
+  const stages: any[] = funnelData?.stages ?? [];
   const top = stages[0]?.count ?? 0;
 
   const money = (cents: number, currency: string) =>
@@ -93,8 +96,18 @@ export default function RevenuePanel() {
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
-        <p className="text-sm font-medium text-gray-700 mb-4">{t('From the eligibility quiz to the first shipment')}</p>
+        <p className="text-sm font-medium text-gray-700 mb-4">{t('From the landing page to the first shipment')}</p>
         {funnel.error && <p className="text-sm text-red-500">{funnel.error.message}</p>}
+        {funnelData && !funnelData.visitorsConfigured && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+            {t('Website visits and quiz starts are not shown: PostHog is not connected. Set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID in the backend settings.')}
+          </p>
+        )}
+        {funnelData?.visitorsError && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+            {t('PostHog could not be read: {message}', { message: funnelData.visitorsError })}
+          </p>
+        )}
         {funnel.loading && !stages.length && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
         <ol className="space-y-3">
           {stages.map((s, i) => (
@@ -116,7 +129,7 @@ export default function RevenuePanel() {
           ))}
         </ol>
         <p className="text-xs text-gray-400 mt-4">
-          {t('Patients pay at checkout before a doctor reviews them (and are refunded if declined), so payment comes before approval. People who leave the website before finishing the quiz are not counted.')}
+          {t('Patients pay at checkout before a doctor reviews them (and are refunded if declined), so payment comes before approval. Website visits and quiz starts are counted per person, as PostHog sees them.')}
         </p>
       </div>
     </section>

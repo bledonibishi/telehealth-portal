@@ -6,6 +6,8 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { AuditService } from '../audit/audit.service';
+import { UserRole } from '../common/enums';
 import { newActivationToken } from '../auth/activation-token';
 
 @Injectable()
@@ -18,6 +20,7 @@ export class StripeWebhookService {
     private email: EmailService,
     private config: ConfigService,
     private referrals: ReferralsService,
+    private audit: AuditService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3001';
   }
@@ -57,9 +60,35 @@ export class StripeWebhookService {
         );
         break;
       }
+      case 'customer.subscription.deleted': {
+        // The patient cancelled in Stripe's billing portal (or it ended at period end): stop shipping.
+        const subscription = event.data.object as Stripe.Subscription;
+        await this.endSubscription(subscription.id);
+        break;
+      }
       default:
         this.logger.debug(`Unhandled event type: ${event.type}`);
     }
+  }
+
+  private async endSubscription(subscriptionId: string) {
+    const patient = await this.prisma.patient.findFirst({ where: { stripeSubscriptionId: subscriptionId }, select: { id: true } });
+    if (!patient) return; // an abandoned checkout's subscription, or one we never linked to a patient
+    // Only the first report counts; Stripe may deliver an event more than once.
+    const { count } = await this.prisma.patient.updateMany({
+      where: { id: patient.id, subscriptionEndedAt: null },
+      data: { subscriptionEndedAt: new Date() },
+    });
+    if (count === 0) return;
+    this.logger.log(`Subscription ${subscriptionId} ended — patient ${patient.id} will not be sent further supplies`);
+    await this.audit.log({
+      actorId: 'system:stripe',
+      actorRole: UserRole.ADMIN,
+      action: 'SUBSCRIPTION_ENDED',
+      resourceType: 'Patient',
+      resourceId: patient.id,
+      metadata: { subscriptionId },
+    });
   }
 
   private async activatePatient(

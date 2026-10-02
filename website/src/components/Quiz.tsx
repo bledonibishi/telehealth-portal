@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { QUIZZES, type QuizQuestion } from '@/lib/quiz-data';
 import { mergeAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { loadReferralCode } from '@/lib/referral';
+import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
+import { track } from '@/lib/analytics';
 import ProductPicker from './ProductPicker';
 
 /* ── Types ── */
@@ -17,9 +19,13 @@ interface QuizState {
 }
 
 type Screen = 'quiz' | 'plans' | 'ineligible';
+const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q' };
 
 /* ── GraphQL mutation ── */
-const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id } }`;
+const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id riskTag riskReasons } }`;
+
+/** What the server made of the answers: RED may not go on to plans or payment. */
+interface LeadResult { id: string; riskTag: 'RED' | 'ORANGE' | 'GREEN'; riskReasons: string[] }
 
 async function createLead(
   product: ProductKind,
@@ -27,7 +33,7 @@ async function createLead(
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
   bmiBand: string | null,
-): Promise<string | null> {
+): Promise<LeadResult | null> {
   const quizAnswers = visibleQs
     .filter((q) => answers[q.id])
     .map((q) => ({ questionId: q.id, question: q.q, answer: answers[q.id].sel.join(', ') }));
@@ -64,7 +70,7 @@ async function createLead(
     });
     const json = await res.json();
     if (json.errors?.length) throw new Error(json.errors[0].message);
-    return json.data.createLead.id as string;
+    return json.data.createLead as LeadResult;
   } catch (err) {
     console.error('[quiz] createLead failed:', err);
     return null;
@@ -72,12 +78,22 @@ async function createLead(
 }
 
 /* ── Ineligible component ── */
-function Ineligible({ reason, onRestart }: { reason: string; onRestart: () => void }) {
+function Ineligible({ reason, reasons, onRestart }: { reason: string; reasons?: string[]; onRestart: () => void }) {
   return (
     <div className="th-ineligible">
       <div className="th-ineligible-icon">✕</div>
       <h2 className="th-ineligible-h2">We're sorry</h2>
       <p className="th-ineligible-reason">{reason}</p>
+      {reasons && reasons.length > 0 && (
+        <ul className="th-ineligible-list">
+          {reasons.map((r) => <li key={r}>{r}</li>)}
+        </ul>
+      )}
+      <p className="th-ineligible-note">
+        Some treatments aren't safe for everyone, and we only prescribe when a doctor can be confident they are.
+        This isn't a judgement on you. Please speak to your own doctor or pharmacist, who can examine you and
+        review your full history. If any of your answers were a mistake, you can retake the assessment.
+      </p>
       <div className="th-ineligible-actions">
         <button className="btn-secondary" onClick={onRestart}>
           ← Restart assessment
@@ -96,23 +112,45 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   const [screen, setScreen] = useState<Screen>('quiz');
   const [ineligReason, setIneligReason] = useState('');
-  const [st, setSt] = useState<QuizState>({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
+  const [ineligReasons, setIneligReasons] = useState<string[]>([]);
+  const [st, setSt] = useState<QuizState>(INITIAL);
+  // Whether a saved place was put back, and whether the saved copy has been read yet.
+  const [restored, setRestored] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [calcErr, setCalcErr] = useState('');
   const [detailsErr, setDetailsErr] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // On arrival, pick up where this visitor left off (a refresh, or coming back later).
+  useEffect(() => {
+    const saved = loadProgress(product, questions);
+    if (saved) {
+      setSt(saved);
+      setRestored(true);
+    }
+    setHydrated(true);
+  }, [product, questions]);
+
+  // Keep the saved copy in step with every answer, as it is given.
+  useEffect(() => {
+    if (hydrated && screen === 'quiz' && Object.keys(st.answers).length) saveProgress(product, st);
+  }, [st, hydrated, screen, product]);
 
   const visible = useCallback(
     () => questions.filter((q) => !q.showIf || q.showIf({ bmiBand: st.bmiBand })),
     [questions, st.bmiBand],
   );
 
-  const goIneligible = (reason: string) => {
+  const goIneligible = (reason: string, reasons: string[] = []) => {
     setIneligReason(reason);
+    setIneligReasons(reasons);
     setScreen('ineligible');
   };
 
   const restart = () => {
-    setSt({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
+    clearProgress(product);
+    setRestored(false);
+    setSt(INITIAL);
     setScreen('quiz');
     setCalcErr('');
     setDetailsErr('');
@@ -145,6 +183,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
   /* ── Pick an answer ── */
   const pick = (q: QuizQuestion, optIdx: number) => {
     const o = q.options[optIdx];
+    if (Object.keys(st.answers).length === 0) track('quiz_started', { product });
+    setRestored(false);
 
     if (q.type === 'single') {
       if (o.calc) { setSt((s) => ({ ...s, view: 'calc' })); return; }
@@ -208,14 +248,23 @@ export default function Quiz({ product }: { product: ProductKind }) {
   /* ── Details form submit ── */
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
     setSaving(true);
-    const id = await createLead(product, visible(), st.answers, { firstName, lastName, email }, st.bmiBand);
-    if (!id) {
+    const lead = await createLead(product, visible(), st.answers, { firstName, lastName, email }, st.bmiBand);
+    if (!lead) {
       // Without a saved lead the payment webhook can't create the patient's
       // account, so never let someone continue to pay from here.
       setDetailsErr("We couldn't save your details. Please check your connection and try again.");
       setSaving(false);
       return;
     }
+    // The server has the final say on eligibility: a RED answer set never reaches plans or payment.
+    if (lead.riskTag === 'RED') {
+      clearProgress(product);
+      setSaving(false);
+      goIneligible("Based on your answers, we can't prescribe this treatment online.", lead.riskReasons);
+      return;
+    }
+    clearProgress(product);
+    const id = lead.id;
     mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null });
     setScreen('plans');
     setSaving(false);
@@ -223,7 +272,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   };
 
   /* ── Render screens ── */
-  if (screen === 'ineligible') return <Ineligible reason={ineligReason} onRestart={restart} />;
+  if (screen === 'ineligible') return <Ineligible reason={ineligReason} reasons={ineligReasons} onRestart={restart} />;
   if (screen === 'plans') return <ProductPicker product={product} onRestart={restart} />;
 
   /* ── Quiz screens ── */
@@ -333,6 +382,12 @@ export default function Quiz({ product }: { product: ProductKind }) {
         </div>
         <div className="thq-count">Question {st.idx + 1} / {n}</div>
       </div>
+      {restored && (
+        <div className="thq-restored" role="status">
+          Welcome back — we've kept your answers.{' '}
+          <button type="button" onClick={restart}>Start over</button>
+        </div>
+      )}
       <div className="thq-time">◷ Takes less than 2 minutes</div>
       <h2 className="thq-q">{q.q}</h2>
       {q.help ? <p className="thq-help">{q.help}</p> : <div className="thq-spacer" />}

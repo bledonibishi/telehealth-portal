@@ -2,9 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CheckInStatus, UserRole } from '../common/enums';
+import { UploadKind } from '@prisma/client';
 import { CheckInFeeling } from '../common/enums';
 import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
-import { WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel } from './models/weight-journey.model';
+import {
+  ForecastConfidence, ForecastUnavailableReason, ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel,
+} from './models/weight-journey.model';
+import { forecastWeight } from './weight-forecast';
 import { assertValidWeight, WeightJourneyService } from './weight-journey.service';
 import { latestOf, RawMeasurement, sortMeasurements, withChanges } from './weight-timeline';
 import { round1 } from './weight-math';
@@ -51,23 +55,39 @@ export class WeightMeasurementsService {
     const clientRequestId = input.clientRequestId?.trim() || null;
     if (clientRequestId && clientRequestId.length > 100) throw new BadRequestException('Invalid request id');
 
+    const photoFileId = input.photoFileId?.trim() || null;
+    if (photoFileId) await this.assertPhotoIsTheirs(patientId, photoFileId);
+
     const recent = await this.prisma.weightEntry.count({ where: { patientId, recordedAt: { gte: new Date(now - 86_400_000) } } });
     if (recent >= MAX_ENTRIES_PER_DAY) throw new BadRequestException('You’ve recorded a lot of weights today — please try again tomorrow');
 
     try {
-      await this.prisma.weightEntry.create({ data: { patientId, weightKg, measuredAt, note, clientRequestId } });
+      await this.prisma.weightEntry.create({ data: { patientId, weightKg, measuredAt, note, clientRequestId, photoFileId } });
     } catch (e: any) {
+      if (e?.code === 'P2002' && String(e.meta?.target).includes('photo_file_id')) {
+        throw new BadRequestException('That photo is already attached to another weighing');
+      }
       // The same submission arriving twice (double tap, retry): it's already saved, so succeed quietly.
       if (!(e?.code === 'P2002' && clientRequestId)) throw e;
     }
     return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
   }
 
+  /** The photo must be the patient's own progress photo, not yet attached to anything. */
+  private async assertPhotoIsTheirs(patientId: string, fileId: string) {
+    const file = await this.prisma.uploadedFile.findFirst({
+      where: { id: fileId, patientId, kind: UploadKind.PROGRESS_PHOTO },
+      select: { weightEntry: { select: { id: true } } },
+    });
+    if (!file) throw new BadRequestException('We couldn’t find that photo — please upload it again');
+    if (file.weightEntry) throw new BadRequestException('That photo is already attached to another weighing');
+  }
+
   /** A patient removes their own mistaken entry. It's voided, not deleted, and the change is audited. */
   async voidOwn(patientId: string, entryId: string, reason?: string): Promise<WeightJourneyModel> {
     const entry = await this.prisma.weightEntry.findFirst({ where: { id: entryId, patientId } });
     if (!entry || entry.voidedAt) throw new NotFoundException('That weight entry wasn’t found');
-    if (entry.source !== 'PATIENT') throw new BadRequestException('This entry was corrected by your care team and can’t be removed here');
+    if (entry.source === 'STAFF') throw new BadRequestException('This entry was corrected by your care team and can’t be removed here');
 
     // The void and its audit row commit together, or not at all.
     await this.prisma.$transaction(async (tx) => {
@@ -83,6 +103,7 @@ export class WeightMeasurementsService {
           action: 'WEIGHT_ENTRY_VOIDED',
           resourceType: 'WeightEntry',
           resourceId: entryId,
+          patientId: patientId,
           metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null },
         },
         tx,
@@ -122,6 +143,7 @@ export class WeightMeasurementsService {
           action: 'WEIGHT_ENTRY_CORRECTED',
           resourceType: 'WeightEntry',
           resourceId: entry.id,
+          patientId: entry.patientId,
           metadata: { before: num(entry.weightKg), after: weightKg, reason, replacementId: replacement.id, patientId: entry.patientId },
         },
         tx,
@@ -151,6 +173,7 @@ export class WeightMeasurementsService {
           action: 'WEIGHT_ENTRY_VOIDED',
           resourceType: 'WeightEntry',
           resourceId: entryId,
+          patientId: entry.patientId,
           metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: why, patientId: entry.patientId },
         },
         tx,
@@ -199,7 +222,7 @@ export class WeightMeasurementsService {
     ]);
 
     const raw: RawMeasurement[] = [
-      ...entries.map((e) => ({ id: e.id, measuredAt: e.measuredAt, weightKg: num(e.weightKg), kind: 'DAILY' as const, note: e.note ?? undefined })),
+      ...entries.map((e) => ({ id: e.id, measuredAt: e.measuredAt, weightKg: num(e.weightKg), kind: 'DAILY' as const, note: e.note ?? undefined, hasPhoto: e.photoFileId !== null })),
       ...checkIns.map((c) => ({
         id: c.id,
         measuredAt: c.completedAt!,
@@ -224,13 +247,46 @@ export class WeightMeasurementsService {
     const latest = [entryBounds._max.measuredAt, checkInBounds._max.completedAt].filter(Boolean) as Date[];
 
     return {
-      measurements: withChanges(kept, before).map((m) => ({ ...m, kind: m.kind as WeightMeasurementKind, feeling: m.feeling as CheckInFeeling | undefined })),
+      measurements: withChanges(kept, before).map((m) => ({ ...m, hasPhoto: m.hasPhoto ?? false, kind: m.kind as WeightMeasurementKind, feeling: m.feeling as CheckInFeeling | undefined })),
       startingWeightKg: start?.kg,
       startingAt: start?.at,
       targetWeightKg: patient.weightGoal ? num(patient.weightGoal.targetWeightKg) : undefined,
       earliestAt: dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : undefined,
       latestAt: latest.length ? new Date(Math.max(...latest.map((d) => d.getTime()))) : undefined,
       truncated,
+    };
+  }
+
+  // ── progress photos ───────────────────────────────────────────────────────
+
+  /** Weighings that have a photo, oldest first. Voided entries are left out. */
+  async progressPhotos(patientId: string): Promise<ProgressPhotoModel[]> {
+    const rows = await this.prisma.weightEntry.findMany({
+      where: { patientId, voidedAt: null, photoFileId: { not: null } },
+      orderBy: { measuredAt: 'asc' },
+      select: { id: true, measuredAt: true, weightKg: true, photoFileId: true },
+      take: 500,
+    });
+    return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId! }));
+  }
+
+  // ── forecast ──────────────────────────────────────────────────────────────
+
+  async forecast(patientId: string, now = new Date()): Promise<WeightForecastModel> {
+    const from = new Date(now.getTime() - 120 * 86_400_000);
+    const tl = await this.timeline(patientId, from, new Date(now.getTime() + 60_000));
+    const result = forecastWeight(tl.measurements.map((m) => ({ measuredAt: m.measuredAt, weightKg: m.weightKg })), { targetKg: tl.targetWeightKg, now });
+    if (result.available === false) return { available: false, reason: result.reason as ForecastUnavailableReason, points: [] };
+    return {
+      available: true,
+      basedOnPoints: result.basedOnPoints,
+      basedOnDays: result.basedOnDays,
+      kgPerWeek: result.kgPerWeek,
+      confidence: result.confidence as ForecastConfidence,
+      fromAt: result.from.at,
+      fromWeightKg: result.from.weightKg,
+      points: result.points,
+      reachesTargetAt: result.reachesTargetAt ?? undefined,
     };
   }
 }

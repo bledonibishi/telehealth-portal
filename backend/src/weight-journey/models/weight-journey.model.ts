@@ -108,6 +108,9 @@ export class WeightMeasurementModel {
 
   @Field(() => CheckInFeeling, { nullable: true })
   feeling?: CheckInFeeling;
+
+  @Field({ description: 'Whether a progress photo was kept with this weighing. The photo itself is only ever given to the patient and their doctors.' })
+  hasPhoto: boolean;
 }
 
 @ObjectType('WeightTimeline')
@@ -132,4 +135,78 @@ export class WeightTimelineModel {
 
   @Field({ description: 'True when the window held more than the limit; the newest measurements are returned' })
   truncated: boolean;
+}
+
+@ObjectType('ProgressPhoto')
+export class ProgressPhotoModel {
+  @Field(() => ID, { description: 'The weight entry the photo was taken with' })
+  entryId: string;
+
+  @Field()
+  measuredAt: Date;
+
+  @Field(() => Float)
+  weightKg: number;
+
+  @Field(() => ID, { description: 'Open it at /uploads/<id>/file with your sign-in token' })
+  photoFileId: string;
+}
+
+export enum ForecastUnavailableReason {
+  NOT_ENOUGH_DATA = 'NOT_ENOUGH_DATA',
+  NOT_LOSING = 'NOT_LOSING',
+  TOO_VARIABLE = 'TOO_VARIABLE',
+}
+registerEnumType(ForecastUnavailableReason, { name: 'ForecastUnavailableReason' });
+
+export enum ForecastConfidence {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}
+registerEnumType(ForecastConfidence, { name: 'ForecastConfidence' });
+
+@ObjectType('WeightForecastPoint')
+export class WeightForecastPointModel {
+  @Field()
+  at: Date;
+
+  @Field(() => Int)
+  monthsAhead: number;
+
+  @Field(() => Float)
+  weightKg: number;
+}
+
+@ObjectType('WeightForecast', { description: 'Where the weight is heading at the current pace — a straight-line trend, not a medical prediction' })
+export class WeightForecastModel {
+  @Field()
+  available: boolean;
+
+  @Field(() => ForecastUnavailableReason, { nullable: true })
+  reason?: ForecastUnavailableReason;
+
+  @Field(() => Int, { nullable: true })
+  basedOnPoints?: number;
+
+  @Field(() => Int, { nullable: true, description: 'How many days of measurements the trend was drawn from' })
+  basedOnDays?: number;
+
+  @Field(() => Float, { nullable: true, description: 'Negative while losing' })
+  kgPerWeek?: number;
+
+  @Field(() => ForecastConfidence, { nullable: true })
+  confidence?: ForecastConfidence;
+
+  @Field({ nullable: true, description: 'Where the trend line starts: the latest measurement’s date' })
+  fromAt?: Date;
+
+  @Field(() => Float, { nullable: true, description: 'The trend line’s value on that date' })
+  fromWeightKg?: number;
+
+  @Field(() => [WeightForecastPointModel], { description: 'One point a month for 6 months; empty when unavailable' })
+  points: WeightForecastPointModel[];
+
+  @Field({ nullable: true, description: 'When the trend reaches the target weight, if within the 6 months' })
+  reachesTargetAt?: Date;
 }

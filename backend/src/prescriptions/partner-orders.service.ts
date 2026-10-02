@@ -120,6 +120,7 @@ export class PartnerOrdersService {
     if (order.prescription.status !== PrescriptionStatus.ACTIVE) return 'The prescription is no longer active';
     if (order.prescription.validUntil && order.prescription.validUntil < new Date()) return 'The prescription has expired';
     const p = order.patient;
+    if (p.subscriptionEndedAt) return 'The patient’s subscription has ended';
     if (!p.addressLine1 || !p.city || !p.postcode || !p.country) return 'The patient has no complete delivery address on file';
     return null;
   }
@@ -218,6 +219,7 @@ export class PartnerOrdersService {
     if (settled.count === 0) {
       this.logger.warn(`Order ${orderId}: the send claim was lost while delivering; leaving the record as the other writer left it`);
     } else {
+      const order = await this.prisma.order.findUnique({ where: { id: orderId }, select: { patientId: true } });
       await this.audit.log({
         actorId: opts.actorId ?? 'system:partner-orders',
         actorRole: opts.actorId ? UserRole.CLINICIAN : UserRole.ADMIN,
@@ -226,6 +228,7 @@ export class PartnerOrdersService {
           : ok ? 'ORDER_SENT_TO_PARTNER' : 'ORDER_PARTNER_SEND_FAILED',
         resourceType: 'Order',
         resourceId: orderId,
+        patientId: order?.patientId,
         metadata: { channels: [...succeeded], attempts, error: errors.length ? errors.join(' · ').slice(0, 500) : null },
       });
       if (!ok) this.logger.warn(`Order ${orderId} not fully delivered to the partner (${row.event}): ${errors.join(' · ')}`);
@@ -350,6 +353,7 @@ export class PartnerOrdersService {
         createdAt: { lt: new Date(now.getTime() - SWEEP_GRACE_MS) },
         prescription: { status: PrescriptionStatus.ACTIVE, OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
         patient: {
+          subscriptionEndedAt: null,
           addressLine1: filled,
           city: filled,
           postcode: filled,

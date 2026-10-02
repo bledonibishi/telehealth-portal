@@ -120,3 +120,36 @@ describe('CheckInsService.submit — GLP-1 titration/side-effect correlation', (
     expect(flagsOf(prisma)).not.toContainEqual(expect.objectContaining({ description: expect.stringContaining('titration step') }));
   });
 });
+
+describe('CheckInsService.submit — what the patient writes in their notes', () => {
+  const submitWith = async (notes?: string) => {
+    const prisma = makePrisma(makeGlp1Prescription({ titrationStep: 2, issuedDaysAgo: 60, previousStep: 2 }));
+    const service = new CheckInsService(prisma as any, {} as any, { get: jest.fn() } as any);
+    await service.submit('tok-1', {
+      answers: glp1Answers({ side_effect_impact: 'mild', ...(notes !== undefined && { notes }) }),
+      wantsToReorder: false,
+      feeling: 'OKAY' as any,
+    });
+    return flagsOf(prisma);
+  };
+
+  it('flags anxiety in the note for the doctor, quoting the words', async () => {
+    expect(await submitWith('I have been very anxious this month')).toContainEqual(
+      expect.objectContaining({ severity: 'WARNING', description: expect.stringContaining('anxiety') }),
+    );
+  });
+
+  it('flags wanting to stop, and trouble with the dose', async () => {
+    const flags = await submitWith('The dose is too strong and I want to stop');
+    expect(flags.map((f) => f.description).join(' | ')).toMatch(/low motivation or wanting to stop.*difficulty with the dose|difficulty with the dose.*low motivation/);
+  });
+
+  it('marks language about self-harm CRITICAL, so it goes to the top of the review queue', async () => {
+    expect(await submitWith('Sometimes I think about suicide')).toContainEqual(expect.objectContaining({ severity: 'CRITICAL' }));
+  });
+
+  it('adds nothing for an ordinary note or none at all', async () => {
+    expect(await submitWith('All good, thanks')).toEqual([]);
+    expect(await submitWith()).toEqual([]);
+  });
+});

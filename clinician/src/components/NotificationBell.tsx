@@ -16,6 +16,7 @@ const ITEMS: Item[] = [
   { label: 'Orders pending dispatch',   count: 0, href: '/orders',   roles: ['ADMIN', 'PROVIDER'] },
   { label: 'GLP-1 patients with missed doses', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Shipments due or late', count: 0, href: '/shipments', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'] },
+  { label: 'Side effects reported by patients', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
 ];
 
 export function NotificationBell() {
@@ -35,6 +36,7 @@ export function NotificationBell() {
     { ...ITEMS[3], count: counts?.pendingOrders ?? 0 },
     { ...ITEMS[4], count: counts?.missedDoseAlerts ?? 0 },
     { ...ITEMS[5], count: counts?.shipmentsDue ?? 0 },
+    { ...ITEMS[6], count: counts?.sideEffectAlerts ?? 0 },
   ].filter((item) => !role || item.roles.includes(role));
 
   const total = items.reduce((sum, i) => sum + i.count, 0);
@@ -76,7 +78,7 @@ export function NotificationBell() {
             <div className="divide-y divide-gray-50">
               {items.filter((i) => i.count > 0).map((item) => (
                 <button
-                  key={item.href}
+                  key={item.label}
                   onClick={() => { router.push(item.href); setOpen(false); }}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left"
                 >

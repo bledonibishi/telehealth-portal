@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
 import { RedFlagBanner } from './RedFlagBanner';
+import { RiskBadge } from './RiskBadge';
 import { DecisionPanel } from './DecisionPanel';
 import { ChatDock } from './ChatDock';
 import { PatientHistory } from './PatientHistory';
@@ -75,6 +76,7 @@ export function ConsultationDetail({ id }: { id: string }) {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="text-xl font-semibold text-gray-900 truncate">{fullName}</h1>
                   <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${status.cls}`}>{t(status.label)}</span>
+                  <RiskBadge tag={c.riskTag} />
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5">
                   {t('{n} yrs', { n: differenceInYears(new Date(), dob) })} · {c.kind} · {t('submitted {when}', { when: timeAgo(c.submittedAt) })}

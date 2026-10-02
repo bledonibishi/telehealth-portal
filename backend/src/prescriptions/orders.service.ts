@@ -64,9 +64,15 @@ export class OrdersService {
 
   /** Another supply against a prescription's repeats. */
   async createRepeat(actorId: string, prescriptionId: string, db: Db = this.prisma) {
-    const rx = await db.prescription.findUnique({ where: { id: prescriptionId }, include: { orders: true } });
+    const rx = await db.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: { orders: true, patient: { select: { subscriptionEndedAt: true } } },
+    });
     if (!rx) throw new NotFoundException('Prescription not found');
     this.assertDispensable(rx);
+    if (rx.patient?.subscriptionEndedAt) {
+      throw new BadRequestException('The patient’s subscription has ended — no further supplies can be ordered');
+    }
 
     const live = rx.orders.filter((o) => o.status !== OrderStatus.CANCELLED);
     if (live.some((o) => o.status === OrderStatus.PENDING)) {
@@ -80,7 +86,7 @@ export class OrdersService {
 
     const sequence = Math.max(0, ...rx.orders.map((o) => o.sequence)) + 1;
     const order = await db.order.create({ data: { prescriptionId, patientId: rx.patientId, sequence } });
-    await this.log(actorId, 'ORDER_CREATED', order.id, { prescriptionId, sequence });
+    await this.log(actorId, 'ORDER_CREATED', order.id, rx.patientId, { prescriptionId, sequence }, db);
     // Hand it to the pharmacy partner straight away (when a channel is set up); a failure is retried later.
     if (db === this.prisma) await this.partner.trySend(order.id);
     return db.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
@@ -100,7 +106,7 @@ export class OrdersService {
       pharmacyRef: pharmacyRef.trim(),
       shippingAddress: address as unknown as Prisma.InputJsonValue,
     });
-    await this.log(actorId, 'ORDER_DISPATCHED', id, { pharmacyRef: pharmacyRef.trim() });
+    await this.log(actorId, 'ORDER_DISPATCHED', id, order.patientId, { pharmacyRef: pharmacyRef.trim() });
     return this.find(id);
   }
 
@@ -112,14 +118,16 @@ export class OrdersService {
       trackingNumber,
       trackingUrl,
     });
-    await this.log(actorId, 'ORDER_OUT_FOR_DELIVERY', id, { carrier, trackingNumber });
-    return this.find(id);
+    const order = await this.find(id);
+    await this.log(actorId, 'ORDER_OUT_FOR_DELIVERY', id, order.patientId, { carrier, trackingNumber });
+    return order;
   }
 
   async markDelivered(actorId: string, id: string) {
     await this.transition(id, OrderStatus.OUT_FOR_DELIVERY, { status: OrderStatus.DELIVERED, deliveredAt: new Date() });
-    await this.log(actorId, 'ORDER_DELIVERED', id);
-    return this.find(id);
+    const order = await this.find(id);
+    await this.log(actorId, 'ORDER_DELIVERED', id, order.patientId);
+    return order;
   }
 
   async cancel(actorId: string, id: string, reason: string) {
@@ -129,11 +137,12 @@ export class OrdersService {
       cancelledAt: new Date(),
       cancelReason: reason.trim(),
     });
-    await this.log(actorId, 'ORDER_CANCELLED', id, { reason: reason.trim() });
+    const order = await this.find(id);
+    await this.log(actorId, 'ORDER_CANCELLED', id, order.patientId, { reason: reason.trim() });
     // If the pharmacy partner was already given this order, tell it not to dispatch.
     await this.partner.markCancelled([id]);
     await this.partner.flushCancellations();
-    return this.find(id);
+    return order;
   }
 
   /**
@@ -179,7 +188,8 @@ export class OrdersService {
     return order;
   }
 
-  private log(actorId: string, action: string, orderId: string, metadata?: Record<string, unknown>) {
-    return this.audit.log({ actorId, actorRole: UserRole.CLINICIAN, action, resourceType: 'Order', resourceId: orderId, metadata });
+  private log(actorId: string, action: string, orderId: string, patientId: string, metadata?: Record<string, unknown>, db?: Db) {
+    const entry = { actorId, actorRole: UserRole.CLINICIAN, action, resourceType: 'Order', resourceId: orderId, patientId, metadata };
+    return db && db !== this.prisma ? this.audit.log(entry, db as Prisma.TransactionClient) : this.audit.log(entry);
   }
 }

@@ -141,27 +141,33 @@ export class CheckInReviewService {
         throw new BadRequestException('Unknown outcome');
     }
 
-    const updated = await this.prisma.checkIn.update({
-      where: { id: checkIn.id },
-      data: {
-        reviewedAt: new Date(),
-        reviewedById: clinicianId,
-        outcome: input.outcome,
-        reviewNote: input.note?.trim() || null,
-        billingNote,
-        resultOrderId,
-        resultPrescriptionId,
-      },
-      include: { patient: true, prescription: true, reviewedBy: true },
-    });
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CHECK_IN_REVIEWED',
-      resourceType: 'CheckIn',
-      resourceId: checkIn.id,
-      metadata: { outcome: input.outcome, resultOrderId, resultPrescriptionId, billingNote },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const reviewed = await tx.checkIn.update({
+        where: { id: checkIn.id },
+        data: {
+          reviewedAt: new Date(),
+          reviewedById: clinicianId,
+          outcome: input.outcome,
+          reviewNote: input.note?.trim() || null,
+          billingNote,
+          resultOrderId,
+          resultPrescriptionId,
+        },
+        include: { patient: true, prescription: true, reviewedBy: true },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CHECK_IN_REVIEWED',
+          resourceType: 'CheckIn',
+          resourceId: checkIn.id,
+          patientId: patient.id,
+          metadata: { outcome: input.outcome, resultOrderId, resultPrescriptionId, billingNote },
+        },
+        tx,
+      );
+      return reviewed;
     });
 
     await this.notifyPatient(patient, clinicianId, HEADLINE[input.outcome], input.messageToPatient);

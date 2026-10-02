@@ -9,6 +9,8 @@ interface AuditLogPayload {
   action: string;
   resourceType: string;
   resourceId: string;
+  /** The patient the action concerns; taken from the resource when that is the patient itself. */
+  patientId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -22,7 +24,8 @@ export class AuditService {
    */
   async log(payload: AuditLogPayload, tx?: Prisma.TransactionClient): Promise<void> {
     try {
-      await (tx ?? this.prisma).auditLogEntry.create({ data: payload as any });
+      const patientId = payload.patientId ?? (payload.resourceType === 'Patient' ? payload.resourceId : undefined);
+      await (tx ?? this.prisma).auditLogEntry.create({ data: { ...payload, patientId } as any });
     } catch (err) {
       // A silently-lost audit row is a compliance gap — fail loudly
       console.error('[AUDIT FAILURE] Could not write audit log:', payload, err);
@@ -30,6 +33,14 @@ export class AuditService {
         'Audit log write failed — action cannot complete safely',
       );
     }
+  }
+
+  /** Everything recorded about one patient, oldest first. */
+  findByPatient(patientId: string) {
+    return this.prisma.auditLogEntry.findMany({
+      where: { patientId },
+      orderBy: { timestamp: 'asc' },
+    });
   }
 
   findByResource(resourceType: string, resourceId: string) {

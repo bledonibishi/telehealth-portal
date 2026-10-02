@@ -101,6 +101,14 @@ describe('OrdersService', () => {
       await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/already an order waiting/);
     });
 
+    it('refuses a repeat once the patient’s subscription has ended', async () => {
+      prisma.prescription.findUnique.mockResolvedValue({
+        ...ACTIVE_RX, orders: [{ status: 'DELIVERED', sequence: 1 }], patient: { subscriptionEndedAt: new Date() },
+      });
+      await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/subscription has ended/);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
     it('refuses a testosterone repeat while its blood tests are on hold', async () => {
       withOrders([{ status: 'DELIVERED', sequence: 1 }]);
       trtMonitoring.assertRepeatAllowed.mockRejectedValue(new Error('Testosterone repeat on hold: PSA test overdue'));

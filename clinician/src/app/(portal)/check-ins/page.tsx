@@ -9,6 +9,7 @@ import { GET_ORDERS } from '@/graphql/orders';
 import { PrescriptionForm, PrescriptionSubmission, Row } from '@/components/consultation/PrescriptionForm';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
+import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
@@ -175,6 +176,7 @@ export default function CheckInsPage() {
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: queue.length })}</p>
         </div>
+        <SideEffectAlerts />
         <MissedDoseAlerts />
         {loading && <p className="p-5 text-sm text-gray-400">{t('Loading…')}</p>}
         {error && <p className="p-5 text-sm text-danger-500">{error.message}</p>}

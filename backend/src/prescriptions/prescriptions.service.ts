@@ -47,21 +47,26 @@ export class PrescriptionsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.orders.cancelPendingFor(id, `Prescription cancelled: ${reason.trim()}`, tx);
       await this.dosing.cancelForPrescription(id, tx);
-      return tx.prescription.update({
+      const cancelled = await tx.prescription.update({
         where: { id },
         data: { status: PrescriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason.trim() },
       });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'PRESCRIPTION_CANCELLED',
+          resourceType: 'Prescription',
+          resourceId: id,
+          patientId: rx.patientId,
+          metadata: { reason: reason.trim() },
+        },
+        tx,
+      );
+      return cancelled;
     });
     // Orders already handed to the pharmacy partner are withdrawn there too.
     await this.partner.flushCancellations();
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'PRESCRIPTION_CANCELLED',
-      resourceType: 'Prescription',
-      resourceId: id,
-      metadata: { reason: reason.trim() },
-    });
     return updated;
   }
 
@@ -97,8 +102,8 @@ export class PrescriptionsService {
     });
     const answers = (consultation?.quizAnswers as any[]) ?? [];
 
-    const issued = await this.prisma.$transaction((tx) =>
-      this.prescribing.issue(
+    const issued = await this.prisma.$transaction(async (tx) => {
+      const rx = await this.prescribing.issue(
         {
           patientId: current.patientId,
           prescriberId: clinicianId,
@@ -112,16 +117,21 @@ export class PrescriptionsService {
           overrideReason: input.overrideReason,
         },
         tx,
-      ),
-    );
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'DOSE_CHANGED',
-      resourceType: 'Prescription',
-      resourceId: issued.id,
-      metadata: { supersedes: current.id, reason: input.reasonForChange.trim(), medication: issued.medication },
+      );
+      // Same transaction as the change: a dose change that can't be recorded doesn't happen.
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'DOSE_CHANGED',
+          resourceType: 'Prescription',
+          resourceId: rx.id,
+          patientId: current.patientId,
+          metadata: { supersedes: current.id, reason: input.reasonForChange.trim(), medication: rx.medication },
+        },
+        tx,
+      );
+      return rx;
     });
 
     const patient = await this.prisma.patient.findUnique({ where: { id: current.patientId } });

@@ -420,3 +420,31 @@ describe('DosingService.sendReminders', () => {
     expect(email.sendDoseReminderEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('DosingService.summaryFor', () => {
+  const item = { id: 'item-1', product: { name: 'Semaglutide', brandName: 'Wegovy' }, strength: { label: '0.25 mg' } };
+  const build = (rx: any, next: any) => {
+    const prisma = makePrisma() as any;
+    prisma.prescription.findFirst = jest.fn().mockResolvedValue(rx);
+    prisma.doseEvent.findFirst.mockResolvedValue(next);
+    return { prisma, service: new DosingService(prisma, makeEmail() as any, makeConfig() as any) };
+  };
+
+  it('names the current dose and gives the date of the next injection', async () => {
+    const at = new Date(Date.now() + 3 * DAY);
+    const { service, prisma } = build({ medication: 'Semaglutide', dosage: '0.25 mg', items: [item] }, { id: 'ev-1', scheduledFor: at, prescriptionItem: item });
+    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: 'ev-1', nextDoseAt: at });
+    // only the patient's own, still-scheduled doses of the active prescription
+    expect(prisma.doseEvent.findFirst.mock.calls[0][0].where).toMatchObject({ patientId: 'p-1', prescriptionItemId: { in: ['item-1'] }, status: 'SCHEDULED' });
+  });
+
+  it('still shows the dose when no further dose has been scheduled yet', async () => {
+    const { service } = build({ medication: 'Semaglutide', dosage: '0.25 mg', items: [item] }, null);
+    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: undefined, nextDoseAt: undefined });
+  });
+
+  it('is null without an active prescription', async () => {
+    const { service } = build(null, null);
+    expect(await service.summaryFor('p-1')).toBeNull();
+  });
+});

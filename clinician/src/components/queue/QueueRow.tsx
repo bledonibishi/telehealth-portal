@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { RiskBadge } from '@/components/consultation/RiskBadge';
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   SUBMITTED: { label: 'New', cls: 'bg-blue-100 text-blue-800' },
@@ -13,7 +14,7 @@ const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 
 export function QueueRow({ consultation }: { consultation: any }) {
   const { t, timeAgo } = useI18n();
-  const { id, patient, kind, status, submittedAt, redFlags, clinician } = consultation;
+  const { id, patient, kind, status, submittedAt, redFlags, clinician, riskTag } = consultation;
   const hasCritical = redFlags.some((f: any) => f.severity === 'CRITICAL');
   const hasWarning = redFlags.some((f: any) => f.severity === 'WARNING');
   const badge = STATUS_LABELS[status] ?? { label: status, cls: 'bg-gray-100 text-gray-600' };
@@ -42,6 +43,7 @@ export function QueueRow({ consultation }: { consultation: any }) {
         {timeAgo(submittedAt)}
       </td>
       <td className="px-6 py-3">
+        <div className="mb-1"><RiskBadge tag={riskTag} /></div>
         {hasCritical && (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-danger-100 text-danger-500">
             {t('{n} critical', { n: redFlags.filter((f: any) => f.severity === 'CRITICAL').length })}

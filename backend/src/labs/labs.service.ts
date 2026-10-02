@@ -51,7 +51,8 @@ export class LabsService {
       action: 'LAB_RESULT_RECORDED',
       resourceType: 'LabResult',
       resourceId: created.id,
-      metadata: { patientId: input.patientId, kind: input.kind, flagged },
+      patientId: input.patientId,
+      metadata: { kind: input.kind, flagged },
     });
 
     return created;
@@ -71,15 +72,17 @@ export class LabsService {
       throw new ConflictException('This lab result has already been reviewed');
     }
 
+    const reviewed = await this.prisma.labResult.findUniqueOrThrow({ where: { id: input.labResultId }, include: INCLUDE });
     await this.audit.log({
       actorId: reviewedById,
       actorRole: UserRole.CLINICIAN,
       action: 'LAB_RESULT_REVIEWED',
       resourceType: 'LabResult',
       resourceId: input.labResultId,
+      patientId: reviewed.patientId,
     });
 
-    return this.prisma.labResult.findUniqueOrThrow({ where: { id: input.labResultId }, include: INCLUDE });
+    return reviewed;
   }
 
   /** The patient's own view — never attaches who entered or reviewed it. */

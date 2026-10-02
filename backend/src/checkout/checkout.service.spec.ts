@@ -15,7 +15,7 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
   return service;
 }
 
-const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
+const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
 
 function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
   return {
@@ -44,6 +44,18 @@ describe('CheckoutService.createHostedSession', () => {
     expect(args.metadata).toMatchObject({ leadId: 'lead-1', email: 'buyer@b.com', product: 'Wegovy', dose: '0.25 mg' });
     expect(args.allow_promotion_codes).toBe(true);
     expect(args.discounts).toBeUndefined();
+  });
+
+  it('refuses a lead whose eligibility answers are disqualifying, even if the website let them through', async () => {
+    const red = { ...LEAD, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: 'Under 18' }] };
+    await expect(build(prismaFor({ lead: red }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' })).rejects.toThrow('can’t offer this treatment online');
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
+  it('lets a lead with only warnings (ORANGE) go on to pay', async () => {
+    const orange = { ...LEAD, quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '18 to 39' }] };
+    await build(prismaFor({ lead: orange }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' });
+    expect(session.create).toHaveBeenCalled();
   });
 
   it('does not attach the referral coupon unless the customer applied the reward', async () => {

@@ -1,10 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'crypto';
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { basename, join } from 'path';
+import { basename } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadKind } from '@prisma/client';
+import { accessRoleOf, AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { FILE_STORAGE, FileStorage } from './file-storage';
 
 // Encrypted files start with this marker, then the IV and auth tag. Files
 // without it were stored before encryption was switched on, and are read as-is.
@@ -19,17 +20,40 @@ export function safeFilename(original: string) {
   return name.slice(-100) || 'file';
 }
 
+// Photos of a patient's body: only the patient and doctors may see them — not support or fulfilment staff.
+const BODY_PHOTO_KINDS: UploadKind[] = [UploadKind.BODY_PHOTO_FRONT, UploadKind.BODY_PHOTO_SIDE, UploadKind.PROGRESS_PHOTO];
+
+/** Whether a staff member may open a file of this kind. Patients' own access is decided separately. */
+export function staffMayView(kind: UploadKind, user: Pick<AuthUser, 'role' | 'clinicianRole'>): boolean {
+  const role = accessRoleOf(user);
+  if (!role || role === 'PATIENT') return false;
+  return (BODY_PHOTO_KINDS.includes(kind) ? PRESCRIBERS : STAFF).includes(role);
+}
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_PROGRESS_PHOTO_BYTES = 10 * 1024 * 1024;
+
+/** The file's first bytes agree with an image format (a client-declared type alone proves nothing). */
+export function looksLikeImage(buf: Buffer): boolean {
+  const starts = (...bytes: number[]) => bytes.every((b, i) => buf[i] === b);
+  return (
+    starts(0xff, 0xd8, 0xff) || // JPEG
+    starts(0x89, 0x50, 0x4e, 0x47) || // PNG
+    (buf.subarray(0, 4).toString() === 'RIFF' && buf.subarray(8, 12).toString() === 'WEBP') ||
+    (buf.subarray(4, 8).toString() === 'ftyp' && ['heic', 'heix', 'mif1', 'msf1', 'heif'].includes(buf.subarray(8, 12).toString())) // HEIC/HEIF
+  );
+}
+
 @Injectable()
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
   private readonly key: Buffer | null;
-  private readonly root: string;
 
   constructor(
     private prisma: PrismaService,
     config: ConfigService,
+    @Inject(FILE_STORAGE) private storage: FileStorage,
   ) {
-    this.root = config.get<string>('UPLOAD_DIR') ?? join(process.cwd(), 'uploads');
     const raw = config.get<string>('UPLOAD_ENCRYPTION_KEY');
     if (raw) {
       const key = Buffer.from(raw, 'base64');
@@ -42,11 +66,15 @@ export class UploadsService {
   }
 
   async save(patientId: string, kind: UploadKind, file: Express.Multer.File) {
-    const dir = join(this.root, patientId);
-    await mkdir(dir, { recursive: true });
+    if (kind === UploadKind.PROGRESS_PHOTO) {
+      if (!IMAGE_TYPES.includes(file.mimetype) || !looksLikeImage(file.buffer)) {
+        throw new BadRequestException('Please upload a photo (JPEG, PNG, WebP or HEIC)');
+      }
+      if (file.buffer.length > MAX_PROGRESS_PHOTO_BYTES) throw new BadRequestException('That photo is too large — please use one under 10 MB');
+    }
 
     const storageKey = `${patientId}/${randomUUID()}-${safeFilename(file.originalname)}`;
-    await writeFile(join(this.root, storageKey), this.encrypt(file.buffer));
+    await this.storage.put(storageKey, this.encrypt(file.buffer));
 
     return this.prisma.uploadedFile.create({
       data: {
@@ -59,19 +87,22 @@ export class UploadsService {
     });
   }
 
-  async findForAccess(id: string, requester: { id: string; role: string }) {
+  /**
+   * The file, if this signed-in user may see it: its owner, or staff whose role allows that kind
+   * of file. Anyone else gets the same "not found" as for a file that doesn't exist.
+   */
+  async findForAccess(id: string, requester: Pick<AuthUser, 'id' | 'role' | 'clinicianRole'>) {
     const file = await this.prisma.uploadedFile.findUnique({ where: { id } });
     if (!file) throw new NotFoundException('File not found');
 
     const isOwner = requester.role === 'PATIENT' && requester.id === file.patientId;
-    const isClinician = requester.role === 'CLINICIAN';
-    if (!isOwner && !isClinician) throw new NotFoundException('File not found');
+    if (!isOwner && !staffMayView(file.kind, requester)) throw new NotFoundException('File not found');
 
     return file;
   }
 
   async readContents(file: { storageKey: string }): Promise<Buffer> {
-    return this.decrypt(await readFile(join(this.root, file.storageKey)));
+    return this.decrypt(await this.storage.get(file.storageKey));
   }
 
   private encrypt(plain: Buffer): Buffer {

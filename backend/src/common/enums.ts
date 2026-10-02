@@ -4,6 +4,7 @@ import {
   ConsultationKind,
   UserRole,
   RedFlagSeverity,
+  RiskTag,
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,
@@ -31,6 +32,7 @@ registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
 registerEnumType(ConsultationKind, { name: 'ConsultationKind' });
 registerEnumType(UserRole, { name: 'UserRole' });
 registerEnumType(RedFlagSeverity, { name: 'RedFlagSeverity' });
+registerEnumType(RiskTag, { name: 'RiskTag' });
 registerEnumType(ClinicianRole, { name: 'ClinicianRole' });
 registerEnumType(OnboardingStatus, { name: 'OnboardingStatus' });
 registerEnumType(PersonaStatus, { name: 'PersonaStatus' });
@@ -58,6 +60,7 @@ export {
   ConsultationKind,
   UserRole,
   RedFlagSeverity,
+  RiskTag,
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,

@@ -54,7 +54,7 @@ export class ShipmentsService {
       where: {
         status: PrescriptionStatus.ACTIVE,
         OR: [{ validUntil: null }, { validUntil: { gt: now } }],
-        patient: { activatedAt: { not: null } },
+        patient: { activatedAt: { not: null }, subscriptionEndedAt: null },
         orders: { some: { status: { in: [OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED] } } },
       },
       select: {

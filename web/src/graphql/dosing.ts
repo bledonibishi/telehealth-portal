@@ -62,3 +62,13 @@ export const MY_MISSED_DOSE_STATUS = gql`
     }
   }
 `;
+
+export const MY_DOSE_SUMMARY = gql`
+  query MyDoseSummary {
+    myDoseSummary {
+      current
+      nextDoseId
+      nextDoseAt
+    }
+  }
+`;
