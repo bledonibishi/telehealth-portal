@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrtMonitoringService } from '../labs/trt-monitoring.service';
+import { PartnerOrdersService } from './partner-orders.service';
+import { deliveryAddressOf } from './delivery-address';
 import { OrderStatus, PrescriptionStatus, UserRole } from '../common/enums';
 
 type Db = PrismaService | Prisma.TransactionClient;
@@ -10,33 +12,10 @@ type Db = PrismaService | Prisma.TransactionClient;
 export const ORDER_INCLUDE = {
   patient: true,
   prescription: { include: { consultation: true } },
+  partnerTransmission: true,
 } satisfies Prisma.OrderInclude;
 
-export interface DeliveryAddress {
-  name: string;
-  phone: string | null;
-  addressLine1: string;
-  addressLine2: string | null;
-  city: string;
-  postcode: string;
-  country: string;
-}
-
-export function deliveryAddressOf(patient: {
-  firstName: string; lastName: string; phone: string | null;
-  addressLine1: string | null; addressLine2: string | null; city: string | null; postcode: string | null; country: string | null;
-}): DeliveryAddress | null {
-  if (!patient.addressLine1 || !patient.city || !patient.postcode || !patient.country) return null;
-  return {
-    name: `${patient.firstName} ${patient.lastName}`,
-    phone: patient.phone,
-    addressLine1: patient.addressLine1,
-    addressLine2: patient.addressLine2,
-    city: patient.city,
-    postcode: patient.postcode,
-    country: patient.country,
-  };
-}
+export { deliveryAddressOf, type DeliveryAddress } from './delivery-address';
 
 // Fulfilment of prescriptions: each order is one supply (first fill or a
 // repeat). Every transition is a conditional update on the current status, so
@@ -47,6 +26,7 @@ export class OrdersService {
     private prisma: PrismaService,
     private audit: AuditService,
     private trtMonitoring: TrtMonitoringService,
+    private partner: PartnerOrdersService,
   ) {}
 
   findAll(status?: OrderStatus) {
@@ -85,6 +65,8 @@ export class OrdersService {
     const sequence = Math.max(0, ...rx.orders.map((o) => o.sequence)) + 1;
     const order = await db.order.create({ data: { prescriptionId, patientId: rx.patientId, sequence } });
     await this.log(actorId, 'ORDER_CREATED', order.id, { prescriptionId, sequence });
+    // Hand it to the pharmacy partner straight away (when a channel is set up); a failure is retried later.
+    if (db === this.prisma) await this.partner.trySend(order.id);
     return db.order.findUniqueOrThrow({ where: { id: order.id }, include: ORDER_INCLUDE });
   }
 
@@ -158,6 +140,10 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
     throw new ConflictException(`The order is ${order.status.toLowerCase().replace(/_/g, ' ')}, not ${from.toLowerCase().replace(/_/g, ' ')}`);
+  }
+
+  findOne(id: string) {
+    return this.find(id);
   }
 
   private async find(id: string) {

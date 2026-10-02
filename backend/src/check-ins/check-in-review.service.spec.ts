@@ -51,6 +51,7 @@ describe('CheckInReviewService.review', () => {
       prescribing as any,
       prescriptions as any,
       config as any,
+      { trySend: jest.fn() } as any,
     );
   });
 
@@ -113,7 +114,7 @@ describe('CheckInReviewService.queue', () => {
         ]),
       },
     };
-    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const queue = await service.queue();
 

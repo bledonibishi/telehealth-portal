@@ -40,6 +40,7 @@ describe('PrescriptionsService', () => {
       messaging as any,
       email as any,
       { get: jest.fn() } as any,
+      { trySendForPrescription: jest.fn() } as any,
     );
   });
 

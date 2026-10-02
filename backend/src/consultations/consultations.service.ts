@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
+import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { ConsentType, ConsultationKind, ConsultationStatus, UserRole } from '../common/enums';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
@@ -37,6 +38,7 @@ export class ConsultationsService {
     private messaging: MessagingService,
     private email: EmailService,
     private consents: ConsentsService,
+    private partner: PartnerOrdersService,
   ) {}
 
   // A doctor who has claimed a consultation owns the decision; others (bar
@@ -306,6 +308,9 @@ export class ConsultationsService {
     });
 
     await this.notifyPatient(updated.patient, 'Your treatment has been approved');
+
+    // The first supply is ready: pass it to the pharmacy partner (a failure is retried later, never undoes the approval).
+    await this.partner.trySendForPrescription(updated.prescription.id);
 
     this.posthog.capture(clinicianId, 'consultation_approved', {
       consultation_id: updated.id,

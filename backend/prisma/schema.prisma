@@ -122,6 +122,12 @@ enum PrescriptionStatus {
   CANCELLED
 }
 
+enum PartnerTransmissionStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum OrderStatus {
   PENDING
   DISPATCHED
@@ -373,8 +379,9 @@ model Order {
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
-  prescription Prescription @relation(fields: [prescriptionId], references: [id])
-  patient      Patient      @relation(fields: [patientId], references: [id])
+  prescription        Prescription         @relation(fields: [prescriptionId], references: [id])
+  patient             Patient              @relation(fields: [patientId], references: [id])
+  partnerTransmission PartnerTransmission?
 
   @@unique([prescriptionId, sequence])
   @@index([status])
@@ -399,6 +406,29 @@ model PrescriptionItem {
 
 // Medicines a clinician can prescribe. Seeded; review with the partner
 // pharmacy before go-live.
+// One row per order: whether the structured order summary reached the external
+// pharmacy partner (webhook and/or email), how many attempts it took, and the
+// exact payload that was sent.
+model PartnerTransmission {
+  id            String                    @id @default(cuid())
+  orderId       String                    @unique @map("order_id")
+  status        PartnerTransmissionStatus @default(PENDING)
+  // Channels that accepted the payload, e.g. ["WEBHOOK", "EMAIL"].
+  channels      String[]
+  attempts      Int                       @default(0)
+  lastError     String?                   @map("last_error")
+  lastAttemptAt DateTime?                 @map("last_attempt_at")
+  sentAt        DateTime?                 @map("sent_at")
+  payload       Json
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("partner_transmissions")
+}
+
 model Product {
   id                String           @id @default(cuid())
   slug              String           @unique

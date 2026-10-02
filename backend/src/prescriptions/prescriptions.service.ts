@@ -7,6 +7,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { ConsultationKind, PrescriptionStatus, UserRole } from '../common/enums';
 import { OrdersService } from './orders.service';
 import { DosingService } from '../dosing/dosing.service';
+import { PartnerOrdersService } from './partner-orders.service';
 import { PrescribingService } from './prescribing.service';
 import { ChangeDoseInput } from './dto/change-dose.input';
 
@@ -23,6 +24,7 @@ export class PrescriptionsService {
     private messaging: MessagingService,
     private email: EmailService,
     private config: ConfigService,
+    private partner: PartnerOrdersService,
   ) {}
 
   async findById(id: string) {
@@ -122,6 +124,9 @@ export class PrescriptionsService {
 
     const patient = await this.prisma.patient.findUnique({ where: { id: current.patientId } });
     if (patient) await this.notifyPatient(patient, clinicianId, input.messageToPatient);
+
+    // The new dose's first supply replaces any unsent order — pass it to the pharmacy partner.
+    await this.partner.trySendForPrescription(issued.id);
 
     return issued;
   }

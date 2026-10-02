@@ -53,6 +53,7 @@ describe('ConsultationsService', () => {
       messaging as any,
       email as any,
       consents as any,
+      { trySendForPrescription: jest.fn() } as any,
     );
   });
 

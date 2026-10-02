@@ -24,7 +24,7 @@ describe('OrdersService', () => {
     };
     audit = { log: jest.fn() };
     trtMonitoring = { assertRepeatAllowed: jest.fn() };
-    service = new OrdersService(prisma, audit as any, trtMonitoring as any);
+    service = new OrdersService(prisma, audit as any, trtMonitoring as any, { trySend: jest.fn() } as any);
   });
 
   describe('dispatch', () => {
