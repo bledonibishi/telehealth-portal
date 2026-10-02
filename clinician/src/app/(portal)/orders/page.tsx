@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@apollo/client';
-import { GET_ORDERS } from '@/graphql/orders';
+import { GET_ORDERS, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -26,13 +27,16 @@ const EMPTY: Record<FilterKey, string> = {
 
 export default function OrdersPage() {
   const { t } = useI18n();
-  const { data, loading, error } = useQuery(GET_ORDERS, { pollInterval: 60_000 });
+  // Placing a repeat from the shipments page changes this list, so always check again on arrival.
+  const { data, loading, error } = useQuery(GET_ORDERS, { pollInterval: 60_000, fetchPolicy: 'cache-and-network' });
   const [filter, setFilter] = useState<FilterKey>('pending');
+  const { data: shipmentData } = useQuery(NEXT_SHIPMENT_ALERTS, { pollInterval: 60_000 });
+  const shipmentsDue = (shipmentData?.nextShipmentAlerts ?? []).filter((a: any) => a.urgency !== 'UPCOMING').length;
 
   const allOrders: any[] = data?.orders ?? [];
   const countFor = (statuses: readonly string[] | null) =>
     statuses ? allOrders.filter((o) => statuses.includes(o.status)).length : allOrders.length;
-  const active = FILTERS.find((f) => f.key === filter)!;
+  const active = FILTERS.find((f) => f.key === filter) ?? FILTERS[0];
   const orders = active.statuses ? allOrders.filter((o) => (active.statuses as readonly string[]).includes(o.status)) : allOrders;
 
   return (
@@ -47,6 +51,10 @@ export default function OrdersPage() {
             <p className="font-semibold text-amber-600">{countFor(['PENDING'])}</p>
             <p className="text-xs text-gray-400">{t('To dispatch')}</p>
           </div>
+          <Link href="/shipments" className="text-center hover:opacity-80" title={t('Next shipments')}>
+            <p className={`font-semibold ${shipmentsDue ? 'text-red-600' : 'text-gray-400'}`}>{shipmentsDue}</p>
+            <p className="text-xs text-gray-400">{t('Shipments due')}</p>
+          </Link>
           <div className="text-center">
             <p className="font-semibold text-blue-600">{countFor(['DISPATCHED', 'OUT_FOR_DELIVERY'])}</p>
             <p className="text-xs text-gray-400">{t('In transit')}</p>
@@ -72,7 +80,7 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && !data && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
 
       <div className="divide-y divide-gray-100">

@@ -7,6 +7,7 @@ import { planFor } from '../stripe/plan-pricing';
 import { EmailService } from '../email/email.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { OrdersService } from '../prescriptions/orders.service';
+import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { PrescriptionsService } from '../prescriptions/prescriptions.service';
 import { CheckInOutcome, CheckInStatus, ConsultationKind, UserRole } from '../common/enums';
@@ -38,6 +39,7 @@ export class CheckInReviewService {
     private prescribing: PrescribingService,
     private prescriptions: PrescriptionsService,
     private config: ConfigService,
+    private partner: PartnerOrdersService,
   ) {}
 
   async queue() {
@@ -119,6 +121,7 @@ export class CheckInReviewService {
         );
         resultPrescriptionId = issued.id;
         resultOrderId = (await this.prisma.order.findFirst({ where: { prescriptionId: issued.id, sequence: 1 } }))?.id ?? null;
+        if (resultOrderId) await this.partner.trySend(resultOrderId);
         billingNote = await this.movePlan(patient, kind, issued.id);
         break;
       }

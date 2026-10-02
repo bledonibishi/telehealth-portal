@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { LOGIN_PATIENT } from '@/graphql/auth';
@@ -81,7 +82,10 @@ export default function LoginPage() {
           </form>
 
           <p className="text-xs text-slate-400 text-center mt-6">
-            Your account is created automatically after purchase.
+            Just paid and haven&rsquo;t set a password yet?{' '}
+            <Link href="/get-started" className="text-brand-600 hover:text-brand-700">
+              Set up your account
+            </Link>
           </p>
         </div>
       </div>

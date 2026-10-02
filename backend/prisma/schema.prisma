@@ -122,6 +122,12 @@ enum PrescriptionStatus {
   CANCELLED
 }
 
+enum PartnerTransmissionStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 enum OrderStatus {
   PENDING
   DISPATCHED
@@ -216,6 +222,9 @@ model Lead {
   // The referrer's code this lead arrived with, if any — kept even before a
   // Referral row exists, since LeadsService validates it at creation time.
   referralCode    String?          @map("referral_code")
+  // Delivery details and whether the referral reward was applied, captured at
+  // checkout and copied onto the Patient when the first payment succeeds.
+  checkoutDetails Json?            @map("checkout_details")
   convertedAt     DateTime?        @map("converted_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -370,8 +379,9 @@ model Order {
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
-  prescription Prescription @relation(fields: [prescriptionId], references: [id])
-  patient      Patient      @relation(fields: [patientId], references: [id])
+  prescription        Prescription         @relation(fields: [prescriptionId], references: [id])
+  patient             Patient              @relation(fields: [patientId], references: [id])
+  partnerTransmission PartnerTransmission?
 
   @@unique([prescriptionId, sequence])
   @@index([status])
@@ -392,6 +402,39 @@ model PrescriptionItem {
   doseEvents   DoseEvent[]
 
   @@map("prescription_items")
+}
+
+// One row per order: whether the structured order summary reached the external
+// pharmacy partner (webhook and/or email), how many attempts it took, and the
+// exact payload that was sent. If the order is cancelled after it went out, the
+// same row carries the cancellation message ("order.cancelled") the same way.
+model PartnerTransmission {
+  id            String                    @id @default(cuid())
+  orderId       String                    @unique @map("order_id")
+  status        PartnerTransmissionStatus @default(PENDING)
+  // Which message this row is delivering: "order.created" or "order.cancelled".
+  event         String                    @default("order.created")
+  // Channels that accepted the current message, e.g. ["WEBHOOK", "EMAIL"].
+  channels      String[]
+  // Channels the current message must reach; empty means every configured one.
+  // A cancellation goes only where the order itself was delivered.
+  targets       String[]
+  attempts      Int                       @default(0)
+  lastError     String?                   @map("last_error")
+  lastAttemptAt DateTime?                 @map("last_attempt_at")
+  // Earliest time the scheduled sweep may try again (back-off).
+  nextAttemptAt DateTime?                 @map("next_attempt_at")
+  // Set while a sender is delivering this row, so two senders never post the same message.
+  claimedAt     DateTime?                 @map("claimed_at")
+  sentAt        DateTime?                 @map("sent_at")
+  payload       Json
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("partner_transmissions")
 }
 
 // Medicines a clinician can prescribe. Seeded; review with the partner

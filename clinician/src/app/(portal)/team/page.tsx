@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import DoctorPerformance from '@/components/insights/DoctorPerformance';
 import {
   GET_CLINICIANS,
   UPDATE_CLINICIAN_ROLE,
@@ -83,7 +84,7 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-lg font-semibold text-gray-900">{t('Team & Roles')}</h1>
@@ -103,6 +104,8 @@ export default function TeamPage() {
           );
         })}
       </div>
+
+      <DoctorPerformance />
 
       {loading && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="text-sm text-red-500">{error.message}</p>}

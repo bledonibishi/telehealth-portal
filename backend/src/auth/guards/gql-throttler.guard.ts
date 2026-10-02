@@ -57,6 +57,7 @@ export class GqlThrottlerGuard extends ThrottlerGuard {
   private accountTracker(context: ExecutionContext): string {
     const args = GqlExecutionContext.create(context).getArgs();
     if (args.input?.email) return args.input.email.trim().toLowerCase();
+    if (args.input?.token) return args.input.token;
     try {
       return this.jwtService.verify(args.pendingToken).sub;
     } catch {
@@ -83,3 +84,10 @@ export class RefundSuccessfulAttemptInterceptor implements NestInterceptor {
 
 export const ThrottleLoginAttempts = () =>
   applyDecorators(UseGuards(GqlThrottlerGuard), UseInterceptors(RefundSuccessfulAttemptInterceptor));
+
+/**
+ * Counts every call against the account and IP limits (no refund on success).
+ * For endpoints that always succeed by design, like requestActivationLink, where
+ * a refunded counter would leave only the per-IP limit.
+ */
+export const ThrottleRequests = () => applyDecorators(UseGuards(GqlThrottlerGuard));

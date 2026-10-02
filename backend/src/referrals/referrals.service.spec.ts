@@ -46,13 +46,14 @@ describe('ReferralsService.validateAndAttach', () => {
   });
 
   it('no-ops on an unknown code', async () => {
-    const prisma = { patient: { findUnique: jest.fn().mockResolvedValue(null) }, $transaction: jest.fn() };
+    const prisma = { referral: { findUnique: jest.fn().mockResolvedValue(null) }, patient: { findUnique: jest.fn().mockResolvedValue(null) }, $transaction: jest.fn() };
     await newService(prisma).validateAndAttach('NOPE', { id: 'lead-1', email: 'friend@x.com' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('no-ops on a self-referral (same email, case-insensitive)', async () => {
     const prisma = {
+      referral: { findUnique: jest.fn().mockResolvedValue(null) },
       patient: { findUnique: jest.fn().mockResolvedValue({ id: 'p-1', email: 'Friend@X.com' }) },
       $transaction: jest.fn(),
     };
@@ -60,13 +61,20 @@ describe('ReferralsService.validateAndAttach', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('keeps the first attribution when the lead already has a referral', async () => {
+    const prisma = { referral: { findUnique: jest.fn().mockResolvedValue({ id: 'r-1' }) }, patient: { findUnique: jest.fn() }, $transaction: jest.fn() };
+    await newService(prisma).validateAndAttach('ABC123', { id: 'lead-1', email: 'friend@x.com' });
+    expect(prisma.patient.findUnique).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('attaches the code to the lead and creates a PENDING referral for a valid code', async () => {
     const leadUpdate = jest.fn().mockResolvedValue({});
     const referralCreate = jest.fn().mockResolvedValue({});
     const prisma = {
+      referral: { findUnique: jest.fn().mockResolvedValue(null), create: referralCreate },
       patient: { findUnique: jest.fn().mockResolvedValue({ id: 'referrer-1', email: 'advocate@x.com' }) },
       lead: { update: leadUpdate },
-      referral: { create: referralCreate },
       $transaction: jest.fn(async (ops: any[]) => Promise.all(ops)),
     };
     await newService(prisma).validateAndAttach('ABC123', { id: 'lead-1', email: 'friend@x.com' });

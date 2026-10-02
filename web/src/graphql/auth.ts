@@ -23,3 +23,24 @@ export const REFRESH_ACCESS_TOKEN = gql`
     }
   }
 `;
+
+export const REQUEST_ACTIVATION_LINK = gql`
+  mutation RequestActivationLink($input: RequestActivationLinkInput!) {
+    requestActivationLink(input: $input)
+  }
+`;
+
+export const ACTIVATE_ACCOUNT = gql`
+  mutation ActivateAccount($input: ActivateAccountInput!) {
+    activateAccount(input: $input) {
+      accessToken
+      refreshToken
+      patient {
+        id
+        email
+        firstName
+        lastName
+      }
+    }
+  }
+`;

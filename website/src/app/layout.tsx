@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import ReferralCapture from '@/components/ReferralCapture';
 
 export const metadata: Metadata = {
   title: 'Primavera Healthcare – HRT & GLP-1 Treatment Online',
@@ -17,7 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ReferralCapture />
+        {children}
+      </body>
     </html>
   );
 }

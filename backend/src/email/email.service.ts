@@ -139,4 +139,23 @@ export class EmailService {
 
     await this.resend.emails.send({ from: this.from, to, subject: 'Your referral reward is ready', html });
   }
+
+  /**
+   * Sends an order summary (with the structured JSON attached) to the pharmacy partner.
+   * Returns false — instead of pretending — when no email provider is configured.
+   */
+  async sendPartnerOrderEmail(to: string[], subject: string, html: string, json: string, filename: string): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.warn(`[DEV] Partner order email "${subject}" to ${to.join(', ')} not sent — RESEND_API_KEY is not set`);
+      return false;
+    }
+    await this.resend.emails.send({
+      from: this.from,
+      to,
+      subject,
+      html,
+      attachments: [{ filename, content: Buffer.from(json, 'utf8') }],
+    });
+    return true;
+  }
 }

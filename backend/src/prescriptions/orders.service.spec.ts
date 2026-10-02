@@ -11,20 +11,23 @@ describe('OrdersService', () => {
   let audit: { log: jest.Mock };
   let service: OrdersService;
   let trtMonitoring: { assertRepeatAllowed: jest.Mock };
+  let partner: { trySend: jest.Mock; markCancelled: jest.Mock; flushCancellations: jest.Mock };
 
   beforeEach(() => {
+    partner = { trySend: jest.fn(), markCancelled: jest.fn(), flushCancellations: jest.fn() };
     prisma = {
       order: {
         findUnique: jest.fn().mockResolvedValue({ id: 'o-1', status: 'PENDING', patient: PATIENT, prescription: ACTIVE_RX }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'o-new' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'o-new', ...data })),
       },
       prescription: { findUnique: jest.fn() },
     };
     audit = { log: jest.fn() };
     trtMonitoring = { assertRepeatAllowed: jest.fn() };
-    service = new OrdersService(prisma, audit as any, trtMonitoring as any);
+    service = new OrdersService(prisma, audit as any, trtMonitoring as any, partner as any);
   });
 
   describe('dispatch', () => {
@@ -105,6 +108,64 @@ describe('OrdersService', () => {
       expect(trtMonitoring.assertRepeatAllowed).toHaveBeenCalledWith('rx-1', prisma);
       expect(prisma.order.create).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('OrdersService cancelling', () => {
+  let prisma: any;
+  let partner: { trySend: jest.Mock; markCancelled: jest.Mock; flushCancellations: jest.Mock };
+  let service: OrdersService;
+
+  beforeEach(() => {
+    prisma = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'o-1', status: 'CANCELLED', patient: PATIENT, prescription: ACTIVE_RX }),
+        findMany: jest.fn().mockResolvedValue([{ id: 'o-1' }, { id: 'o-2' }]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    partner = { trySend: jest.fn(), markCancelled: jest.fn(), flushCancellations: jest.fn() };
+    service = new OrdersService(prisma, { log: jest.fn() } as any, {} as any, partner as any);
+  });
+
+  it('cancel() tells the pharmacy partner the order is withdrawn, after it is saved', async () => {
+    await service.cancel('doc-1', 'o-1', ' Wrong dose ');
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({ where: { id: 'o-1', status: 'PENDING' }, data: expect.objectContaining({ status: 'CANCELLED' }) });
+    expect(partner.markCancelled).toHaveBeenCalledWith(['o-1']);
+    expect(partner.flushCancellations).toHaveBeenCalled();
+    expect(partner.markCancelled.mock.invocationCallOrder[0]).toBeGreaterThan(prisma.order.updateMany.mock.invocationCallOrder[0]);
+  });
+
+  it('cancel() tells nobody when the order was not cancellable', async () => {
+    prisma.order.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.cancel('doc-1', 'o-1', 'x')).rejects.toThrow();
+    expect(partner.markCancelled).not.toHaveBeenCalled();
+  });
+
+  it('cancelPendingFor() queues a cancellation for every pending order it stops, in the same transaction', async () => {
+    const tx: any = { order: { findMany: prisma.order.findMany, updateMany: prisma.order.updateMany } };
+    await service.cancelPendingFor('rx-1', 'Superseded by a new prescription', tx);
+    expect(prisma.order.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['o-1', 'o-2'] }, status: 'PENDING' },
+      data: expect.objectContaining({ status: 'CANCELLED', cancelReason: 'Superseded by a new prescription' }),
+    });
+    expect(partner.markCancelled).toHaveBeenCalledWith(['o-1', 'o-2'], tx);
+    // inside a caller's transaction nothing is sent yet — it isn't committed
+    expect(partner.flushCancellations).not.toHaveBeenCalled();
+  });
+
+  it('cancelPendingFor() outside a transaction sends straight away', async () => {
+    await service.cancelPendingFor('rx-1', 'x');
+    expect(partner.flushCancellations).toHaveBeenCalled();
+  });
+
+  it('a patient\'s own orders carry no partner delivery details', async () => {
+    prisma.order.findMany.mockResolvedValue([]);
+    await service.findOwn('p-1');
+    const include = prisma.order.findMany.mock.calls[0][0].include;
+    expect(include).not.toHaveProperty('partnerTransmission');
+    await service.findByPatient('p-1');
+    expect(prisma.order.findMany.mock.calls[1][0].include.partnerTransmission.select).not.toHaveProperty('payload');
   });
 });
 

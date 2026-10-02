@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,8 @@ import { UserRole, ClinicianRole } from '../common/enums';
 import * as bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
 import { PostHogService } from '../posthog/posthog.service';
+import { EmailService } from '../email/email.service';
+import { newActivationToken } from './activation-token';
 import { AuthFailureReason, authFailure, reasonFromJwtError } from './auth-failure';
 
 export interface LoginAttempt {
@@ -16,12 +18,15 @@ export interface LoginAttempt {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private audit: AuditService,
     private posthog: PostHogService,
     private config: ConfigService,
+    private email: EmailService,
   ) {}
 
   async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
@@ -96,6 +101,100 @@ export class AuthService {
       login_method: 'password',
     });
     return { mfaRequired: false, pendingToken: null, ...this.issueTokens(patient.id, UserRole.PATIENT), patient };
+  }
+
+  /**
+   * Emails a fresh activation link to a paid-but-not-yet-activated patient.
+   * Always resolves true, whether or not the address matches an account, so
+   * this can't be used to find out who is a patient.
+   */
+  async requestActivationLink(email: string): Promise<boolean> {
+    const patient = await this.prisma.patient.findFirst({
+      where: { email: { equals: email.trim(), mode: 'insensitive' } },
+    });
+    if (!patient || patient.activatedAt) return true;
+
+    // Reuse a link that is still valid instead of replacing it: repeated requests
+    // can't invalidate the one the patient already holds (e.g. the one emailed
+    // right after payment). Volume is capped by the per-account throttle.
+    const stillValid = patient.activationToken && patient.activationTokenExpiresAt && patient.activationTokenExpiresAt > new Date();
+    const token = stillValid
+      ? { activationToken: patient.activationToken!, activationTokenExpiresAt: patient.activationTokenExpiresAt! }
+      : newActivationToken();
+    if (!stillValid) await this.prisma.patient.update({ where: { id: patient.id }, data: token });
+
+    const appUrl = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+    try {
+      await this.email.sendActivationEmail(patient.email, patient.firstName, `${appUrl}/activate?token=${token.activationToken}`);
+    } catch (err: any) {
+      // Don't let a mail outage reveal that the account exists.
+      this.logger.error(`Activation email to patient ${patient.id} failed: ${err.message}`);
+    }
+    return true;
+  }
+
+  /** Spends a single-use activation token to set the patient's password, and signs them in. */
+  async activateAccount(token: string, password: string, attempt: LoginAttempt = {}) {
+    const invalidLink = () => new UnauthorizedException('This activation link is invalid or has expired');
+
+    if (password.length < 10 || password.length > 72) {
+      throw new BadRequestException('Password must be between 10 and 72 characters');
+    }
+
+    const patient = await this.prisma.patient.findUnique({ where: { activationToken: token } });
+    if (!patient?.activationTokenExpiresAt || patient.activationTokenExpiresAt < new Date()) {
+      await this.audit.log({
+        actorId: patient?.id ?? 'anonymous',
+        actorRole: UserRole.PATIENT,
+        action: 'AUTH_ACTIVATION_FAILED',
+        resourceType: 'Patient',
+        resourceId: patient?.id ?? 'unknown',
+        metadata: { reason: patient ? 'EXPIRED' : 'UNKNOWN_TOKEN', ...attempt },
+      });
+      throw invalidLink();
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const activatedAt = patient.activatedAt ?? new Date();
+    // One transaction: the password change, the spent token and the audit row
+    // commit together, so a failed audit write can't leave a patient with a
+    // changed password, a cleared link and no way in. Matching on the token again
+    // makes this single-use even if two requests race.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.patient.updateMany({
+        where: { id: patient.id, activationToken: token },
+        data: { passwordHash, activatedAt, activationToken: null, activationTokenExpiresAt: null },
+      });
+      if (result.count !== 1) return false;
+      await this.audit.log(
+        {
+          actorId: patient.id,
+          actorRole: UserRole.PATIENT,
+          action: 'AUTH_ACCOUNT_ACTIVATED',
+          resourceType: 'Patient',
+          resourceId: patient.id,
+          metadata: { ...attempt },
+        },
+        tx,
+      );
+      return true;
+    });
+    if (!claimed) throw invalidLink();
+
+    this.posthog.identify(patient.id, {
+      email: patient.email,
+      first_name: patient.firstName,
+      last_name: patient.lastName,
+      role: UserRole.PATIENT,
+    });
+    this.posthog.capture(patient.id, 'patient_activated', { login_method: 'activation_link' });
+
+    return {
+      mfaRequired: false,
+      pendingToken: null,
+      ...this.issueTokens(patient.id, UserRole.PATIENT),
+      patient: { ...patient, activatedAt },
+    };
   }
 
   private auditPatientLoginFailed(email: string, patientId: string | undefined, reason: string, attempt: LoginAttempt) {

@@ -90,7 +90,7 @@ export default function TestCheckoutPage() {
       const res = await fetch(`${BACKEND_URL}/api/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId: selectedPlan.priceId, planName: selectedPlan.name, leadId }),
+        body: JSON.stringify({ priceId: selectedPlan.priceId, planName: selectedPlan.name, leadId, applyReward: discountApplied }),
       });
       const json = await res.json();
       if (!json.url) throw new Error(json.message || 'No checkout URL returned');

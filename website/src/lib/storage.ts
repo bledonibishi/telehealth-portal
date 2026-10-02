@@ -5,12 +5,18 @@ export interface Assessment {
   passed?: boolean;
   leadId?: string | null;
   email?: string;
+  firstName?: string;
+  lastName?: string;
   at?: number;
   plan?: string | null;
   method?: string | null;
   payseraMethod?: string | null;
   bmiBand?: string | null;
   med?: string | null;
+  productSlug?: string | null;
+  productName?: string | null;
+  dose?: string | null;
+  addProgesterone?: boolean;
 }
 
 export function loadAssessment(): Assessment | null {
