@@ -8,6 +8,8 @@ import { PrescriptionModel } from './models/prescription.model';
 import { PrescribingViolationModel } from './models/prescribing-check.model';
 import { OrderModel } from './models/order.model';
 import { OrdersService } from './orders.service';
+import { ShipmentsService } from './shipments.service';
+import { ShipmentAlertModel } from './models/shipment-alert.model';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { ChangeDoseInput } from './dto/change-dose.input';
 import { ConsultationKind, OrderStatus } from '../common/enums';
@@ -22,6 +24,7 @@ export class PrescriptionsResolver {
     private prescribing: PrescribingService,
     private prisma: PrismaService,
     private ordersService: OrdersService,
+    private shipments: ShipmentsService,
   ) {}
 
   @Authorized(...STAFF, 'PATIENT')
@@ -100,6 +103,12 @@ export class PrescriptionsResolver {
   @Query(() => [OrderModel])
   myOrders(@CurrentUser() user: AuthUser) {
     return this.ordersService.findByPatient(user.id);
+  }
+
+  @Authorized(...FULFILMENT, ...PRESCRIBERS)
+  @Query(() => [ShipmentAlertModel], { description: 'Patients whose next supply is coming up or late, most urgent first, with what is holding it up' })
+  nextShipmentAlerts() {
+    return this.shipments.nextShipments();
   }
 
   @Authorized(...PRESCRIBERS)
