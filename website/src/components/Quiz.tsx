@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { QUIZZES, type QuizQuestion } from '@/lib/quiz-data';
-import { mergeAssessment } from '@/lib/storage';
+import { loadAssessment, mergeAssessment, saveAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
 
 /* ── Types ── */
@@ -25,8 +25,10 @@ async function createLead(
   visibleQs: QuizQuestion[],
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
-  bmiBand: string | null,
 ): Promise<string | null> {
+  const apiBase = CONFIG.API_BASE;
+  if (!apiBase) return null;
+
   const quizAnswers = visibleQs
     .filter((q) => answers[q.id])
     .map((q) => ({ questionId: q.id, question: q.q, answer: answers[q.id].sel.join(', ') }));
@@ -43,7 +45,6 @@ async function createLead(
   }
 
   try {
-    const apiBase = CONFIG.API_BASE;
     const res = await fetch(`${apiBase}/graphql`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,7 +63,9 @@ async function createLead(
     });
     const json = await res.json();
     if (json.errors?.length) throw new Error(json.errors[0].message);
-    return json.data.createLead.id as string;
+    const id = json.data?.createLead?.id;
+    if (!id) throw new Error('No lead ID in response');
+    return id as string;
   } catch (err) {
     console.error('[quiz] createLead failed:', err);
     return null;
@@ -120,20 +123,36 @@ function Plans({ product, onRestart }: { product: ProductKind; onRestart: () => 
 }
 
 /* ── Ineligible component ── */
-function Ineligible({ reason, onRestart }: { reason: string; onRestart: () => void }) {
+function Ineligible({
+  reason,
+  onBack,
+  onRestart,
+}: {
+  reason: string;
+  onBack: () => void;
+  onRestart: () => void;
+}) {
   return (
     <div className="th-ineligible">
       <div className="th-ineligible-icon">✕</div>
       <h2 className="th-ineligible-h2">We're sorry</h2>
       <p className="th-ineligible-reason">{reason}</p>
       <div className="th-ineligible-actions">
-        <button className="btn-secondary" onClick={onRestart}>
-          ← Restart assessment
+        <button className="btn-secondary" onClick={onBack}>
+          ← Change my answer
         </button>
         <a href="/#contact" className="btn-primary btn-sm">
           Talk to us
         </a>
       </div>
+      <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--c-muted)' }}>
+        <button
+          onClick={onRestart}
+          style={{ background: 'none', border: 'none', color: 'var(--c-blue)', cursor: 'pointer', fontSize: 13 }}
+        >
+          Restart from the beginning
+        </button>
+      </p>
     </div>
   );
 }
@@ -144,22 +163,51 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   const [screen, setScreen] = useState<Screen>('quiz');
   const [ineligReason, setIneligReason] = useState('');
+  const [dqIdx, setDqIdx] = useState(0);
   const [st, setSt] = useState<QuizState>({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
   const [calcErr, setCalcErr] = useState('');
   const [detailsErr, setDetailsErr] = useState('');
   const [saving, setSaving] = useState(false);
+
+  /* Refs for BMI calc inputs — avoids losing values on error re-render */
+  const hInputRef = useRef<HTMLInputElement>(null);
+  const wInputRef = useRef<HTMLInputElement>(null);
+
+  /* Resume: if ?resume=1 and session is already passed for this product, go straight to plans */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('resume') !== '1') return;
+    const s = loadAssessment();
+    if (s?.passed && s.product === product) setScreen('plans');
+  }, [product]);
 
   const visible = useCallback(
     () => questions.filter((q) => !q.showIf || q.showIf({ bmiBand: st.bmiBand })),
     [questions, st.bmiBand],
   );
 
-  const goIneligible = (reason: string) => {
+  const goIneligible = (reason: string, idx: number) => {
     setIneligReason(reason);
+    setDqIdx(idx);
     setScreen('ineligible');
   };
 
+  /* Go back to the specific question that caused the DQ, clearing its answer */
+  const backToDqQuestion = () => {
+    setSt((s) => {
+      const vq = questions.filter((qq) => !qq.showIf || qq.showIf({ bmiBand: s.bmiBand }));
+      const dqQ = vq[dqIdx];
+      const newAnswers = { ...s.answers };
+      if (dqQ) delete newAnswers[dqQ.id];
+      return { ...s, idx: dqIdx, view: 'q', answers: newAnswers };
+    });
+    setScreen('quiz');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /* Restart: clear stored eligibility so an old "passed" session can't bypass checkout guard */
   const restart = () => {
+    saveAssessment({ passed: false, plan: null, leadId: null });
     setSt({ idx: 0, answers: {}, bmiBand: null, view: 'q' });
     setScreen('quiz');
     setCalcErr('');
@@ -171,14 +219,14 @@ export default function Quiz({ product }: { product: ProductKind }) {
     (q: QuizQuestion, answers: Record<string, Answer>, bmiBand: string | null) => {
       const a = answers[q.id];
       if (!a) return;
+      const vq = questions.filter((qq) => !qq.showIf || qq.showIf({ bmiBand }));
+      const pos = vq.indexOf(q);
       for (const o of q.options) {
         if (o.dq && a.sel.includes(o.l)) {
-          goIneligible(o.dq);
+          goIneligible(o.dq, pos);
           return;
         }
       }
-      const vq = questions.filter((qq) => !qq.showIf || qq.showIf({ bmiBand }));
-      const pos = vq.indexOf(q);
       const next: QuizState =
         pos < vq.length - 1
           ? { idx: pos + 1, view: 'q', answers, bmiBand }
@@ -233,8 +281,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
     setCalcErr('');
   };
 
-  /* ── BMI calc submit ── */
-  const doCalc = (h: number, w: number) => {
+  /* ── BMI calc submit — reads from DOM refs to survive error re-renders ── */
+  const doCalc = () => {
+    const h = parseFloat(hInputRef.current?.value ?? '');
+    const w = parseFloat(wInputRef.current?.value ?? '');
     if (!(h >= 120 && h <= 230) || !(w >= 35 && w <= 300)) {
       setCalcErr('Please enter a height between 120 and 230 cm and a weight between 35 and 300 kg.');
       return;
@@ -244,19 +294,30 @@ export default function Quiz({ product }: { product: ProductKind }) {
     const q = questions.find((qq) => qq.id === 'bmi')!;
     const ans = { ...st.answers, [q.id]: { question: q.q, sel: [`BMI ${bmi} (calculated from ${h} cm, ${w} kg)`] } };
     if (bmi < 27) {
+      const bmiQ = questions.find((qq) => qq.id === 'bmi')!;
+      const vq2 = questions.filter((qq) => !qq.showIf || qq.showIf({ bmiBand: null }));
       setSt((s) => ({ ...s, answers: ans, view: 'q' }));
-      goIneligible(`Your BMI works out at ${bmi}. GLP-1 treatment is only prescribed for a BMI of 27 or above.`);
+      goIneligible(
+        `Your BMI works out at ${bmi}. GLP-1 treatment is only prescribed for a BMI of 27 or above.`,
+        vq2.indexOf(bmiQ),
+      );
       return;
     }
     const band = bmi >= 30 ? '30+' : '27-29';
-    // advance will compute visible() with the new bmiBand
     advance(q, ans, band);
   };
 
-  /* ── Details form submit ── */
+  /* ── Details form submit — block on failed lead creation ── */
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
     setSaving(true);
-    const id = await createLead(product, visible(), st.answers, { firstName, lastName, email }, st.bmiBand);
+    const id = await createLead(product, visible(), st.answers, { firstName, lastName, email });
+    if (!id) {
+      setDetailsErr(
+        "We couldn't save your assessment right now. Please check your connection and try again.",
+      );
+      setSaving(false);
+      return;
+    }
     mergeAssessment({ product, passed: true, leadId: id, email, at: Date.now(), plan: null, method: null });
     setScreen('plans');
     setSaving(false);
@@ -264,7 +325,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   };
 
   /* ── Render screens ── */
-  if (screen === 'ineligible') return <Ineligible reason={ineligReason} onRestart={restart} />;
+  if (screen === 'ineligible') return <Ineligible reason={ineligReason} onBack={backToDqQuestion} onRestart={restart} />;
   if (screen === 'plans') return <Plans product={product} onRestart={restart} />;
 
   /* ── Quiz screens ── */
@@ -275,7 +336,6 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* ── BMI Calculator ── */
   if (st.view === 'calc') {
-    let hv = '', wv = '';
     return (
       <div className="thq-in">
         <div className="thq-top">
@@ -289,17 +349,15 @@ export default function Quiz({ product }: { product: ProductKind }) {
         <div className="thq-fields">
           <div className="thq-field">
             <label htmlFor="thq-h">Height (cm)</label>
-            <input id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168"
-              onChange={(e) => { hv = e.target.value; }} />
+            <input ref={hInputRef} id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168" />
           </div>
           <div className="thq-field">
             <label htmlFor="thq-w">Weight (kg)</label>
-            <input id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92"
-              onChange={(e) => { wv = e.target.value; }} />
+            <input ref={wInputRef} id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92" />
           </div>
         </div>
         {calcErr && <div className="thq-error">{calcErr}</div>}
-        <button className="thq-next" onClick={() => doCalc(parseFloat(hv), parseFloat(wv))}>
+        <button className="thq-next" onClick={doCalc}>
           Calculate my BMI
         </button>
       </div>
