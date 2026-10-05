@@ -3,7 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { MY_ONBOARDING, SUBMIT_ONBOARDING, MY_IDENTITY_VERIFICATION } from '@/graphql/onboarding';
+import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
+import { useIdentityVerification } from '@/lib/useIdentityVerification';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
 
@@ -20,7 +21,7 @@ export default function OnboardingLandingPage() {
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
   const { data: meData, loading: meLoading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
-  const { data: idvData, loading: idvLoading } = useQuery(MY_IDENTITY_VERIFICATION, { fetchPolicy: 'network-only' });
+  const { data: idvData, loading: idvLoading } = useIdentityVerification();
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
@@ -38,6 +39,17 @@ export default function OnboardingLandingPage() {
   // With the verification service the check happens on its own page: the step is done once the
   // photos are submitted, whether or not a decision has been made yet.
   const idv = idvData?.myIdentityVerification;
+  // The tick is the same while a check is under review and once it has passed, so say which it is.
+  const idHint =
+    idv?.status === 'APPROVED'
+      ? 'Identity verified'
+      : idv?.status === 'PROCESSING' || idv?.status === 'NEEDS_REVIEW'
+        ? 'We’re checking your ID'
+        : idv?.status === 'REJECTED'
+          ? 'We couldn’t verify your ID: please try again'
+          : idv?.status === 'EXPIRED'
+            ? 'Your link expired: start again'
+            : 'Check your Kosovo ID card and take a selfie';
   const idPhotoDone = idv?.configured
     ? ['PROCESSING', 'NEEDS_REVIEW', 'APPROVED'].includes(idv.status ?? '')
     : !!o.idDocumentUrl && !!o.selfieUrl;
@@ -73,7 +85,7 @@ export default function OnboardingLandingPage() {
     {
       key: 'id-photo',
       label: idv?.configured ? 'Verify your identity' : 'ID Photo',
-      hint: idv?.configured ? 'Check your Kosovo ID card and take a selfie' : 'A government ID and a selfie',
+      hint: idv?.configured ? idHint : 'A government ID and a selfie',
       done: idPhotoDone,
     },
     { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },

@@ -1,21 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@apollo/client';
+import { useMutation } from '@apollo/client';
 import Link from 'next/link';
 import PhotoUploadField from '@/components/onboarding/PhotoUploadField';
-import {
-  SAVE_IDENTITY_STEP,
-  MY_ONBOARDING,
-  MY_IDENTITY_VERIFICATION,
-  START_IDENTITY_VERIFICATION,
-} from '@/graphql/onboarding';
+import { SAVE_IDENTITY_STEP, MY_ONBOARDING, START_IDENTITY_VERIFICATION } from '@/graphql/onboarding';
+import { useIdentityVerification } from '@/lib/useIdentityVerification';
 
 const CHECKLIST = ['Have a valid ID ready (e.g. passport, driving licence)', 'Find a well-lit spot for your selfie'];
-
-const POLL_MS = 8000;
-const OPEN_STATUSES = ['PENDING', 'PROCESSING', 'NEEDS_REVIEW'];
 
 /**
  * Identity check through the verification service: the patient photographs their ID and takes a
@@ -136,18 +129,8 @@ function VerifiedIdentityStep({
 }
 
 export default function IdPhotoStepPage() {
-  const { data, loading, refetch, startPolling, stopPolling } = useQuery(MY_IDENTITY_VERIFICATION, {
-    fetchPolicy: 'network-only',
-  });
+  const { data, loading, refetch } = useIdentityVerification();
   const idv = data?.myIdentityVerification;
-
-  // Keep checking while the result is still open; stop once it's decided.
-  const polling = !!idv?.configured && OPEN_STATUSES.includes(idv.status ?? '');
-  useEffect(() => {
-    if (!polling) return;
-    startPolling(POLL_MS);
-    return () => stopPolling();
-  }, [polling, startPolling, stopPolling]);
 
   if (loading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   if (idv?.configured) return <VerifiedIdentityStep status={idv.status ?? null} refetch={() => void refetch()} />;
