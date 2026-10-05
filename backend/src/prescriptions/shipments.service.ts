@@ -33,6 +33,20 @@ export class ShipmentsService {
     private config: ConfigService,
   ) {}
 
+  /** How many days before a supply runs out the patient may ask for the next one (and staff start to be warned). */
+  get leadDays() {
+    return positiveInt(this.config.get<string>('SHIPMENT_LEAD_DAYS'), DEFAULT_ALERT_LEAD_DAYS);
+  }
+
+  /**
+   * One patient's own shipment, however far off it is (the shared list only holds those near enough to
+   * warn about). Null when nothing has shipped yet, an order is already waiting, or they have no active prescription.
+   */
+  async forPatient(patientId: string): Promise<ShipmentAlert | null> {
+    const [alert] = await this.compute(new Date(), { patientId, leadDays: 36_500 });
+    return alert ?? null;
+  }
+
   /** Forget the shared list, e.g. right after an order was placed, dispatched or cancelled. */
   invalidate() {
     this.cached = null;
@@ -46,14 +60,15 @@ export class ShipmentsService {
     return value;
   }
 
-  private async compute(now: Date): Promise<ShipmentAlert[]> {
+  private async compute(now: Date, only: { patientId?: string; leadDays?: number } = {}): Promise<ShipmentAlert[]> {
     const cycleDays = positiveInt(this.config.get<string>('SHIPMENT_CYCLE_DAYS'), DEFAULT_SUPPLY_CYCLE_DAYS);
-    const leadDays = positiveInt(this.config.get<string>('SHIPMENT_LEAD_DAYS'), DEFAULT_ALERT_LEAD_DAYS);
+    const leadDays = only.leadDays ?? this.leadDays;
 
     const prescriptions = await this.prisma.prescription.findMany({
       where: {
         status: PrescriptionStatus.ACTIVE,
         OR: [{ validUntil: null }, { validUntil: { gt: now } }],
+        ...(only.patientId && { patientId: only.patientId }),
         patient: { activatedAt: { not: null }, subscriptionEndedAt: null },
         orders: { some: { status: { in: [OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED] } } },
       },
@@ -63,6 +78,7 @@ export class ShipmentsService {
         refillsAllowed: true,
         patient: { select: { id: true, firstName: true, lastName: true } },
         orders: { where: { status: { not: OrderStatus.CANCELLED } }, select: { status: true, dispatchedAt: true } },
+        refillRequests: { where: { resolvedAt: null }, orderBy: { requestedAt: 'desc' }, take: 1, select: { requestedAt: true } },
       },
     });
     if (prescriptions.length === 0) return [];
@@ -92,6 +108,7 @@ export class ShipmentsService {
             orders: rx.orders,
             latestCheckIn: latestDone.get(rx.patient.id) ?? null,
             hasCheckIns: patientsWithCheckIns.has(rx.patient.id),
+            refillRequestedAt: rx.refillRequests[0]?.requestedAt ?? null,
           },
           { now, cycleDays, leadDays },
         ),
@@ -100,8 +117,8 @@ export class ShipmentsService {
       .sort(sortAlerts);
   }
 
-  /** How many shipments are due now or late — the number on the bell. */
+  /** How many shipments are due now or late, or that a patient has asked for — the number on the bell. */
   async dueCount(now?: Date) {
-    return (await this.nextShipments(now)).filter((a) => a.urgency !== 'UPCOMING').length;
+    return (await this.nextShipments(now)).filter((a) => a.urgency !== 'UPCOMING' || a.refillRequestedAt).length;
   }
 }

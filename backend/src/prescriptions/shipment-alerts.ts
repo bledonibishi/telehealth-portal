@@ -24,6 +24,8 @@ export interface ShipmentInput {
   latestCheckIn?: { completedAt: Date | null; reviewedAt: Date | null; outcome: string | null } | null;
   /** Whether the patient has monthly check-ins at all (scheduled, sent or done). Without any, nothing can be waiting on one. */
   hasCheckIns?: boolean;
+  /** When the patient asked for this supply, if they have and no order has been placed since. */
+  refillRequestedAt?: Date | null;
 }
 
 export interface ShipmentAlert {
@@ -38,6 +40,8 @@ export interface ShipmentAlert {
   urgency: ShipmentUrgency;
   blocker: ShipmentBlocker;
   repeatsLeft: number;
+  /** Set when the patient has asked for this supply from their dashboard. */
+  refillRequestedAt: Date | null;
 }
 
 const SHIPPED = ['DISPATCHED', 'OUT_FOR_DELIVERY', 'DELIVERED'];
@@ -103,6 +107,7 @@ export function evaluateShipment(
     urgency,
     blocker,
     repeatsLeft,
+    refillRequestedAt: input.refillRequestedAt ?? null,
   };
 }
 
@@ -111,3 +116,28 @@ const URGENCY_RANK: Record<ShipmentUrgency, number> = { OVERDUE: 0, DUE: 1, UPCO
 /** Most urgent first, then soonest due. */
 export const sortAlerts = (a: ShipmentAlert, b: ShipmentAlert) =>
   URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency] || a.nextDueAt.getTime() - b.nextDueAt.getTime();
+
+/** What the patient's refill button should offer right now. */
+export type RefillState =
+  | 'UNAVAILABLE' //    nothing to refill: no supply has shipped, one is already being prepared, or no active prescription
+  | 'NOT_YET' //        the next supply isn't close enough to ask for
+  | 'CHECK_IN_FIRST' // the monthly check-in has to be done before a doctor can release more
+  | 'IN_REVIEW' //      checked in; the doctor's review releases the supply, so there is nothing to ask for
+  | 'READY' //          the patient can ask for the next supply now
+  | 'REQUESTED' //      asked; waiting for the doctor
+  | 'NO_REPEATS'; //    all repeats used — a new prescription is needed
+
+/**
+ * Turns the shipment alert (computed with an unlimited warning window, so it exists whenever a supply
+ * has shipped) into what the patient sees. A request can only be made once the next supply is within
+ * `leadDays`, and never over the doctor's own review: that is a step the patient can't skip.
+ */
+export function refillStateOf(alert: ShipmentAlert | null, leadDays: number): RefillState {
+  if (!alert) return 'UNAVAILABLE';
+  if (alert.refillRequestedAt) return 'REQUESTED';
+  if (alert.blocker === 'NO_REPEATS_LEFT') return 'NO_REPEATS';
+  if (alert.daysUntilDue > leadDays) return 'NOT_YET';
+  if (alert.blocker === 'AWAITING_CHECKIN') return 'CHECK_IN_FIRST';
+  if (alert.blocker === 'AWAITING_REVIEW') return 'IN_REVIEW';
+  return 'READY';
+}

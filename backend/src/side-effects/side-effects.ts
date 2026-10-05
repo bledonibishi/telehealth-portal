@@ -5,11 +5,13 @@ export const SIDE_EFFECTS = [
   { key: 'vomiting', label: 'Vomiting' },
   { key: 'diarrhoea', label: 'Diarrhoea' },
   { key: 'constipation', label: 'Constipation' },
+  { key: 'abdominal_pain', label: 'Stomach pain' },
   { key: 'reflux', label: 'Heartburn or reflux' },
   { key: 'fatigue', label: 'Tiredness' },
   { key: 'headache', label: 'Headache' },
   { key: 'dizziness', label: 'Dizziness' },
   { key: 'injection_site', label: 'Reaction where I inject' },
+  { key: 'allergic_reaction', label: 'Rash, itching or swelling' },
   { key: 'other', label: 'Something else' },
 ] as const;
 

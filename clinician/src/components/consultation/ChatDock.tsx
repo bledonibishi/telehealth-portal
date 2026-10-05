@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
-import { PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { ConversationWatchers } from './ConversationWatchers';
+import { MessageTicks, tickStateOf } from './MessageTicks';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -100,6 +101,30 @@ export function ChatDock({
   // Messages sent while the socket was down were never delivered to it.
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
 
+  const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
+      if (!existing?.patient) return existing;
+      return { patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+    });
+  };
+
+  // Having the thread open reads it: the patient's ticks turn blue. A closed dock is not "reading".
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const marking = useRef(new Set<string>());
+  useEffect(() => {
+    if (!open) return;
+    for (const c of consultations) {
+      if (marking.current.has(c.id) || !(c.messages ?? []).some((m) => m.senderRole === 'PATIENT' && !m.readAt)) continue;
+      marking.current.add(c.id);
+      const readAt = new Date().toISOString();
+      markRead({ variables: { consultationId: c.id } })
+        .then(() => patchMessages(c.id, (m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m)))
+        .catch(() => undefined)
+        .finally(() => marking.current.delete(c.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, data]);
+
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     onCompleted({ sendMessage: message }) {
       if (replyTo) addToCache(replyTo, message);
@@ -148,7 +173,7 @@ export function ChatDock({
     inputRef.current?.focus();
   };
 
-  const watchers = <ConversationWatchers consultationIds={consultations.map((c) => c.id)} onMessage={addToCache} />;
+  const watchers = <ConversationWatchers consultationIds={consultations.map((c) => c.id)} onMessage={addToCache} onRead={(r) => r.byPatient && patchMessages(r.consultationId, (m) => (m.senderRole !== 'PATIENT' && !m.readAt ? { ...m, readAt: r.readAt } : m))} />;
 
   if (!open) {
     return (
@@ -240,8 +265,9 @@ export function ChatDock({
                 }`}
               >
                 {row.m.content}
-                <span className={`block text-[10px] mt-1 text-right ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
+                <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
                   {fmt(row.m.sentAt, 'HH:mm')}
+                  {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}
                 </span>
               </div>
             </div>

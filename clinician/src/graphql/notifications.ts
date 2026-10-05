@@ -10,6 +10,7 @@ export const GET_NOTIFICATION_COUNTS = gql`
       missedDoseAlerts
       shipmentsDue
       sideEffectAlerts
+      urgentAppointments
     }
   }
 `;

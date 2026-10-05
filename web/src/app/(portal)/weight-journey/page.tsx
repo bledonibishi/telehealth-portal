@@ -1,23 +1,22 @@
 'use client';
 
-import Link from 'next/link';
 import { useQuery } from '@apollo/client';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { WeightJourneyCard } from '@/components/weight/WeightJourneyCard';
 import { WeightExplorer } from '@/components/weight/WeightExplorer';
 import { WeightHistory } from '@/components/weight/WeightHistory';
 import { ProgressPhotosCard } from '@/components/weight/ProgressPhotosCard';
+import { WeightPhotoJourney } from '@/components/home/WeightPhotoJourney';
+import { PageHeader } from '@/components/portal/PageHeader';
+import { Milestones } from '@/components/weight/Milestones';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
   const journey = data?.myWeightJourney;
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h1 className="text-xl font-bold text-slate-900">Weight journey</h1>
-        <Link href="/dashboard" className="text-xs font-medium text-brand-600 hover:text-brand-700">← Dashboard</Link>
-      </div>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
+      <PageHeader title="Weight Journey" subtitle="Your weigh-ins and photos over time, with the date of each." />
 
       {loading && !journey && <p className="text-sm text-slate-400">Loading…</p>}
       {error && !journey && <p className="text-sm text-danger-500">{error.message}</p>}
@@ -28,8 +27,10 @@ export default function WeightJourneyPage() {
       )}
 
       {journey && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <WeightJourneyCard journey={journey} showLink={false} allowLog={false} />
+          <Milestones journey={journey} />
+          <WeightPhotoJourney journey={journey} />
 
           <WeightExplorer
             extraTabs={[

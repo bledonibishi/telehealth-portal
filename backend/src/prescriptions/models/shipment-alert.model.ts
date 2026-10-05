@@ -46,4 +46,7 @@ export class ShipmentAlertModel {
 
   @Field(() => Int)
   repeatsLeft: number;
+
+  @Field({ nullable: true, description: 'When the patient asked for this supply from their dashboard; unset if they have not' })
+  refillRequestedAt?: Date | null;
 }

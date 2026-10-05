@@ -74,6 +74,9 @@ export default function NextShipments() {
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${urgency.cls}`}>{t(urgency.label)}</span>
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">{a.medication}</p>
+                {a.refillRequestedAt && (
+                  <p className="text-xs mt-1.5 font-medium text-brand-700">✓ {t('Patient asked for this supply on {date}', { date: fmt(a.refillRequestedAt, 'dd MMM yyyy') })}</p>
+                )}
                 <p className={`text-xs mt-1.5 font-medium ${blocker.cls}`}>{t(blocker.text)}</p>
                 {thisError && <p className="text-xs text-red-600 mt-1">{thisError}</p>}
               </div>

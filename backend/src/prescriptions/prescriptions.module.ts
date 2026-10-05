@@ -6,6 +6,9 @@ import { PrescribingService } from './prescribing.service';
 import { OrdersService } from './orders.service';
 import { PartnerOrdersService } from './partner-orders.service';
 import { ShipmentsService } from './shipments.service';
+import { RefillService } from './refill.service';
+import { RefillResolver } from './refill.resolver';
+import { TreatmentPlanService } from './treatment-plan.service';
 import { PartnerOrdersResolver } from './partner-orders.resolver';
 import { PartnerOrdersCronController } from './partner-orders-cron.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -20,7 +23,7 @@ import { PrescriptionDocumentController } from './prescription-document.controll
 @Module({
   imports: [PrismaModule, AuditModule, MessagingModule, EmailModule, DosingModule, LabsModule],
   controllers: [PrescriptionDocumentController, PartnerOrdersCronController],
-  providers: [PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService],
+  providers: [PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService, RefillService, RefillResolver, TreatmentPlanService],
   exports: [PrescriptionsService, PrescribingService, OrdersService, PartnerOrdersService, ShipmentsService],
 })
 export class PrescriptionsModule {}

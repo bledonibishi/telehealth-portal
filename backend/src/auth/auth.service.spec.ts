@@ -56,6 +56,35 @@ describe('AuthService', () => {
     jest.clearAllMocks();
   });
 
+  describe('changePatientPassword', () => {
+    const compare = bcrypt.compare as unknown as jest.Mock;
+    const hash = bcrypt.hash as unknown as jest.Mock;
+
+    it('saves a new hash and audits it when the current password is right', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PATIENT);
+      compare.mockResolvedValue(true);
+      hash.mockResolvedValue('new-hash');
+      await expect(service.changePatientPassword('patient-1', 'old-password-1', 'new-password-12')).resolves.toBe(true);
+      expect(prisma.patient.update).toHaveBeenCalledWith({ where: { id: 'patient-1' }, data: { passwordHash: 'new-hash' } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_CHANGED', actorId: 'patient-1' }), prisma);
+    });
+
+    it('refuses, and records the attempt, when the current password is wrong', async () => {
+      prisma.patient.findUnique.mockResolvedValue(PATIENT);
+      compare.mockResolvedValue(false);
+      await expect(service.changePatientPassword('patient-1', 'guess-guess-1', 'new-password-12')).rejects.toThrow(/current password/);
+      expect(prisma.patient.update).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_CHANGE_FAILED' }));
+    });
+
+    it('refuses a password that is too short, too long or the same as before, without looking anything up', async () => {
+      await expect(service.changePatientPassword('patient-1', 'old-password-1', 'short')).rejects.toThrow(/between 10 and 72/);
+      await expect(service.changePatientPassword('patient-1', 'old-password-1', 'x'.repeat(73))).rejects.toThrow(/between 10 and 72/);
+      await expect(service.changePatientPassword('patient-1', 'same-password-1', 'same-password-1')).rejects.toThrow(/not already using/);
+      expect(prisma.patient.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   describe('loginClinician', () => {
     it('throws and audit-logs UNKNOWN_EMAIL when no clinician matches', async () => {
       prisma.clinician.findUnique.mockResolvedValue(null);

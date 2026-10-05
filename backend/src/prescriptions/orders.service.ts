@@ -86,6 +86,8 @@ export class OrdersService {
 
     const sequence = Math.max(0, ...rx.orders.map((o) => o.sequence)) + 1;
     const order = await db.order.create({ data: { prescriptionId, patientId: rx.patientId, sequence } });
+    // Whatever the patient asked for is now answered, whether the doctor placed this from the shipments list or after a check-in.
+    await db.refillRequest.updateMany({ where: { prescriptionId, resolvedAt: null }, data: { resolvedAt: new Date(), orderId: order.id } });
     await this.log(actorId, 'ORDER_CREATED', order.id, rx.patientId, { prescriptionId, sequence }, db);
     // Hand it to the pharmacy partner straight away (when a channel is set up); a failure is retried later.
     if (db === this.prisma) await this.partner.trySend(order.id);

@@ -1,5 +1,6 @@
 'use client';
 
+import { MessageTicks, tickStateOf } from './MessageTicks';
 import { useEffect, useRef, useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import type { ChatMessage } from './useConsultationChat';
@@ -194,8 +195,9 @@ export function ChatDock({
                 }`}
               >
                 {row.m.content}
-                <span className={`block text-[10px] mt-1 text-right ${row.isMe ? 'text-brand-100' : 'text-slate-400'}`}>
+                <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-brand-100' : 'text-slate-400'}`}>
                   {format(new Date(row.m.sentAt), 'HH:mm')}
+                  {row.isMe && <MessageTicks state={tickStateOf(row.m)} onDark />}
                 </span>
               </div>
             </div>

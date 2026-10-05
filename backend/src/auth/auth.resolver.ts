@@ -6,7 +6,7 @@ import { ActivateAccountInput, RequestActivationLinkInput } from './dto/activati
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { ThrottleLoginAttempts, ThrottleRequests } from './guards/gql-throttler.guard';
 import { Authorized } from './decorators/authorized.decorator';
-import { STAFF } from './access-roles';
+import { type AuthUser, STAFF } from './access-roles';
 import { CurrentUser } from './decorators/current-user.decorator';
 
 function loginAttempt(ctx: any): LoginAttempt {
@@ -49,6 +49,18 @@ export class AuthResolver {
     @Context() ctx: any,
   ) {
     return this.authService.verifyMfa(pendingToken, totpCode, loginAttempt(ctx));
+  }
+
+  @Authorized('PATIENT')
+  @ThrottleRequests()
+  @Mutation(() => Boolean, { description: 'Change your own password; the current one is required. Audited.' })
+  changeMyPassword(
+    @CurrentUser() user: AuthUser,
+    @Args('currentPassword') currentPassword: string,
+    @Args('newPassword') newPassword: string,
+    @Context() ctx: any,
+  ) {
+    return this.authService.changePatientPassword(user.id, currentPassword, newPassword, loginAttempt(ctx));
   }
 
   @Mutation(() => RefreshResponse)

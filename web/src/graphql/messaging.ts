@@ -8,6 +8,7 @@ export const SEND_MESSAGE = gql`
       senderRole
       content
       sentAt
+      readAt
     }
   }
 `;
@@ -20,6 +21,7 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
       senderRole
       content
       sentAt
+      readAt
     }
   }
 `;
@@ -37,7 +39,24 @@ export const MY_CONVERSATION = gql`
         senderRole
         content
         sentAt
+        readAt
       }
+    }
+  }
+`;
+
+export const MARK_MESSAGES_READ = gql`
+  mutation MarkMessagesRead($consultationId: ID!) {
+    markMessagesRead(consultationId: $consultationId)
+  }
+`;
+
+export const MESSAGES_READ_SUBSCRIPTION = gql`
+  subscription MessagesRead($consultationId: ID!) {
+    messagesRead(consultationId: $consultationId) {
+      consultationId
+      byPatient
+      readAt
     }
   }
 `;

@@ -1,4 +1,4 @@
-import { evaluateShipment, sortAlerts, type ShipmentInput } from './shipment-alerts';
+import { evaluateShipment, refillStateOf, sortAlerts, type ShipmentInput } from './shipment-alerts';
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-10-15T12:00:00Z');
@@ -123,5 +123,35 @@ describe('sortAlerts', () => {
     const mk = (id: string, daysAgoShipped: number) => evaluateShipment(input({ patient: { id, name: id }, orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(daysAgoShipped) }] }), { now: NOW })!;
     const sorted = [mk('upcoming', 26), mk('late-5', 35), mk('due', 30), mk('late-9', 39)].sort(sortAlerts);
     expect(sorted.map((a) => a.patientId)).toEqual(['late-9', 'late-5', 'due', 'upcoming']);
+  });
+});
+
+describe('refillStateOf', () => {
+  const state = (over: Partial<ShipmentInput> = {}, shippedDaysAgo = 26) =>
+    refillStateOf(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(shippedDaysAgo) }], ...over }, { leadDays: 36_500 }), 5);
+
+  it('has nothing to offer before a supply has shipped or while one is being prepared', () => {
+    expect(refillStateOf(null, 5)).toBe('UNAVAILABLE');
+  });
+
+  it('opens five days before the next supply (day 25 of a 30-day cycle), not earlier', () => {
+    expect(state({}, 24)).toBe('NOT_YET'); // 6 days left
+    expect(state({}, 25)).toBe('READY'); // 5 days left
+    expect(state({}, 31)).toBe('READY'); // late is still fine to ask
+  });
+
+  it('sends the patient to their check-in first, and never over the doctor’s review', () => {
+    expect(state({ hasCheckIns: true, latestCheckIn: null })).toBe('CHECK_IN_FIRST');
+    expect(state({ hasCheckIns: true, latestCheckIn: { completedAt: daysAgo(1), reviewedAt: null, outcome: null } })).toBe('IN_REVIEW');
+  });
+
+  it('says so when there are no repeats left, and when the patient has already asked', () => {
+    expect(state({ prescription: { id: 'rx-1', medication: 'Wegovy', refillsAllowed: 0 } })).toBe('NO_REPEATS');
+    expect(state({ refillRequestedAt: daysAgo(1) })).toBe('REQUESTED');
+  });
+
+  it('carries the request onto the alert doctors see', () => {
+    expect(alertFor({ refillRequestedAt: daysAgo(1) })?.refillRequestedAt).toEqual(daysAgo(1));
+    expect(alertFor()?.refillRequestedAt).toBeNull();
   });
 });

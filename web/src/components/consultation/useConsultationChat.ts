@@ -1,25 +1,36 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
-import { MY_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, MY_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
+import type { ReadReceipt } from './ConversationWatchers';
 
-export type ChatMessage = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+export type ChatMessage = {
+  id: string;
+  senderId: string;
+  senderRole: string;
+  content: string;
+  sentAt: string;
+  /** When the other side read it; null until they have. */
+  readAt?: string | null;
+  /** Still on its way to the server (shown with a single tick). */
+  pending?: boolean;
+};
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
 const OPEN_PREF_KEY = 'patient.chat.open';
-const SEEN_KEY = 'patient.chat.seen';
 
-// Unread state is per browser: the backend doesn't track who has read a message.
 function readStorage(key: string): string | null {
   try { return window.localStorage.getItem(key); } catch { return null; }
 }
 function writeStorage(key: string, value: string) {
   try { window.localStorage.setItem(key, value); } catch { /* private mode etc. — the chat still works */ }
 }
+
+const fromTeam = (m: ChatMessage) => m.senderRole !== 'PATIENT';
 
 // The patient's one conversation with their care team. Messages are stored per consultation,
 // so this merges them across all of them; replies go to the newest consultation, which is
@@ -28,32 +39,44 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
   const client = useApolloClient();
   const connected = useRealtimeConnected(realtime);
   const [open, setOpen] = useState(() => readStorage(OPEN_PREF_KEY) === '1');
-  const [seenAt, setSeenAt] = useState(() => Number(readStorage(SEEN_KEY)) || 0);
+  // Messages typed and not yet confirmed by the server, so they show at once with a single tick.
+  const [pending, setPending] = useState<ChatMessage[]>([]);
 
   const { data, loading, refetch, startPolling, stopPolling } = useQuery(MY_CONVERSATION);
   const consultations: Array<{ id: string; messages: ChatMessage[] }> = data?.myConsultations ?? [];
-  const messages: ChatMessage[] = useMemo(() => {
+  const saved: ChatMessage[] = useMemo(() => {
     const byId = new Map<string, ChatMessage>();
     consultations.forEach((c) => (c.messages ?? []).forEach((m) => byId.set(m.id, m)));
     return [...byId.values()].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+  const messages = useMemo(() => [...saved, ...pending], [saved, pending]);
   // Consultations come newest first.
   const replyTo = consultations[0]?.id;
 
+  const patch = useCallback(
+    (change: (c: { id: string; messages: ChatMessage[] }) => { id: string; messages: ChatMessage[] }) => {
+      client.cache.updateQuery({ query: MY_CONVERSATION }, (existing) => (existing ? { myConsultations: existing.myConsultations.map(change) } : existing));
+    },
+    [client],
+  );
+
   // The mutation's own result and the subscription can both deliver a message; add it once.
-  const receive = (consultationId: string, message: ChatMessage) => {
-    client.cache.updateQuery({ query: MY_CONVERSATION }, (existing) => {
-      if (!existing) return existing;
-      return {
-        myConsultations: existing.myConsultations.map((c: any) =>
-          c.id !== consultationId || c.messages.some((m: ChatMessage) => m.id === message.id)
-            ? c
-            : { ...c, messages: [...c.messages, message] },
-        ),
-      };
-    });
-  };
+  const receive = useCallback(
+    (consultationId: string, message: ChatMessage) => {
+      patch((c) => (c.id !== consultationId || c.messages.some((m) => m.id === message.id) ? c : { ...c, messages: [...c.messages, { readAt: null, ...message }] }));
+    },
+    [patch],
+  );
+
+  /** The care team opened the conversation: everything the patient sent there is now read. */
+  const receiveRead = useCallback(
+    (receipt: ReadReceipt) => {
+      if (receipt.byPatient) return;
+      patch((c) => (c.id !== receipt.consultationId ? c : { ...c, messages: c.messages.map((m) => (fromTeam(m) || m.readAt ? m : { ...m, readAt: receipt.readAt })) }));
+    },
+    [patch],
+  );
 
   useEffect(() => {
     if (connected) return;
@@ -63,23 +86,27 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
   // Messages sent while the socket was down were never delivered to it.
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
 
-  const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
-    onCompleted({ sendMessage: message }) { if (replyTo) receive(replyTo, message); },
-  });
+  const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE);
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
 
-  const latestAt = messages.length ? new Date(messages[messages.length - 1].sentAt).getTime() : 0;
-  const unread = useMemo(
-    () => messages.filter((m) => m.senderId !== currentUserId && new Date(m.sentAt).getTime() > seenAt).length,
-    [messages, currentUserId, seenAt],
-  );
+  const unread = useMemo(() => saved.filter((m) => fromTeam(m) && !m.readAt).length, [saved]);
 
-  // Looking at the thread marks everything up to the latest message as seen.
+  // Looking at the thread reads it: tell the server (so the care team sees it was read, on any device) and
+  // mark it here straight away. One request per consultation that has something unread, never repeated.
+  const marking = useRef(new Set<string>());
   useEffect(() => {
-    if (open && latestAt > seenAt) {
-      setSeenAt(latestAt);
-      writeStorage(SEEN_KEY, String(latestAt));
+    if (!open) return;
+    for (const c of consultations) {
+      if (marking.current.has(c.id) || !(c.messages ?? []).some((m) => fromTeam(m) && !m.readAt)) continue;
+      marking.current.add(c.id);
+      const readAt = new Date().toISOString();
+      markRead({ variables: { consultationId: c.id } })
+        .then(() => patch((x) => (x.id !== c.id ? x : { ...x, messages: x.messages.map((m) => (fromTeam(m) && !m.readAt ? { ...m, readAt } : m)) })))
+        .catch(() => undefined) // still unread on the server; tried again next time the thread is opened
+        .finally(() => marking.current.delete(c.id));
     }
-  }, [open, latestAt, seenAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, data]);
 
   const setOpenPersisted = (next: boolean) => {
     setOpen(next);
@@ -88,7 +115,15 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
 
   const send = async (content: string) => {
     if (!replyTo) return;
-    await sendMessage({ variables: { input: { consultationId: replyTo, content } } });
+    const temp: ChatMessage = { id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`, senderId: currentUserId ?? '', senderRole: 'PATIENT', content, sentAt: new Date().toISOString(), pending: true };
+    setPending((p) => [...p, temp]);
+    try {
+      const res = await sendMessage({ variables: { input: { consultationId: replyTo, content } } });
+      if (res.data?.sendMessage) receive(replyTo, res.data.sendMessage);
+    } finally {
+      // Gone either way: replaced by the saved message, or dropped so the caller can show the error.
+      setPending((p) => p.filter((m) => m.id !== temp.id));
+    }
   };
 
   return {
@@ -96,6 +131,7 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
     loading,
     consultationIds: consultations.map((c) => c.id),
     receive,
+    receiveRead,
     open,
     setOpen: setOpenPersisted,
     unread,

@@ -24,6 +24,7 @@ describe('OrdersService', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'o-new', ...data })),
       },
       prescription: { findUnique: jest.fn() },
+      refillRequest: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     audit = { log: jest.fn() };
     trtMonitoring = { assertRepeatAllowed: jest.fn() };
@@ -83,6 +84,15 @@ describe('OrdersService', () => {
       withOrders([{ status: 'DELIVERED', sequence: 1 }]);
       await service.createRepeat('doc-1', 'rx-1');
       expect(prisma.order.create).toHaveBeenCalledWith({ data: { prescriptionId: 'rx-1', patientId: 'p-1', sequence: 2 } });
+    });
+
+    it('closes the patient’s open refill request once the order is placed', async () => {
+      withOrders([{ status: 'DELIVERED', sequence: 1 }]);
+      await service.createRepeat('doc-1', 'rx-1');
+      expect(prisma.refillRequest.updateMany).toHaveBeenCalledWith({
+        where: { prescriptionId: 'rx-1', resolvedAt: null },
+        data: { resolvedAt: expect.any(Date), orderId: 'o-new' },
+      });
     });
 
     it('does not count cancelled orders against the repeats', async () => {

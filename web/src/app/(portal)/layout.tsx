@@ -3,25 +3,34 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useApolloClient, useQuery } from '@apollo/client';
-import Link from 'next/link';
+import { Sidebar, type NavItem } from '@/components/portal/Sidebar';
+import { TopBar } from '@/components/portal/TopBar';
+import { Icon } from '@/components/portal/Icon';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
+import { MY_PRODUCT_KIND } from '@/graphql/intake';
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: '🏠' },
-  { href: '/consultations', label: 'My consultations', icon: '📋' },
-  { href: '/doses', label: 'My doses', icon: '📅' },
-  { href: '/messages', label: 'Messages', icon: '💬' },
-  { href: '/prescription', label: 'Prescriptions', icon: '💊' },
-  { href: '/rewards', label: 'Refer & earn', icon: '🎁' },
+const NAV: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: 'home' },
+  { href: '/treatment-plan', label: 'My Treatment', icon: 'plan' },
+  { href: '/weight-journey', label: 'Weight Journey', icon: 'scale' },
+  { href: '/doses', label: 'Injections', icon: 'syringe' },
+  { href: '/appointments', label: 'Appointments', icon: 'calendar' },
+  { href: '/messages', label: 'Messages', icon: 'chat', badge: 'messages' },
+  { href: '/care-team', label: 'My Doctor', icon: 'heart' },
+  { href: '/orders', label: 'Orders', icon: 'cart' },
+  { href: '/prescription', label: 'Prescriptions', icon: 'rx' },
+  { href: '/documents', label: 'Documents', icon: 'folder' },
+  { href: '/profile', label: 'Profile', icon: 'user' },
+  { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
 // Only weight-management patients have a journey (the API returns null otherwise).
-const WEIGHT_NAV = { href: '/weight-journey', label: 'Weight journey', icon: '⚖️' };
+const WEIGHT_HREF = '/weight-journey';
 // Only hormone-programme patients have a symptom scale (null otherwise).
-const SYMPTOMS_NAV = { href: '/symptoms', label: 'Symptoms', icon: '📈' };
+const SYMPTOMS_NAV: NavItem = { href: '/symptoms', label: 'Symptoms', icon: 'chart' };
 
 // Patients can still reach support while onboarding is incomplete.
 const ONBOARDING_EXEMPT_PATHS = ['/messages'];
@@ -52,11 +61,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const { data: scaleData } = useQuery(MY_SYMPTOM_SCALE, {
     skip: !isAuthenticated() || onboardingStatus !== 'APPROVED',
   });
-  const navItems = [
-    ...NAV,
-    ...(journeyData?.myWeightJourney ? [WEIGHT_NAV] : []),
+  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED' });
+  // Hormone treatment is gels, patches and capsules — calling its schedule "Injections" would be wrong.
+  const hormone = kindData?.myProductKind === 'HRT';
+  const navItems: NavItem[] = [
+    ...NAV.filter((i) => i.href !== WEIGHT_HREF || journeyData?.myWeightJourney).map((i) => (i.href === '/doses' && hormone ? { ...i, label: 'My doses' } : i)),
     ...(scaleData?.mySymptomScale ? [SYMPTOMS_NAV] : []),
   ];
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [pathname]);
 
   const apollo = useApolloClient();
   const handleLogout = () => {
@@ -95,68 +108,30 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-slate-50">
-      {/* Phone: a compact top bar with scrollable tabs. Tablet and up: the sidebar. */}
-      <header className="md:hidden bg-white border-b border-slate-100 flex-shrink-0">
-        <div className="flex items-center justify-between px-4 pt-3">
-          <span className="font-bold text-lg text-slate-900 tracking-tight">telehealth</span>
-          <button onClick={handleLogout} className="text-xs text-slate-400 hover:text-slate-600">Sign out</button>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 py-2" aria-label="Main">
-          {navItems.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${
-                  active ? 'bg-brand-50 text-brand-700 font-medium' : 'text-slate-600'
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
-
-      <aside className="hidden md:flex w-60 bg-white border-r border-slate-100 flex-col flex-shrink-0">
-        <div className="px-5 py-5 border-b border-slate-100">
-          <span className="font-bold text-lg text-slate-900 tracking-tight">telehealth</span>
-          <p className="text-xs text-slate-400 mt-0.5">Patient portal</p>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-                  active
-                    ? 'bg-brand-50 text-brand-700 font-medium'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <span className="text-base">{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="px-5 py-4 border-t border-slate-100">
-          <button
-            onClick={handleLogout}
-            className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
+    <div className="flex h-screen bg-[#f4f7fc]">
+      <aside className="hidden lg:block w-56 flex-shrink-0">
+        <Sidebar items={navItems} />
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{authChecked ? children : null}</main>
+      {/* Phone and tablet: the same sidebar as a drawer. */}
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div className="w-72 max-w-[85vw] h-full relative">
+            <Sidebar items={navItems} onNavigate={() => setMenuOpen(false)} />
+            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu" className="absolute top-5 right-3 w-9 h-9 rounded-lg text-white/80 hover:bg-white/10 flex items-center justify-center">
+              <Icon name="close" />
+            </button>
+          </div>
+          <button type="button" aria-label="Close menu" className="flex-1 bg-slate-900/40" onClick={() => setMenuOpen(false)} />
+        </div>
+      )}
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <main className="flex-1 overflow-y-auto">
+          <TopBar onMenu={() => setMenuOpen(true)} onSignOut={handleLogout} />
+          {authChecked ? children : null}
+        </main>
+      </div>
     </div>
   );
 }

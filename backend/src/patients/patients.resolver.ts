@@ -11,10 +11,27 @@ import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuthUser, STAFF } from '../auth/access-roles';
 import { ClinicianRole, ConsultationKind } from '../common/enums';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PatientProfileService } from './patient-profile.service';
+import { PatientProfileModel, UpdateMyProfileInput } from './models/patient-profile.model';
 
 @Resolver(() => PatientModel)
 export class PatientsResolver {
-  constructor(private patientsService: PatientsService) {}
+  constructor(
+    private patientsService: PatientsService,
+    private profile: PatientProfileService,
+  ) {}
+
+  @Authorized('PATIENT')
+  @Query(() => PatientProfileModel, { description: 'The signed-in patient’s profile: contact and body details' })
+  myProfile(@CurrentUser() user: AuthUser) {
+    return this.profile.mine(user.id);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => PatientProfileModel, { description: 'Update gender, height or phone. Audited.' })
+  updateMyProfile(@CurrentUser() user: AuthUser, @Args('input') input: UpdateMyProfileInput) {
+    return this.profile.update(user.id, input);
+  }
 
   @Authorized(...STAFF)
   @Query(() => [PatientListItemModel])

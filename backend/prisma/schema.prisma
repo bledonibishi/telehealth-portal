@@ -70,6 +70,44 @@ enum SideEffectSeverity {
   SEVERE
 }
 
+enum Gender {
+  FEMALE
+  MALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AppointmentReason {
+  QUESTION
+  CHECK_UP
+  SIDE_EFFECT
+  PAIN
+  DOSE_CHANGE
+  OTHER
+}
+
+// URGENT is answered within 24 hours, ROUTINE within 3 days (see appointments/triage.ts).
+enum AppointmentUrgency {
+  ROUTINE
+  URGENT
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  PENDING // waiting for the host to accept
+  CONFIRMED
+  RESCHEDULED // replaced by a newer booking (see rescheduledFromUid on that one)
+  CANCELLED
+  REJECTED
+  COMPLETED
+}
+
 enum DeviceProvider {
   APPLE_HEALTH
   GOOGLE_FIT
@@ -222,6 +260,8 @@ model Clinician {
   reviewedOnboardings OnboardingSubmission[]
   prescriptions       Prescription[]
   reviewedCheckIns    CheckIn[]
+  handledAppointments AppointmentRequest[]
+  bookings            Booking[]
   enteredLabResults   LabResult[]            @relation("LabResultEnteredBy")
   reviewedLabResults  LabResult[]            @relation("LabResultReviewedBy")
 
@@ -280,27 +320,37 @@ model Patient {
   city                     String?   @map("city")
   postcode                 String?   @map("postcode")
   country                  String?   @map("country")
+  // Body details the patient keeps up to date on their profile. Height defaults to the intake answer until they set it.
+  gender                   Gender?
+  heightCm                 Float?    @map("height_cm")
+  // Kept by the patient on their profile; the clinical record of allergies is the intake questionnaire.
+  allergies                String?
+  emergencyContactName     String?   @map("emergency_contact_name")
+  emergencyContactPhone    String?   @map("emergency_contact_phone")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  lead               Lead?                 @relation(fields: [leadId], references: [id])
-  consultations      Consultation[]
-  uploadedFiles      UploadedFile[]
-  onboarding         OnboardingSubmission?
-  checkIns           CheckIn[]
-  prescriptions      Prescription[]
-  orders             Order[]
-  consents           Consent[]
-  weightGoal         WeightGoal?
-  weightEntries      WeightEntry[]
-  deviceConnections  DeviceConnection[]
-  sideEffectReports  SideEffectReport[]
-  doseEvents         DoseEvent[]
-  symptomAssessments SymptomAssessment[]
-  labResults         LabResult[]
-  referralsMade      Referral[]            @relation("ReferralsMade")
-  referralsReceived  Referral?             @relation("ReferralsReceived")
-  vouchers           Voucher[]
+  lead                Lead?                 @relation(fields: [leadId], references: [id])
+  consultations       Consultation[]
+  uploadedFiles       UploadedFile[]
+  onboarding          OnboardingSubmission?
+  checkIns            CheckIn[]
+  prescriptions       Prescription[]
+  orders              Order[]
+  consents            Consent[]
+  weightGoal          WeightGoal?
+  weightEntries       WeightEntry[]
+  deviceConnections   DeviceConnection[]
+  sideEffectReports   SideEffectReport[]
+  doseEvents          DoseEvent[]
+  symptomAssessments  SymptomAssessment[]
+  labResults          LabResult[]
+  referralsMade       Referral[]            @relation("ReferralsMade")
+  referralsReceived   Referral?             @relation("ReferralsReceived")
+  vouchers            Voucher[]
+  refillRequests      RefillRequest[]
+  appointmentRequests AppointmentRequest[]
+  bookings            Booking[]
 
   @@map("patients")
 }
@@ -365,14 +415,15 @@ model Prescription {
   cancelReason   String?            @map("cancel_reason")
   issuedAt       DateTime           @default(now()) @map("issued_at")
 
-  consultation Consultation?      @relation(fields: [consultationId], references: [id])
-  patient      Patient            @relation(fields: [patientId], references: [id])
-  prescriber   Clinician?         @relation(fields: [prescriberId], references: [id])
-  supersedes   Prescription?      @relation("PrescriptionHistory", fields: [supersedesId], references: [id])
-  supersededBy Prescription?      @relation("PrescriptionHistory")
-  items        PrescriptionItem[]
-  orders       Order[]
-  checkIns     CheckIn[]          @relation("CheckInPrescription")
+  consultation   Consultation?      @relation(fields: [consultationId], references: [id])
+  patient        Patient            @relation(fields: [patientId], references: [id])
+  prescriber     Clinician?         @relation(fields: [prescriberId], references: [id])
+  supersedes     Prescription?      @relation("PrescriptionHistory", fields: [supersedesId], references: [id])
+  supersededBy   Prescription?      @relation("PrescriptionHistory")
+  items          PrescriptionItem[]
+  orders         Order[]
+  checkIns       CheckIn[]          @relation("CheckInPrescription")
+  refillRequests RefillRequest[]
 
   @@index([patientId])
   @@map("prescriptions")
@@ -408,6 +459,27 @@ model Order {
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
+}
+
+// A patient's one-tap ask for their next supply. It never creates an order: a doctor still places the
+// repeat (from the shipments list), and that closes the request. `sequence` is the supply asked for
+// (the next order number), so a double tap or a retry can't open a second request for the same supply.
+model RefillRequest {
+  id             String    @id @default(cuid())
+  patientId      String    @map("patient_id")
+  prescriptionId String    @map("prescription_id")
+  sequence       Int
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  // Set when a repeat order is placed against the prescription.
+  resolvedAt     DateTime? @map("resolved_at")
+  orderId        String?   @map("order_id")
+
+  patient      Patient      @relation(fields: [patientId], references: [id])
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+
+  @@unique([prescriptionId, sequence])
+  @@index([patientId])
+  @@map("refill_requests")
 }
 
 model PrescriptionItem {
@@ -579,15 +651,18 @@ model ProductStrength {
 }
 
 model Message {
-  id             String   @id @default(cuid())
-  consultationId String   @map("consultation_id")
-  senderId       String   @map("sender_id")
-  senderRole     Role     @map("sender_role")
+  id             String    @id @default(cuid())
+  consultationId String    @map("consultation_id")
+  senderId       String    @map("sender_id")
+  senderRole     Role      @map("sender_role")
   content        String
-  sentAt         DateTime @default(now()) @map("sent_at")
+  sentAt         DateTime  @default(now()) @map("sent_at")
+  // When the other side first had the conversation open with this message in it. Null until then.
+  readAt         DateTime? @map("read_at")
 
   consultation Consultation @relation(fields: [consultationId], references: [id])
 
+  @@index([consultationId, readAt])
   @@map("messages")
 }
 
@@ -739,6 +814,83 @@ model DeviceConnection {
 
   @@index([patientId])
   @@map("device_connections")
+}
+
+// A time booked with the clinic through the scheduling provider (Cal.com). The provider is the source of
+// truth for the calendar; this row mirrors it (kept in step by signed webhooks) so the rest of the system
+// can ask "what is booked, for whom, and why" without calling out. `purpose` says what the booking is for
+// (see booking/booking-purposes.ts) and `referenceId` points at the thing it belongs to, when there is one
+// (e.g. an appointment request). No medical details are stored here or sent to the provider.
+model Booking {
+  id                 String        @id @default(cuid())
+  provider           String        @default("CALCOM")
+  // The provider's own id for the booking; a rescheduled booking gets a new one.
+  providerUid        String        @unique @map("provider_uid")
+  purpose            String
+  referenceId        String?       @map("reference_id")
+  // Set only when the booking was made from the portal (proved by a signed token), never from an email match.
+  patientId          String?       @map("patient_id")
+  // The host, when their email matches a clinician.
+  clinicianId        String?       @map("clinician_id")
+  hostName           String?       @map("host_name")
+  hostEmail          String?       @map("host_email")
+  attendeeName       String?       @map("attendee_name")
+  attendeeEmail      String?       @map("attendee_email")
+  title              String?
+  status             BookingStatus @default(CONFIRMED)
+  startsAt           DateTime      @map("starts_at")
+  endsAt             DateTime      @map("ends_at")
+  meetingUrl         String?       @map("meeting_url")
+  location           String?
+  cancelReason       String?       @map("cancel_reason")
+  rescheduledFromUid String?       @map("rescheduled_from_uid")
+  // The provider event it was booked on, e.g. "clinic/routine" — what the scheduler opens to move it.
+  eventLink          String?       @map("event_link")
+  // When the provider last told us about this booking; an older message never overwrites a newer one.
+  providerUpdatedAt  DateTime?     @map("provider_updated_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  patient   Patient?   @relation(fields: [patientId], references: [id])
+  clinician Clinician? @relation(fields: [clinicianId], references: [id])
+
+  @@index([patientId, startsAt])
+  @@index([purpose, referenceId])
+  @@index([startsAt])
+  @@map("bookings")
+}
+
+// A patient asking to see a doctor. The patient says what it is about and how bad it is; the urgency and the
+// time by which a doctor must respond are worked out from that on the server, never chosen freely.
+model AppointmentRequest {
+  id               String             @id @default(cuid())
+  patientId        String             @map("patient_id")
+  reason           AppointmentReason
+  details          String
+  // 0–10, when the patient is in pain.
+  painLevel        Int?               @map("pain_level")
+  // Keys of the warning signs the patient ticked, e.g. ["chest_pain"].
+  redFlags         String[]           @map("red_flags")
+  urgency          AppointmentUrgency
+  // Warning signs were ticked, so the patient was told to call emergency services now.
+  emergencyAdvised Boolean            @default(false) @map("emergency_advised")
+  preferredTimes   String?            @map("preferred_times")
+  status           AppointmentStatus  @default(REQUESTED)
+  respondBy        DateTime           @map("respond_by")
+  scheduledFor     DateTime?          @map("scheduled_for")
+  meetingUrl       String?            @map("meeting_url")
+  clinicianNote    String?            @map("clinician_note")
+  handledById      String?            @map("handled_by_id")
+  cancelledAt      DateTime?          @map("cancelled_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  handledBy Clinician? @relation(fields: [handledById], references: [id])
+
+  @@index([status, urgency, respondBy])
+  @@index([patientId, createdAt])
+  @@map("appointment_requests")
 }
 
 // A side effect the patient reported between check-ins, for the doctor to acknowledge.
