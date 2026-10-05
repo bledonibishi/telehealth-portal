@@ -5,6 +5,7 @@ export const ONBOARDING_FIELDS = gql`
     id
     status
     personaStatus
+    identityViaVerifyService
     photoReviewStatus
     priorMedicationUse
     prescriptionProofType

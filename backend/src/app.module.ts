@@ -25,6 +25,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { IdentityVerificationModule } from './identity-verification/identity-verification.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { WeightJourneyModule } from './weight-journey/weight-journey.module';
 import { DosingModule } from './dosing/dosing.module';
@@ -74,6 +75,7 @@ import { LabsModule } from './labs/labs.module';
     DashboardModule,
     UploadsModule,
     OnboardingModule,
+    IdentityVerificationModule,
     CheckInsModule,
     WeightJourneyModule,
     DosingModule,

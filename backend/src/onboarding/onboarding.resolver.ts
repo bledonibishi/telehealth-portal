@@ -1,6 +1,7 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { OnboardingService } from './onboarding.service';
+import { IdentityVerificationService } from '../identity-verification/identity-verification.service';
 import { OnboardingSubmissionModel } from './models/onboarding-submission.model';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
@@ -12,7 +13,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => OnboardingSubmissionModel)
 export class OnboardingResolver {
-  constructor(private onboardingService: OnboardingService) {}
+  constructor(
+    private onboardingService: OnboardingService,
+    private identity: IdentityVerificationService,
+  ) {}
+
+  @ResolveField(() => Boolean)
+  identityViaVerifyService(@Parent() submission: { patientId: string }) {
+    return this.identity.hasVerification(submission.patientId);
+  }
 
   @Authorized('PATIENT')
   @Query(() => OnboardingSubmissionModel)

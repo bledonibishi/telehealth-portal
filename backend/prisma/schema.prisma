@@ -85,6 +85,16 @@ enum PersonaStatus {
   NOT_CONFIGURED
 }
 
+// Mirrors the statuses verify-service reports for an identity-check session.
+enum IdentityVerificationStatus {
+  PENDING
+  PROCESSING
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
 enum PhotoReviewStatus {
   NOT_STARTED
   PENDING_REVIEW
@@ -257,22 +267,23 @@ model Patient {
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  lead               Lead?                 @relation(fields: [leadId], references: [id])
-  consultations      Consultation[]
-  uploadedFiles      UploadedFile[]
-  onboarding         OnboardingSubmission?
-  checkIns           CheckIn[]
-  prescriptions      Prescription[]
-  orders             Order[]
-  consents           Consent[]
-  weightGoal         WeightGoal?
-  weightEntries      WeightEntry[]
-  doseEvents         DoseEvent[]
-  symptomAssessments SymptomAssessment[]
-  labResults         LabResult[]
-  referralsMade      Referral[]            @relation("ReferralsMade")
-  referralsReceived  Referral?             @relation("ReferralsReceived")
-  vouchers           Voucher[]
+  lead                  Lead?                  @relation(fields: [leadId], references: [id])
+  consultations         Consultation[]
+  uploadedFiles         UploadedFile[]
+  onboarding            OnboardingSubmission?
+  checkIns              CheckIn[]
+  prescriptions         Prescription[]
+  orders                Order[]
+  consents              Consent[]
+  weightGoal            WeightGoal?
+  weightEntries         WeightEntry[]
+  doseEvents            DoseEvent[]
+  symptomAssessments    SymptomAssessment[]
+  labResults            LabResult[]
+  referralsMade         Referral[]             @relation("ReferralsMade")
+  referralsReceived     Referral?              @relation("ReferralsReceived")
+  vouchers              Voucher[]
+  identityVerifications IdentityVerification[]
 
   @@map("patients")
 }
@@ -668,6 +679,40 @@ model OnboardingSubmission {
   reviewedByClinician Clinician? @relation(fields: [reviewedByClinicianId], references: [id])
 
   @@map("onboarding_submissions")
+}
+
+// One identity-check session in verify-service. Deliberately minimal: the session
+// id, our status for it and when it was decided. Photos and anything read from the
+// document stay in verify-service and are never stored here.
+model IdentityVerification {
+  id          String                     @id @default(cuid())
+  patientId   String                     @map("patient_id")
+  // verify-service's id for the session.
+  sessionId   String                     @unique @map("session_id")
+  status      IdentityVerificationStatus @default(PENDING)
+  // Reviewer's reason when REJECTED. Internal: never shown to the patient.
+  reason      String?                    @map("reason")
+  decidedAt   DateTime?                  @map("decided_at")
+  // occurredAt of the newest event applied, so late or replayed events can't move
+  // a session backwards.
+  lastEventAt DateTime?                  @map("last_event_at")
+  expiresAt   DateTime                   @map("expires_at")
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, createdAt])
+  @@map("identity_verifications")
+}
+
+// Webhook event ids already processed (deliveries are at-least-once).
+model VerifyWebhookEvent {
+  eventId    String   @id @map("event_id")
+  sessionId  String   @map("session_id")
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  @@map("verify_webhook_events")
 }
 
 model ThrottleCounter {

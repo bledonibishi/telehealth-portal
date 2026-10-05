@@ -490,6 +490,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
                     <p className="text-sm text-gray-800">
                       {onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Manual review') : t(onboarding.personaStatus.replace(/_/g, ' '))}
+                      {onboarding.identityViaVerifyService && <span className="text-xs text-gray-400"> · {t('verification service')}</span>}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3">
@@ -517,12 +518,27 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
 
                   return (
                     <>
-                      <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.idDocumentUrl} alt={t('ID document')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.selfieUrl} alt={t('Selfie')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                      {onboarding.identityViaVerifyService ? (
+                        // The ID photos stay in the verification service and are decided there, so there is
+                        // nothing for a clinician to approve here: approval waits for that result instead.
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('ID document & selfie')}</p>
+                          <p className="text-sm text-gray-700">
+                            {onboarding.personaStatus === 'VERIFIED'
+                              ? t('Identity verified by the verification service.')
+                              : onboarding.personaStatus === 'FAILED'
+                                ? t('Identity could not be verified. The patient has been asked to try again.')
+                                : t('Identity is being checked by the verification service. Onboarding is approved automatically once it passes and the steps below are approved.')}
+                          </p>
                         </div>
-                      </OnboardingStepSection>
+                      ) : (
+                        <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
+                          <div className="grid grid-cols-2 gap-2">
+                            <AuthedImage path={onboarding.idDocumentUrl} alt={t('ID document')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                            <AuthedImage path={onboarding.selfieUrl} alt={t('Selfie')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                          </div>
+                        </OnboardingStepSection>
+                      )}
 
                       <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
                         <div className="grid grid-cols-2 gap-2">

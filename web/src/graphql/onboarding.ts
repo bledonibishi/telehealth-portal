@@ -75,3 +75,22 @@ export const SUBMIT_ONBOARDING = gql`
   }
   ${ONBOARDING_FIELDS}
 `;
+
+export const MY_IDENTITY_VERIFICATION = gql`
+  query MyIdentityVerification {
+    myIdentityVerification {
+      configured
+      status
+      expiresAt
+    }
+  }
+`;
+
+export const START_IDENTITY_VERIFICATION = gql`
+  mutation StartIdentityVerification {
+    startIdentityVerification {
+      hostedUrl
+      expiresAt
+    }
+  }
+`;

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
-import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
+import { MY_ONBOARDING, SUBMIT_ONBOARDING, MY_IDENTITY_VERIFICATION } from '@/graphql/onboarding';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
 
@@ -20,6 +20,7 @@ export default function OnboardingLandingPage() {
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
   const { data: meData, loading: meLoading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
+  const { data: idvData, loading: idvLoading } = useQuery(MY_IDENTITY_VERIFICATION, { fetchPolicy: 'network-only' });
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
@@ -30,11 +31,16 @@ export default function OnboardingLandingPage() {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
   }, [o?.status, router]);
 
-  if (loading || consultationsLoading || meLoading || !o) {
+  if (loading || consultationsLoading || meLoading || idvLoading || !o) {
     return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   }
 
-  const idPhotoDone = !!o.idDocumentUrl && !!o.selfieUrl;
+  // With the verification service the check happens on its own page: the step is done once the
+  // photos are submitted, whether or not a decision has been made yet.
+  const idv = idvData?.myIdentityVerification;
+  const idPhotoDone = idv?.configured
+    ? ['PROCESSING', 'NEEDS_REVIEW', 'APPROVED'].includes(idv.status ?? '')
+    : !!o.idDocumentUrl && !!o.selfieUrl;
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
   const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
@@ -64,7 +70,12 @@ export default function OnboardingLandingPage() {
       hint: 'Your health, medicines and measurements',
       done: questionnaireDone,
     },
-    { key: 'id-photo', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
+    {
+      key: 'id-photo',
+      label: idv?.configured ? 'Verify your identity' : 'ID Photo',
+      hint: idv?.configured ? 'Check your Kosovo ID card and take a selfie' : 'A government ID and a selfie',
+      done: idPhotoDone,
+    },
     { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
     {
       key: 'prescription-proof',
