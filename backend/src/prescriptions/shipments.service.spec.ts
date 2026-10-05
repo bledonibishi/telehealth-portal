@@ -8,6 +8,7 @@ function build() {
     id: 'rx-1', medication: 'Wegovy', refillsAllowed: 3,
     patient: { id: 'p-1', firstName: 'Sofia', lastName: 'Meyer' },
     orders: [{ status: 'DELIVERED', dispatchedAt: new Date(NOW.getTime() - 30 * DAY) }],
+    refillRequests: [] as Array<{ requestedAt: Date }>,
   };
   const prisma: any = {
     prescription: { findMany: jest.fn().mockResolvedValue([rx]) },
@@ -19,7 +20,7 @@ function build() {
     },
   };
   const service = new ShipmentsService(prisma, { get: jest.fn() } as any);
-  return { service, prisma };
+  return { service, prisma, rx };
 }
 
 describe('ShipmentsService', () => {
@@ -72,5 +73,24 @@ describe('ShipmentsService', () => {
       await service.nextShipments(NOW);
       expect(prisma.prescription.findMany).toHaveBeenCalledTimes(2);
     });
+  });
+});
+
+describe('ShipmentsService refill requests', () => {
+  it('shows a patient’s open request on their alert and counts it on the bell even when the supply is not due yet', async () => {
+    const { service, prisma, rx } = build();
+    rx.orders = [{ status: 'DELIVERED', dispatchedAt: new Date(NOW.getTime() - 26 * DAY) }]; // 4 days left: upcoming
+    rx.refillRequests = [{ requestedAt: NOW }];
+    prisma.prescription.findMany.mockResolvedValue([rx]);
+    expect((await service.nextShipments(NOW))[0]).toMatchObject({ urgency: 'UPCOMING', refillRequestedAt: NOW });
+    expect(await service.dueCount(NOW)).toBe(1);
+  });
+
+  it('looks up one patient’s shipment however far off it is', async () => {
+    const { service, prisma, rx } = build();
+    rx.orders = [{ status: 'DELIVERED', dispatchedAt: new Date(Date.now() - 2 * DAY) }]; // 28 days left
+    prisma.prescription.findMany.mockResolvedValue([rx]);
+    expect(await service.forPatient('p-1')).toMatchObject({ patientId: 'p-1', urgency: 'UPCOMING' });
+    expect(prisma.prescription.findMany.mock.calls[0][0].where.patientId).toBe('p-1');
   });
 });

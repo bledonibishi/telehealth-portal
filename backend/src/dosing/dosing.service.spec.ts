@@ -448,3 +448,47 @@ describe('DosingService.summaryFor', () => {
     expect(await service.summaryFor('p-1')).toBeNull();
   });
 });
+
+describe('DosingService.ensureSchedule', () => {
+  const item = (issuedAt: Date, product: Record<string, unknown> = { doseIntervalDays: 7, dosesPerWeek: null }) => ({
+    id: 'item-1', product, prescription: { issuedAt, validUntil: null },
+  });
+
+  it('writes the schedule a prescription never got, starting on the day it was issued', async () => {
+    const prisma = makePrisma();
+    const issuedAt = new Date(Date.now() - 2 * DAY);
+    prisma.prescriptionItem.findMany.mockResolvedValue([item(issuedAt)]);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+
+    await service.calendarFor('p-1');
+
+    // Only active, in-date prescriptions on a medicine with fixed dose days that have no doses at all.
+    expect(prisma.prescriptionItem.findMany.mock.calls[0][0].where).toMatchObject({ prescription: { patientId: 'p-1', status: 'ACTIVE' }, doseEvents: { none: {} } });
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => c[0].create.scheduledFor.getTime());
+    expect(dates).toHaveLength(8);
+    expect(dates[0]).toBe(issuedAt.getTime());
+    expect(dates[1]).toBe(issuedAt.getTime() + 7 * DAY);
+    expect(prisma.doseEvent.upsert.mock.calls[0][0].create).toMatchObject({ prescriptionItemId: 'item-1', patientId: 'p-1' });
+  });
+
+  it('picks an old prescription up from today instead of inventing months of missed doses', async () => {
+    const prisma = makePrisma();
+    prisma.prescriptionItem.findMany.mockResolvedValue([item(new Date(Date.now() - 90 * DAY))]);
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+
+    await service.ensureSchedule('p-1');
+
+    const dates = prisma.doseEvent.upsert.mock.calls.map((c: any) => c[0].create.scheduledFor.getTime());
+    expect(dates).toHaveLength(8);
+    expect(Math.min(...dates)).toBeGreaterThan(Date.now() - DAY);
+  });
+
+  it('writes nothing when every prescription already has its doses, or the medicine has no fixed days', async () => {
+    const prisma = makePrisma();
+    const service = new DosingService(prisma as any, makeEmail() as any, makeConfig() as any);
+    await service.ensureSchedule('p-1');
+    prisma.prescriptionItem.findMany.mockResolvedValue([item(new Date(), { doseIntervalDays: null, dosesPerWeek: null })]);
+    await service.ensureSchedule('p-1');
+    expect(prisma.doseEvent.upsert).not.toHaveBeenCalled();
+  });
+});

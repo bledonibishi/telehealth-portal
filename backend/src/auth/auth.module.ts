@@ -18,10 +18,13 @@ import { PrismaThrottlerStorage } from './guards/prisma-throttler.storage';
     AuditModule,
     EmailModule,
     ThrottlerModule.forRootAsync({
-      inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => ({
+      inject: [PrismaService, ConfigService],
+      useFactory: (prisma: PrismaService, config: ConfigService) => ({
         errorMessage: 'Too many login attempts. Try again later.',
         storage: new PrismaThrottlerStorage(prisma),
+        // Local switch to turn the login limits off; ignored in production
+        skipIf: () =>
+          config.get<string>('DISABLE_LOGIN_THROTTLE') === 'true' && config.get<string>('NODE_ENV') !== 'production',
         throttlers: [
           { name: 'ip', ttl: minutes(15), limit: 20 },
           { name: ACCOUNT_THROTTLER, ttl: minutes(15), limit: 5 },

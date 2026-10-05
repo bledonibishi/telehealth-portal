@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHeader } from '@/components/portal/PageHeader';
+import { EmptyState } from '@/components/portal/EmptyState';
 import { useQuery } from '@apollo/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
@@ -23,7 +25,7 @@ const STATUS_LABEL: Record<number, string> = {
 
 const STATUS_CLASS: Record<number, string> = {
   0: 'bg-amber-100 text-amber-700',
-  1: 'bg-brand-100 text-brand-700',
+  1: 'bg-ink-100 text-ink-800',
   2: 'bg-blue-100 text-blue-700',
   3: 'bg-green-100 text-green-700',
 };
@@ -38,15 +40,15 @@ function OrderTracker({ prescription }: { prescription: any }) {
           <div className="flex flex-col items-center">
             <div
               className={`w-3 h-3 rounded-full ${
-                i <= current ? 'bg-brand-600' : 'bg-slate-200'
-              } ${i === current ? 'ring-4 ring-brand-100' : ''}`}
+                i <= current ? 'bg-ink-700' : 'bg-slate-200'
+              } ${i === current ? 'ring-4 ring-ink-100' : ''}`}
             />
             <span className={`text-[11px] mt-1.5 whitespace-nowrap ${i <= current ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
               {stage}
             </span>
           </div>
           {i < STAGES.length - 1 && (
-            <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-brand-600' : 'bg-slate-200'}`} />
+            <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-ink-700' : 'bg-slate-200'}`} />
           )}
         </div>
       ))}
@@ -59,20 +61,15 @@ export default function PrescriptionPage() {
   const withPrescription = (data?.myConsultations ?? []).filter((c: any) => c.prescription);
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Prescriptions &amp; orders</h1>
-        <p className="text-sm text-slate-500 mt-1">Everything your clinician has prescribed, and where it&rsquo;s up to.</p>
-      </div>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
+      <PageHeader title="Prescriptions" subtitle="Everything your clinician has prescribed, and where it’s up to." />
 
       <BloodTestsCard />
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
 
       {!loading && withPrescription.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-          <p className="text-slate-400 text-sm">No prescriptions issued yet.</p>
-        </div>
+        <EmptyState icon="rx" what="Your prescription" whenTreating={{ text: 'Your prescription has been issued and will show here in a moment. The PDF is under Documents.', action: { href: '/documents', label: 'Open Documents' } }} />
       )}
 
       <div className="space-y-4">
@@ -83,7 +80,7 @@ export default function PrescriptionPage() {
             <div key={c.id} className="bg-white rounded-2xl border border-slate-100 p-6">
               <div className="flex items-start justify-between mb-5">
                 <div>
-                  <span className="text-xs font-semibold text-brand-700 uppercase tracking-wide">{c.kind}</span>
+                  <span className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{c.kind}</span>
                   <h3 className="text-lg font-semibold text-slate-900 mt-1">{rx.medication}</h3>
                   <p className="text-xs text-slate-400 mt-0.5">{rx.dosage}</p>
                 </div>
@@ -111,7 +108,7 @@ export default function PrescriptionPage() {
                   href={rx.trackingUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-block mt-3 text-xs font-medium text-brand-600 hover:text-brand-700"
+                  className="inline-block mt-3 text-xs font-medium text-ink-700 hover:text-ink-800"
                 >
                   Track package →
                 </a>

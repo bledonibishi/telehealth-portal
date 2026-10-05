@@ -19,10 +19,10 @@ export default function ConsultationsPage() {
   const consultations = data?.myConsultations ?? [];
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">My consultations</h1>
-        <p className="text-sm text-slate-500 mt-1">Track the status of your treatment requests.</p>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
+      <div className="mb-5 -mt-1">
+        <h1 className="text-2xl font-bold text-ink-900">My consultations</h1>
+        <p className="text-sm text-slate-500 mt-0.5">Track the status of your treatment requests.</p>
       </div>
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
@@ -34,7 +34,7 @@ export default function ConsultationsPage() {
           <p className="text-slate-400 text-sm mt-1">A doctor reviews your answers before prescribing.</p>
           <Link
             href="/onboarding/medical-questionnaire?from=dashboard"
-            className="inline-block mt-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl"
+            className="inline-block mt-4 bg-ink-800 hover:bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
           >
             Start questionnaire
           </Link>
@@ -73,7 +73,7 @@ export default function ConsultationsPage() {
               </div>
               <Link
                 href={`/consultation/${c.id}`}
-                className="flex-shrink-0 text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+                className="flex-shrink-0 text-sm font-medium text-ink-700 hover:text-ink-800 transition-colors"
               >
                 View details →
               </Link>

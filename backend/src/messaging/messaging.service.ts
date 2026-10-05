@@ -63,6 +63,26 @@ export class MessagingService {
     });
   }
 
+  /**
+   * The reader has the conversation open: everything the other side sent that was still unread is now read.
+   * The patient reads what the care team wrote and the care team reads what the patient wrote — nobody marks
+   * their own messages. Tells the other side straight away, so their ticks turn blue while they watch.
+   */
+  async markRead(user: AuthUser, consultationId: string): Promise<number> {
+    const byPatient = user.role === UserRole.PATIENT;
+    const readAt = new Date();
+    const { count } = await this.prisma.message.updateMany({
+      where: { consultationId, readAt: null, senderRole: byPatient ? { not: UserRole.PATIENT } : UserRole.PATIENT },
+      data: { readAt },
+    });
+    if (count > 0) pubSub.publish(`MESSAGES_READ.${consultationId}`, { messagesRead: { consultationId, byPatient, readAt } });
+    return count;
+  }
+
+  subscribeToMessagesRead(consultationId: string) {
+    return pubSub.asyncIterator(`MESSAGES_READ.${consultationId}`);
+  }
+
   subscribeToNewMessages(consultationId: string) {
     return pubSub.asyncIterator(`NEW_MESSAGE.${consultationId}`);
   }

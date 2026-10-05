@@ -2,7 +2,7 @@ import { MessagingService } from './messaging.service';
 import { UserRole } from '../common/enums';
 
 describe('MessagingService', () => {
-  let prisma: { message: { create: jest.Mock; findMany: jest.Mock } };
+  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock } };
   let audit: { log: jest.Mock };
   let posthog: { capture: jest.Mock };
   let service: MessagingService;
@@ -21,6 +21,7 @@ describe('MessagingService', () => {
       message: {
         create: jest.fn().mockResolvedValue(MESSAGE),
         findMany: jest.fn().mockResolvedValue([MESSAGE]),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
@@ -92,6 +93,39 @@ describe('MessagingService', () => {
         where: { consultationId: 'consult-1' },
         orderBy: { sentAt: 'asc' },
       });
+    });
+  });
+
+  describe('markRead', () => {
+    it('lets the care team read what the patient wrote — never their own messages', async () => {
+      expect(await service.markRead({ id: 'doc-1', role: UserRole.CLINICIAN } as any, 'consult-1')).toBe(2);
+      expect(prisma.message.updateMany).toHaveBeenCalledWith({
+        where: { consultationId: 'consult-1', readAt: null, senderRole: UserRole.PATIENT },
+        data: { readAt: expect.any(Date) },
+      });
+    });
+
+    it('lets the patient read what the care team wrote — never their own messages', async () => {
+      await service.markRead({ id: 'patient-1', role: UserRole.PATIENT } as any, 'consult-1');
+      expect(prisma.message.updateMany.mock.calls[0][0].where).toEqual({ consultationId: 'consult-1', readAt: null, senderRole: { not: UserRole.PATIENT } });
+    });
+
+    it('tells the other side at once, and only when something was actually read', async () => {
+      const seen: any[] = [];
+      const iterator = service.subscribeToMessagesRead('consult-1') as AsyncIterator<any>;
+      const next = iterator.next().then((r) => seen.push(r.value));
+      await service.markRead({ id: 'doc-1', role: UserRole.CLINICIAN } as any, 'consult-1');
+      await next;
+      expect(seen[0].messagesRead).toMatchObject({ consultationId: 'consult-1', byPatient: false, readAt: expect.any(Date) });
+
+      prisma.message.updateMany.mockResolvedValue({ count: 0 });
+      const quiet = service.subscribeToMessagesRead('consult-2') as AsyncIterator<any>;
+      let fired = false;
+      quiet.next().then(() => { fired = true; });
+      await service.markRead({ id: 'doc-1', role: UserRole.CLINICIAN } as any, 'consult-2');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(fired).toBe(false);
+      await quiet.return?.();
     });
   });
 });

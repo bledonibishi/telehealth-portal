@@ -22,4 +22,7 @@ export class NotificationCounts {
 
   @Field(() => Int, { description: 'Side effects patients reported that no doctor has acknowledged yet (prescribers only; others get 0)' })
   sideEffectAlerts: number;
+
+  @Field(() => Int, { description: 'Urgent appointment requests no doctor has answered yet — due within 24 hours (prescribers only; others get 0)' })
+  urgentAppointments: number;
 }

@@ -173,6 +173,7 @@ export const NEXT_SHIPMENT_ALERTS = gql`
       urgency
       blocker
       repeatsLeft
+      refillRequestedAt
     }
   }
 `;

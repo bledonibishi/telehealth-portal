@@ -1,5 +1,8 @@
 'use client';
 
+import { PageHeader } from '@/components/portal/PageHeader';
+import { EmptyState } from '@/components/portal/EmptyState';
+import { MY_PRODUCT_KIND } from '@/graphql/intake';
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
@@ -119,7 +122,7 @@ function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needs
           <button
             onClick={() => markTaken({ variables: { id: dose.id } })}
             disabled={taking}
-            className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
+            className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
           >
             {taking ? 'Saving…' : isPatch ? 'Mark patch changed' : 'Mark as taken'}
           </button>
@@ -128,7 +131,7 @@ function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needs
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Reason (optional)"
-              className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+              className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ink-500"
             />
             <button
               onClick={() => markSkipped({ variables: { id: dose.id, note: note.trim() || undefined } })}
@@ -163,6 +166,7 @@ export default function DosesPage() {
   );
 
   // Worked out by the backend on the active prescription only, so misses on a replaced one don't count.
+  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-first' });
   const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
   const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
   const needsClinician: boolean = missed.needsClinician;
@@ -197,20 +201,22 @@ export default function DosesPage() {
     if (match) setSelectedId(match.id);
   };
 
+  // The hormone programmes use gels, patches and capsules; only GLP-1 and testosterone are injected.
+  const injections = kindData?.myProductKind !== 'HRT';
+
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">My doses</h1>
-        <p className="text-sm text-slate-500 mt-1">When each dose is due, and what you&rsquo;ve taken.</p>
-      </div>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
+      <PageHeader title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} />
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
       {error && <p className="text-sm text-danger-500">{error.message}</p>}
 
       {!loading && doses.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-          <p className="text-slate-400 text-sm">Nothing to show yet — this fills in once you have an active, dated prescription (e.g. a weekly injection or twice-weekly patch).</p>
-        </div>
+        <EmptyState
+          icon="syringe"
+          what={injections ? 'Your injection schedule' : 'Your dose schedule'}
+          whenTreating={{ text: 'Your medicine has no fixed dose days, so there is nothing to tick off here. Take it as your prescription says.', action: { href: '/treatment-plan', label: 'See how to take it' } }}
+        />
       )}
 
       {doses.length > 0 && (
@@ -222,13 +228,13 @@ export default function DosesPage() {
                 Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
                 strong side effects, so they may restart you on a lower one.
               </p>
-              <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-brand-700 hover:text-brand-900">Message my clinician →</Link>
+              <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-ink-800 hover:text-ink-900">Message my clinician →</Link>
             </div>
           )}
           {next && (
             <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold text-brand-700 uppercase tracking-wide">Next dose</p>
+                <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Next dose</p>
                 <p className="text-lg font-semibold text-slate-900 mt-1">{doseName(next)}</p>
                 <p className="text-sm text-slate-500 mt-0.5">
                   {format(new Date(next.scheduledFor), 'EEEE, d MMMM')} · {formatDistanceToNow(new Date(next.scheduledFor), { addSuffix: true })}
@@ -236,7 +242,7 @@ export default function DosesPage() {
               </div>
               <button
                 onClick={() => setSelectedId(next.id)}
-                className="flex-shrink-0 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
               >
                 Open
               </button>

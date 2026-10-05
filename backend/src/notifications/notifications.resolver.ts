@@ -16,6 +16,7 @@ export class NotificationsResolver {
     return this.notificationsService.getCounts({
       includeMissedDoses: !!role && PRESCRIBERS.includes(role),
       includeSideEffects: !!role && PRESCRIBERS.includes(role),
+      includeAppointments: !!role && PRESCRIBERS.includes(role),
       includeShipments: !!role && (PRESCRIBERS.includes(role) || FULFILMENT.includes(role)),
     });
   }

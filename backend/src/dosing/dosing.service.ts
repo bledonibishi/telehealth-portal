@@ -16,6 +16,8 @@ type Db = PrismaService | Prisma.TransactionClient;
 // after a missed dose we wait before flagging it (in case the patient just
 // hasn't logged it yet).
 const WINDOW = 8;
+/** A prescription this new gets its first dose on the day it was issued. */
+const FRESH_PRESCRIPTION_MS = 7 * 86_400_000;
 const MISSED_GRACE_HOURS = 24;
 // How far ahead of a dose we email the patient a reminder.
 const REMINDER_WINDOW_HOURS = 24;
@@ -101,8 +103,36 @@ export class DosingService {
     return event;
   }
 
+  /**
+   * Makes sure a patient on a medicine with fixed dose days actually has a schedule. Doses are written when
+   * a prescription is issued and topped up hourly, but a prescription can end up with none (its product only
+   * later got a dose frequency, or the hourly run hasn't happened yet) — and then the patient's calendar, next
+   * dose and supply count are all silently empty. Reading the schedule repairs it. Cheap when nothing is missing.
+   */
+  async ensureSchedule(patientId: string): Promise<void> {
+    const now = new Date();
+    const items = await this.prisma.prescriptionItem.findMany({
+      where: {
+        prescription: { patientId, status: PrescriptionStatus.ACTIVE, OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
+        product: { OR: [{ doseIntervalDays: { not: null } }, { dosesPerWeek: { not: null } }] },
+        doseEvents: { none: {} },
+      },
+      include: { product: true, prescription: { select: { issuedAt: true, validUntil: true } } },
+    });
+    for (const item of items) {
+      const pattern = dosePattern(item.product);
+      if (!pattern) continue;
+      // A fresh prescription starts on the day it was issued; an old one picks up from today rather than
+      // inventing a history of missed doses nobody was ever asked to take.
+      const fresh = now.getTime() - item.prescription.issuedAt.getTime() < FRESH_PRESCRIPTION_MS;
+      const dates = nextDoseDates(pattern, item.prescription.issuedAt, fresh ? null : now, WINDOW);
+      await this.topUp(item.id, patientId, withinValidity(dates, item.prescription.validUntil), this.prisma);
+    }
+  }
+
   /** The patient's own calendar: recent history plus what's still ahead. */
-  calendarFor(patientId: string, { fromDays = 30, toDays = 60 } = {}) {
+  async calendarFor(patientId: string, { fromDays = 30, toDays = 60 } = {}) {
+    await this.ensureSchedule(patientId);
     return this.prisma.doseEvent.findMany({
       where: {
         patientId,
@@ -118,6 +148,7 @@ export class DosingService {
    * no active prescription. A dose still within a day of its scheduled time counts as "next".
    */
   async summaryFor(patientId: string): Promise<DoseSummaryModel | null> {
+    await this.ensureSchedule(patientId);
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },

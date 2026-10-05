@@ -22,6 +22,9 @@
       ],
       "@telehealth/shared-types": [
         "../packages/shared-types/src"
+      ],
+      "@telehealth/booking": [
+        "../packages/booking/src"
       ]
     },
     "allowJs": true,

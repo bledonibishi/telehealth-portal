@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
+    "@telehealth/booking": "workspace:*",
     "@telehealth/shared-types": "workspace:*",
     "date-fns": "^3.3.1",
     "graphql": "^16.8.1",

@@ -8,7 +8,6 @@ import { Dialog } from '@/components/common/Dialog';
 import { ProgressRing } from './ProgressRing';
 import { TargetWeightForm } from './TargetWeightForm';
 import { LogWeightForm } from './LogWeightForm';
-import { WeightSparkline } from '@/components/dashboard/WeightSparkline';
 
 /** One line about the monthly check-in: ready (with a Start button), done, or when it is due. */
 function CheckInLine({ journey }: { journey: any }) {
@@ -38,7 +37,7 @@ function Stat({ label, value, children }: { label: string; value: string; childr
 }
 
 /** The journey at a glance, kept short enough to sit beside the treatment card without scrolling. */
-export function WeightJourneyCard({ journey, showLink = true, allowLog = true, trend = false }: { journey: any; showLink?: boolean; allowLog?: boolean; trend?: boolean }) {
+export function WeightJourneyCard({ journey, showLink = true, allowLog = true }: { journey: any; showLink?: boolean; allowLog?: boolean }) {
   const [dialog, setDialog] = useState<'log' | 'target' | null>(null);
   const hasTarget = journey.targetWeightKg !== null && journey.targetWeightKg !== undefined;
   const hasProgress = journey.progressPercentage !== null && journey.progressPercentage !== undefined;
@@ -85,7 +84,6 @@ export function WeightJourneyCard({ journey, showLink = true, allowLog = true, t
         </div>
       )}
 
-      {trend && hasProgress && <WeightSparkline target={journey.targetWeightKg} />}
 
       <div className="mt-3"><CheckInLine journey={journey} /></div>
 

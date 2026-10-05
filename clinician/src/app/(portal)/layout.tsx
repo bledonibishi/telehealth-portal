@@ -26,6 +26,7 @@ type NotifCounts = {
   patientMessages: number;
   pendingOrders: number;
   shipmentsDue: number;
+  urgentAppointments: number;
 };
 
 const NAV: NavItem[] = [
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
   { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
   { href: '/check-ins', label: 'Check-ins',     icon: '🩺', roles: ['ADMIN', 'DOCTOR'] },
+  { href: '/appointments', label: 'Appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR'],                            badgeKey: 'urgentAppointments' },
   { href: '/labs',     label: 'Labs',           icon: '🧪', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
   { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'],                    badgeKey: 'shipmentsDue' },
@@ -58,7 +60,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
   const counts: NotifCounts = data?.notificationCounts ?? {
-    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0,
+    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0,
   };
 
   useEffect(() => {

@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import { PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MessageTicks, tickStateOf } from '@/components/consultation/MessageTicks';
 import { ConversationWatchers } from '@/components/consultation/ConversationWatchers';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { getToken } from '@/lib/auth';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -71,12 +72,38 @@ export default function PatientChatWindow({
           consultations: existing.patient.consultations.map((c: any) =>
             c.id !== consultationId || c.messages.some((m: Message) => m.id === message.id)
               ? c
-              : { ...c, messages: [...c.messages, message] },
+              : { ...c, messages: [...c.messages, { readAt: null, ...message }] },
           ),
         },
       };
     });
   };
+
+  // Change every message of one consultation in the cached conversation.
+  const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
+      if (!existing?.patient) return existing;
+      return { patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+    });
+  };
+
+  // Having the conversation open reads it: the patient's ticks turn blue. One request per consultation
+  // with something unread; a minimised window is not "reading".
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const marking = useRef(new Set<string>());
+  useEffect(() => {
+    if (minimised) return;
+    for (const c of consultations) {
+      if (marking.current.has(c.id) || !(c.messages ?? []).some((m) => m.senderRole === 'PATIENT' && !m.readAt)) continue;
+      marking.current.add(c.id);
+      const readAt = new Date().toISOString();
+      markRead({ variables: { consultationId: c.id } })
+        .then(() => patchMessages(c.id, (m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m)))
+        .catch(() => undefined) // still unread on the server; tried again next time the window is open
+        .finally(() => marking.current.delete(c.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minimised, data]);
 
   useEffect(() => {
     if (connected) return;
@@ -133,6 +160,8 @@ export default function PatientChatWindow({
           addToCache(consultationId, message);
           onActivity();
         }}
+        // The patient opened the chat: what the care team sent is now read.
+        onRead={(r) => r.byPatient && patchMessages(r.consultationId, (m) => (m.senderRole !== 'PATIENT' && !m.readAt ? { ...m, readAt: r.readAt } : m))}
       />
 
       <div
@@ -188,8 +217,9 @@ export default function PatientChatWindow({
                     }`}
                   >
                     {row.m.content}
-                    <span className={`block text-[10px] mt-0.5 text-right ${row.isMe ? 'text-sky-100' : 'text-slate-400'}`}>
+                    <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-0.5 ${row.isMe ? 'text-sky-100' : 'text-slate-400'}`}>
                       {fmt(row.m.sentAt, 'HH:mm')}
+                      {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}
                     </span>
                   </div>
                 </div>

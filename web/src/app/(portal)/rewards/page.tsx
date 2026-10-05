@@ -51,7 +51,7 @@ function VoucherRow({ voucher }: { voucher: Voucher }) {
         <button
           onClick={() => applyVoucher()}
           disabled={loading}
-          className="flex-shrink-0 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50"
+          className="flex-shrink-0 text-xs font-semibold text-ink-700 hover:text-ink-800 disabled:opacity-50"
         >
           {loading ? 'Applying…' : 'Apply now'}
         </button>
@@ -72,7 +72,7 @@ function ReferralRow({ referral }: { referral: ReferredFriend }) {
           {isConverted ? `Joined ${format(new Date(referral.convertedAt!), 'dd MMM yyyy')} — $20 credited` : 'Pending their first payment'}
         </p>
       </div>
-      <span className={`flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full ${isConverted ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-slate-500'}`}>
+      <span className={`flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full ${isConverted ? 'bg-ink-50 text-ink-800' : 'bg-slate-100 text-slate-500'}`}>
         {isConverted ? 'Converted' : 'Pending'}
       </span>
     </div>
@@ -100,9 +100,9 @@ export default function RewardsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Refer & earn</h1>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-3xl">
+      <div className="mb-5 -mt-1">
+        <h1 className="text-2xl font-bold text-ink-900">Refer & earn</h1>
         <p className="text-sm text-slate-500 mt-1">
           Share your link — when a friend joins, you both get $20 off. Yours is credited automatically toward your next order.
         </p>
@@ -111,7 +111,7 @@ export default function RewardsPage() {
       {!loading && referral && (
         <>
           <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
-            <p className="text-xs font-semibold text-brand-700 uppercase tracking-wide">Your referral link</p>
+            <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Your referral link</p>
             <div className="flex items-center gap-2 mt-2">
               <input
                 readOnly
@@ -121,7 +121,7 @@ export default function RewardsPage() {
               />
               <button
                 onClick={handleCopy}
-                className="flex-shrink-0 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl"
+                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2 rounded-xl"
               >
                 {copied ? 'Copied!' : 'Copy link'}
               </button>
@@ -139,7 +139,7 @@ export default function RewardsPage() {
               disabled={togglingAutoApply}
               onClick={() => setVoucherAutoApply({ variables: { autoApply: !referral.voucherAutoApply } })}
               className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative disabled:opacity-50 ${
-                referral.voucherAutoApply ? 'bg-brand-600' : 'bg-slate-200'
+                referral.voucherAutoApply ? 'bg-ink-700' : 'bg-slate-200'
               }`}
             >
               <span

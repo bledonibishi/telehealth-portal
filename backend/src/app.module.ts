@@ -30,6 +30,9 @@ import { WeightJourneyModule } from './weight-journey/weight-journey.module';
 import { DosingModule } from './dosing/dosing.module';
 import { SymptomsModule } from './symptoms/symptoms.module';
 import { SideEffectsModule } from './side-effects/side-effects.module';
+import { AppointmentsModule } from './appointments/appointments.module';
+import { BookingModule } from './booking/booking.module';
+import { CareTeamModule } from './care-team/care-team.module';
 import { DeviceReadingsModule } from './device-readings/device-readings.module';
 import { TrendsModule } from './trends/trends.module';
 import { LabsModule } from './labs/labs.module';
@@ -82,6 +85,9 @@ import { InsightsModule } from './insights/insights.module';
     DosingModule,
     SymptomsModule,
     SideEffectsModule,
+    AppointmentsModule,
+    BookingModule,
+    CareTeamModule,
     DeviceReadingsModule,
     TrendsModule,
     LabsModule,

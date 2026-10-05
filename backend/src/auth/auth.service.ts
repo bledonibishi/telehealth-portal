@@ -208,6 +208,26 @@ export class AuthService {
     });
   }
 
+  /**
+   * A signed-in patient changes their own password. They must give the current one, so a borrowed or stolen
+   * session can't lock the owner out. Sessions already open elsewhere stay signed in until their token expires.
+   */
+  async changePatientPassword(patientId: string, currentPassword: string, newPassword: string, attempt: LoginAttempt = {}): Promise<boolean> {
+    if (newPassword.length < 10 || newPassword.length > 72) throw new BadRequestException('Password must be between 10 and 72 characters');
+    if (newPassword === currentPassword) throw new BadRequestException('Choose a password you are not already using');
+    const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, select: { id: true, passwordHash: true } });
+    if (!patient || !(await bcrypt.compare(currentPassword, patient.passwordHash))) {
+      await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'AUTH_PASSWORD_CHANGE_FAILED', resourceType: 'Patient', resourceId: patientId, metadata: { ...attempt } });
+      throw new UnauthorizedException('Your current password is not right');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.patient.update({ where: { id: patientId }, data: { passwordHash } });
+      await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'AUTH_PASSWORD_CHANGED', resourceType: 'Patient', resourceId: patientId, metadata: { ...attempt } }, tx);
+    });
+    return true;
+  }
+
   async verifyMfa(pendingToken: string, totpCode: string, attempt: LoginAttempt = {}) {
     let payload: any;
     try {
