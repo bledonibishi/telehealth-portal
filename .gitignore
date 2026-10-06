@@ -28,3 +28,7 @@ backend/src/schema.gql
 # Example env files (.env.example, .env.local.example) are not tracked either
 .env.example
 .env*.example
+
+# Output of backend/scripts/compare-proof-models.ts (may contain names read from documents)
+proof-model-comparison-*.json
+backend/sample-proofs/

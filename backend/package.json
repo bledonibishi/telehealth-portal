@@ -11,7 +11,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:seed-catalog": "ts-node prisma/catalog.ts"
+    "prisma:seed-catalog": "ts-node prisma/catalog.ts",
+    "compare-proof-models": "ts-node scripts/compare-proof-models.ts",
+    "set-dose-price": "ts-node scripts/set-dose-price.ts",
+    "sync-dose-prices": "ts-node scripts/sync-dose-prices.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -34,6 +37,7 @@
     "testEnvironment": "node"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@apollo/server": "^4.10.0",
     "@aws-sdk/client-s3": "^3.1145.0",
     "@nestjs/apollo": "^12.1.0",

@@ -65,11 +65,11 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   title: { fontSize: 20, fontWeight: '700', color: '#111827' },
   subtitle: { fontSize: 14, color: '#6b7280', marginTop: 8, lineHeight: 20 },
-  infoBox: { backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', borderRadius: 14, padding: 14, marginTop: 20, marginBottom: 20 },
+  infoBox: { backgroundColor: '#f0fdf9', borderWidth: 1, borderColor: '#ccfbef', borderRadius: 14, padding: 14, marginTop: 20, marginBottom: 20 },
   infoItem: { fontSize: 12, color: '#374151', marginTop: 4 },
   infoItemBad: { color: '#f43f5e' },
   error: { color: '#f43f5e', fontSize: 13, marginTop: 12 },
-  cta: { backgroundColor: '#0ea5e9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
+  cta: { backgroundColor: '#0d9488', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   ctaDisabled: { opacity: 0.4 },
   ctaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

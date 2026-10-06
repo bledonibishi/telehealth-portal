@@ -926,6 +926,12 @@ model OnboardingSubmission {
   priorMedicationUse      Boolean?               @map("prior_medication_use")
   prescriptionProofType   PrescriptionProofType? @map("prescription_proof_type")
   prescriptionProofFileId String?                @map("prescription_proof_file_id")
+  // Automatic read of the proof and the dose-safety assessment — see
+  // PrescriptionProofReviewService. Advisory only; the clinician decides.
+  prescriptionProofReview Json?                  @map("prescription_proof_review")
+  // The patient used the medicine before but has no proof: they start on the
+  // lowest dose like a new patient, unless a clinician verifies it another way.
+  prescriptionProofUnavailable Boolean          @default(false) @map("prescription_proof_unavailable")
   status                  OnboardingStatus       @default(IN_PROGRESS) @map("status")
   submittedAt             DateTime?              @map("submitted_at")
   reviewedAt              DateTime?              @map("reviewed_at")

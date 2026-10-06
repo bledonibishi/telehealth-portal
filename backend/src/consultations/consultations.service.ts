@@ -1,11 +1,14 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrescriptionProofReviewService } from '../onboarding/prescription-proof-review.service';
+import { DosePricingService } from '../stripe/dose-pricing.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
 import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
-import { ConsentType, ConsultationKind, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
+import { ConsentType, ConsultationKind, ProductCategory, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
 import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
@@ -42,6 +45,8 @@ export class ConsultationsService {
     private email: EmailService,
     private consents: ConsentsService,
     private partner: PartnerOrdersService,
+    private proofReview: PrescriptionProofReviewService,
+    private dosePricing: DosePricingService,
   ) {}
 
   // A doctor who has claimed a consultation owns the decision; others (bar
@@ -240,6 +245,14 @@ export class ConsultationsService {
           data: { patientId, kind: input.kind, ...data, redFlags: { create: flags } },
           include,
         });
+    if (input.kind === ConsultationKind.GLP1) await this.syncPriorUse(patientId, evaluation.answers);
+
+    if (!open) {
+      // Anything the patient and the team said before there was a
+      // consultation (e.g. help during onboarding) joins this thread.
+      const moved = await this.prisma.message.updateMany({ where: { patientId, consultationId: null }, data: { consultationId: consultation.id } });
+      if (moved.count) consultation.messages = await this.prisma.message.findMany({ where: { consultationId: consultation.id }, orderBy: { sentAt: 'asc' } });
+    }
 
     await this.audit.log({
       actorId: patientId,
@@ -265,6 +278,66 @@ export class ConsultationsService {
     });
 
     return consultation;
+  }
+
+  /**
+   * Each dose has its own price, and the patient paid for the dose they ordered. If the clinician
+   * prescribed a different one (e.g. a lower starting dose), bill that from next month and refund
+   * the difference if it's cheaper. After the approval, never part of it: a billing problem is
+   * recorded for fixing by hand rather than undoing the clinical decision.
+   */
+  private async billPrescribedDose(
+    clinicianId: string,
+    patient: { id: string; email: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null },
+    kind: ConsultationKind,
+    prescriptionId: string,
+  ): Promise<string | null> {
+    try {
+      const items = await this.prisma.prescriptionItem.findMany({ where: { prescriptionId }, include: { product: true, strength: true } });
+      const priceId = this.dosePricing.priceIdFor(
+        kind,
+        items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId })),
+      );
+      if (!priceId) return null;
+      const glp1 = items.find((i) => i.product.category === ProductCategory.GLP1);
+      const doseLabel = glp1 ? `${glp1.product.brandName ?? glp1.product.name} ${glp1.strength.label}` : 'the prescribed plan';
+      const note = await this.billing.moveToPrescribedPrice(patient, priceId, doseLabel);
+      await this.audit.log({
+        actorId: clinicianId,
+        actorRole: UserRole.CLINICIAN,
+        action: 'BILLING_MATCHED_TO_PRESCRIPTION',
+        resourceType: 'Prescription',
+        resourceId: prescriptionId,
+        patientId: patient.id,
+        metadata: { priceId, note },
+      });
+      return note;
+    } catch (err: any) {
+      this.logger.error(`Billing the prescribed dose for ${patient.id} failed: ${err?.message}`);
+      return 'Billing couldn’t be updated automatically — check the subscription in Stripe';
+    }
+  }
+
+  /**
+   * The questionnaire is where the patient says whether, and which, GLP-1 they
+   * used before. That decides whether the proof-of-prescription step applies,
+   * and the proof is checked against those answers — so re-run the check.
+   */
+  private async syncPriorUse(patientId: string, answers: Array<{ questionId: string; value: string | null }>) {
+    const value = answers.find((a) => a.questionId === 'glp1_prior_use')?.value;
+    if (value !== 'yes' && value !== 'no') return;
+    const priorMedicationUse = value === 'yes';
+    await this.prisma.onboardingSubmission.upsert({
+      where: { patientId },
+      create: { patientId, priorMedicationUse },
+      update: {
+        priorMedicationUse,
+        ...(priorMedicationUse
+          ? {}
+          : { prescriptionProofType: null, prescriptionProofFileId: null, prescriptionProofReview: Prisma.DbNull, prescriptionProofUnavailable: false }),
+      },
+    });
+    if (priorMedicationUse) await this.proofReview.reassess(patientId).catch(() => null);
   }
 
   async approve(clinicianId: string, input: ApproveConsultationInput, isAdmin = false) {
@@ -320,6 +393,7 @@ export class ConsultationsService {
     });
 
     await this.notifyPatient(updated.patient, 'Your treatment has been approved');
+    const billingNote = await this.billPrescribedDose(clinicianId, updated.patient, c.kind as ConsultationKind, updated.prescription.id);
 
     // The first supply is ready: pass it to the pharmacy partner (a failure is retried later, never undoes the approval).
     await this.partner.trySendForPrescription(updated.prescription.id);
@@ -337,7 +411,7 @@ export class ConsultationsService {
       posthogDistinctId: clinicianId,
     });
 
-    return updated;
+    return { ...updated, billingNote: billingNote ?? undefined };
   }
 
   async decline(clinicianId: string, input: DeclineConsultationInput, isAdmin = false) {

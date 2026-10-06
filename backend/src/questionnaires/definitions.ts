@@ -398,10 +398,15 @@ const HRT_INTAKE: Questionnaire = {
   ],
 };
 
+// Prior GLP-1 use is asked as fixed options, not free text: the prescription
+// proof review (onboarding/prior-dose-assessment.ts) reads these values to
+// compare the dose the patient was on with the dose they bought.
+const doseOptions = (labels: string[]): Option[] => labels.map((l) => ({ value: l, label: l }));
+
 const GLP1_INTAKE: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'INTAKE',
-  version: 1,
+  version: 2,
   title: 'Weight management medical questionnaire',
   derive: deriveVitals(ConsultationKind.GLP1),
   questions: [
@@ -413,11 +418,60 @@ const GLP1_INTAKE: Questionnaire = {
       options: yesNo(),
     },
     {
-      id: 'glp1_prior_details',
-      text: 'Which medicine, what dose, and when did you last inject?',
-      help: 'You’ll upload proof in the next step. Without it, treatment restarts on the lowest dose.',
-      type: 'text',
+      id: 'glp1_prior_medicine',
+      text: 'Which medicine were you using most recently?',
+      help: 'You’ll upload proof in a later step. Without it, treatment restarts on the lowest dose.',
+      type: 'single',
       showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'mounjaro', label: 'Mounjaro (tirzepatide)' },
+        { value: 'wegovy', label: 'Wegovy (semaglutide)' },
+        { value: 'ozempic', label: 'Ozempic (semaglutide)' },
+        { value: 'other', label: 'Something else', flag: warning('Previously used a GLP-1 we don’t supply — check the switch dose') },
+      ],
+    },
+    {
+      id: 'glp1_prior_dose_tirzepatide',
+      text: 'What was your most recent weekly dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['mounjaro'] },
+      options: doseOptions(['2.5 mg', '5 mg', '7.5 mg', '10 mg', '12.5 mg', '15 mg']),
+    },
+    {
+      id: 'glp1_prior_dose_semaglutide',
+      text: 'What was your most recent weekly dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['wegovy', 'ozempic'] },
+      options: doseOptions(['0.25 mg', '0.5 mg', '1 mg', '1.7 mg', '2 mg', '2.4 mg']),
+    },
+    {
+      id: 'glp1_prior_other_details',
+      text: 'Which medicine and what dose?',
+      type: 'text',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['other'] },
+    },
+    {
+      id: 'glp1_last_dose',
+      text: 'When did you last inject?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'under_1_week', label: 'In the last week' },
+        { value: '1_2_weeks', label: '1 to 2 weeks ago' },
+        { value: '2_4_weeks', label: '2 to 4 weeks ago' },
+        { value: '4_8_weeks', label: '4 to 8 weeks ago' },
+        { value: 'over_8_weeks', label: 'More than 8 weeks ago' },
+      ],
+    },
+    {
+      id: 'glp1_weeks_on_dose',
+      text: 'How long have you been on that dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'under_4_weeks', label: 'Less than 4 weeks' },
+        { value: '4_plus_weeks', label: '4 weeks or more' },
+      ],
     },
     {
       id: 'diabetes_medicines',

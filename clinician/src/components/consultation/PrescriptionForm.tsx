@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLazyQuery, useQuery } from '@apollo/client';
 import { PRESCRIPTION_TEMPLATES, PRODUCTS } from '@/graphql/catalog';
-import { PRESCRIBING_CHECK } from '@/graphql/consultations';
+import { PRESCRIBING_CHECK, PRESCRIBING_CONTEXT } from '@/graphql/consultations';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Strength = { id: string; label: string; packDescription?: string | null; titrationStep?: number | null; defaultQuantity: number };
@@ -35,7 +35,7 @@ const isComplete = (r: Row) => r.productId && r.strengthId && r.quantity > 0 && 
 
 export function PrescriptionForm({
   consultationId, kind, submitting, onSubmit, onCancel,
-  submitLabel = 'Approve and issue prescription', initialItems, stepUp = false,
+  submitLabel = 'Approve and issue prescription', initialItems, stepUp = false, showDoseContext = false,
 }: {
   consultationId: string;
   kind: 'HRT' | 'GLP1' | 'TRT';
@@ -47,9 +47,16 @@ export function PrescriptionForm({
   initialItems?: Row[];
   // …moving titrated ones to the next step of their protocol.
   stepUp?: boolean;
+  // A consultation's first prescription: show the dose paid for and what the proof showed.
+  showDoseContext?: boolean;
 }) {
   const { t } = useI18n();
   const { data, loading } = useQuery(PRODUCTS, { variables: { kind } });
+  const { data: contextData } = useQuery(PRESCRIBING_CONTEXT, {
+    variables: { consultationId },
+    skip: !showDoseContext || kind !== 'GLP1',
+  });
+  const doseContext = contextData?.prescribingContext;
   const products: Product[] = data?.products ?? [];
 
   // One-click starting points (e.g. the 4-week semaglutide starter pack); not offered when
@@ -141,6 +148,8 @@ export function PrescriptionForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {doseContext && !doseContext.hasActivePrescription && <DoseContext context={doseContext} />}
+
       {templates.length > 0 && (
         <div>
           <span className="block text-xs font-medium text-gray-700 mb-1">{t('Start from a template')}</span>
@@ -265,3 +274,59 @@ export function PrescriptionForm({
     </form>
   );
 }
+
+const RISK_CLS: Record<string, string> = {
+  OK: 'text-green-700',
+  UNVERIFIED: 'text-gray-600',
+  CAUTION: 'text-amber-700',
+  HIGH: 'text-red-700',
+};
+
+/**
+ * One line of what matters for a first GLP-1 dose: what the patient paid for (a first prescription
+ * can't be a more expensive dose), what their prescription proof showed, and the safe next dose.
+ */
+function DoseContext({
+  context,
+}: {
+  context: {
+    orderedTreatment?: string | null;
+    priorMedicationUse?: boolean | null;
+    noProof: boolean;
+    proofDose?: string | null;
+    proofRiskLevel?: string | null;
+    safeNextDose?: string | null;
+  };
+}) {
+  const { t } = useI18n();
+  const proof = context.noProof
+    ? t('Used before, no proof — start dose')
+    : context.priorMedicationUse === false
+      ? t('First time on this medicine — start dose')
+      : context.proofDose
+        ? t('Shows {dose}', { dose: context.proofDose })
+        : context.priorMedicationUse
+          ? t('Not read automatically — check the document')
+          : null;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs grid grid-cols-3 gap-3">
+      <div>
+        <p className="text-gray-500">{t('Paid for')}</p>
+        <p className="font-medium text-gray-900 mt-0.5">{context.orderedTreatment ?? '—'}</p>
+        {context.orderedTreatment && <p className="text-gray-400 mt-0.5">{t('No higher dose on a first prescription')}</p>}
+      </div>
+      <div>
+        <p className="text-gray-500">{t('Prescription proof')}</p>
+        <p className="font-medium text-gray-900 mt-0.5">{proof ?? '—'}</p>
+      </div>
+      <div>
+        <p className="text-gray-500">{t('Safe next dose')}</p>
+        <p className={`font-semibold mt-0.5 ${RISK_CLS[context.proofRiskLevel ?? ''] ?? 'text-gray-900'}`}>
+          {context.safeNextDose ?? (context.noProof || context.priorMedicationUse === false ? t('Starting dose') : '—')}
+        </p>
+      </div>
+    </div>
+  );
+}
+

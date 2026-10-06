@@ -4,6 +4,8 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrescriptionsService } from './prescriptions.service';
 import { PrescribingService } from './prescribing.service';
+import { PrescribingContextModel } from './models/prescribing-context.model';
+import { orderedTreatmentText } from '../catalog/ordered-dose';
 import { PrescriptionModel } from './models/prescription.model';
 import { PrescribingViolationModel } from './models/prescribing-check.model';
 import { OrderModel } from './models/order.model';
@@ -12,7 +14,7 @@ import { ShipmentsService } from './shipments.service';
 import { ShipmentAlertModel } from './models/shipment-alert.model';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { ChangeDoseInput } from './dto/change-dose.input';
-import { ConsultationKind, OrderStatus } from '../common/enums';
+import { ConsultationKind, OrderStatus, PrescriptionStatus } from '../common/enums';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, FULFILMENT, PRESCRIBERS, STAFF } from '../auth/access-roles';
@@ -65,6 +67,37 @@ export class PrescriptionsResolver {
       items,
     });
     return violations;
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Query(() => PrescribingContextModel, { description: 'The dose paid for and what the prescription proof showed, for choosing a first dose' })
+  async prescribingContext(@Args('consultationId', { type: () => ID }) consultationId: string): Promise<PrescribingContextModel> {
+    const consultation = await this.prisma.consultation.findUnique({
+      where: { id: consultationId },
+      select: { patientId: true, patient: { select: { lead: { select: { quizAnswers: true } }, onboarding: true } } },
+    });
+    if (!consultation) throw new NotFoundException('Consultation not found');
+    const onboarding = consultation.patient.onboarding;
+    const activeCount = await this.prisma.prescription.count({ where: { patientId: consultation.patientId, status: PrescriptionStatus.ACTIVE } });
+
+    const noProof = onboarding?.prescriptionProofUnavailable === true;
+    const review = onboarding?.prescriptionProofReview as
+      | { fileId?: string; reading?: { medicineName?: string | null; doseMg?: number | null } | null; assessment?: { riskLevel?: string; suggestedDoseLabel?: string | null; safeMaxDoseLabel?: string | null } }
+      | null
+      | undefined;
+    // Only a review of the proof that's on file now, and not when they've said they have none.
+    const current = !noProof && review && review.fileId === onboarding?.prescriptionProofFileId ? review : null;
+    const reading = current?.reading;
+
+    return {
+      orderedTreatment: orderedTreatmentText(consultation.patient.lead?.quizAnswers) ?? undefined,
+      priorMedicationUse: onboarding?.priorMedicationUse ?? undefined,
+      noProof,
+      proofDose: reading?.doseMg != null ? `${reading.medicineName ?? ''} ${reading.doseMg} mg`.trim() : undefined,
+      proofRiskLevel: current?.assessment?.riskLevel,
+      safeNextDose: current?.assessment?.safeMaxDoseLabel ?? undefined,
+      hasActivePrescription: activeCount > 0,
+    };
   }
 
   @Authorized(...PRESCRIBERS)

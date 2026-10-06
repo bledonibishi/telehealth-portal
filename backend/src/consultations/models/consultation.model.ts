@@ -43,6 +43,9 @@ export class ConsultationModel {
   @Field(() => ID)
   id: string;
 
+  @Field({ nullable: true, description: 'Only on approval: what happened to billing for the prescribed dose (refund, new price, or needs fixing by hand)' })
+  billingNote?: string;
+
   @Field(() => ConsultationKind)
   kind: ConsultationKind;
 

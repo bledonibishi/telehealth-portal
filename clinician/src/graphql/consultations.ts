@@ -130,6 +130,7 @@ export const APPROVE_CONSULTATION = gql`
   mutation ApproveConsultation($input: ApproveConsultationInput!) {
     approveConsultation(input: $input) {
       ...ConsultationFields
+      billingNote
     }
   }
 `;
@@ -209,6 +210,21 @@ export const PATIENT_PRESCRIPTIONS = gql`
         id
         kind
       }
+    }
+  }
+`;
+
+// What was paid for and what the prescription proof showed, for choosing a consultation's first dose.
+export const PRESCRIBING_CONTEXT = gql`
+  query PrescribingContext($consultationId: ID!) {
+    prescribingContext(consultationId: $consultationId) {
+      orderedTreatment
+      priorMedicationUse
+      noProof
+      proofDose
+      proofRiskLevel
+      safeNextDose
+      hasActivePrescription
     }
   }
 `;
