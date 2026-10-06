@@ -112,7 +112,7 @@ const FIELDS: { key: Field; n: number; label: string }[] = [
 ];
 
 const VERDICT = {
-  good: { icon: '✓', cls: 'bg-brand-50 text-brand-700' },
+  good: { icon: '✓', cls: 'bg-ink-50 text-ink-800' },
   missing: { icon: '✗', cls: 'bg-amber-50 text-amber-800' },
   tip: { icon: 'i', cls: 'bg-slate-100 text-slate-700' },
 };
@@ -209,14 +209,14 @@ export function ProofSampleSlider({ flagged = [] }: { flagged?: Field[] }) {
                     setOpenField((current) => (current === f.key ? null : f.key));
                   }}
                   className={`absolute rounded-md ring-2 cursor-zoom-in animate-[proof-mark_0.5s_ease-out_both] ${
-                    warn ? 'ring-amber-400 bg-amber-300/20' : 'ring-brand-500 bg-brand-400/15'
+                    warn ? 'ring-amber-400 bg-amber-300/20' : 'ring-ink-500 bg-ink-500/15'
                   }`}
                   style={{ left: `${lens.left}%`, top: `${lens.top}%`, width: `${lens.width}%`, height: `${lens.height}%`, animationDelay: `${i * 0.25}s` }}
                 >
                   <span
                     className={`absolute w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center shadow ${
                       right ? 'left-full ml-1 top-1/2 -translate-y-1/2' : '-top-2 -left-2'
-                    } ${warn ? 'bg-amber-500' : 'bg-brand-600'}`}
+                    } ${warn ? 'bg-amber-500' : 'bg-ink-700'}`}
                   >
                     {f.n}
                   </span>
@@ -229,7 +229,7 @@ export function ProofSampleSlider({ flagged = [] }: { flagged?: Field[] }) {
                   } ${
                     warn
                       ? 'ring-amber-400 shadow-[0_10px_30px_rgba(15,23,42,0.35),0_0_0_6px_rgba(251,191,36,0.25)]'
-                      : 'ring-brand-500 shadow-[0_10px_30px_rgba(15,23,42,0.35),0_0_0_6px_rgba(20,184,166,0.25)]'
+                      : 'ring-ink-500 shadow-[0_10px_30px_rgba(15,23,42,0.35),0_0_0_6px_rgba(53,99,201,0.25)]'
                   }`}
                   style={{
                     left: `${lens.left}%`,
@@ -246,7 +246,7 @@ export function ProofSampleSlider({ flagged = [] }: { flagged?: Field[] }) {
                 >
                   <span
                     className={`absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full text-[7px] font-bold text-white flex items-center justify-center shadow ${
-                      warn ? 'bg-amber-500' : 'bg-brand-600'
+                      warn ? 'bg-amber-500' : 'bg-ink-700'
                     }`}
                   >
                     {f.n}

@@ -21,7 +21,7 @@ export function DetailChip({
   onOpenChange: (open: boolean) => void;
 }) {
   const tone = {
-    shown: { chip: 'bg-brand-50 text-brand-800', badge: 'bg-brand-600 text-white' },
+    shown: { chip: 'bg-ink-50 text-ink-900', badge: 'bg-ink-700 text-white' },
     flagged: { chip: 'bg-amber-50 text-amber-800', badge: 'bg-amber-500 text-white' },
     missing: { chip: 'bg-slate-50 text-slate-400', badge: 'bg-slate-200 text-slate-500' },
   }[state];

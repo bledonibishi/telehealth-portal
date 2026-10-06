@@ -53,7 +53,7 @@ const PROOF_HELP_DRAFT =
   'Hi, I’m having trouble with my proof of prescription — the details on my document didn’t match after a couple of tries. Could you help?';
 
 const REVIEW_STYLE: Record<ProofReview['riskLevel'], { icon: string; title: string; box: string; iconCls: string }> = {
-  OK: { icon: '✓', title: 'Document checked', box: 'bg-brand-50 border-brand-100 text-slate-700', iconCls: 'bg-brand-100 text-brand-700' },
+  OK: { icon: '✓', title: 'Document checked', box: 'bg-ink-50 border-ink-100 text-slate-700', iconCls: 'bg-ink-100 text-ink-800' },
   UNVERIFIED: { icon: 'i', title: 'A clinician will check your document', box: 'bg-slate-50 border-slate-200 text-slate-700', iconCls: 'bg-slate-200 text-slate-600' },
   CAUTION: { icon: '!', title: 'Please read before you continue', box: 'bg-amber-50 border-amber-200 text-amber-900', iconCls: 'bg-amber-100 text-amber-700' },
   HIGH: { icon: '!', title: 'Your dose may need to change', box: 'bg-red-50 border-red-200 text-red-800', iconCls: 'bg-red-100 text-red-700' },
@@ -284,7 +284,7 @@ export default function PrescriptionProofStepPage() {
             }
           }}
           disabled={savingNoProof}
-          className="w-full mt-6 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           {savingNoProof ? 'Saving…' : 'Continue without proof'}
         </button>
@@ -328,7 +328,7 @@ export default function PrescriptionProofStepPage() {
           <>
             <button
               onClick={uploadProof}
-              className="w-full mt-5 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
             >
               Upload proof
             </button>
@@ -352,7 +352,7 @@ export default function PrescriptionProofStepPage() {
           <>
             <button
               onClick={() => router.push('/onboarding')}
-              className="w-full mt-5 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
             >
               Continue
             </button>
@@ -412,7 +412,7 @@ export default function PrescriptionProofStepPage() {
         <button
           onClick={handleNameEvidence}
           disabled={!nameEvidenceFileId}
-          className="w-full mt-6 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           Continue
         </button>
@@ -435,7 +435,7 @@ export default function PrescriptionProofStepPage() {
         onClick={() => router.push('/onboarding')}
         className={
           primary
-            ? 'w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
+            ? 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
             : 'w-full mt-3 text-sm text-slate-500 hover:text-slate-700 py-2'
         }
       >
@@ -489,7 +489,7 @@ export default function PrescriptionProofStepPage() {
                   setUploadingNameEvidence(true);
                   setUploadKey((k) => k + 1);
                 }}
-                className="w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+                className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
               >
                 Upload proof of name change
               </button>
@@ -499,7 +499,7 @@ export default function PrescriptionProofStepPage() {
               className={
                 nameMismatch
                   ? 'w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50'
-                  : 'w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
+                  : 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
               }
             >
               {nameMismatch ? 'Upload a document in my current name' : 'Upload a different document'}
@@ -517,7 +517,7 @@ export default function PrescriptionProofStepPage() {
             </p>
             <button
               onClick={() => openChat(PROOF_HELP_DRAFT)}
-              className="w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
             >
               Message our team
             </button>
@@ -561,7 +561,7 @@ export default function PrescriptionProofStepPage() {
         </p>
         <button
           onClick={() => router.push('/onboarding/medical-questionnaire')}
-          className="w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           Go to the medical questionnaire
         </button>
@@ -581,7 +581,7 @@ export default function PrescriptionProofStepPage() {
         {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
         <button
           onClick={() => router.push('/onboarding')}
-          className="w-full mt-6 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           Continue
         </button>
@@ -644,7 +644,7 @@ export default function PrescriptionProofStepPage() {
         <p className="mt-3 text-sm text-slate-600">
           Document: <span className="font-medium text-slate-900">{chosenType.label}</span>
           <span className="text-slate-300"> · </span>
-          <button onClick={() => setReuploading(false)} className="font-medium text-brand-700 hover:text-brand-800">
+          <button onClick={() => setReuploading(false)} className="font-medium text-ink-800 hover:text-ink-900">
             Change
           </button>
         </p>
@@ -658,7 +658,7 @@ export default function PrescriptionProofStepPage() {
             <ProofSample type={chosenType.value} flagged={flaggedLastTime} />
           )
         ) : (
-          <button onClick={() => setShowExamples(true)} className="mt-3 text-sm font-medium text-brand-700 hover:text-brand-800">
+          <button onClick={() => setShowExamples(true)} className="mt-3 text-sm font-medium text-ink-800 hover:text-ink-900">
             Show examples
           </button>
         )}
@@ -680,7 +680,7 @@ export default function PrescriptionProofStepPage() {
         <button
           onClick={handleContinue}
           disabled={!proofFileId}
-          className="w-full mt-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           Continue
         </button>
@@ -730,7 +730,7 @@ export default function PrescriptionProofStepPage() {
         ))}
       </div>
 
-      <button onClick={() => setAskingNoProof(true)} className="mt-3 text-sm font-medium text-brand-700 hover:text-brand-800">
+      <button onClick={() => setAskingNoProof(true)} className="mt-3 text-sm font-medium text-ink-800 hover:text-ink-900">
         I don&rsquo;t have any proof
       </button>
 

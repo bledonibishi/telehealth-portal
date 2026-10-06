@@ -35,11 +35,11 @@ export function ProofSample({ type, flagged = [] }: { type: string; flagged?: Fi
     return (
       <span
         className={`relative inline-block rounded px-1.5 py-0.5 -mx-0.5 transition-[opacity,box-shadow] duration-500 ${
-          warn ? 'bg-amber-100 ring-amber-400' : 'bg-brand-50 ring-brand-400'
+          warn ? 'bg-amber-100 ring-amber-400' : 'bg-ink-50 ring-ink-500'
         } ${
           focused
             ? `z-10 ring-[3px] animate-[proof-pulse_1.4s_ease-in-out_infinite] ${
-                warn ? 'shadow-[0_0_14px_3px_rgba(251,191,36,0.5)]' : 'shadow-[0_0_14px_3px_rgba(20,184,166,0.45)]'
+                warn ? 'shadow-[0_0_14px_3px_rgba(251,191,36,0.5)]' : 'shadow-[0_0_14px_3px_rgba(53,99,201,0.45)]'
               }`
             : 'ring-2 opacity-70'
         }`}
@@ -47,7 +47,7 @@ export function ProofSample({ type, flagged = [] }: { type: string; flagged?: Fi
         {children}
         <span
           className={`absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${
-            warn ? 'bg-amber-500' : 'bg-brand-600'
+            warn ? 'bg-amber-500' : 'bg-ink-700'
           }`}
           aria-hidden
         >

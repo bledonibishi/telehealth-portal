@@ -18,10 +18,10 @@ const CHECK_LABEL: Record<ProofCheck['key'], string> = {
 
 function CheckIcon({ state }: { state: 'pass' | 'warn' | 'neutral' | 'active' | 'waiting' }) {
   if (state === 'active') {
-    return <span className="w-6 h-6 rounded-full border-2 border-brand-200 border-t-brand-600 animate-spin flex-shrink-0" aria-hidden />;
+    return <span className="w-6 h-6 rounded-full border-2 border-ink-100 border-t-ink-700 animate-spin flex-shrink-0" aria-hidden />;
   }
   const cls = {
-    pass: 'bg-brand-100 text-brand-700',
+    pass: 'bg-ink-100 text-ink-800',
     warn: 'bg-amber-100 text-amber-700',
     neutral: 'bg-slate-100 text-slate-500',
     waiting: 'bg-slate-100 text-slate-300',
@@ -161,10 +161,10 @@ export function DoseQuestion({
             aria-checked={choice === o.value}
             onClick={() => setChoice(o.value)}
             className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
-              choice === o.value ? 'border-brand-500 bg-white ring-1 ring-brand-500' : 'border-slate-200 bg-white hover:bg-slate-50'
+              choice === o.value ? 'border-ink-500 bg-white ring-1 ring-ink-500' : 'border-slate-200 bg-white hover:bg-slate-50'
             }`}
           >
-            <span className={`w-4 h-4 mt-0.5 rounded-full border flex-shrink-0 ${choice === o.value ? 'border-brand-600 bg-brand-600' : 'border-slate-300'}`} />
+            <span className={`w-4 h-4 mt-0.5 rounded-full border flex-shrink-0 ${choice === o.value ? 'border-ink-700 bg-ink-700' : 'border-slate-300'}`} />
             <span>
               <span className="block text-sm font-medium text-slate-900">{o.title}</span>
               <span className="block text-xs text-slate-500 mt-0.5">{o.detail}</span>
@@ -177,7 +177,7 @@ export function DoseQuestion({
         type="button"
         onClick={() => choice && onAnswer(choice)}
         disabled={!choice || saving}
-        className="w-full mt-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+        className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
       >
         {saving ? 'Saving…' : 'Confirm'}
       </button>
