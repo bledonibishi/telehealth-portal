@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { PROGESTERONE_NOTE, planKeyFor, productsFor, type StoreProduct } from '@/lib/catalog';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
+import { useDosePrice } from '@/lib/dose-prices';
 
 function ProductCard({ product, preselected }: { product: StoreProduct; preselected: boolean }) {
   const router = useRouter();
@@ -14,8 +15,11 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
   const dose = product.doses[doseIdx];
   const planKey = planKeyFor(product, dose, progesterone);
   const plan = CONFIG.PLANS[planKey];
-  // A plan with no display price or no Stripe price configured can't be ordered yet.
-  const available = /\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE');
+  // A dose priced on its own shows (and is charged) its own price; others use their plan's.
+  const dosePrice = useDosePrice(product.brand, dose.label);
+  const price = dosePrice ?? plan.price;
+  // A dose with no price of its own, and a plan with no display price or no Stripe price configured, can't be ordered yet.
+  const available = !!dosePrice || (/\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE'));
 
   const handleContinue = () => {
     if (!available) return;
@@ -77,14 +81,14 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
             <div className="th-plan-price">
               {available ? (
                 <>
-                  {plan.price}
+                  {price}
                   <small>{plan.per}</small>
                 </>
               ) : (
                 'Coming soon'
               )}
             </div>
-            <div className="th-prod-tier">{plan.name}</div>
+            <div className="th-prod-tier">{dosePrice ? `${product.brand} ${dose.label}` : plan.name}</div>
           </div>
           <button type="button" className="th-prod-cta" onClick={handleContinue} disabled={!available} style={available ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}>
             {available ? 'Continue →' : 'Unavailable'}

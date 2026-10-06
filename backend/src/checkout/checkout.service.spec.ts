@@ -17,7 +17,7 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
 
 const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
 
-function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
+function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?: any[] } = {}) {
   return {
     lead: {
       findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
@@ -25,8 +25,36 @@ function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
     },
     patient: { findFirst: jest.fn().mockResolvedValue(over.patient ?? null) },
     referral: { findUnique: jest.fn().mockResolvedValue(over.referral ?? null) },
+    product: { findMany: jest.fn().mockResolvedValue(over.products ?? []) },
   };
 }
+
+describe('CheckoutService per-dose prices', () => {
+  const MOUNJARO = {
+    id: 'p1', slug: 'tirzepatide-mounjaro', name: 'Tirzepatide', brandName: 'Mounjaro', category: 'GLP1',
+    strengths: [
+      { id: 's1', label: '2.5 mg', titrationStep: 1, stripePriceId: 'price_m25' },
+      { id: 's3', label: '7.5 mg', titrationStep: 3, stripePriceId: 'price_m75' },
+      { id: 's5', label: '12.5 mg', titrationStep: 5, stripePriceId: null },
+    ],
+  };
+
+  it('charges the chosen dose’s own price, whatever price the page sent', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+      priceId: 'price_cheapest', leadId: 'lead-1', product: 'Mounjaro', dose: '7.5 mg',
+    });
+    expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_m75', quantity: 1 }]);
+  });
+
+  it('uses the page’s plan price for a dose not priced individually', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+      priceId: 'price_tier', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
+    });
+    expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_tier', quantity: 1 }]);
+  });
+});
 
 describe('CheckoutService.createHostedSession', () => {
   const session = { create: jest.fn().mockResolvedValue({ url: 'https://stripe/x' }) };

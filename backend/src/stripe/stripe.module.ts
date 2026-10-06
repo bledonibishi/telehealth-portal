@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { StripeWebhookService } from './stripe-webhook.service';
 import { BillingService } from './billing.service';
+import { DosePricingService } from './dose-pricing.service';
 import { BillingPortalResolver } from './billing-portal.resolver';
 import { DevPaymentSimulatorController } from './dev-payment-simulator.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -11,7 +12,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
 @Module({
   imports: [PrismaModule, EmailModule, ReferralsModule],
   controllers: [StripeWebhookController, DevPaymentSimulatorController],
-  providers: [StripeWebhookService, BillingService, BillingPortalResolver],
-  exports: [BillingService],
+  providers: [StripeWebhookService, BillingService, BillingPortalResolver, DosePricingService],
+  exports: [BillingService, DosePricingService],
 })
 export class StripeModule {}

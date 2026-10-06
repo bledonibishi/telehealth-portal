@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { ConsultationKind, RiskTag } from '../common/enums';
 import { triageEligibility } from '../questionnaires/triage';
+import { findGlp1Dose } from '../catalog/ordered-dose';
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
 // which posts here directly rather than through GraphQL. Two Stripe flows:
@@ -54,7 +55,7 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    if (!input.priceId) throw new BadRequestException('Missing priceId.');
+    const priceId = await this.priceFor(input);
 
     // With a lead, the email comes from the lead itself, never from the request.
     const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
@@ -64,7 +65,7 @@ export class CheckoutService {
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: input.priceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${this.webflowSiteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.webflowSiteUrl}/checkout/cancel`,
       ...(email ? { customer_email: email } : {}),
@@ -84,6 +85,20 @@ export class CheckoutService {
     return { url: session.url };
   }
 
+  /**
+   * Each dose has its own price: when the chosen product and dose have one, it's charged, whatever
+   * price the page sent — so a request can't buy a dose at another dose's price. Doses not priced
+   * individually yet use the plan price the page sends.
+   */
+  private async priceFor(input: { priceId?: string; product?: string; dose?: string }): Promise<string> {
+    if (input.product && input.dose) {
+      const chosen = await findGlp1Dose(this.prisma, `${input.product} ${input.dose}`);
+      if (chosen?.stripePriceId) return chosen.stripePriceId;
+    }
+    if (!input.priceId) throw new BadRequestException('Missing priceId.');
+    return input.priceId;
+  }
+
   async createSubscriptionIntent(input: {
     priceId?: string;
     planName?: string;
@@ -96,7 +111,7 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    if (!input.priceId) throw new BadRequestException('Missing priceId.');
+    const priceId = await this.priceFor(input);
 
     // The lead is the identity of this checkout: its email is the only one we
     // act on, so a request can't name someone else's email to touch their Stripe data.
@@ -110,7 +125,7 @@ export class CheckoutService {
 
     const subscription = await this.stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: input.priceId }],
+      items: [{ price: priceId }],
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],

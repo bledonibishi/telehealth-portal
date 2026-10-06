@@ -643,6 +643,9 @@ model ProductStrength {
   defaultQuantity Int     @default(1) @map("default_quantity")
   sortOrder       Int     @default(0) @map("sort_order")
   active          Boolean @default(true)
+  // The monthly Stripe price for this dose (each dose is priced separately).
+  // Null: not sold per dose yet — billing falls back to the plan tier price.
+  stripePriceId   String? @map("stripe_price_id")
 
   product           Product            @relation(fields: [productId], references: [id])
   prescriptionItems PrescriptionItem[]
