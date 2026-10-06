@@ -2,7 +2,7 @@ import { MessagingService } from './messaging.service';
 import { UserRole } from '../common/enums';
 
 describe('MessagingService', () => {
-  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock } };
+  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock }; consultation: { findUniqueOrThrow: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock } };
   let audit: { log: jest.Mock };
   let posthog: { capture: jest.Mock };
   let service: MessagingService;
@@ -23,6 +23,11 @@ describe('MessagingService', () => {
         findMany: jest.fn().mockResolvedValue([MESSAGE]),
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
+      consultation: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ patientId: 'patient-1' }),
+        findUnique: jest.fn().mockResolvedValue({ patientId: 'patient-1' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     posthog = { capture: jest.fn() };
@@ -38,6 +43,7 @@ describe('MessagingService', () => {
 
       expect(prisma.message.create).toHaveBeenCalledWith({
         data: {
+          patientId: 'patient-1',
           consultationId: 'consult-1',
           senderId: 'patient-1',
           senderRole: UserRole.PATIENT,
@@ -126,6 +132,38 @@ describe('MessagingService', () => {
       await new Promise((r) => setTimeout(r, 20));
       expect(fired).toBe(false);
       await quiet.return?.();
+    });
+  });
+
+  describe('pre-consultation thread', () => {
+    const patient = { id: 'patient-1', role: 'PATIENT' } as any;
+    const doctor = { id: 'doc-1', role: 'CLINICIAN' } as any;
+
+    it('a patient with no consultation writes to their own pre-consultation thread', async () => {
+      await service.sendAs(patient, { content: 'I need help with my proof' });
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: { patientId: 'patient-1', consultationId: null, senderId: 'patient-1', senderRole: 'PATIENT', content: 'I need help with my proof' },
+      });
+    });
+
+    it('goes to the newest consultation once there is one', async () => {
+      prisma.consultation.findFirst.mockResolvedValue({ id: 'consult-9' });
+      await service.sendAs(patient, { content: 'Hi' });
+      expect(prisma.message.create.mock.calls[0][0].data.consultationId).toBe('consult-9');
+    });
+
+    it('a patient cannot write into someone else’s thread', async () => {
+      await service.sendAs(patient, { patientId: 'patient-2', content: 'x' });
+      expect(prisma.message.create.mock.calls[0][0].data.patientId).toBe('patient-1');
+
+      prisma.consultation.findUnique.mockResolvedValue({ patientId: 'patient-2' });
+      await expect(service.sendAs(patient, { consultationId: 'theirs', content: 'x' })).rejects.toThrow();
+    });
+
+    it('staff reply to a patient without a consultation by patient id', async () => {
+      await service.sendAs(doctor, { patientId: 'patient-1', content: 'Happy to help' });
+      expect(prisma.message.create.mock.calls[0][0].data).toMatchObject({ patientId: 'patient-1', consultationId: null, senderRole: 'CLINICIAN' });
+      await expect(service.sendAs(doctor, { content: 'to whom?' })).rejects.toThrow(/which patient/);
     });
   });
 });

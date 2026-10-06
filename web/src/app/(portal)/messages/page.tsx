@@ -49,7 +49,6 @@ export default function MessagesPage() {
     }
   };
 
-  const canReply = chat.consultationIds.length > 0;
   let lastDay = '';
 
   return (
@@ -93,17 +92,13 @@ export default function MessagesPage() {
         </div>
 
         <form onSubmit={send} className="border-t border-slate-100 p-3 sm:p-4">
-          {canReply ? (
-            <div className="flex items-end gap-2">
-              <label htmlFor="msg" className="sr-only">Your message</label>
-              <textarea id="msg" rows={1} value={content} maxLength={2000} onChange={(e) => setContent(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e as any); } }}
-                placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
-              <button type="submit" disabled={!content.trim()} className={btnBlue}>Send</button>
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">You can message your care team once your consultation has been submitted.</p>
-          )}
+          <div className="flex items-end gap-2">
+            <label htmlFor="msg" className="sr-only">Your message</label>
+            <textarea id="msg" rows={1} value={content} maxLength={2000} onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e as any); } }}
+              placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
+            <button type="submit" disabled={!content.trim()} className={btnBlue}>Send</button>
+          </div>
           {problem && <p role="alert" className="text-xs text-red-600 mt-2">{problem}</p>}
           <p className="text-[11px] text-slate-400 mt-2">
             Not for emergencies. If it can’t wait, <Link href="/appointments?new=1&urgent=1" className="underline">request an urgent appointment</Link> or call {EMERGENCY_NUMBER}.

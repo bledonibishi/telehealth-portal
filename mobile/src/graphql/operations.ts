@@ -154,3 +154,31 @@ export const CONSENT_TEXT = gql`
     }
   }
 `;
+
+// The patient's one conversation with their care team: messages on each consultation, plus those
+// from before they had one (e.g. asking for help during onboarding).
+export const MY_CONVERSATION = gql`
+  query MyConversation {
+    myConsultations {
+      id
+      submittedAt
+      messages {
+        id
+        senderId
+        senderRole
+        content
+        sentAt
+        readAt
+      }
+    }
+    myPreConsultationMessages {
+      id
+      senderId
+      senderRole
+      content
+      sentAt
+      readAt
+    }
+  }
+`;
+

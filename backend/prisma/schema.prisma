@@ -332,6 +332,7 @@ model Patient {
 
   lead                Lead?                 @relation(fields: [leadId], references: [id])
   consultations       Consultation[]
+  messages            Message[]
   uploadedFiles       UploadedFile[]
   onboarding          OnboardingSubmission?
   checkIns            CheckIn[]
@@ -652,7 +653,12 @@ model ProductStrength {
 
 model Message {
   id             String    @id @default(cuid())
-  consultationId String    @map("consultation_id")
+  // The conversation is the patient's. Messages sent before the patient has a
+  // consultation (e.g. asking for help during onboarding) have no
+  // consultationId; submitting the medical questionnaire moves them onto the
+  // new consultation (see ConsultationsService.submitIntakeQuiz).
+  patientId      String    @map("patient_id")
+  consultationId String?   @map("consultation_id")
   senderId       String    @map("sender_id")
   senderRole     Role      @map("sender_role")
   content        String
@@ -660,9 +666,11 @@ model Message {
   // When the other side first had the conversation open with this message in it. Null until then.
   readAt         DateTime? @map("read_at")
 
-  consultation Consultation @relation(fields: [consultationId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  consultation Consultation? @relation(fields: [consultationId], references: [id])
 
   @@index([consultationId, readAt])
+  @@index([patientId, consultationId])
   @@map("messages")
 }
 

@@ -39,8 +39,10 @@ function UnreadBadge({ count }: { count: number }) {
 
 // Collapsed: a slim rail (a floating button on phones) with the chat icon and a count of new messages.
 // Expanded: a docked thread beside the page (full screen on phones).
+// The floating variant, for pages without room for a side rail (onboarding), is a round button in the
+// corner that opens a chat window above the page.
 export function ChatDock({
-  open, onOpenChange, messages, unread, currentUserId, sending, onSend, loading,
+  open, onOpenChange, messages, unread, currentUserId, sending, onSend, loading, variant = 'docked', draft,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -50,8 +52,15 @@ export function ChatDock({
   sending: boolean;
   loading: boolean;
   onSend: (content: string) => Promise<unknown>;
+  variant?: 'docked' | 'floating';
+  /** Text to start the message with, e.g. when opened from "Message our team"; never overwrites typing. */
+  draft?: string;
 }) {
+  const floating = variant === 'floating';
   const [content, setContent] = useState('');
+  useEffect(() => {
+    if (draft) setContent((c) => (c.trim() ? c : draft));
+  }, [draft]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -101,7 +110,7 @@ export function ChatDock({
             <p className="text-[11px] font-medium text-brand-600 mt-1.5">Open chat →</p>
           </button>
         )}
-        <div className="hidden md:flex w-[72px] shrink-0 border-l border-slate-100 bg-white flex-col items-center pt-6 gap-1.5">
+        {!floating && <div className="hidden md:flex w-[72px] shrink-0 border-l border-slate-100 bg-white flex-col items-center pt-6 gap-1.5">
           <button
             type="button"
             onClick={() => onOpenChange(true)}
@@ -113,12 +122,12 @@ export function ChatDock({
             <UnreadBadge count={unread} />
           </button>
           <span className="text-[11px] font-medium text-slate-400">Chat</span>
-        </div>
+        </div>}
         <button
           type="button"
           onClick={() => onOpenChange(true)}
           aria-label={unread > 0 ? `Open chat with your care team, ${unread} new` : 'Open chat with your care team'}
-          className="md:hidden fixed right-4 bottom-4 z-30 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg flex items-center justify-center"
+          className={`${floating ? 'md:right-6 md:bottom-6' : 'md:hidden'} fixed right-4 bottom-4 z-30 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg flex items-center justify-center`}
         >
           <ChatIcon />
           <UnreadBadge count={unread} />
@@ -139,7 +148,11 @@ export function ChatDock({
   return (
     <aside
       aria-label="Chat with your care team"
-      className="fixed inset-0 z-40 md:static md:inset-auto md:w-[380px] shrink-0 md:border-l border-slate-100 bg-white flex flex-col min-h-0"
+      className={
+        floating
+          ? 'fixed inset-0 z-40 md:inset-auto md:right-6 md:bottom-6 md:w-[380px] md:h-[min(600px,calc(100vh-3rem))] md:rounded-2xl md:shadow-2xl md:border border-slate-100 bg-white flex flex-col min-h-0 overflow-hidden'
+          : 'fixed inset-0 z-40 md:static md:inset-auto md:w-[380px] shrink-0 md:border-l border-slate-100 bg-white flex flex-col min-h-0'
+      }
     >
       <div className="shrink-0 px-5 py-4 flex items-center gap-3 bg-gradient-to-br from-brand-600 to-brand-700 text-white">
         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">

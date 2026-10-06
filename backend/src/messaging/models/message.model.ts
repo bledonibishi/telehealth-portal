@@ -6,8 +6,11 @@ export class MessageModel {
   @Field(() => ID)
   id: string;
 
-  @Field()
-  consultationId: string;
+  @Field(() => ID)
+  patientId: string;
+
+  @Field(() => ID, { nullable: true, description: 'Null for messages sent before the patient had a consultation' })
+  consultationId?: string | null;
 
   @Field()
   senderId: string;

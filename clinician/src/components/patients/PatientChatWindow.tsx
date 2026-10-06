@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import { MARK_MESSAGES_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { MessageTicks, tickStateOf } from '@/components/consultation/MessageTicks';
 import { ConversationWatchers } from '@/components/consultation/ConversationWatchers';
 import { realtime } from '@/lib/apollo';
@@ -53,9 +53,12 @@ export default function PatientChatWindow({
   });
   const connected = useRealtimeConnected(realtime);
   const consultations: Array<{ id: string; messages: Message[] }> = data?.patient?.consultations ?? [];
+  // Messages from before the patient had a consultation; replies go there until they have one.
+  const preConsultation: Message[] = data?.preConsultationMessages ?? [];
   const messages: Message[] = useMemo(() => {
     const byId = new Map<string, Message>();
     consultations.forEach((c) => (c.messages ?? []).forEach((m) => byId.set(m.id, m)));
+    preConsultation.forEach((m) => byId.set(m.id, m));
     return [...byId.values()].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -67,6 +70,7 @@ export default function PatientChatWindow({
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
       return {
+        ...existing,
         patient: {
           ...existing.patient,
           consultations: existing.patient.consultations.map((c: any) =>
@@ -79,17 +83,24 @@ export default function PatientChatWindow({
     });
   };
 
+  const patchPre = (change: (messages: Message[]) => Message[]) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) =>
+      existing ? { ...existing, preConsultationMessages: change(existing.preConsultationMessages ?? []) } : existing,
+    );
+  };
+
   // Change every message of one consultation in the cached conversation.
   const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
-      return { patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+      return { ...existing, patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
     });
   };
 
   // Having the conversation open reads it: the patient's ticks turn blue. One request per consultation
   // with something unread; a minimised window is not "reading".
   const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const [markPreRead] = useMutation(MARK_PRE_CONSULTATION_READ);
   const marking = useRef(new Set<string>());
   useEffect(() => {
     if (minimised) return;
@@ -102,19 +113,30 @@ export default function PatientChatWindow({
         .catch(() => undefined) // still unread on the server; tried again next time the window is open
         .finally(() => marking.current.delete(c.id));
     }
+    if (!marking.current.has('pre') && preConsultation.some((m) => m.senderRole === 'PATIENT' && !m.readAt)) {
+      marking.current.add('pre');
+      const readAt = new Date().toISOString();
+      markPreRead({ variables: { patientId } })
+        .then(() => patchPre((ms) => ms.map((m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m))))
+        .catch(() => undefined)
+        .finally(() => marking.current.delete('pre'));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minimised, data]);
 
+  // The pre-consultation thread has no live channel, so it is always polled.
+  const live = connected && consultations.length > 0;
   useEffect(() => {
-    if (connected) return;
+    if (live) return;
     startPolling(FALLBACK_POLL_MS);
     return stopPolling;
-  }, [connected, startPolling, stopPolling]);
+  }, [live, startPolling, stopPolling]);
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     onCompleted({ sendMessage: message }) {
       if (replyTo) addToCache(replyTo, message);
+      else patchPre((ms) => (ms.some((m) => m.id === message.id) ? ms : [...ms, { readAt: null, ...message }]));
       setContent('');
       if (inputRef.current) inputRef.current.style.height = 'auto';
       onActivity();
@@ -130,8 +152,8 @@ export default function PatientChatWindow({
 
   const submit = () => {
     const text = content.trim();
-    if (!text || sending || !replyTo) return;
-    sendMessage({ variables: { input: { consultationId: replyTo, content: text } } });
+    if (!text || sending) return;
+    sendMessage({ variables: { input: replyTo ? { consultationId: replyTo, content: text } : { patientId, content: text } } });
   };
 
   // Group the thread by day, and collapse the sender label for consecutive messages.
@@ -235,8 +257,7 @@ export default function PatientChatWindow({
               ref={inputRef}
               rows={1}
               value={content}
-              disabled={!replyTo && !loading}
-              placeholder={!replyTo && !loading ? t('No consultation to message against') : t('Write a message…')}
+              placeholder={t('Write a message…')}
               onChange={(e) => setContent(e.target.value)}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -250,7 +271,7 @@ export default function PatientChatWindow({
             />
             <button
               type="submit"
-              disabled={sending || !content.trim() || !replyTo}
+              disabled={sending || !content.trim()}
               aria-label={t('Send message')}
               className="w-10 h-10 shrink-0 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 hover:bg-sky-400 transition-colors disabled:bg-sky-200 disabled:text-white disabled:shadow-none"
             >

@@ -402,7 +402,7 @@ describe('PatientsService.createByStaff', () => {
     });
     expect(tx.consultation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        questionnaireVersion: 'GLP1-intake@1',
+        questionnaireVersion: 'GLP1-intake@2',
         quizAnswers: expect.arrayContaining([expect.objectContaining({ questionId: 'smoking', value: 'never' })]),
         redFlags: { create: expect.any(Array) },
       }),

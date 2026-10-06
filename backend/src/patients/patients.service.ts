@@ -96,6 +96,8 @@ export class PatientsService {
           },
         },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1, select: { status: true, dueAt: true } },
+        // Messages from before the patient had a consultation.
+        messages: { where: { consultationId: null }, orderBy: { sentAt: 'desc' }, take: 1, select: { senderRole: true, sentAt: true } },
       },
     });
 
@@ -105,14 +107,12 @@ export class PatientsService {
       .map((r) => r.id);
     const journeys = await this.weightJourney.summariesFor(glp1Ids);
 
-    return rows.map(({ lead, consultations, prescriptions, checkIns, ...patient }) => {
+    return rows.map(({ lead, consultations, prescriptions, checkIns, messages: preConsultation = [], ...patient }) => {
       const journey = journeys.get(patient.id);
       const prescription = prescriptions[0];
-      const newest = consultations
-        .flatMap((c) => c.messages)
+      const newest = [...consultations.flatMap((c) => c.messages), ...preConsultation]
         .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
-      const lastFromPatient = consultations
-        .flatMap((c) => c.messages)
+      const lastFromPatient = [...consultations.flatMap((c) => c.messages), ...preConsultation]
         .filter((m) => m.senderRole === UserRole.PATIENT)
         .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
 
