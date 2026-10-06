@@ -15,6 +15,11 @@ export const ONBOARDING_FIELDS = gql`
     prescriptionProofUrl
     submittedAt
     reviewedAt
+    bodyPhotoChecks {
+      view
+      outcome
+      issues
+    }
     stepFeedback {
       step
       approved

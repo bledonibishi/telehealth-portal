@@ -16,6 +16,8 @@ export function setToken(token: string, refreshToken?: string | null) {
 export function clearToken() {
   localStorage.removeItem('patient_token');
   localStorage.removeItem('patient_refresh_token');
+  // Answers kept on this device while the patient filled in their application must not outlive their session.
+  for (const key of Object.keys(localStorage)) if (key.startsWith('onboarding.draft.')) localStorage.removeItem(key);
 }
 
 export function isAuthenticated(): boolean {

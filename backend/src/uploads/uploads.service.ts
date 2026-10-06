@@ -66,7 +66,7 @@ export class UploadsService {
   }
 
   async save(patientId: string, kind: UploadKind, file: Express.Multer.File) {
-    if (kind === UploadKind.PROGRESS_PHOTO) {
+    if (kind === UploadKind.PROGRESS_PHOTO || kind === UploadKind.BODY_PHOTO_FRONT || kind === UploadKind.BODY_PHOTO_SIDE) {
       if (!IMAGE_TYPES.includes(file.mimetype) || !looksLikeImage(file.buffer)) {
         throw new BadRequestException('Please upload a photo (JPEG, PNG, WebP or HEIC)');
       }
@@ -99,6 +99,19 @@ export class UploadsService {
     if (!isOwner && !staffMayView(file.kind, requester)) throw new NotFoundException('File not found');
 
     return file;
+  }
+
+  /** One of this patient's own files of the given kinds; anything else is "not found", whoever asks. */
+  async findOwned(patientId: string, id: string, kinds: UploadKind[]) {
+    const file = await this.prisma.uploadedFile.findUnique({ where: { id } });
+    if (!file || file.patientId !== patientId || !kinds.includes(file.kind)) throw new NotFoundException('File not found');
+    return file;
+  }
+
+  /** Deletes a file's bytes and its record (a retaken photo, so a discarded body photo doesn't linger). */
+  async remove(file: { id: string; storageKey: string }): Promise<void> {
+    await this.prisma.uploadedFile.deleteMany({ where: { id: file.id } });
+    await this.storage.delete(file.storageKey);
   }
 
   async readContents(file: { storageKey: string }): Promise<Buffer> {

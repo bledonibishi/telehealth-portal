@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export type Question = {
   id: string;
@@ -20,6 +20,24 @@ export type SubmittedAnswer = { questionId: string; answer: string; value: strin
 // Values keyed by question id: option values for single/multi, raw input otherwise.
 type Values = Record<string, string[]>;
 
+function readDraft(key?: string): Values {
+  if (!key || typeof window === 'undefined') return {};
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(key) ?? 'null');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+export const clearDraft = (key: string) => {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* nothing to clear */
+  }
+};
+
 function isVisible(q: Question, values: Values) {
   return !q.showIf || (values[q.showIf.questionId] ?? []).some((v) => q.showIf!.anyOf.includes(v));
 }
@@ -37,7 +55,7 @@ function toAnswer(q: Question, selected: string[]): SubmittedAnswer {
  * and owns the clinical meaning of each answer; this only collects them.
  */
 export function QuestionnaireForm({
-  questions, submitting, error, onSubmit, footer, ready = true,
+  questions, submitting, error, onSubmit, footer, ready = true, draftKey,
 }: {
   questions: Question[];
   submitting: boolean;
@@ -46,8 +64,21 @@ export function QuestionnaireForm({
   // Extra fields the page owns, shown before the submit button, and whether they're complete.
   footer?: React.ReactNode;
   ready?: boolean;
+  /**
+   * Keeps the answers so far on this device under this key, so leaving halfway (back, sign-out, a closed tab)
+   * loses nothing. The page clears it once the questionnaire is sent, and signing out clears every draft.
+   */
+  draftKey?: string;
 }) {
-  const [values, setValues] = useState<Values>({});
+  const [values, setValues] = useState<Values>(() => readDraft(draftKey));
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      if (Object.keys(values).length) window.localStorage.setItem(draftKey, JSON.stringify(values));
+    } catch {
+      /* private mode: the form still works, it just isn't kept */
+    }
+  }, [draftKey, values]);
   const visible = questions.filter((q) => isVisible(q, values));
   const unanswered = visible.filter((q) => !q.optional && !(values[q.id] ?? []).some((v) => v.trim()));
 
@@ -70,7 +101,7 @@ export function QuestionnaireForm({
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white';
+    'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-500 bg-white';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -90,7 +121,7 @@ export function QuestionnaireForm({
                 <div className="space-y-0.5">
                   {q.options?.map((o) => (
                     <label key={o.value} className="flex items-center gap-2.5 py-2 text-sm text-slate-700 cursor-pointer">
-                      <input type="radio" name={q.id} checked={selected[0] === o.value} onChange={() => set(q.id, [o.value])} className="accent-brand-600" />
+                      <input type="radio" name={q.id} checked={selected[0] === o.value} onChange={() => set(q.id, [o.value])} className="accent-ink-700" />
                       {o.label}
                     </label>
                   ))}
@@ -102,7 +133,7 @@ export function QuestionnaireForm({
                   <p className="text-xs text-slate-400 mb-1">Select all that apply.</p>
                   {q.options?.map((o) => (
                     <label key={o.value} className="flex items-center gap-2.5 py-2 text-sm text-slate-700 cursor-pointer">
-                      <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(q, o.value)} className="accent-brand-600" />
+                      <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(q, o.value)} className="accent-ink-700" />
                       {o.label}
                     </label>
                   ))}
@@ -142,7 +173,7 @@ export function QuestionnaireForm({
       <button
         type="submit"
         disabled={submitting || unanswered.length > 0 || !ready}
-        className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
       >
         {submitting ? 'Sending…' : unanswered.length ? `${unanswered.length} question${unanswered.length === 1 ? '' : 's'} left` : 'Send to our clinicians'}
       </button>

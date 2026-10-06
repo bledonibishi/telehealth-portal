@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useMutation } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import Link from 'next/link';
 import PhotoUploadField from '@/components/onboarding/PhotoUploadField';
 import { SAVE_IDENTITY_STEP, MY_ONBOARDING } from '@/graphql/onboarding';
+import { fileIdOfUrl } from '@/components/onboarding/BodyPhotoFlow';
 
 const CHECKLIST = ['Have a valid ID ready (e.g. passport, driving licence)', 'Find a well-lit spot for your selfie'];
 
@@ -16,9 +17,31 @@ export default function IdPhotoStepPage() {
   const [selfieFileId, setSelfieFileId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  const { data } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const [saveIdentityStep, { loading }] = useMutation(SAVE_IDENTITY_STEP, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
+
+  // Coming back: show what was already saved, and open straight at the photos if any is.
+  const onboarding = data?.myOnboarding;
+  useEffect(() => {
+    if (!onboarding) return;
+    const doc = fileIdOfUrl(onboarding.idDocumentUrl);
+    const selfie = fileIdOfUrl(onboarding.selfieUrl);
+    setIdDocumentFileId((x) => x ?? doc);
+    setSelfieFileId((x) => x ?? selfie);
+    if (doc || selfie) setPhase('capture');
+  }, [onboarding]);
+
+  // Each photo is saved the moment it is uploaded, so leaving halfway loses nothing.
+  const saveOne = async (field: 'idDocumentFileId' | 'selfieFileId', fileId: string) => {
+    setError('');
+    try {
+      await saveIdentityStep({ variables: { input: { [field]: fileId } } });
+    } catch (err: any) {
+      setError(err.message ?? 'We couldn’t save that photo. Please try again.');
+    }
+  };
 
   const canContinue = !!idDocumentFileId && !!selfieFileId;
 
@@ -26,7 +49,6 @@ export default function IdPhotoStepPage() {
     if (!canContinue) return;
     setError('');
     try {
-      await saveIdentityStep({ variables: { input: { idDocumentFileId, selfieFileId } } });
       router.push('/onboarding');
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong');
@@ -48,7 +70,7 @@ export default function IdPhotoStepPage() {
           <ul className="space-y-3">
             {CHECKLIST.map((item) => (
               <li key={item} className="flex items-start gap-3">
-                <span className="w-5 h-5 rounded-full border-2 border-brand-500 text-brand-500 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">✓</span>
+                <span className="w-5 h-5 rounded-full border-2 border-ink-500 text-ink-500 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">✓</span>
                 <span className="text-sm text-slate-700">{item}</span>
               </li>
             ))}
@@ -57,7 +79,7 @@ export default function IdPhotoStepPage() {
 
         <button
           onClick={() => setPhase('capture')}
-          className="w-full mt-8 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-8 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
         >
           Start verification
         </button>
@@ -77,13 +99,15 @@ export default function IdPhotoStepPage() {
           kind="ID_DOCUMENT"
           label="Government ID"
           hint="Passport or driving licence, all corners visible"
-          onUploaded={setIdDocumentFileId}
+          existingFileId={fileIdOfUrl(onboarding?.idDocumentUrl)}
+          onUploaded={(id) => { setIdDocumentFileId(id); saveOne('idDocumentFileId', id); }}
         />
         <PhotoUploadField
           kind="SELFIE"
           label="Selfie"
           hint="Look directly at the camera"
-          onUploaded={setSelfieFileId}
+          existingFileId={fileIdOfUrl(onboarding?.selfieUrl)}
+          onUploaded={(id) => { setSelfieFileId(id); saveOne('selfieFileId', id); }}
         />
       </div>
 
@@ -92,7 +116,7 @@ export default function IdPhotoStepPage() {
       <button
         onClick={handleContinue}
         disabled={!canContinue || loading}
-        className="w-full mt-6 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
       >
         {loading ? 'Saving…' : 'Continue'}
       </button>

@@ -116,19 +116,19 @@ export default function PrescriptionProofStepPage() {
             key={t.value}
             onClick={() => setProofType(t.value)}
             className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
-              proofType === t.value ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:bg-slate-50'
+              proofType === t.value ? 'border-ink-500 bg-ink-50' : 'border-slate-200 hover:bg-slate-50'
             }`}
           >
             <div
               className={`w-4 h-4 mt-0.5 rounded-full border flex-shrink-0 ${
-                proofType === t.value ? 'border-brand-600 bg-brand-600' : 'border-slate-300'
+                proofType === t.value ? 'border-ink-700 bg-ink-700' : 'border-slate-300'
               }`}
             />
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-slate-900">{t.label}</p>
                 {t.fastest && (
-                  <span className="text-[10px] font-semibold text-brand-700 bg-brand-100 px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] font-semibold text-ink-800 bg-ink-100 px-1.5 py-0.5 rounded">
                     FASTEST TO VERIFY
                   </span>
                 )}
@@ -150,7 +150,7 @@ export default function PrescriptionProofStepPage() {
       <button
         onClick={handleContinue}
         disabled={!proofType || !proofFileId || savingProof}
-        className="w-full mt-6 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
       >
         {savingProof ? 'Saving…' : 'Continue'}
       </button>

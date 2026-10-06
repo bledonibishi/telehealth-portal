@@ -54,4 +54,37 @@ export class UploadsCleanupService {
     }
     return removed;
   }
+
+  /**
+   * Body photos checked at onboarding and then retaken or abandoned: uploaded, but never saved on the
+   * patient's onboarding (the portal deletes a retake itself; this is the net for a closed tab).
+   */
+  async purgeOrphanedBodyPhotos(now = new Date()): Promise<number> {
+    const old = await this.prisma.uploadedFile.findMany({
+      where: { kind: { in: [UploadKind.BODY_PHOTO_FRONT, UploadKind.BODY_PHOTO_SIDE] }, createdAt: { lt: new Date(now.getTime() - ORPHAN_AFTER_MS) } },
+      select: { id: true, patientId: true, storageKey: true },
+      orderBy: { createdAt: 'asc' },
+      take: BATCH,
+    });
+    if (!old.length) return 0;
+    const ids = old.map((f) => f.id);
+    const inUse = await this.prisma.onboardingSubmission.findMany({
+      where: { OR: [{ bodyPhotoFrontFileId: { in: ids } }, { bodyPhotoSideFileId: { in: ids } }] },
+      select: { bodyPhotoFrontFileId: true, bodyPhotoSideFileId: true },
+    });
+    const kept = new Set(inUse.flatMap((s) => [s.bodyPhotoFrontFileId, s.bodyPhotoSideFileId]));
+
+    let removed = 0;
+    for (const file of old.filter((f) => !kept.has(f.id))) {
+      try {
+        await this.prisma.uploadedFile.deleteMany({ where: { id: file.id } });
+        await this.storage.delete(file.storageKey);
+        await this.audit.log({ actorId: 'system:uploads-cleanup', actorRole: UserRole.ADMIN, action: 'ORPHAN_PHOTO_PURGED', resourceType: 'UploadedFile', resourceId: file.id, patientId: file.patientId });
+        removed++;
+      } catch (err: any) {
+        this.logger.error(`Could not purge upload ${file.id}: ${err?.message ?? err}`);
+      }
+    }
+    return removed;
+  }
 }

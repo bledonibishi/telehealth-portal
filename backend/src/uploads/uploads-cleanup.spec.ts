@@ -52,9 +52,35 @@ describe('UploadsCleanupService', () => {
   });
 });
 
+describe('UploadsCleanupService.purgeOrphanedBodyPhotos', () => {
+  const NOW = new Date('2026-10-05T03:00:00Z');
+  const build = (inUse: Array<{ bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }>) => {
+    const prisma: any = {
+      uploadedFile: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'kept', patientId: 'p-1', storageKey: 'k' }, { id: 'retaken', patientId: 'p-1', storageKey: 'r' }]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      onboardingSubmission: { findMany: jest.fn().mockResolvedValue(inUse) },
+    };
+    const storage = { put: jest.fn(), get: jest.fn(), delete: jest.fn().mockResolvedValue(undefined) };
+    const audit = { log: jest.fn() };
+    return { service: new UploadsCleanupService(prisma, audit as any, storage), prisma, storage, audit };
+  };
+
+  it('removes day-old body photos that are not saved on anyone’s onboarding, and keeps the ones that are', async () => {
+    const { service, prisma, storage, audit } = build([{ bodyPhotoFrontFileId: 'kept', bodyPhotoSideFileId: null }]);
+    expect(await service.purgeOrphanedBodyPhotos(NOW)).toBe(1);
+    expect(prisma.uploadedFile.findMany.mock.calls[0][0].where).toMatchObject({ kind: { in: ['BODY_PHOTO_FRONT', 'BODY_PHOTO_SIDE'] } });
+    expect(prisma.uploadedFile.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.uploadedFile.deleteMany).toHaveBeenCalledWith({ where: { id: 'retaken' } });
+    expect(storage.delete).toHaveBeenCalledWith('r');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ORPHAN_PHOTO_PURGED', resourceId: 'retaken' }));
+  });
+});
+
 describe('UploadsCleanupController', () => {
   const build = (secret?: string) => {
-    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2) };
+    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2), purgeOrphanedBodyPhotos: jest.fn().mockResolvedValue(1) };
     return { controller: new UploadsCleanupController({ get: jest.fn().mockReturnValue(secret) } as any, cleanup as any), cleanup };
   };
 
@@ -64,6 +90,6 @@ describe('UploadsCleanupController', () => {
     await expect(controller.purge('Bearer wrong')).rejects.toThrow(UnauthorizedException);
     await expect(build(undefined).controller.purge('Bearer anything')).rejects.toThrow(UnauthorizedException);
     expect(cleanup.purgeOrphanedProgressPhotos).not.toHaveBeenCalled();
-    expect(await controller.purge('Bearer s3cret')).toEqual({ removed: 2 });
+    expect(await controller.purge('Bearer s3cret')).toEqual({ removed: 3 });
   });
 });

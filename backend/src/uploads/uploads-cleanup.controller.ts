@@ -17,8 +17,9 @@ export class UploadsCleanupController {
     const secret = this.config.get<string>('CRON_SECRET');
     if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
 
-    const removed = await this.cleanup.purgeOrphanedProgressPhotos();
-    if (removed) this.logger.log(`Purged ${removed} unattached progress photo(s)`);
-    return { removed };
+    const progress = await this.cleanup.purgeOrphanedProgressPhotos();
+    const body = await this.cleanup.purgeOrphanedBodyPhotos();
+    if (progress || body) this.logger.log(`Purged ${progress} unattached progress photo(s) and ${body} unused body photo(s)`);
+    return { removed: progress + body };
   }
 }

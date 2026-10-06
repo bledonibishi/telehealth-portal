@@ -15,6 +15,7 @@ export const ONBOARDING_FIELDS = gql`
     prescriptionProofUrl
     submittedAt
     reviewedAt
+    bodyPhotosToRetake
     stepFeedback {
       step
       reason
@@ -74,4 +75,40 @@ export const SUBMIT_ONBOARDING = gql`
     }
   }
   ${ONBOARDING_FIELDS}
+`;
+
+export const CHECK_BODY_PHOTO = gql`
+  mutation CheckBodyPhoto($fileId: ID!, $view: BodyPhotoView!) {
+    checkBodyPhoto(fileId: $fileId, view: $view) {
+      outcome
+      issues
+      messages
+      canSendForReview
+    }
+  }
+`;
+
+export const SAVE_BODY_PHOTO = gql`
+  mutation SaveBodyPhoto($input: SaveBodyPhotoInput!) {
+    saveBodyPhoto(input: $input) {
+      ...OnboardingFields
+    }
+  }
+  ${ONBOARDING_FIELDS}
+`;
+
+export const DISCARD_BODY_PHOTO = gql`
+  mutation DiscardBodyPhoto($fileId: ID!) {
+    discardBodyPhoto(fileId: $fileId)
+  }
+`;
+
+export const CHECK_PHOTO_FRAME = gql`
+  mutation CheckPhotoFrame($view: BodyPhotoView!, $image: String!) {
+    checkPhotoFrame(view: $view, image: $image) {
+      available
+      ready
+      messages
+    }
+  }
 `;

@@ -2,17 +2,21 @@
 
 import { useRef, useState } from 'react';
 import { uploadFile, UploadKind } from '@/lib/upload';
+import { AuthedImage } from '@/components/common/AuthedImage';
 
 export default function PhotoUploadField({
   kind,
   label,
   hint,
   onUploaded,
+  existingFileId,
 }: {
   kind: UploadKind;
   label: string;
   hint?: string;
   onUploaded: (fileId: string) => void;
+  /** A photo already saved for this field: shown, and replaced if the patient picks another. */
+  existingFileId?: string | null;
 }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,12 +46,17 @@ export default function PhotoUploadField({
           <p className="text-sm font-medium text-slate-900">{label}</p>
           {hint && <p className="text-xs text-slate-400 mt-0.5">{hint}</p>}
         </div>
-        {status === 'done' && (
-          <span className="text-xs font-medium text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">✓ Uploaded</span>
+        {(status === 'done' || (!!existingFileId && !previewUrl)) && (
+          <span className="text-xs font-medium text-ink-800 bg-ink-50 px-2 py-0.5 rounded-full">✓ Uploaded</span>
         )}
       </div>
 
-      {previewUrl ? (
+      {!previewUrl && existingFileId ? (
+        <div>
+          <AuthedImage fileId={existingFileId} alt={label} className="w-full max-h-64 object-cover rounded-xl border border-slate-100" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-medium text-ink-600 hover:text-ink-800">Replace photo</button>
+        </div>
+      ) : previewUrl ? (
         <div className="relative">
           <img src={previewUrl} alt={label} className="w-full max-h-64 object-cover rounded-xl border border-slate-100" />
           {status === 'uploading' && (
@@ -71,7 +80,7 @@ export default function PhotoUploadField({
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 px-3 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
+            className="flex-1 px-3 py-2.5 bg-ink-700 hover:bg-ink-800 text-white text-sm font-medium rounded-xl transition-colors"
           >
             Take photo
           </button>

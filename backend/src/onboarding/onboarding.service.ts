@@ -3,6 +3,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
 import { PhotoReviewService } from './photo-review.service';
+import { PhotoCheckService } from './photo-check.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { UploadKind } from '@prisma/client';
+import { SaveBodyPhotoInput } from './dto/body-photo.input';
 import { OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
@@ -25,7 +29,25 @@ export class OnboardingService {
     private prisma: PrismaService,
     private persona: PersonaService,
     private photoReview: PhotoReviewService,
+    private photoCheck: PhotoCheckService,
+    private uploads: UploadsService,
   ) {}
+
+  /** The latest check of each body photo that is currently saved, for the clinician reviewing it. */
+  /** The saved body photos that would be turned away at submission, so the app can send the patient back to them. */
+  bodyPhotosToRetake(row: { patientId: string; bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }) {
+    return this.photoCheck.viewsToRetake(row.patientId, { FRONT: row.bodyPhotoFrontFileId, SIDE: row.bodyPhotoSideFileId });
+  }
+
+  async checksOf(row: { patientId: string; bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }) {
+    const saved = [row.bodyPhotoFrontFileId, row.bodyPhotoSideFileId].filter((id): id is string => !!id);
+    if (!saved.length) return [];
+    const rows = await this.prisma.bodyPhotoCheck.findMany({ where: { patientId: row.patientId, fileId: { in: saved } }, orderBy: { createdAt: 'desc' } });
+    return (['FRONT', 'SIDE'] as const).flatMap((view) => {
+      const latest = rows.find((r) => r.fileId === (view === 'FRONT' ? row.bodyPhotoFrontFileId : row.bodyPhotoSideFileId));
+      return latest ? [{ view, outcome: latest.outcome, issues: latest.issues, checkedAt: latest.createdAt }] : [];
+    });
+  }
 
   private toModel(row: any) {
     return {
@@ -52,8 +74,9 @@ export class OnboardingService {
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId },
       data: {
-        idDocumentFileId: input.idDocumentFileId,
-        selfieFileId: input.selfieFileId,
+        // Either photo can be saved on its own, so a patient who leaves halfway keeps what they did.
+        ...(input.idDocumentFileId && { idDocumentFileId: input.idDocumentFileId }),
+        ...(input.selfieFileId && { selfieFileId: input.selfieFileId }),
         stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.ID_PHOTO)),
       },
     });
@@ -72,6 +95,39 @@ export class OnboardingService {
       },
     });
     return this.toModel(updated);
+  }
+
+  /**
+   * Saves one body photo as soon as it has passed its check, so leaving halfway (back, sign-out, a closed
+   * tab) loses nothing. Replacing a photo deletes the old one.
+   */
+  async saveBodyPhoto(patientId: string, input: SaveBodyPhotoInput) {
+    const kind = input.view === 'FRONT' ? UploadKind.BODY_PHOTO_FRONT : UploadKind.BODY_PHOTO_SIDE;
+    await this.uploads.findOwned(patientId, input.fileId, [kind]);
+    await this.photoCheck.assertSavable(patientId, input.fileId, input.view, !!input.sendForReview);
+
+    const existing = await this.getOrCreateForPatient(patientId);
+    const column = input.view === 'FRONT' ? 'bodyPhotoFrontFileId' : 'bodyPhotoSideFileId';
+    const previous: string | null = existing[column];
+    const stepFeedback = existing.stepFeedback as StepFeedback[];
+    const updated = await this.prisma.onboardingSubmission.update({
+      where: { patientId },
+      data: { [column]: input.fileId, stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)) },
+    });
+    if (previous && previous !== input.fileId) {
+      const old = await this.prisma.uploadedFile.findUnique({ where: { id: previous } });
+      if (old && old.patientId === patientId) await this.uploads.remove(old);
+    }
+    return this.toModel(updated);
+  }
+
+  /** A photo that was checked and not kept (a retake): its bytes are deleted. A photo that is saved can't be discarded this way. */
+  async discardBodyPhoto(patientId: string, fileId: string): Promise<boolean> {
+    const file = await this.uploads.findOwned(patientId, fileId, [UploadKind.BODY_PHOTO_FRONT, UploadKind.BODY_PHOTO_SIDE]);
+    const submission = await this.prisma.onboardingSubmission.findUnique({ where: { patientId } });
+    if (submission && (submission.bodyPhotoFrontFileId === fileId || submission.bodyPhotoSideFileId === fileId)) return false;
+    await this.uploads.remove(file);
+    return true;
   }
 
   async savePriorMedicationUse(patientId: string, priorMedicationUse: boolean) {
@@ -116,6 +172,11 @@ export class OnboardingService {
     if (submission.priorMedicationUse && !submission.prescriptionProofFileId) missing.push('Proof of prescription');
     if (missing.length > 0) {
       throw new BadRequestException(`Missing required steps: ${missing.join(', ')}`);
+    }
+    // A body photo saved before it could be checked (or that the check never passed) is sent back, not sent on.
+    const retake = await this.photoCheck.viewsToRetake(patientId, { FRONT: submission.bodyPhotoFrontFileId, SIDE: submission.bodyPhotoSideFileId });
+    if (retake.length > 0) {
+      throw new BadRequestException(`Please retake your ${retake.map((v) => (v === 'FRONT' ? 'front' : 'side')).join(' and ')} photo — it hasn’t passed the photo check yet`);
     }
 
     const personaStatus = await this.persona.verifyIdentity(
