@@ -9,7 +9,7 @@ const answer = (over: Record<string, unknown> = {}) => ({
 function build(env: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'sk-test' }) {
   // These specs are about the checking itself; the required / not-required rule has its own block below.
   const prisma: any = {
-    bodyPhotoCheck: { create: jest.fn(), count: jest.fn().mockResolvedValue(0), findFirst: jest.fn() },
+    bodyPhotoCheck: { create: jest.fn().mockResolvedValue({ id: 'c-1' }), update: jest.fn(), count: jest.fn().mockResolvedValue(0), findFirst: jest.fn() },
   };
   const uploads: any = {
     findOwned: jest.fn().mockResolvedValue({ id: 'f-1', storageKey: 'p-1/f-1' }),
@@ -32,7 +32,9 @@ describe('PhotoCheckService.check', () => {
     expect(req.model).toBe(DEFAULT_PHOTO_CHECK_MODEL);
     expect(req.tool_choice).toEqual({ type: 'tool', name: 'describe_photo' });
     expect(req.messages[0].content[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg' } });
-    expect(prisma.bodyPhotoCheck.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', fileId: 'f-1', view: 'FRONT', outcome: 'PASS', issues: [], model: DEFAULT_PHOTO_CHECK_MODEL } });
+    // Written down before it runs (so concurrent checks count each other), then filled in.
+    expect(prisma.bodyPhotoCheck.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', fileId: 'f-1', view: 'FRONT', outcome: 'UNCHECKED', issues: [] } });
+    expect(prisma.bodyPhotoCheck.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: { outcome: 'PASS', issues: [], model: DEFAULT_PHOTO_CHECK_MODEL } });
   });
 
   it('fails a photo with fixed-wording reasons, never text from the model', async () => {
@@ -69,9 +71,14 @@ describe('PhotoCheckService.check', () => {
     });
     it('is over the daily limit', async () => {
       const b = build({ ANTHROPIC_API_KEY: 'k', PHOTO_CHECK_DAILY_LIMIT: '3' });
-      b.prisma.bodyPhotoCheck.count.mockResolvedValue(3);
+      b.prisma.bodyPhotoCheck.count.mockResolvedValue(4); // the count includes this very check, written down first
       await turnedAway(b, /tried a lot of photos/);
       expect(b.create).not.toHaveBeenCalled();
+    });
+    it('is the last check of the day: still allowed, the one after is not', async () => {
+      const b = build({ ANTHROPIC_API_KEY: 'k', PHOTO_CHECK_DAILY_LIMIT: '3' });
+      b.prisma.bodyPhotoCheck.count.mockResolvedValue(3);
+      expect(await b.service.check('p-1', 'f-1', 'FRONT')).toMatchObject({ outcome: 'PASS' });
     });
     it('is a format the model cannot read (HEIC)', async () => {
       const b = build();
@@ -144,36 +151,52 @@ describe('PhotoCheckService.assertSavable', () => {
 
 describe('PhotoCheckService.checkFrame (live guidance)', () => {
   const frame = JPEG.toString('base64');
+  const lookingFine = { personCount: 1, faceVisible: true, headToToeVisible: true, pose: 'front', bulkyOrBaggyClothing: false, quality: 'good', notARealPhoto: false, tooFar: false };
+  // Live tips come from the local pose model; what it saw is made up here, the geometry has its own specs.
+  const buildLive = (env: Record<string, string | undefined> = {}) => {
+    const b = build({ PHOTO_CHECK_PROVIDER: 'yolo', ...env });
+    b.detector.detect.mockResolvedValue({ width: 1000, height: 2000, people: [] });
+    return b;
+  };
+  afterEach(() => jest.restoreAllMocks());
+  const seeing = (over: Record<string, unknown> = {}) => jest.spyOn(require('./pose-geometry'), 'observe').mockReturnValue({ ...lookingFine, ...over });
 
   it('says what to fix on a frame, with the same rules and wording as the final check, and stores nothing', async () => {
-    const { service, prisma, create } = build();
-    create.mockResolvedValue(answer({ head_to_toe_visible: false }));
+    const { service, prisma } = buildLive();
+    seeing({ headToToeVisible: false });
     expect(await service.checkFrame('p-1', 'FRONT', frame)).toEqual({ available: true, ready: false, messages: ['Your full body isn’t visible — we need to see you from head to toe'] });
-    create.mockResolvedValue(answer());
+    seeing();
     expect(await service.checkFrame('p-1', 'FRONT', frame)).toEqual({ available: true, ready: true, messages: [] });
     expect(prisma.bodyPhotoCheck.create).not.toHaveBeenCalled();
   });
 
+  it('gives no live tips at all when Claude is the provider: they would be billed calls outside the daily limit', async () => {
+    const b = build({ ANTHROPIC_API_KEY: 'k' });
+    expect(await b.service.checkFrame('p-1', 'FRONT', frame)).toEqual({ available: false, ready: false, messages: [] });
+    expect(b.create).not.toHaveBeenCalled();
+    expect(b.detector.detect).not.toHaveBeenCalled();
+  });
+
   it('gives no guidance, rather than a wrong one, when it cannot', async () => {
     const none = { available: false, ready: false, messages: [] };
-    const off = build({});
+    const off = buildLive();
+    off.detector.available.mockResolvedValue(false);
     expect(await off.service.checkFrame('p-1', 'FRONT', frame)).toEqual(none);
 
-    const b = build();
+    const b = buildLive();
     expect(await b.service.checkFrame('p-1', 'FRONT', 'x'.repeat(MAX_FRAME_BASE64 + 1))).toEqual(none); // not a live frame
     expect(await b.service.checkFrame('p-1', 'FRONT', Buffer.from('<html>').toString('base64'))).toEqual(none); // not a JPEG
-    b.create.mockRejectedValue(new Error('overloaded'));
-    expect(await b.service.checkFrame('p-1', 'FRONT', frame)).toEqual(none);
-    b.create.mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
+    b.detector.detect.mockRejectedValue(new Error('cannot read'));
     expect(await b.service.checkFrame('p-1', 'FRONT', frame)).toEqual(none);
   });
 
   it('stops after a minute’s worth of frames for one patient, and not for another', async () => {
-    const { service, create } = build();
+    const { service, detector } = buildLive();
+    seeing();
     for (let i = 0; i < FRAMES_PER_MINUTE; i++) expect((await service.checkFrame('p-1', 'FRONT', frame)).available).toBe(true);
     expect((await service.checkFrame('p-1', 'FRONT', frame)).available).toBe(false);
     expect((await service.checkFrame('p-2', 'FRONT', frame)).available).toBe(true);
-    expect(create).toHaveBeenCalledTimes(FRAMES_PER_MINUTE + 1);
+    expect(detector.detect).toHaveBeenCalledTimes(FRAMES_PER_MINUTE + 1);
   });
 });
 
@@ -186,8 +209,14 @@ describe('PhotoCheckService.viewsToRetake', () => {
 
   it('keeps a photo that passed, or that failed and the patient sent for review', async () => {
     const { service, prisma } = build();
-    prisma.bodyPhotoCheck.findFirst.mockImplementation(({ where }: any) => Promise.resolve({ outcome: where.fileId === 'front' ? 'PASS' : 'FAIL' }));
+    prisma.bodyPhotoCheck.findFirst.mockImplementation(({ where }: any) => Promise.resolve(where.fileId === 'front' ? { outcome: 'PASS', sentForReview: false } : { outcome: 'FAIL', sentForReview: true }));
     expect(await service.viewsToRetake('p-1', { FRONT: 'front', SIDE: 'side' })).toEqual([]);
+  });
+
+  it('sends back a failed photo the patient did not ask a clinician to look at, however it got saved', async () => {
+    const { service, prisma } = build();
+    prisma.bodyPhotoCheck.findFirst.mockResolvedValue({ outcome: 'FAIL', sentForReview: false });
+    expect(await service.viewsToRetake('p-1', { FRONT: 'front' })).toEqual(['FRONT']);
   });
 
   it('ignores a view with no photo yet, and sends nothing back when checking is not required', async () => {
@@ -211,7 +240,7 @@ describe('PhotoCheckService with the YOLO pose model (the default)', () => {
     expect(r).toMatchObject({ outcome: 'FAIL', issues: ['NO_PERSON'] });
     expect(b.detector.detect).toHaveBeenCalledTimes(1);
     expect(b.create).not.toHaveBeenCalled();
-    expect(b.prisma.bodyPhotoCheck.create).toHaveBeenCalledWith({ data: expect.objectContaining({ model: 'yolov8n-pose', outcome: 'FAIL' }) });
+    expect(b.prisma.bodyPhotoCheck.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: expect.objectContaining({ model: 'yolov8n-pose', outcome: 'FAIL' }) });
   });
 
   it('is not usable — and turns the photo away while required — when the model file is missing', async () => {
@@ -242,7 +271,7 @@ describe('PhotoCheckService with the YOLO pose model (the default)', () => {
     b.create.mockResolvedValue(answer({ bulky_or_baggy_clothing: true }));
     const r = await b.service.check('p-1', 'f-1', 'FRONT');
     expect(r).toMatchObject({ outcome: 'FAIL', issues: ['BAGGY_CLOTHING'] });
-    expect(b.prisma.bodyPhotoCheck.create).toHaveBeenCalledWith({ data: expect.objectContaining({ model: 'yolov8n-pose+claude-haiku-4-5' }) });
+    expect(b.prisma.bodyPhotoCheck.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: expect.objectContaining({ model: 'yolov8n-pose+claude-haiku-4-5' }) });
 
     b.create.mockClear();
     await b.service.checkFrame('p-1', 'FRONT', JPEG.toString('base64'));
@@ -255,5 +284,20 @@ describe('PhotoCheckService with the YOLO pose model (the default)', () => {
     jest.spyOn(require('./pose-geometry'), 'observe').mockReturnValue({ personCount: 1, faceVisible: true, headToToeVisible: true, pose: 'front', bulkyOrBaggyClothing: false, quality: 'good', notARealPhoto: false });
     b.create.mockRejectedValue(new Error('overloaded'));
     expect(await b.service.check('p-1', 'f-1', 'FRONT')).toMatchObject({ outcome: 'PASS' });
+  });
+});
+
+describe('PhotoCheckService.markSentForReview', () => {
+  it('marks the latest check of a failed photo, and nothing else', async () => {
+    const { service, prisma } = build();
+    prisma.bodyPhotoCheck.update = jest.fn();
+    prisma.bodyPhotoCheck.findFirst.mockResolvedValue({ id: 'c-9', outcome: 'FAIL' });
+    await service.markSentForReview('p-1', 'f-1', 'FRONT');
+    expect(prisma.bodyPhotoCheck.update).toHaveBeenCalledWith({ where: { id: 'c-9' }, data: { sentForReview: true } });
+
+    prisma.bodyPhotoCheck.update.mockClear();
+    prisma.bodyPhotoCheck.findFirst.mockResolvedValue({ id: 'c-9', outcome: 'PASS' });
+    await service.markSentForReview('p-1', 'f-1', 'FRONT');
+    expect(prisma.bodyPhotoCheck.update).not.toHaveBeenCalled();
   });
 });

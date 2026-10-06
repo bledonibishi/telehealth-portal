@@ -717,14 +717,16 @@ model UploadedFile {
 // (see onboarding/photo-check.ts), never free text from the model. `fileId` is a plain id, not a
 // relation: a photo that is retaken is deleted, and its check stays as a record of what was tried.
 model BodyPhotoCheck {
-  id        String            @id @default(cuid())
-  patientId String            @map("patient_id")
-  fileId    String            @map("file_id")
-  view      BodyPhotoView
-  outcome   PhotoCheckOutcome
-  issues    String[]
-  model     String?
-  createdAt DateTime          @default(now()) @map("created_at")
+  id            String            @id @default(cuid())
+  patientId     String            @map("patient_id")
+  fileId        String            @map("file_id")
+  view          BodyPhotoView
+  outcome       PhotoCheckOutcome
+  issues        String[]
+  model         String?
+  /// The patient, after failing repeatedly, asked for a clinician to look at this photo instead of retaking it.
+  sentForReview Boolean           @default(false) @map("sent_for_review")
+  createdAt     DateTime          @default(now()) @map("created_at")
 
   patient Patient @relation(fields: [patientId], references: [id])
 

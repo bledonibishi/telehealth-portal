@@ -6,6 +6,12 @@ import { INPUT_SIZE, type Person, decode, letterbox } from './pose-geometry';
 
 export const DEFAULT_MODEL_PATH = join(process.cwd(), 'models', 'yolov8n-pose.onnx');
 
+/** The size of an image once its EXIF orientation is applied: orientations 5 to 8 turn it a quarter turn. */
+export function orientedSize(meta: { width?: number; height?: number; orientation?: number }) {
+  const turned = (meta.orientation ?? 1) >= 5;
+  return turned ? { width: meta.height, height: meta.width } : { width: meta.width, height: meta.height };
+}
+
 export interface PoseResult {
   width: number;
   height: number;
@@ -69,9 +75,10 @@ export class PoseDetector implements PoseDetecting {
     const model = await this.load();
     if (!model || !this.sharp) throw new Error('The pose model is not available');
 
-    // `rotate()` applies the phone's orientation tag, so a portrait photo is not read sideways.
+    // `rotate()` applies the phone's orientation tag, so a portrait photo is not read sideways. The size reported
+    // is that of the file as stored, so it is turned around too for the orientations that swap the sides.
     const decoded = this.sharp(image).rotate();
-    const { width, height } = await decoded.metadata();
+    const { width, height } = orientedSize(await this.sharp(image).metadata());
     if (!width || !height) throw new Error('Could not read the image');
     const lb = letterbox(width, height);
     const pixels = await decoded

@@ -82,6 +82,28 @@ describe('UploadsService storage', () => {
   });
 });
 
+describe('UploadsService.remove', () => {
+  const build = () => {
+    const prisma: any = { uploadedFile: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+    const storage = { put: jest.fn(), get: jest.fn(), delete: jest.fn().mockResolvedValue(undefined) };
+    return { prisma, storage, service: new UploadsService(prisma, { get: jest.fn() } as any, storage) };
+  };
+
+  it('deletes the stored bytes first, then the record', async () => {
+    const { service, prisma, storage } = build();
+    await service.remove({ id: 'f-1', storageKey: 'k' });
+    expect(storage.delete).toHaveBeenCalledWith('k');
+    expect(storage.delete.mock.invocationCallOrder[0]).toBeLessThan(prisma.uploadedFile.deleteMany.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the record when the bytes cannot be deleted, so the file can still be found and removed later', async () => {
+    const { service, prisma, storage } = build();
+    storage.delete.mockRejectedValue(new Error('S3 down'));
+    await expect(service.remove({ id: 'f-1', storageKey: 'k' })).rejects.toThrow('S3 down');
+    expect(prisma.uploadedFile.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('looksLikeImage', () => {
   it('recognises JPEG, PNG, WebP and HEIC, and nothing else', () => {
     expect(looksLikeImage(JPEG)).toBe(true);

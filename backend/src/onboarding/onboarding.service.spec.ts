@@ -13,10 +13,12 @@ function build(row = submission()) {
       update: jest.fn(({ data }) => Promise.resolve({ ...row, ...data })),
     },
     uploadedFile: { findUnique: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'new' }]),
+    $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
     bodyPhotoCheck: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const uploads: any = { findOwned: jest.fn().mockResolvedValue({ id: 'new', patientId: 'p-1' }), remove: jest.fn() };
-  const photoCheck: any = { assertSavable: jest.fn().mockResolvedValue(undefined), viewsToRetake: jest.fn().mockResolvedValue([]) };
+  const photoCheck: any = { assertSavable: jest.fn().mockResolvedValue(undefined), viewsToRetake: jest.fn().mockResolvedValue([]), markSentForReview: jest.fn().mockResolvedValue(undefined) };
   const service = new OnboardingService(prisma, {} as any, {} as any, photoCheck, uploads);
   return { service, prisma, uploads, photoCheck };
 }
@@ -34,6 +36,7 @@ describe('OnboardingService body photos', () => {
     const { service, prisma, photoCheck } = build();
     await service.saveBodyPhoto('p-1', { view: 'SIDE' as any, fileId: 'new', sendForReview: true });
     expect(photoCheck.assertSavable).toHaveBeenCalledWith('p-1', 'new', 'SIDE', true);
+    expect(photoCheck.markSentForReview).toHaveBeenCalledWith('p-1', 'new', 'SIDE', expect.anything());
     expect(prisma.onboardingSubmission.update.mock.calls[0][0].data).toHaveProperty('bodyPhotoSideFileId', 'new');
   });
 
@@ -42,6 +45,38 @@ describe('OnboardingService body photos', () => {
     photoCheck.assertSavable.mockRejectedValue(new Error('please retake it'));
     await expect(service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' })).rejects.toThrow('retake');
     expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+  });
+
+  it('does not record a review request for a photo that simply passed', async () => {
+    const { service, photoCheck } = build();
+    await service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' });
+    expect(photoCheck.markSentForReview).not.toHaveBeenCalled();
+  });
+
+  it('cannot change photos once the application is with a clinician or approved', async () => {
+    for (const status of ['PENDING_REVIEW', 'APPROVED']) {
+      const { service, prisma, uploads } = build(submission({ status, bodyPhotoFrontFileId: 'old' }));
+      await expect(service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' })).rejects.toThrow(/can’t be changed/);
+      await expect(service.saveBodyPhotosStep('p-1', { bodyPhotoFrontFileId: 'f', bodyPhotoSideFileId: 's' })).rejects.toThrow(/can’t be changed/);
+      expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+      expect(uploads.remove).not.toHaveBeenCalled(); // the photo under review is not deleted
+    }
+    const { service } = build(submission({ status: 'REJECTED' }));
+    await expect(service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' })).resolves.toBeDefined();
+  });
+
+  it('cannot attach a photo the orphan cleanup has just deleted', async () => {
+    const { service, prisma } = build();
+    prisma.$queryRaw.mockResolvedValue([]);
+    await expect(service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' })).rejects.toThrow(/not found/i);
+    expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+  });
+
+  it('still saves the new photo if the old one cannot be deleted (the cleanup finds it later)', async () => {
+    const { service, prisma, uploads } = build(submission({ bodyPhotoFrontFileId: 'old' }));
+    prisma.uploadedFile.findUnique.mockResolvedValue({ id: 'old', patientId: 'p-1', storageKey: 'k' });
+    uploads.remove.mockRejectedValue(new Error('storage down'));
+    await expect(service.saveBodyPhoto('p-1', { view: 'FRONT' as any, fileId: 'new' })).resolves.toBeDefined();
   });
 
   it('deletes the photo it replaces, but only the patient’s own', async () => {
