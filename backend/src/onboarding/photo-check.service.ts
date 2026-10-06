@@ -16,7 +16,7 @@ export const DEFAULT_DAILY_LIMIT = 20;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** After this many failed checks on one view, the patient may send the photo for a clinician to look at instead. */
 export const FAILS_BEFORE_MANUAL_REVIEW = 2;
-/** Live guidance while the camera is open: a small frame every second or so. Free with the local pose model; the limits protect the server (and the bill, with the Claude provider). */
+/** Live guidance while the camera is open: a small frame every second or so. Only with the local pose model (free); the limits protect the server. */
 export const FRAMES_PER_MINUTE = 90;
 export const FRAMES_PER_HOUR = 1500;
 /** A live frame is a ~480px JPEG (tens of KB); anything much bigger is not one. */
@@ -167,10 +167,11 @@ export class PhotoCheckService implements OnModuleInit {
   async check(patientId: string, fileId: string, view: BodyPhotoView): Promise<PhotoCheckResult> {
     const file = await this.uploads.findOwned(patientId, fileId, [KIND_OF[view]]);
 
+    // The check is written down before it runs, and counted with the others: requests that arrive together
+    // each see the others in the count, so they can't all slip under the daily limit.
+    const entry = await this.prisma.bodyPhotoCheck.create({ data: { patientId, fileId, view, outcome: 'UNCHECKED', issues: [] } });
     const outcome = await this.judge(patientId, file, view);
-    await this.prisma.bodyPhotoCheck.create({
-      data: { patientId, fileId, view, outcome: outcome.outcome, issues: outcome.issues, model: outcome.model ?? null },
-    });
+    await this.prisma.bodyPhotoCheck.update({ where: { id: entry.id }, data: { outcome: outcome.outcome, issues: outcome.issues, model: outcome.model ?? null } });
     const failed = outcome.outcome === 'FAIL' ? await this.failedChecks(patientId, view) : 0;
     return {
       outcome: outcome.outcome,
@@ -212,10 +213,17 @@ export class PhotoCheckService implements OnModuleInit {
     for (const view of ['FRONT', 'SIDE'] as const) {
       const fileId = saved[view];
       if (!fileId) continue;
-      const latest = await this.prisma.bodyPhotoCheck.findFirst({ where: { patientId, fileId, view }, orderBy: { createdAt: 'desc' }, select: { outcome: true } });
-      if (!latest || latest.outcome === 'UNCHECKED') out.push(view);
+      const latest = await this.prisma.bodyPhotoCheck.findFirst({ where: { patientId, fileId, view }, orderBy: { createdAt: 'desc' }, select: { outcome: true, sentForReview: true } });
+      // A failed photo stays only if the patient asked for a clinician to look at it.
+      if (!latest || latest.outcome === 'UNCHECKED' || (latest.outcome === 'FAIL' && !latest.sentForReview)) out.push(view);
     }
     return out;
+  }
+
+  /** Records that the patient, after repeated failures, asked for a clinician to review this failed photo. */
+  async markSentForReview(patientId: string, fileId: string, view: BodyPhotoView, db: Pick<PrismaService, 'bodyPhotoCheck'> = this.prisma) {
+    const latest = await db.bodyPhotoCheck.findFirst({ where: { patientId, fileId, view }, orderBy: { createdAt: 'desc' }, select: { id: true, outcome: true } });
+    if (latest?.outcome === 'FAIL') await db.bodyPhotoCheck.update({ where: { id: latest.id }, data: { sentForReview: true } });
   }
 
   private async judge(patientId: string, file: { id: string; storageKey: string }, view: BodyPhotoView): Promise<Judged> {
@@ -223,7 +231,7 @@ export class PhotoCheckService implements OnModuleInit {
     if (!(await this.usable())) return unchecked('NOT_CONFIGURED');
 
     const recent = await this.prisma.bodyPhotoCheck.count({ where: { patientId, createdAt: { gte: new Date(Date.now() - 86_400_000) } } });
-    if (recent >= this.dailyLimit) {
+    if (recent > this.dailyLimit) {
       this.logger.warn(`Patient ${patientId} is over the daily photo-check limit`);
       return unchecked('LIMIT');
     }
@@ -310,6 +318,9 @@ export class PhotoCheckService implements OnModuleInit {
    */
   async checkFrame(patientId: string, view: BodyPhotoView, imageBase64: string): Promise<{ available: boolean; ready: boolean; messages: string[] }> {
     const none = { available: false, ready: false, messages: [] as string[] };
+    // Live tips come from the local pose model only: with Claude as the provider they would be a billed call every
+    // second or so, outside the daily limit. The photo that is taken is still checked in full.
+    if (this.provider !== 'yolo') return none;
     if (imageBase64.length > MAX_FRAME_BASE64 || !(await this.usable())) return none;
     if (!this.allowFrame(patientId)) return none;
 

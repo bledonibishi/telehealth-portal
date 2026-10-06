@@ -30,4 +30,16 @@ describe('observe: is the whole body in the frame?', () => {
   it('rejects an upper-body crop: the ankles are not seen', () => {
     expect(observe([person([245, 132], [294, 1100], [47, 16, 432, 1217], 0.1)], 482, 1217).headToToeVisible).toBe(false);
   });
+
+  it('rejects a photo where one foot is in the frame and the other is cut off', () => {
+    const lone = person([245, 132], [294, 1115], [47, 16, 432, 1205]);
+    lone.keypoints[16] = { ...lone.keypoints[16], c: 0.04 }; // the right ankle is out of the frame
+    expect(observe([lone], 482, 1217).headToToeVisible).toBe(false);
+  });
+
+  it('accepts a side view where the far foot is hidden behind the near one, as long as it still shows a sign of being there', () => {
+    const side = person([245, 132], [294, 1115], [47, 16, 432, 1205]);
+    side.keypoints[16] = { ...side.keypoints[16], c: 0.4 };
+    expect(observe([side], 482, 1217).headToToeVisible).toBe(true);
+  });
 });

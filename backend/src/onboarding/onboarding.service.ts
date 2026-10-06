@@ -33,12 +33,12 @@ export class OnboardingService {
     private uploads: UploadsService,
   ) {}
 
-  /** The latest check of each body photo that is currently saved, for the clinician reviewing it. */
   /** The saved body photos that would be turned away at submission, so the app can send the patient back to them. */
   bodyPhotosToRetake(row: { patientId: string; bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }) {
     return this.photoCheck.viewsToRetake(row.patientId, { FRONT: row.bodyPhotoFrontFileId, SIDE: row.bodyPhotoSideFileId });
   }
 
+  /** The latest check of each body photo that is currently saved, for the clinician reviewing it. */
   async checksOf(row: { patientId: string; bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }) {
     const saved = [row.bodyPhotoFrontFileId, row.bodyPhotoSideFileId].filter((id): id is string => !!id);
     if (!saved.length) return [];
@@ -83,6 +83,13 @@ export class OnboardingService {
     return this.toModel(updated);
   }
 
+  /** Photos can change only while the application is the patient's: not while a clinician is looking at it, nor after. */
+  private assertEditable(existing: { status: string }) {
+    if (existing.status !== OnboardingStatus.IN_PROGRESS && existing.status !== OnboardingStatus.REJECTED) {
+      throw new BadRequestException('Your application has been sent to our clinical team, so its photos can’t be changed now');
+    }
+  }
+
   /** Both photos at once, for older app versions. They still have to have been checked here and passed. */
   async saveBodyPhotosStep(patientId: string, input: SaveBodyPhotosStepInput) {
     await this.uploads.findOwned(patientId, input.bodyPhotoFrontFileId, [UploadKind.BODY_PHOTO_FRONT]);
@@ -90,6 +97,7 @@ export class OnboardingService {
     await this.photoCheck.assertSavable(patientId, input.bodyPhotoFrontFileId, 'FRONT', false);
     await this.photoCheck.assertSavable(patientId, input.bodyPhotoSideFileId, 'SIDE', false);
     const existing = await this.getOrCreateForPatient(patientId);
+    this.assertEditable(existing);
     const stepFeedback = existing.stepFeedback as StepFeedback[];
     const updated = await this.prisma.onboardingSubmission.update({
       where: { patientId },
@@ -112,16 +120,30 @@ export class OnboardingService {
     await this.photoCheck.assertSavable(patientId, input.fileId, input.view, !!input.sendForReview);
 
     const existing = await this.getOrCreateForPatient(patientId);
+    this.assertEditable(existing);
     const column = input.view === 'FRONT' ? 'bodyPhotoFrontFileId' : 'bodyPhotoSideFileId';
     const previous: string | null = existing[column];
     const stepFeedback = existing.stepFeedback as StepFeedback[];
-    const updated = await this.prisma.onboardingSubmission.update({
-      where: { patientId },
-      data: { [column]: input.fileId, stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)) },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The new photo's record is locked while it is attached, the same lock the orphan cleanup takes before it
+      // deletes: so the photo is either attached first (and cleanup leaves it) or already gone (and this fails).
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM uploaded_files WHERE id = ${input.fileId} FOR UPDATE`;
+      if (!locked.length) throw new NotFoundException('File not found');
+      if (input.sendForReview) await this.photoCheck.markSentForReview(patientId, input.fileId, input.view, tx);
+      return tx.onboardingSubmission.update({
+        where: { patientId },
+        data: { [column]: input.fileId, stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)) },
+      });
     });
     if (previous && previous !== input.fileId) {
       const old = await this.prisma.uploadedFile.findUnique({ where: { id: previous } });
-      if (old && old.patientId === patientId) await this.uploads.remove(old);
+      if (old && old.patientId === patientId) {
+        try {
+          await this.uploads.remove(old);
+        } catch {
+          // The new photo is saved; the old one is left unreferenced, and the orphan cleanup removes it later.
+        }
+      }
     }
     return this.toModel(updated);
   }

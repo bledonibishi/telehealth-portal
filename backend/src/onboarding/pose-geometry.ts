@@ -67,6 +67,8 @@ export const PERSON_CONFIDENCE = 0.5;
 /** A second person only counts if they are at least this tall compared to the first. */
 export const SECOND_PERSON_MIN_HEIGHT = 0.4;
 export const VISIBLE = 0.5;
+/** The less sure of the two ankles must still reach this: a foot out of the frame scores near zero. */
+export const HIDDEN_FOOT = 0.25;
 /**
  * Room needed beyond the keypoints, as a share of the nose-to-ankle distance: a head reaches ~0.1 above the nose and
  * a foot ~0.08 below the ankle, so less room than this means the head or the feet are cut off by the frame. (The
@@ -94,9 +96,11 @@ export function observe(people: Person[], width: number, height: number): PhotoO
   const seen = (i: number, min = VISIBLE) => k[i].c >= min;
 
   const faceVisible = seen(KP.nose) && (seen(KP.lEye, 0.4) || seen(KP.rEye, 0.4));
-  const feet = Math.max(k[KP.lAnkle].c, k[KP.rAnkle].c) >= VISIBLE;
+  // Both feet have to be in the picture: one foot seen and the other cut off by the frame is not head to toe. (From
+  // the side one foot is often behind the other, so the hidden one only needs a weaker sign of being there.)
+  const feet = Math.max(k[KP.lAnkle].c, k[KP.rAnkle].c) >= VISIBLE && Math.min(k[KP.lAnkle].c, k[KP.rAnkle].c) >= HIDDEN_FOOT;
   const headSeen = seen(KP.nose) || seen(KP.lEar) || seen(KP.rEar);
-  const ankles = [KP.lAnkle, KP.rAnkle].filter((i) => seen(i));
+  const ankles = [KP.lAnkle, KP.rAnkle].filter((i) => seen(i, HIDDEN_FOOT));
   const span = ankles.length && seen(KP.nose) ? Math.max(...ankles.map((i) => k[i].y)) - k[KP.nose].y : 0;
   const insideFrame = span > 0 && k[KP.nose].y >= HEAD_ROOM * span && height - Math.max(...ankles.map((i) => k[i].y)) >= FOOT_ROOM * span;
   const headToToeVisible = headSeen && feet && insideFrame;

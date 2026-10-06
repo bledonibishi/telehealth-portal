@@ -108,10 +108,13 @@ export class UploadsService {
     return file;
   }
 
-  /** Deletes a file's bytes and its record (a retaken photo, so a discarded body photo doesn't linger). */
+  /**
+   * Deletes a file's bytes and its record (a retaken photo, so a discarded body photo doesn't linger). The bytes
+   * go first: if the storage fails, the record stays, so the file can still be found and removed later.
+   */
   async remove(file: { id: string; storageKey: string }): Promise<void> {
-    await this.prisma.uploadedFile.deleteMany({ where: { id: file.id } });
     await this.storage.delete(file.storageKey);
+    await this.prisma.uploadedFile.deleteMany({ where: { id: file.id } });
   }
 
   async readContents(file: { storageKey: string }): Promise<Buffer> {
