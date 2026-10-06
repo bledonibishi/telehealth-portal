@@ -7,6 +7,8 @@ import { PersonaService } from './persona.service';
 import { PhotoReviewService } from './photo-review.service';
 import { ProofReaderService } from './proof-reader.service';
 import { PrescriptionProofReviewService } from './prescription-proof-review.service';
+import { PhotoCheckService } from './photo-check.service';
+import { PoseDetector } from './pose-detector';
 
 @Module({
   imports: [PrismaModule, UploadsModule],
@@ -15,6 +17,8 @@ import { PrescriptionProofReviewService } from './prescription-proof-review.serv
     OnboardingResolver,
     PersonaService,
     PhotoReviewService,
+    PhotoCheckService,
+    PoseDetector,
     ProofReaderService,
     PrescriptionProofReviewService,
   ],

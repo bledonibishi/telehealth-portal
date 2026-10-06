@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
@@ -28,6 +28,7 @@ export default function OnboardingLandingPage() {
   });
 
   const o = data?.myOnboarding;
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
@@ -39,12 +40,20 @@ export default function OnboardingLandingPage() {
 
   const idPhotoDone = !!o.idDocumentUrl && !!o.selfieUrl;
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
+  // Photos are saved one at a time, so a step can be half done: say which part is left.
+  const idHave = [o.idDocumentUrl, o.selfieUrl].filter(Boolean).length;
+  const bodyHave = [o.bodyPhotoFrontUrl, o.bodyPhotoSideUrl].filter(Boolean).length;
+  const idPhotoHint = idHave === 1 ? (o.idDocumentUrl ? 'ID saved — your selfie is left' : 'Selfie saved — your ID is left') : 'A government ID and a selfie';
+  const bodyPhotoHint = bodyHave === 1 ? (o.bodyPhotoFrontUrl ? 'Front photo saved — your side photo is left' : 'Side photo saved — your front photo is left') : 'Two full body photos, front and side';
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
+  const retakeViews: string[] = o.bodyPhotosToRetake ?? [];
   const feedbackFor = (key: StepKey) =>
     key === 'medical-questionnaire'
       ? questionnaireFeedback
-      : clinicianNote(STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
+      : key === 'body-photo' && retakeViews.length
+        ? `Please retake your ${retakeViews.map((v) => (v === 'FRONT' ? 'front' : 'side')).join(' and ')} photo — it hasn’t passed our photo check`
+        : clinicianNote(STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
 
   // The questionnaire creates the consultation a doctor reviews.
   const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
@@ -53,9 +62,8 @@ export default function OnboardingLandingPage() {
     ? 'A clinician has asked for more information — please review your answers'
     : undefined;
 
-  // The proof is checked against the questionnaire's answers, so it comes after it. Uploaded proof
-  // whose automatic check found mismatches counts as done (it doesn't block submitting — a
-  // clinician reviews it) but is marked as needing attention.
+  // The proof is checked against the questionnaire's answers, so it comes after it. Proof whose
+  // automatic check found mismatches blocks submitting, so it's marked as needing attention.
   const prescriptionProofDone =
     questionnaireDone &&
     (o.priorMedicationUse === false || (!!o.priorMedicationUse && (!!o.prescriptionProofUrl || o.prescriptionProofUnavailable)));
@@ -78,8 +86,8 @@ export default function OnboardingLandingPage() {
       hint: 'Your health, medicines and measurements',
       done: questionnaireDone,
     },
-    { key: 'id-photo', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
-    { key: 'body-photo', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
+    { key: 'id-photo', label: 'ID Photo', hint: idPhotoHint, done: idPhotoDone },
+    { key: 'body-photo', label: 'Full body photo', hint: bodyPhotoHint, done: bodyPhotoDone },
     {
       key: 'prescription-proof',
       label: 'Proof of prescription',
@@ -105,7 +113,7 @@ export default function OnboardingLandingPage() {
   if (o.status === 'PENDING_REVIEW') {
     return (
       <div className="text-center py-10">
-        <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-2xl mx-auto mb-4">⏳</div>
+        <div className="w-14 h-14 rounded-full bg-ink-50 text-ink-700 flex items-center justify-center text-2xl mx-auto mb-4">⏳</div>
         <h1 className="text-xl font-bold text-slate-900">Under review</h1>
         <p className="text-sm text-slate-500 mt-2">
           Thanks — your documents are with our clinical team. We&rsquo;ll notify you as soon as they&rsquo;re reviewed.
@@ -115,7 +123,12 @@ export default function OnboardingLandingPage() {
   }
 
   const handleSubmit = async () => {
-    await submitOnboarding();
+    setSubmitError('');
+    try {
+      await submitOnboarding();
+    } catch (err: any) {
+      setSubmitError(err.message ?? 'We couldn’t submit your application. Please try again.');
+    }
   };
 
   return (
@@ -127,7 +140,7 @@ export default function OnboardingLandingPage() {
         </div>
       )}
 
-      <span className="inline-block text-xs font-semibold text-brand-700 bg-brand-50 border border-brand-100 rounded-full px-3 py-1 mb-4">
+      <span className="inline-block text-xs font-semibold text-ink-800 bg-ink-50 border border-ink-100 rounded-full px-3 py-1 mb-4">
         About 6 minutes
       </span>
 
@@ -150,7 +163,7 @@ export default function OnboardingLandingPage() {
                   : s.attention
                     ? 'bg-amber-50 text-amber-700'
                     : s.done
-                    ? 'bg-brand-50 text-brand-600'
+                    ? 'bg-ink-50 text-ink-700'
                     : 'bg-slate-100 text-slate-500'
               }`}
             >
@@ -168,13 +181,15 @@ export default function OnboardingLandingPage() {
       </div>
 
       <p className="text-xs text-slate-400 text-center mt-6">
-        Your data is encrypted. A clinician reviews every application personally.
+        Your progress is saved as you go — you can leave and pick up where you stopped. A clinician reviews every application personally.
       </p>
+
+      {submitError && <p role="alert" className="mt-6 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">{submitError}</p>}
 
       <button
         onClick={() => (allDone ? handleSubmit() : router.push(`/onboarding/${firstIncomplete!.key}`))}
         disabled={submitting}
-        className="w-full mt-8 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+        className="w-full mt-8 bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
       >
         {submitting ? 'Submitting…' : allDone ? 'Submit for review' : 'Resume'}
         {!submitting && <span>›</span>}

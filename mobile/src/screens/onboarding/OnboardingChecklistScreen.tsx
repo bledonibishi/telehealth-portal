@@ -1,11 +1,15 @@
-import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '../../graphql/onboarding';
-import { MY_CONSULTATIONS } from '../../graphql/operations';
+import { ME_BASIC_INFO, MY_CONSULTATIONS } from '../../graphql/operations';
+import { signOut } from '../../lib/session';
 import { colors } from '../../theme';
 
-type StepKey = 'MedicalQuestionnaire' | 'IdPhoto' | 'BodyPhoto' | 'PrescriptionProof';
+// While the application is with a doctor, look again this often: the screen moves on by itself once they decide.
+const REVIEW_POLL_MS = 15_000;
+
+type StepKey = 'BasicInformation' | 'MedicalQuestionnaire' | 'IdPhoto' | 'BodyPhoto' | 'PrescriptionProof';
 
 const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   IdPhoto: 'ID_PHOTO',
@@ -17,22 +21,34 @@ const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
 const clinicianNote = (reason?: string) => (reason ? `Clinician: “${reason}”` : undefined);
 
 export function OnboardingChecklistScreen({ navigation }: any) {
-  const { data, loading, error, refetch } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
-  // The questionnaire creates the consultation a doctor reviews.
-  const { data: consultationsData, refetch: refetchConsultations } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
   });
+  const { data: meData, refetch: refetchMe } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
+  const { data: consultData, refetch: refetchConsults } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const [submitError, setSubmitError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const o = data?.myOnboarding;
 
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.all([refetch(), refetchMe(), refetchConsults()]).catch(() => undefined);
+    setRefreshing(false);
+  };
+
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      refetch();
-      refetchConsultations();
-    });
+    if (o?.status !== 'PENDING_REVIEW') return;
+    startPolling(REVIEW_POLL_MS);
+    return stopPolling;
+  }, [o?.status, startPolling, stopPolling]);
+
+  useEffect(() => {
+    // Coming back from a step shows where things stand now.
+    const unsubscribe = navigation.addListener('focus', () => { refetch(); refetchMe(); refetchConsults(); });
     return unsubscribe;
-  }, [navigation, refetch, refetchConsultations]);
+  }, [navigation, refetch, refetchMe, refetchConsults]);
 
   useEffect(() => {
     if (o?.status === 'APPROVED') {
@@ -46,32 +62,47 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   const idPhotoDone = !!o.idDocumentUrl && !!o.selfieUrl;
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
-  const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
+  // Photos are saved one at a time, so a step can be half done: say which part is left.
+  const idHave = [o.idDocumentUrl, o.selfieUrl].filter(Boolean).length;
+  const bodyHave = [o.bodyPhotoFrontUrl, o.bodyPhotoSideUrl].filter(Boolean).length;
+  const idHint = idHave === 1 ? (o.idDocumentUrl ? 'ID saved — your selfie is left' : 'Selfie saved — your ID is left') : 'A government ID and a selfie';
+  const bodyHint = bodyHave === 1 ? (o.bodyPhotoFrontUrl ? 'Front photo saved — your side photo is left' : 'Side photo saved — your front photo is left') : 'Two full body photos, front and side';
+  const retakeViews: string[] = o.bodyPhotosToRetake ?? [];
+
+  const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
+  // The questionnaire creates the consultation a doctor reviews.
+  const consultations: { status: string }[] = consultData?.myConsultations ?? [];
   const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
   const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
     ? 'A clinician has asked for more information — please review your answers'
     : undefined;
+  const me = meData?.me;
+  const basicDone = !!(me?.addressLine1 && me?.city && me?.postcode && me?.phone);
 
-  // The proof is checked against the questionnaire's answers, so it comes after it. Uploaded proof
-  // whose automatic check found mismatches counts as done (it doesn't block submitting — a
-  // clinician reviews it) but is marked as needing attention.
+  // The proof is checked against the questionnaire's answers, so it comes after it.
   const prescriptionProofDone =
     questionnaireDone &&
     (o.priorMedicationUse === false || (!!o.priorMedicationUse && (!!o.prescriptionProofUrl || o.prescriptionProofUnavailable)));
+  // Proof whose automatic check found mismatches blocks submitting until it's fixed or the patient
+  // chooses to continue without proof, so it isn't done — it's marked as needing attention.
   const proofNeedsAttention =
     prescriptionProofDone &&
     !!o.priorMedicationUse &&
     !o.prescriptionProofUnavailable &&
     ['REUPLOAD', 'CONTACT_US'].includes(o.prescriptionProofReview?.nextStep);
 
-  const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
   const feedbackFor = (key: StepKey) =>
-    key === 'MedicalQuestionnaire' ? questionnaireFeedback : clinicianNote(stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
+    key === 'MedicalQuestionnaire'
+      ? questionnaireFeedback
+      : key === 'BodyPhoto' && retakeViews.length
+      ? `Please retake your ${retakeViews.map((v) => (v === 'FRONT' ? 'front' : 'side')).join(' and ')} photo — it hasn’t passed our photo check`
+      : clinicianNote(stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
 
   const baseSteps: { key: StepKey; label: string; hint: string; done: boolean; attention?: boolean }[] = [
+    { key: 'BasicInformation', label: 'Basic information', hint: 'Your details and where we send your treatment', done: basicDone },
     { key: 'MedicalQuestionnaire', label: 'Medical questionnaire', hint: 'Your health, medicines and measurements', done: questionnaireDone },
-    { key: 'IdPhoto', label: 'ID Photo', hint: 'A government ID and a selfie', done: idPhotoDone },
-    { key: 'BodyPhoto', label: 'Full body photo', hint: 'Two full body photos, front and side', done: bodyPhotoDone },
+    { key: 'IdPhoto', label: 'ID Photo', hint: idHint, done: idPhotoDone },
+    { key: 'BodyPhoto', label: 'Full body photo', hint: bodyHint, done: bodyPhotoDone },
     {
       key: 'PrescriptionProof',
       label: 'Proof of prescription',
@@ -82,35 +113,37 @@ export function OnboardingChecklistScreen({ navigation }: any) {
           : proofNeedsAttention
             ? 'Details didn’t match — fix to submit'
             : 'Only if you’ve used this medication before',
-      // Not done while the proof doesn't match: submitting is blocked until it's fixed, or the
-      // patient chooses to continue without proof.
       done: prescriptionProofDone && !proofNeedsAttention,
       attention: proofNeedsAttention,
     },
   ];
 
   const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
-  const open = (key: StepKey) => navigation.navigate(key, key === 'MedicalQuestionnaire' ? { fromOnboarding: true } : undefined);
 
   const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
 
   if (o.status === 'PENDING_REVIEW') {
     return (
-      <View style={styles.center}>
+      <ScrollView contentContainerStyle={styles.pendingWrap} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
         <View style={styles.pendingIcon}>
           <Text style={{ fontSize: 24 }}>⏳</Text>
         </View>
         <Text style={styles.pendingTitle}>Under review</Text>
         <Text style={styles.pendingBody}>
-          Thanks — your documents are with our clinical team. We&rsquo;ll notify you once they&rsquo;re reviewed.
+          Thanks — your documents are with our clinical team. We&rsquo;ll notify you once they&rsquo;re reviewed, and this screen updates by itself.
         </Text>
-      </View>
+        {o.submittedAt && <Text style={styles.pendingMeta}>Sent {new Date(o.submittedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</Text>}
+        <Text style={styles.pendingMeta}>Pull down to check now.</Text>
+        <TouchableOpacity style={styles.signOut} onPress={signOut}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
       {o.status === 'REJECTED' && (
         <View style={styles.rejectedBox}>
           <Text style={styles.rejectedTitle}>Your submission needs another look</Text>
@@ -133,21 +166,11 @@ export function OnboardingChecklistScreen({ navigation }: any) {
       <Text style={styles.sectionLabel}>What&rsquo;s left</Text>
 
       <View style={styles.card}>
-        <View style={[styles.row, styles.rowBorder]}>
-          <View style={[styles.stepIcon, styles.stepIconDone]}>
-            <Text style={styles.stepIconText}>✓</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.stepLabel}>Basic information</Text>
-            <Text style={styles.stepHint}>Completed</Text>
-          </View>
-        </View>
-
         {steps.map((s, i) => (
           <TouchableOpacity
             key={s.key}
             style={[styles.row, i < steps.length - 1 && styles.rowBorder]}
-            onPress={() => open(s.key)}
+            onPress={() => navigation.navigate(s.key)}
           >
             <View
               style={[
@@ -165,7 +188,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
                   s.needsChanges && styles.stepIconTextRejected,
                 ]}
               >
-                {s.needsChanges || s.attention ? '!' : s.done ? '✓' : i + 2}
+                {s.needsChanges || s.attention ? '!' : s.done ? '✓' : i + 1}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
@@ -180,15 +203,29 @@ export function OnboardingChecklistScreen({ navigation }: any) {
       </View>
 
       <Text style={styles.footnote}>
-        Your data is encrypted. A clinician reviews every application personally.
+        Your progress is saved as you go — you can leave and pick up where you stopped. Your data is encrypted, and a clinician reviews every application personally.
       </Text>
+
+      {!!submitError && <Text style={styles.submitError}>{submitError}</Text>}
 
       <TouchableOpacity
         style={[styles.cta, submitting && styles.ctaDisabled]}
         disabled={submitting}
-        onPress={() => (allDone ? submitOnboarding() : open(firstIncomplete!.key))}
+        onPress={async () => {
+          if (!allDone) return navigation.navigate(firstIncomplete!.key);
+          setSubmitError('');
+          try {
+            await submitOnboarding();
+          } catch (err: any) {
+            setSubmitError(err?.message ?? 'We couldn’t submit your application. Please try again.');
+          }
+        }}
       >
         <Text style={styles.ctaText}>{submitting ? 'Submitting…' : allDone ? 'Submit for review' : 'Resume'}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.signOut} onPress={signOut}>
+        <Text style={styles.signOutText}>Save and sign out</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -199,6 +236,11 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   error: { color: '#f43f5e', margin: 16 },
+  pendingWrap: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  pendingMeta: { fontSize: 12, color: '#9ca3af', marginTop: 10 },
+  submitError: { color: '#be123c', backgroundColor: '#fff1f2', borderRadius: 12, padding: 10, fontSize: 13, marginTop: 16 },
+  signOut: { alignItems: 'center', paddingVertical: 14, marginTop: 8 },
+  signOutText: { color: '#6b7280', fontSize: 14, fontWeight: '500' },
   pendingIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.brand50, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   pendingTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
   pendingBody: { fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 8, lineHeight: 20 },

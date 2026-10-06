@@ -21,3 +21,10 @@
 @media (prefers-reduced-motion: reduce) {
   [class*='animate-[proof-mark'], [class*='animate-[proof-pulse'] { animation: none !important; }
 }
+
+/* Camera flash and the "checking your photo" sweep (onboarding). */
+@keyframes fadeout { from { opacity: 0.9; } to { opacity: 0; } }
+@keyframes scan { 0% { top: 4%; } 50% { top: 92%; } 100% { top: 4%; } }
+@media (prefers-reduced-motion: reduce) {
+  .scan-line { animation: none !important; }
+}

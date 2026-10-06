@@ -50,6 +50,11 @@ export const ONBOARDING_FIELDS = gql`
     }
     submittedAt
     reviewedAt
+    bodyPhotoChecks {
+      view
+      outcome
+      issues
+    }
     stepFeedback {
       step
       approved

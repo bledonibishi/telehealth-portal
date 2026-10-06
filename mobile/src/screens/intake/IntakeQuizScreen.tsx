@@ -35,8 +35,8 @@ function toAnswer(q: Question, selected: string[]) {
 // Questions come from the backend (the same questionnaire the web portal
 // shows); the server re-validates every answer and decides what it means.
 export function IntakeQuizScreen({ navigation, route }: any) {
-  // Opened from the onboarding checklist: go back there when done, not to the Status tab.
-  const fromOnboarding = !!route?.params?.fromOnboarding;
+  // The same questionnaire is a step of onboarding (then "done" goes back to the checklist) and a tab afterwards.
+  const inOnboarding = route?.name === 'MedicalQuestionnaire';
   const { data: kindData, loading: kindLoading } = useQuery(MY_PRODUCT_KIND);
   const [chosenKind, setChosenKind] = useState<ConsultationKind | null>(null);
   const kind: ConsultationKind | null = chosenKind ?? kindData?.myProductKind ?? null;
@@ -54,7 +54,7 @@ export function IntakeQuizScreen({ navigation, route }: any) {
     refetchQueries: [{ query: MY_CONSULTATIONS }],
     onCompleted() {
       Alert.alert('Submitted', 'Your answers are with our clinical team. We’ll be in touch soon.', [
-        { text: 'OK', onPress: () => (fromOnboarding ? navigation.goBack() : navigation.navigate('Status')) },
+        { text: 'OK', onPress: () => (inOnboarding ? navigation.goBack() : navigation.navigate('Status')) },
       ]);
     },
     onError(e) {

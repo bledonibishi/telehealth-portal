@@ -182,3 +182,57 @@ export const MY_CONVERSATION = gql`
   }
 `;
 
+export const MY_TREATMENT_PLAN = gql`
+  query MyTreatmentPlan {
+    myTreatmentPlan {
+      prescriptionId
+      programme
+      productName
+      strength
+      frequency
+      directions
+      prescriberName
+      startedAt
+      validUntil
+      weeksElapsed
+      durationWeeks
+      dosesTaken
+      dosesPlanned
+      nextDoseAt
+      repeatsLeft
+    }
+  }
+`;
+
+const BASIC_INFO_FIELDS = gql`
+  fragment BasicInfoFields on Patient {
+    id
+    firstName
+    lastName
+    dateOfBirth
+    phone
+    addressLine1
+    addressLine2
+    city
+    postcode
+    country
+  }
+`;
+
+export const ME_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  query MeBasicInfo {
+    me {
+      ...BasicInfoFields
+    }
+  }
+`;
+
+export const UPDATE_MY_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  mutation UpdateMyBasicInfo($input: UpdateBasicInfoInput!) {
+    updateMyBasicInfo(input: $input) {
+      ...BasicInfoFields
+    }
+  }
+`;

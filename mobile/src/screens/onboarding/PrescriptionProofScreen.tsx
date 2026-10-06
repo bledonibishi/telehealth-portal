@@ -529,7 +529,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
           proof against those answers, so please complete it first.
         </Text>
         <View style={styles.actions}>
-          <Button label="Go to the medical questionnaire" onPress={() => navigation.navigate('MedicalQuestionnaire', { fromOnboarding: true })} />
+          <Button label="Go to the medical questionnaire" onPress={() => navigation.navigate('MedicalQuestionnaire')} />
         </View>
       </>,
     );

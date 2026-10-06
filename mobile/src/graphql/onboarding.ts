@@ -44,6 +44,7 @@ export const ONBOARDING_FIELDS = gql`
     }
     submittedAt
     reviewedAt
+    bodyPhotosToRetake
     stepFeedback {
       step
       reason
@@ -69,13 +70,41 @@ export const SAVE_IDENTITY_STEP = gql`
   ${ONBOARDING_FIELDS}
 `;
 
-export const SAVE_BODY_PHOTOS_STEP = gql`
-  mutation SaveBodyPhotosStep($input: SaveBodyPhotosStepInput!) {
-    saveBodyPhotosStep(input: $input) {
+// The two full-body photos are checked as they are taken and saved one at a time, so leaving halfway loses nothing.
+export const CHECK_BODY_PHOTO = gql`
+  mutation CheckBodyPhoto($fileId: ID!, $view: BodyPhotoView!) {
+    checkBodyPhoto(fileId: $fileId, view: $view) {
+      outcome
+      issues
+      messages
+      canSendForReview
+    }
+  }
+`;
+
+export const SAVE_BODY_PHOTO = gql`
+  mutation SaveBodyPhoto($input: SaveBodyPhotoInput!) {
+    saveBodyPhoto(input: $input) {
       ...OnboardingFields
     }
   }
   ${ONBOARDING_FIELDS}
+`;
+
+export const CHECK_PHOTO_FRAME = gql`
+  mutation CheckPhotoFrame($view: BodyPhotoView!, $image: String!) {
+    checkPhotoFrame(view: $view, image: $image) {
+      available
+      ready
+      messages
+    }
+  }
+`;
+
+export const DISCARD_BODY_PHOTO = gql`
+  mutation DiscardBodyPhoto($fileId: ID!) {
+    discardBodyPhoto(fileId: $fileId)
+  }
 `;
 
 export const SAVE_PRIOR_MEDICATION_USE = gql`
