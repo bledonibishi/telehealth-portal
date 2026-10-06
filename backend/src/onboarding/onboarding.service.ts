@@ -83,7 +83,12 @@ export class OnboardingService {
     return this.toModel(updated);
   }
 
+  /** Both photos at once, for older app versions. They still have to have been checked here and passed. */
   async saveBodyPhotosStep(patientId: string, input: SaveBodyPhotosStepInput) {
+    await this.uploads.findOwned(patientId, input.bodyPhotoFrontFileId, [UploadKind.BODY_PHOTO_FRONT]);
+    await this.uploads.findOwned(patientId, input.bodyPhotoSideFileId, [UploadKind.BODY_PHOTO_SIDE]);
+    await this.photoCheck.assertSavable(patientId, input.bodyPhotoFrontFileId, 'FRONT', false);
+    await this.photoCheck.assertSavable(patientId, input.bodyPhotoSideFileId, 'SIDE', false);
     const existing = await this.getOrCreateForPatient(patientId);
     const stepFeedback = existing.stepFeedback as StepFeedback[];
     const updated = await this.prisma.onboardingSubmission.update({

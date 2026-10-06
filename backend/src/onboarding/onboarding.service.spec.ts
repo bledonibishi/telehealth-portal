@@ -44,6 +44,19 @@ describe('OnboardingService body photos', () => {
     expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
   });
 
+  it('the older two-photos-at-once mutation cannot skip the check either', async () => {
+    const { service, prisma, photoCheck } = build();
+    photoCheck.assertSavable.mockRejectedValueOnce(new Error('This photo didn’t pass the check'));
+    await expect(service.saveBodyPhotosStep('p-1', { bodyPhotoFrontFileId: 'f', bodyPhotoSideFileId: 's' })).rejects.toThrow(/didn’t pass/);
+    expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+
+    photoCheck.assertSavable.mockResolvedValue(undefined);
+    await service.saveBodyPhotosStep('p-1', { bodyPhotoFrontFileId: 'f', bodyPhotoSideFileId: 's' });
+    expect(photoCheck.assertSavable).toHaveBeenCalledWith('p-1', 'f', 'FRONT', false);
+    expect(photoCheck.assertSavable).toHaveBeenCalledWith('p-1', 's', 'SIDE', false);
+    expect(prisma.onboardingSubmission.update).toHaveBeenCalled();
+  });
+
   it('deletes the photo it replaces, but only the patient’s own', async () => {
     const { service, prisma, uploads } = build(submission({ bodyPhotoFrontFileId: 'old' }));
     prisma.uploadedFile.findUnique.mockResolvedValue({ id: 'old', patientId: 'p-1', storageKey: 'k' });

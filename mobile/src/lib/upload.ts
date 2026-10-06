@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
-const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
+export const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
 
 export type UploadKind = 'ID_DOCUMENT' | 'SELFIE' | 'BODY_PHOTO_FRONT' | 'BODY_PHOTO_SIDE' | 'PRESCRIPTION_PROOF';
 

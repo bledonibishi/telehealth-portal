@@ -8,6 +8,7 @@ import { IntakeQuizScreen } from '../screens/intake/IntakeQuizScreen';
 import { ConsultationStatusScreen } from '../screens/consultation/ConsultationStatusScreen';
 import { MessagingScreen } from '../screens/messaging/MessagingScreen';
 import { OnboardingChecklistScreen } from '../screens/onboarding/OnboardingChecklistScreen';
+import { BasicInformationScreen } from '../screens/onboarding/BasicInformationScreen';
 import { IdPhotoScreen } from '../screens/onboarding/IdPhotoScreen';
 import { BodyPhotoScreen } from '../screens/onboarding/BodyPhotoScreen';
 import { PrescriptionProofScreen } from '../screens/onboarding/PrescriptionProofScreen';
@@ -33,6 +34,8 @@ function OnboardingFlow() {
   return (
     <OnboardingStack.Navigator screenOptions={{ headerTintColor: '#0ea5e9' }}>
       <OnboardingStack.Screen name="Checklist" component={OnboardingChecklistScreen} options={{ title: 'Onboarding', headerShown: false }} />
+      <OnboardingStack.Screen name="BasicInformation" component={BasicInformationScreen} options={{ title: '' }} />
+      <OnboardingStack.Screen name="MedicalQuestionnaire" component={IntakeQuizScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="IdPhoto" component={IdPhotoScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="BodyPhoto" component={BodyPhotoScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="PrescriptionProof" component={PrescriptionProofScreen} options={{ title: '' }} />

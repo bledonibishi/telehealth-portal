@@ -4,7 +4,10 @@
     "slug": "telehealth-patient",
     "version": "1.0.0",
     "orientation": "portrait",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.telehealth.patient"
@@ -20,6 +23,12 @@
         {
           "photosPermission": "Used to upload your ID, body, and prescription photos for clinical verification.",
           "cameraPermission": "Used to take your ID, body, and prescription photos for clinical verification."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to take your full body photos for clinical verification."
         }
       ]
     ]

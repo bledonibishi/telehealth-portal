@@ -244,7 +244,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-slate-400 text-center mt-4 leading-snug">We use an automatic check to tell you straight away if a photo can’t be used. Your photo is sent securely to our AI provider for this, and a clinician still reviews every photo.</p>
+            <p className="text-[11px] text-slate-400 text-center mt-4 leading-snug">We use an automatic check to tell you straight away if a photo can’t be used. A clinician still reviews every photo.</p>
           </div>
         )}
 
