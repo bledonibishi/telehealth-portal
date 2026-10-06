@@ -7,6 +7,7 @@ import {
 } from '../../common/enums';
 import { PatientModel } from '../../patients/models/patient.model';
 import { OnboardingStepFeedbackModel } from './onboarding-step-feedback.model';
+import { BodyPhotoCheckSummaryModel } from '../dto/body-photo.input';
 
 @ObjectType('OnboardingSubmission')
 export class OnboardingSubmissionModel {
@@ -51,6 +52,9 @@ export class OnboardingSubmissionModel {
 
   @Field({ nullable: true })
   reviewedAt?: Date;
+
+  @Field(() => [BodyPhotoCheckSummaryModel], { description: 'The automated check of each saved body photo (clinicians only see what it found; they still review every photo)' })
+  bodyPhotoChecks: BodyPhotoCheckSummaryModel[];
 
   @Field(() => [OnboardingStepFeedbackModel])
   stepFeedback: OnboardingStepFeedbackModel[];

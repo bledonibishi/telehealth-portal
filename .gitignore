@@ -28,3 +28,7 @@ backend/src/schema.gql
 # Example env files (.env.example, .env.local.example) are not tracked either
 .env.example
 .env*.example
+
+# Pose-model weights are downloaded, not committed (AGPL — see backend/models/README.md)
+backend/models/*.onnx
+backend/models/*.pt

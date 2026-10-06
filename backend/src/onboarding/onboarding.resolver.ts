@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { OnboardingService } from './onboarding.service';
 import { OnboardingSubmissionModel } from './models/onboarding-submission.model';
@@ -6,13 +6,53 @@ import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
 import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
+import { BodyPhotoCheckResultModel, BodyPhotoCheckSummaryModel, BodyPhotoView, PhotoFrameResultModel, SaveBodyPhotoInput } from './dto/body-photo.input';
+import { PhotoCheckService } from './photo-check.service';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuthUser, STAFF } from '../auth/access-roles';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => OnboardingSubmissionModel)
 export class OnboardingResolver {
-  constructor(private onboardingService: OnboardingService) {}
+  constructor(
+    private onboardingService: OnboardingService,
+    private photoCheck: PhotoCheckService,
+  ) {}
+
+  @ResolveField(() => [BodyPhotoCheckSummaryModel])
+  bodyPhotoChecks(@Parent() row: any) {
+    return this.onboardingService.checksOf(row);
+  }
+
+  @ResolveField(() => [BodyPhotoView], { description: 'Saved body photos that have not passed the photo check, and so would be turned away at submission' })
+  bodyPhotosToRetake(@Parent() row: any) {
+    return this.onboardingService.bodyPhotosToRetake(row);
+  }
+
+  // The patient id always comes from the token, never an argument.
+  @Authorized('PATIENT')
+  @Mutation(() => BodyPhotoCheckResultModel, { description: 'Checks an uploaded body photo (front or side) and says whether it can be used, and if not, why. Never blocks a patient for good.' })
+  checkBodyPhoto(@CurrentUser() user: AuthUser, @Args('fileId', { type: () => ID }) fileId: string, @Args('view', { type: () => BodyPhotoView }) view: BodyPhotoView) {
+    return this.photoCheck.check(user.id, fileId, view);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => PhotoFrameResultModel, { description: 'Live guidance on a small camera frame (base64 JPEG) while the patient lines up the shot. Nothing is stored.' })
+  checkPhotoFrame(@CurrentUser() user: AuthUser, @Args('view', { type: () => BodyPhotoView }) view: BodyPhotoView, @Args('image') image: string) {
+    return this.photoCheck.checkFrame(user.id, view, image);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => OnboardingSubmissionModel, { description: 'Saves one body photo as soon as it passed its check, so leaving halfway keeps it' })
+  saveBodyPhoto(@CurrentUser() user: AuthUser, @Args('input') input: SaveBodyPhotoInput) {
+    return this.onboardingService.saveBodyPhoto(user.id, input);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => Boolean, { description: 'Deletes a body photo that was checked and not kept (a retake)' })
+  discardBodyPhoto(@CurrentUser() user: AuthUser, @Args('fileId', { type: () => ID }) fileId: string) {
+    return this.onboardingService.discardBodyPhoto(user.id, fileId);
+  }
 
   @Authorized('PATIENT')
   @Query(() => OnboardingSubmissionModel)

@@ -159,6 +159,39 @@ function MessageWatcher({ consultationId, onMessage }: { consultationId: string;
   return null;
 }
 
+const PHOTO_ISSUE: Record<string, string> = {
+  NO_PERSON: 'No person visible',
+  MULTIPLE_PEOPLE: 'More than one person',
+  FACE_NOT_VISIBLE: 'Face not clearly visible',
+  NOT_FULL_BODY: 'Not full body',
+  TOO_FAR: 'Too far from the camera',
+  BAGGY_CLOTHING: 'Baggy or heavy clothing',
+  WRONG_ANGLE: 'Wrong angle',
+  POOR_QUALITY: 'Too dark or blurry',
+  NOT_A_REAL_PHOTO: 'Photo of a screen or print',
+};
+
+/**
+ * What the automatic photo check made of each body photo, as a first pass for the reviewer: it never replaces
+ * the review. A photo the patient sent after the check turned it away (FAIL) is flagged, since they asked for a person to look.
+ */
+function PhotoCheckNotes({ checks }: { checks: Array<{ view: string; outcome: string; issues: string[] }> }) {
+  const { t } = useI18n();
+  if (!checks.length) return null;
+  return (
+    <ul className="mt-2 space-y-1">
+      {checks.map((c) => (
+        <li key={c.view} className={`text-xs ${c.outcome === 'FAIL' ? 'text-amber-700 font-medium' : 'text-gray-500'}`}>
+          {c.view === 'FRONT' ? t('Front') : t('Side')}:{' '}
+          {c.outcome === 'PASS' && t('automatic check passed')}
+          {c.outcome === 'UNCHECKED' && t('not checked automatically')}
+          {c.outcome === 'FAIL' && `${t('failed the automatic check — sent for your review')}${c.issues.length ? ` (${c.issues.map((i) => t(PHOTO_ISSUE[i] ?? i)).join(', ')})` : ''}`}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function PatientPanel({ patientId, onClose, initialTab = 'overview' }: { patientId: string; onClose: () => void; initialTab?: Tab }) {
   const { t, timeAgo, fmt } = useI18n();
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -529,6 +562,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                           <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt={t('Front-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
                           <AuthedImage path={onboarding.bodyPhotoSideUrl} alt={t('Side-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
                         </div>
+                        <PhotoCheckNotes checks={onboarding.bodyPhotoChecks ?? []} />
                       </OnboardingStepSection>
 
                       <OnboardingStepSection

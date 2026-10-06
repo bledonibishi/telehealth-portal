@@ -125,6 +125,19 @@ enum UploadKind {
   PROGRESS_PHOTO
 }
 
+enum BodyPhotoView {
+  FRONT
+  SIDE
+}
+
+// UNCHECKED: the automated check could not run (not set up, over its daily limit, a format it can't read, an
+// outage) — the photo is accepted and a clinician reviews it as they do every photo.
+enum PhotoCheckOutcome {
+  PASS
+  FAIL
+  UNCHECKED
+}
+
 enum OnboardingStatus {
   IN_PROGRESS
   PENDING_REVIEW
@@ -350,6 +363,7 @@ model Patient {
   vouchers            Voucher[]
   refillRequests      RefillRequest[]
   appointmentRequests AppointmentRequest[]
+  bodyPhotoChecks     BodyPhotoCheck[]
   bookings            Booking[]
 
   @@map("patients")
@@ -697,6 +711,28 @@ model UploadedFile {
   weightEntry WeightEntry?
 
   @@map("uploaded_files")
+}
+
+// What the automated check made of one body photo at onboarding. `issues` are our own codes
+// (see onboarding/photo-check.ts), never free text from the model. `fileId` is a plain id, not a
+// relation: a photo that is retaken is deleted, and its check stays as a record of what was tried.
+model BodyPhotoCheck {
+  id            String            @id @default(cuid())
+  patientId     String            @map("patient_id")
+  fileId        String            @map("file_id")
+  view          BodyPhotoView
+  outcome       PhotoCheckOutcome
+  issues        String[]
+  model         String?
+  /// The patient, after failing repeatedly, asked for a clinician to look at this photo instead of retaking it.
+  sentForReview Boolean           @default(false) @map("sent_for_review")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, view, createdAt])
+  @@index([fileId])
+  @@map("body_photo_checks")
 }
 
 model CheckIn {
