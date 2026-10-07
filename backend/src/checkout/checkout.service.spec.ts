@@ -75,6 +75,17 @@ describe('CheckoutService per-dose prices', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('refuses another treatment’s plan price for a GLP-1 lead whose dose the catalog doesn’t know', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, productKind: 'GLP1' };
+    await expect(
+      build(prismaFor({ lead, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+        priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '99 mg',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
   it('charges the dose already ordered on the lead when the request leaves product and dose out', async () => {
     const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
     const lead = { ...LEAD, productKind: 'GLP1', quizAnswers: [{ questionId: 'preferred_treatment', answer: 'Mounjaro 7.5 mg' }] };

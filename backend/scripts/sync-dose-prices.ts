@@ -65,8 +65,8 @@ async function main() {
     );
 
     if (unpriced.length) {
-      console.log('\nDoses with no monthly price in Stripe (billed at their plan tier price):');
-      unpriced.forEach((s) => console.log(`  - ${s.productName} ${s.label}`));
+      console.log('\nDoses with no monthly price in Stripe named after them:');
+      unpriced.forEach((s) => console.log(`  - ${s.productName} ${s.label}${s.stripePriceId ? ` (linked: ${s.stripePriceId})` : ' (billed at its plan tier price)'}`));
     }
     if (oneOff.length) {
       console.log('\nOne-off prices found (kept for pay-as-you-go, not linked yet):');
@@ -97,6 +97,14 @@ async function main() {
     if (stale.length) {
       console.log('\nLinked to a price that is no longer active in Stripe (will be unlinked):');
       stale.forEach((s) => console.log(`  - ${s.productName} ${s.label}: ${s.stripePriceId}`));
+    }
+
+    // Still active, so checkout can charge it, but its Stripe product no longer names this dose
+    // (renamed, or linked by hand with set-dose-price). Kept: clear it with set-dose-price … none.
+    const unnamed = strengths.filter((s) => s.stripePriceId && activeMonthly.has(s.stripePriceId) && !relinked.has(s.id));
+    if (unnamed.length) {
+      console.log('\nLinked to an active price whose Stripe product doesn’t name the dose (kept — check these):');
+      unnamed.forEach((s) => console.log(`  - ${s.productName} ${s.label}: ${s.stripePriceId} (${prices.find((p) => p.id === s.stripePriceId)?.productName})`));
     }
 
     const changes = matches.filter((m) => m.strength.stripePriceId !== m.price.id);
