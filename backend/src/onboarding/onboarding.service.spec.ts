@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+import { OnboardingStatus, OnboardingStepKey, PersonaStatus, PhotoReviewStatus } from '../common/enums';
 import { OnboardingService } from './onboarding.service';
 
 const SUBMISSION = {
@@ -19,12 +21,14 @@ function setup(submission: Record<string, unknown>, reassessed: unknown) {
       findUnique: jest.fn().mockResolvedValue({ ...SUBMISSION, ...submission }),
       update: jest.fn().mockResolvedValue({ ...SUBMISSION, ...submission, status: 'PENDING_REVIEW', stepFeedback: [] }),
     },
+    $transaction: jest.fn((fn: any) => fn(prisma)),
+    $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
   };
   const persona: any = { verifyIdentity: jest.fn().mockResolvedValue('NOT_CONFIGURED') };
   const photoReview: any = { review: jest.fn().mockResolvedValue('PENDING_REVIEW') };
   const proofReview: any = { reassess: jest.fn().mockResolvedValue(reassessed) };
   const photoCheck: any = { viewsToRetake: jest.fn().mockResolvedValue([]), markSentForReview: jest.fn().mockResolvedValue(undefined) };
-  return { service: new OnboardingService(prisma, persona, photoReview, proofReview, photoCheck, {} as any), prisma };
+  return { service: new OnboardingService(prisma, persona, photoReview, proofReview, photoCheck, {} as any, { isEnabled: false, getStatus: jest.fn(), hasVerification: jest.fn().mockResolvedValue(false), storedStatus: jest.fn().mockResolvedValue(null) } as any), prisma };
 }
 
 describe('OnboardingService.submit with prescription proof', () => {
@@ -81,7 +85,7 @@ function build(row = submission()) {
   const uploads: any = { findOwned: jest.fn().mockResolvedValue({ id: 'new', patientId: 'p-1' }), remove: jest.fn() };
   const photoCheck: any = { assertSavable: jest.fn().mockResolvedValue(undefined), viewsToRetake: jest.fn().mockResolvedValue([]), markSentForReview: jest.fn().mockResolvedValue(undefined) };
   const proofReview: any = { reassess: jest.fn().mockResolvedValue(null) };
-  const service = new OnboardingService(prisma, {} as any, {} as any, proofReview, photoCheck, uploads);
+  const service = new OnboardingService(prisma, {} as any, {} as any, proofReview, photoCheck, uploads, { isEnabled: false, getStatus: jest.fn(), hasVerification: jest.fn().mockResolvedValue(false), storedStatus: jest.fn().mockResolvedValue(null) } as any);
   return { service, prisma, uploads, photoCheck };
 }
 
@@ -219,6 +223,205 @@ describe('OnboardingService body photos', () => {
       const { service, photoCheck } = build(submission(complete));
       photoCheck.viewsToRetake.mockResolvedValue(['FRONT', 'SIDE']);
       await expect(service.submit('p-1')).rejects.toThrow(/front and side photo/);
+    });
+  });
+});
+
+describe('OnboardingService identity handling', () => {
+  let prisma: any;
+  let persona: { verifyIdentity: jest.Mock };
+  let photoReview: { review: jest.Mock };
+  let identity: { isEnabled: boolean; getStatus: jest.Mock; hasVerification: jest.Mock; storedStatus: jest.Mock };
+  let service: OnboardingService;
+
+  const SUBMISSION = (over: Record<string, unknown> = {}) => ({
+    id: 'o1',
+    patientId: 'p1',
+    status: OnboardingStatus.IN_PROGRESS,
+    idDocumentFileId: null,
+    selfieFileId: null,
+    bodyPhotoFrontFileId: 'f',
+    bodyPhotoSideFileId: 's',
+    priorMedicationUse: false,
+    prescriptionProofFileId: null,
+    personaStatus: PersonaStatus.NOT_STARTED,
+    stepFeedback: [],
+    ...over,
+  });
+
+  beforeEach(() => {
+    prisma = {
+      onboardingSubmission: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}), create: jest.fn() },
+      $transaction: jest.fn((fn: any) => fn(prisma)),
+      $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
+    };
+    persona = { verifyIdentity: jest.fn().mockResolvedValue(PersonaStatus.NOT_CONFIGURED) };
+    photoReview = { review: jest.fn().mockResolvedValue(PhotoReviewStatus.PENDING_REVIEW) };
+    identity = { isEnabled: false, getStatus: jest.fn().mockResolvedValue({ configured: false, status: null, expiresAt: null }), hasVerification: jest.fn().mockResolvedValue(false), storedStatus: jest.fn() };
+    // The stored status is whatever the (mocked) latest check says.
+    identity.storedStatus.mockImplementation(async () => (await identity.getStatus('p1'))?.status ?? null);
+    // Proof and body-photo checks pass: these tests are about identity.
+    const proofReview = { reassess: jest.fn().mockResolvedValue(null) };
+    const photoCheck = { viewsToRetake: jest.fn().mockResolvedValue([]) };
+    service = new OnboardingService(prisma as any, persona as any, photoReview as any, proofReview as any, photoCheck as any, {} as any, identity as any);
+  });
+
+  describe('submit without verify-service (existing behaviour)', () => {
+    it('still needs the in-app ID photo and selfie, and runs the legacy check', async () => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION());
+      await expect(service.submit('p1')).rejects.toThrow('ID photo');
+
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION({ idDocumentFileId: 'id', selfieFileId: 'se' }));
+      await service.submit('p1');
+      expect(persona.verifyIdentity).toHaveBeenCalledWith('p1', 'id', 'se');
+      expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.personaStatus).toBe(PersonaStatus.NOT_CONFIGURED);
+    });
+  });
+
+  describe('submit with verify-service', () => {
+    beforeEach(() => {
+      identity.isEnabled = true;
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION());
+    });
+
+    it.each([
+      ['no check started', null],
+      ['link created but no photos sent', 'PENDING'],
+      ['link expired', 'EXPIRED'],
+      ['rejected', 'REJECTED'],
+    ])('does not let the patient submit with an incomplete identity check (%s)', async (_label, status) => {
+      identity.getStatus.mockResolvedValue({ configured: true, status, expiresAt: null });
+      await expect(service.submit('p1')).rejects.toThrow('Identity check');
+      expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+    });
+
+    it.each(['PROCESSING', 'NEEDS_REVIEW', 'APPROVED'])('accepts a submission once the check is %s', async (status) => {
+      identity.getStatus.mockResolvedValue({ configured: true, status, expiresAt: null });
+      await service.submit('p1');
+      expect(prisma.onboardingSubmission.update).toHaveBeenCalled();
+    });
+
+    it('needs no in-app ID photo, skips the legacy check and keeps the status verify-service set', async () => {
+      identity.getStatus.mockResolvedValue({ configured: true, status: 'NEEDS_REVIEW', expiresAt: null });
+      await service.submit('p1');
+      expect(persona.verifyIdentity).not.toHaveBeenCalled();
+      const data = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('personaStatus');
+      expect(data.status).toBe(OnboardingStatus.PENDING_REVIEW);
+      // The flow is stored, so review and approval follow it even if verify-service is turned off.
+      expect(data.identityViaVerifyService).toBe(true);
+    });
+
+    it('re-checks the identity result under the lock, so a rejection that just landed blocks the submission', async () => {
+      identity.getStatus.mockResolvedValue({ configured: true, status: 'NEEDS_REVIEW', expiresAt: null });
+      identity.storedStatus.mockResolvedValue('REJECTED');
+      await expect(service.submit('p1')).rejects.toThrow('Identity check');
+      expect(prisma.$queryRaw).toHaveBeenCalled();
+      expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+    });
+
+    it('still requires the other steps', async () => {
+      identity.getStatus.mockResolvedValue({ configured: true, status: 'APPROVED', expiresAt: null });
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION({ bodyPhotoFrontFileId: null }));
+      await expect(service.submit('p1')).rejects.toThrow('Full body photo');
+    });
+  });
+
+  describe('clinician review', () => {
+    const review = (step: OnboardingStepKey, approved = true) =>
+      service.reviewOnboardingStep('c1', { patientId: 'p1', step, approved, reason: approved ? undefined : 'blurry' } as any);
+
+    beforeEach(() => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW }));
+    });
+
+    describe('legacy flow (no verify-service session)', () => {
+      it('still reviews the ID photo and approves once both steps are approved', async () => {
+        prisma.onboardingSubmission.findUnique.mockResolvedValue(
+          SUBMISSION({
+            status: OnboardingStatus.PENDING_REVIEW,
+            stepFeedback: [{ step: OnboardingStepKey.BODY_PHOTO, approved: true }],
+          }),
+        );
+        await review(OnboardingStepKey.ID_PHOTO);
+        expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBe(OnboardingStatus.APPROVED);
+        expect(identity.getStatus).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('identity checked in verify-service', () => {
+      beforeEach(() => {
+        prisma.onboardingSubmission.findUnique.mockResolvedValue(
+          SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW, identityViaVerifyService: true }),
+        );
+      });
+
+      it('no longer accepts a review of the ID photo, which never reaches this app', async () => {
+        await expect(review(OnboardingStepKey.ID_PHOTO)).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('approves when the body photo is approved and identity is approved', async () => {
+        identity.getStatus.mockResolvedValue({ configured: true, status: 'APPROVED', expiresAt: null });
+        await review(OnboardingStepKey.BODY_PHOTO);
+        const data = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+        expect(data.status).toBe(OnboardingStatus.APPROVED);
+        expect(data.reviewedByClinicianId).toBe('c1');
+      });
+
+      it.each(['PENDING', 'PROCESSING', 'NEEDS_REVIEW', 'EXPIRED', 'REJECTED'])(
+        'saves the decision but does not approve while identity is %s',
+        async (status) => {
+          identity.getStatus.mockResolvedValue({ configured: true, status, expiresAt: null });
+          await review(OnboardingStepKey.BODY_PHOTO);
+          const data = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+          expect(data.stepFeedback).toEqual([{ step: OnboardingStepKey.BODY_PHOTO, approved: true, reason: undefined }]);
+          expect(data.status).toBeUndefined();
+        },
+      );
+
+      it('rejects the onboarding when the clinician rejects a step, whatever the identity result', async () => {
+        identity.getStatus.mockResolvedValue({ configured: true, status: 'NEEDS_REVIEW', expiresAt: null });
+        await review(OnboardingStepKey.BODY_PHOTO, false);
+        expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBe(OnboardingStatus.REJECTED);
+      });
+
+      it('also needs the prescription proof decision when prior medication was used', async () => {
+        identity.getStatus.mockResolvedValue({ configured: true, status: 'APPROVED', expiresAt: null });
+        prisma.onboardingSubmission.findUnique.mockResolvedValue(
+          SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW, priorMedicationUse: true, identityViaVerifyService: true }),
+        );
+        await review(OnboardingStepKey.BODY_PHOTO);
+        expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBeUndefined();
+      });
+
+      it('still approves on the stored identity result after verify-service is turned off', async () => {
+        identity.isEnabled = false;
+        identity.getStatus.mockResolvedValue({ configured: false, status: null, expiresAt: null });
+        identity.storedStatus.mockResolvedValue('APPROVED');
+        await review(OnboardingStepKey.BODY_PHOTO);
+        expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBe(OnboardingStatus.APPROVED);
+      });
+
+      it('decides under the identity lock, from the submission and identity result read inside it', async () => {
+        identity.getStatus.mockResolvedValue({ configured: true, status: 'APPROVED', expiresAt: null });
+        // A rejection lands between the first read and the decision: the decision sees it.
+        prisma.onboardingSubmission.findUnique
+          .mockResolvedValueOnce(SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW, identityViaVerifyService: true }))
+          .mockResolvedValueOnce(SUBMISSION({ status: OnboardingStatus.REJECTED, identityViaVerifyService: true }));
+        await expect(review(OnboardingStepKey.BODY_PHOTO)).rejects.toThrow('not pending review');
+        expect(prisma.$queryRaw).toHaveBeenCalled();
+        expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+      });
+    });
+
+    it('keeps reviewing a submission sent on the in-app upload flow after verify-service is turned on', async () => {
+      identity.isEnabled = true;
+      identity.hasVerification.mockResolvedValue(true);
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(
+        SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW, identityViaVerifyService: false, stepFeedback: [{ step: OnboardingStepKey.BODY_PHOTO, approved: true }] }),
+      );
+      await review(OnboardingStepKey.ID_PHOTO);
+      expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBe(OnboardingStatus.APPROVED);
     });
   });
 });

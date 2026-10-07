@@ -9,9 +9,10 @@ import { ProofReaderService } from './proof-reader.service';
 import { PrescriptionProofReviewService } from './prescription-proof-review.service';
 import { PhotoCheckService } from './photo-check.service';
 import { PoseDetector } from './pose-detector';
+import { IdentityVerificationModule } from '../identity-verification/identity-verification.module';
 
 @Module({
-  imports: [PrismaModule, UploadsModule],
+  imports: [PrismaModule, UploadsModule, IdentityVerificationModule],
   providers: [
     OnboardingService,
     OnboardingResolver,

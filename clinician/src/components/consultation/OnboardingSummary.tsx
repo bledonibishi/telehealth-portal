@@ -56,8 +56,8 @@ export function OnboardingSummary({ patientId }: { patientId: string }) {
           </dl>
           <div className="grid grid-cols-4 gap-1.5">
             {[
-              [o.idDocumentUrl, t('ID document')],
-              [o.selfieUrl, t('Selfie')],
+              // No ID photos here when the check ran in the verification service
+              ...(o.identityViaVerifyService ? [] : [[o.idDocumentUrl, t('ID document')], [o.selfieUrl, t('Selfie')]]),
               [o.bodyPhotoFrontUrl, t('Body photo, front')],
               [o.bodyPhotoSideUrl, t('Body photo, side')],
             ].map(([path, alt]) => (

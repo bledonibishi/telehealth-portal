@@ -52,6 +52,16 @@ export enum PersonaStatus {
   NOT_CONFIGURED = 'NOT_CONFIGURED',
 }
 
+/** Status of an identity-check session in verify-service. */
+export enum IdentityVerificationStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  NEEDS_REVIEW = 'NEEDS_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
+}
+
 export enum PhotoReviewStatus {
   NOT_STARTED = 'NOT_STARTED',
   PENDING_REVIEW = 'PENDING_REVIEW',

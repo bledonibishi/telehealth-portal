@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { OnboardingService } from './onboarding.service';
+import { IdentityVerificationService } from '../identity-verification/identity-verification.service';
 import { OnboardingSubmissionModel } from './models/onboarding-submission.model';
 import { ProofRequirementsModel } from './models/proof-requirements.model';
 import { PrescriptionProofReviewService } from './prescription-proof-review.service';
@@ -20,7 +21,14 @@ export class OnboardingResolver {
     private onboardingService: OnboardingService,
     private proofReview: PrescriptionProofReviewService,
     private photoCheck: PhotoCheckService,
+    private identity: IdentityVerificationService,
   ) {}
+
+  // Fixed when the submission is sent; before that, the flow the patient is on now.
+  @ResolveField(() => Boolean)
+  identityViaVerifyService(@Parent() submission: { status: string; identityViaVerifyService: boolean }) {
+    return submission.status === 'IN_PROGRESS' ? this.identity.isEnabled : submission.identityViaVerifyService;
+  }
 
   @ResolveField(() => ProofRequirementsModel, { description: 'What this patient’s prescription proof has to show to be accepted' })
   proofRequirements(@Parent() onboarding: { patientId: string }) {

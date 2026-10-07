@@ -160,3 +160,23 @@ export const DECLARE_PRESCRIPTION_PROOF_UNAVAILABLE = gql`
   }
   ${ONBOARDING_FIELDS}
 `;
+
+// Identity check through verify-service (when the backend has it configured).
+export const MY_IDENTITY_VERIFICATION = gql`
+  query MyIdentityVerification {
+    myIdentityVerification {
+      configured
+      status
+      expiresAt
+    }
+  }
+`;
+
+export const START_IDENTITY_VERIFICATION = gql`
+  mutation StartIdentityVerification {
+    startIdentityVerification {
+      hostedUrl
+      expiresAt
+    }
+  }
+`;
