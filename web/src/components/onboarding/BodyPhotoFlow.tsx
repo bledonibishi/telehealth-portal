@@ -24,26 +24,13 @@ const CHECKLIST: Record<PoseView, Array<[boolean, string]>> = {
   SIDE: [[true, 'Turn so your side faces the camera'], [true, 'Full body visible, head to toe'], [true, 'Fitted clothing, arms relaxed at your sides'], [false, 'No hoodies, coats, or baggy layers']],
 };
 
-const primary = 'w-full inline-flex items-center justify-center gap-2.5 rounded-2xl bg-ink-600 hover:bg-ink-700 active:bg-ink-800 disabled:opacity-50 text-white text-base font-semibold py-4 transition-colors';
-const outline = 'w-full inline-flex items-center justify-center gap-2.5 rounded-2xl border-2 border-ink-600 text-ink-700 hover:bg-ink-50 disabled:opacity-50 text-base font-semibold py-3.5 transition-colors';
+// The same look as the other onboarding steps: plain page, white cards, the standard buttons.
+const primary = 'w-full inline-flex items-center justify-center gap-2 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors';
+const outline = 'w-full inline-flex items-center justify-center gap-2 border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 text-sm font-medium py-3 rounded-xl transition-colors';
+const card = 'bg-white rounded-2xl border border-slate-100 p-4';
 
 /** The id inside "/uploads/<id>/file", which is how the API names a saved photo. */
 export const fileIdOfUrl = (url?: string | null) => url?.match(/\/uploads\/([^/]+)\/file/)?.[1] ?? null;
-
-function Segments({ phase, view, saved }: { phase: Phase; view: PoseView; saved: Record<PoseView, string | null> }) {
-  const bars = [
-    saved.FRONT ? 100 : phase !== 'done' && view === 'FRONT' ? 45 : 0,
-    saved.SIDE ? 100 : phase !== 'done' && view === 'SIDE' ? 45 : 0,
-    phase === 'done' ? 100 : 0,
-  ];
-  return (
-    <div className="flex items-center justify-center gap-2" role="progressbar" aria-valuemin={0} aria-valuemax={3} aria-valuenow={bars.filter((b) => b === 100).length} aria-label="Progress through the full body photos">
-      {bars.map((w, i) => (
-        <span key={i} className="h-2 w-14 rounded-full bg-ink-600/15 overflow-hidden"><span className="block h-full rounded-full bg-ink-600 transition-all duration-500" style={{ width: `${w}%` }} /></span>
-      ))}
-    </div>
-  );
-}
 
 /**
  * The two full-body photos, one after the other: how to stand (with a good and a bad example), a live camera or an
@@ -179,162 +166,145 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
     setProblem('');
   };
 
-  const title = phase === 'done' ? 'Your photos' : 'Full body photo';
-
   return (
-    <div className="-mx-4 -mt-6 bg-[#eaf1fd]" style={{ minHeight: 'calc(100dvh - 56px)' }}>
-      <div className="px-4 pt-4 pb-5">
-        <div className="flex items-center justify-between gap-3">
-          <button type="button" onClick={back} aria-label="Back" className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-ink-700 hover:bg-ink-50"><span className="rotate-180 inline-flex"><Icon name="arrow" /></span></button>
-          <h1 className="text-base font-semibold text-ink-700">{title}</h1>
-          <button type="button" onClick={onExit} aria-label="Save and close" title="Your progress is saved" className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-ink-700 hover:bg-ink-50"><Icon name="close" /></button>
-        </div>
-        <div className="mt-5"><Segments phase={phase} view={view} saved={saved} /></div>
-      </div>
+    <div>
+      <button type="button" onClick={back} className="text-sm text-slate-400 hover:text-slate-600">← Back</button>
 
-      <div className="bg-white rounded-t-[2rem] px-5 pt-7 pb-10 shadow-[0_-8px_30px_rgba(15,35,82,0.06)]" style={{ minHeight: 'calc(100dvh - 56px - 118px)' }}>
-        {/* ── How to stand, and how to take it ─────────────────────────────── */}
-        {phase === 'guide' && (
-          <div>
-            <p className="text-sm text-slate-500">{LABEL[view].of}</p>
-            {mustRetake.includes(view) && !saved[view] && (
-              <p role="status" className="mt-2 text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">Your earlier {view === 'FRONT' ? 'front' : 'side'} photo didn’t pass our photo check, so we need a new one.</p>
-            )}
-            {saved.FRONT && view === 'SIDE' && !saved.SIDE && (
-              <p className="inline-flex items-center gap-1.5 mt-2 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-3 py-1"><Icon name="check" className="w-3.5 h-3.5" /> Front photo saved</p>
-            )}
+      {/* ── How to stand, and how to take it ─────────────────────────────── */}
+      {phase === 'guide' && (
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 mt-4">Full body photo</h1>
+          <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}. Checks like these are a regulatory requirement so we can give you the best treatment possible. Only you and your doctor can see your photos.</p>
 
-            <div className="mt-4 rounded-3xl border border-slate-200 p-4">
-              <div className="grid grid-cols-2 gap-3">
-                <figure className="text-center">
-                  <PoseFigure view={view} variant="good" className="h-52" />
-                  <figcaption className="mt-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold tracking-wide px-3.5 py-1.5"><Icon name="check" className="w-3.5 h-3.5" /> DO THIS</span></figcaption>
-                </figure>
-                <figure className="text-center">
-                  <PoseFigure view={view} variant="bad" className="h-52" />
-                  <figcaption className="mt-3"><span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 text-rose-700 text-xs font-bold tracking-wide px-3.5 py-1.5"><Icon name="close" className="w-3.5 h-3.5" /> AVOID</span></figcaption>
-                  <p className="sr-only">{AVOID_CAPTION[view]}</p>
-                </figure>
-              </div>
-              <hr className="my-4 border-slate-100" />
-              <ul className="space-y-2.5">
-                {CHECKLIST[view].map(([ok, text]) => (
-                  <li key={text} className="flex items-center gap-3 text-[15px] text-slate-800">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'}`}><Icon name={ok ? 'check' : 'close'} className="w-3.5 h-3.5" /></span>
-                    {text}
-                  </li>
-                ))}
-              </ul>
+          {mustRetake.includes(view) && !saved[view] && (
+            <p role="status" className="mt-4 text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">Your earlier {view === 'FRONT' ? 'front' : 'side'} photo didn’t pass our photo check, so we need a new one.</p>
+          )}
+          {saved.FRONT && view === 'SIDE' && !saved.SIDE && (
+            <p className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-3 py-1"><Icon name="check" className="w-3.5 h-3.5" /> Front photo saved</p>
+          )}
+
+          <div className={`${card} mt-6`}>
+            <div className="grid grid-cols-2 gap-3">
+              <figure className="text-center">
+                <PoseFigure view={view} variant="good" className="h-48" />
+                <figcaption className="mt-2.5"><span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold tracking-wide px-3 py-1"><Icon name="check" className="w-3 h-3" /> DO THIS</span></figcaption>
+              </figure>
+              <figure className="text-center">
+                <PoseFigure view={view} variant="bad" className="h-48" />
+                <figcaption className="mt-2.5"><span className="inline-flex items-center gap-1 rounded-full bg-rose-100 text-rose-700 text-[11px] font-bold tracking-wide px-3 py-1"><Icon name="close" className="w-3 h-3" /> AVOID</span></figcaption>
+                <p className="sr-only">{AVOID_CAPTION[view]}</p>
+              </figure>
             </div>
-
-            <div className="mt-4 flex items-start gap-3 rounded-2xl bg-gradient-to-b from-slate-50 to-white p-4">
-              <span className="w-11 h-11 rounded-full bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="shield" /></span>
-              <p className="text-sm text-slate-600 leading-snug">Checks like these are a regulatory requirement so we can give you the best treatment possible. Only you and your doctor can see your photos.</p>
-            </div>
-
-            {cameraNote && <p role="status" className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">{cameraNote}</p>}
-            {problem && <p role="alert" className="mt-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">{problem}</p>}
-
-            <div className="mt-5 space-y-3">
-              <button type="button" onClick={takePhoto} className={primary}><Icon name="camera" className="w-5 h-5" /> Take photo</button>
-              <button type="button" onClick={() => uploadInput.current?.click()} className={outline}><Icon name="plus" className="w-5 h-5" /> Upload file</button>
-              {saved[view] && (
-                <button type="button" onClick={keepCurrent} className="w-full text-sm font-medium text-slate-500 hover:text-ink-700 py-2">
-                  Keep my current photo
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400 text-center mt-4 leading-snug">We use an automatic check to tell you straight away if a photo can’t be used. A clinician still reviews every photo.</p>
+            <ul className="space-y-3 mt-4 pt-4 border-t border-slate-100">
+              {CHECKLIST[view].map(([ok, text]) => (
+                <li key={text} className="flex items-start gap-3">
+                  <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs flex-shrink-0 mt-0.5 ${ok ? 'border-ink-500 text-ink-500' : 'border-rose-400 text-rose-500'}`}>{ok ? '✓' : '✕'}</span>
+                  <span className="text-sm text-slate-700">{text}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-        )}
 
-        {/* ── Checking ─────────────────────────────────────────────────────── */}
-        {phase === 'checking' && (
-          <div className="text-center" role="status" aria-live="polite">
-            <p className="text-sm text-slate-500 text-left">{LABEL[view].of}</p>
-            <div className="relative mx-auto mt-4 w-full max-w-xs overflow-hidden rounded-3xl bg-slate-100 aspect-[3/4]">
+          {cameraNote && <p role="status" className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">{cameraNote}</p>}
+          {problem && <p role="alert" className="mt-4 text-sm bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3">{problem}</p>}
+
+          <div className="mt-6 space-y-3">
+            <button type="button" onClick={takePhoto} className={primary}><Icon name="camera" className="w-4 h-4" /> Take photo</button>
+            <button type="button" onClick={() => uploadInput.current?.click()} className={outline}><Icon name="plus" className="w-4 h-4" /> Upload file</button>
+            {saved[view] && (
+              <button type="button" onClick={keepCurrent} className="w-full text-xs font-medium text-slate-400 hover:text-slate-600 py-1">Keep my current photo</button>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 text-center mt-5">We check each photo automatically so you know straight away if it can’t be used. A clinician still reviews every photo. Your progress is saved as you go.</p>
+        </div>
+      )}
+
+      {/* ── Checking ─────────────────────────────────────────────────────── */}
+      {phase === 'checking' && (
+        <div role="status" aria-live="polite">
+          <h1 className="text-xl font-bold text-slate-900 mt-4">Checking your photo…</h1>
+          <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}. This takes a few seconds.</p>
+          <div className={`${card} mt-6`}>
+            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-xl bg-slate-50 aspect-[3/4]">
               {attempt?.previewUrl && <img src={attempt.previewUrl} alt="Your photo" className="absolute inset-0 w-full h-full object-contain" />}
               <div className="absolute inset-0 bg-ink-900/25" />
               <span className="scan-line absolute left-0 right-0 h-1 bg-white shadow-[0_0_18px_6px_rgba(255,255,255,0.7)]" style={{ animation: 'scan 1.8s ease-in-out infinite' }} />
             </div>
-            <p className="mt-5 text-lg font-semibold text-ink-900">Checking your photo…</p>
-            <p className="text-sm text-slate-500 mt-1">This takes a few seconds.</p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── Not usable: say exactly what to fix ───────────────────────────── */}
-        {phase === 'failed' && attempt && (
-          <div>
-            <h2 className="text-[28px] leading-tight font-extrabold text-ink-900 tracking-tight">{attempt.result.outcome === 'UNCHECKED' ? 'We couldn’t check your photo' : `Let’s try your ${view === 'FRONT' ? 'front' : 'side'} photo again`}</h2>
-            <p className="text-sm text-slate-500 mt-3">{LABEL[view].of}</p>
+      {/* ── Not usable: say exactly what to fix ───────────────────────────── */}
+      {phase === 'failed' && attempt && (
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 mt-4">{attempt.result.outcome === 'UNCHECKED' ? 'We couldn’t check your photo' : `Let’s try your ${view === 'FRONT' ? 'front' : 'side'} photo again`}</h1>
+          <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}</p>
 
-            <div className="mt-4 rounded-3xl border border-slate-200 p-4">
-              <img src={attempt.previewUrl} alt="The photo that didn’t pass" className="w-full max-h-96 object-contain bg-slate-100 rounded-2xl" />
-            </div>
-
-            <div className="mt-4 rounded-2xl bg-amber-50 p-4" role="alert">
-              <p className="flex items-center gap-2.5 font-semibold text-amber-950"><Icon name="alert" className="w-5 h-5 text-amber-700" /> {attempt.result.outcome === 'UNCHECKED' ? 'What happened' : 'What our check found'}</p>
-              <ul className="mt-2 space-y-1.5 text-[15px] text-amber-950/90">
-                {(attempt.result.messages.length ? attempt.result.messages : ['This photo can’t be used']).map((m) => <li key={m}>{m}</li>)}
-              </ul>
-            </div>
-
-            {problem && <p role="alert" className="mt-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">{problem}</p>}
-
-            <div className="mt-5 space-y-3">
-              <button type="button" onClick={retake} className={primary}><Icon name="camera" className="w-5 h-5" /> Retake photo</button>
-              <button type="button" onClick={() => { dropAttempt(); setPhase('guide'); uploadInput.current?.click(); }} className={outline}><Icon name="plus" className="w-5 h-5" /> Upload file</button>
-              {attempt.result.canSendForReview && (
-                <div className="rounded-2xl border border-slate-200 p-4 text-center">
-                  <p className="text-sm text-slate-600">Tried a few times? A clinician can look at this photo themselves instead.</p>
-                  <button type="button" onClick={() => persist(attempt, true)} className="mt-2 text-sm font-semibold text-ink-700 hover:text-ink-900 underline underline-offset-2">Send it to a clinician</button>
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400 text-center mt-4">{fails[view] > 1 ? `${fails[view]} tries so far — ` : ''}tips: stand a few steps back, use good light, and let someone help or use the self-timer.</p>
+          <div className={`${card} mt-6`}>
+            <img src={attempt.previewUrl} alt="The photo that didn’t pass" className="w-full max-h-80 object-contain bg-slate-50 rounded-xl" />
           </div>
-        )}
 
-        {/* ── Saved ─────────────────────────────────────────────────────────── */}
-        {phase === 'saved' && attempt && (
-          <div className="text-center" role="status" aria-live="polite">
-            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-3xl aspect-[3/4]">
-              <img src={attempt.previewUrl} alt="Your photo" className="absolute inset-0 w-full h-full object-contain" />
-              <span className="absolute inset-0 bg-emerald-500/20" />
-              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xl"><Icon name="check" className="w-10 h-10" /></span>
-            </div>
-            <p className="mt-5 text-xl font-bold text-ink-900">{attempt.result.outcome === 'PASS' ? 'Looks good!' : attempt.result.outcome === 'FAIL' ? 'Sent to a clinician' : 'Photo saved'}</p>
-            <p className="text-sm text-slate-500 mt-1">
-              {attempt.result.outcome === 'PASS' ? 'Saved.' : attempt.result.outcome === 'FAIL' ? 'A clinician will look at this photo themselves.' : 'A clinician will check this photo for you.'}
-              {view === 'FRONT' && !saved.SIDE ? ' Next: your side photo.' : ''}
-            </p>
-            <button type="button" onClick={advance} className={`${primary} mt-6`}>{view === 'FRONT' && !saved.SIDE ? 'Continue to side photo' : 'Continue'}</button>
+          <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-100 p-4" role="alert">
+            <p className="flex items-center gap-2 text-sm font-semibold text-amber-950"><Icon name="alert" className="w-4 h-4 text-amber-700" /> {attempt.result.outcome === 'UNCHECKED' ? 'What happened' : 'What our check found'}</p>
+            <ul className="mt-2 space-y-1 text-sm text-amber-950/90">
+              {(attempt.result.messages.length ? attempt.result.messages : ['This photo can’t be used']).map((m) => <li key={m}>{m}</li>)}
+            </ul>
           </div>
-        )}
 
-        {/* ── Both saved ────────────────────────────────────────────────────── */}
-        {phase === 'done' && (
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="w-11 h-11 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center"><Icon name="check" /></span>
-              <div>
-                <h2 className="text-xl font-bold text-ink-900">Both photos are saved</h2>
-                <p className="text-sm text-slate-500">Your doctor reviews them with the rest of your application.</p>
+          {problem && <p role="alert" className="mt-4 text-sm bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3">{problem}</p>}
+
+          <div className="mt-6 space-y-3">
+            <button type="button" onClick={retake} className={primary}><Icon name="camera" className="w-4 h-4" /> Retake photo</button>
+            <button type="button" onClick={() => { dropAttempt(); setPhase('guide'); uploadInput.current?.click(); }} className={outline}><Icon name="plus" className="w-4 h-4" /> Upload file</button>
+            {attempt.result.canSendForReview && (
+              <div className={`${card} text-center`}>
+                <p className="text-sm text-slate-600">Tried a few times? A clinician can look at this photo themselves instead.</p>
+                <button type="button" onClick={() => persist(attempt, true)} className="mt-2 text-sm font-semibold text-ink-700 hover:text-ink-900 underline underline-offset-2">Send it to a clinician</button>
               </div>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 text-center mt-5">{fails[view] > 1 ? `${fails[view]} tries so far — ` : ''}tips: stand a few steps back, use good light, and let someone help or use the self-timer.</p>
+        </div>
+      )}
+
+      {/* ── Saved ─────────────────────────────────────────────────────────── */}
+      {phase === 'saved' && attempt && (
+        <div role="status" aria-live="polite">
+          <h1 className="text-xl font-bold text-slate-900 mt-4">{attempt.result.outcome === 'PASS' ? 'Looks good!' : attempt.result.outcome === 'FAIL' ? 'Sent to a clinician' : 'Photo saved'}</h1>
+          <p className="text-sm text-slate-500 mt-2">
+            {attempt.result.outcome === 'PASS' ? 'Saved.' : attempt.result.outcome === 'FAIL' ? 'A clinician will look at this photo themselves.' : 'A clinician will check this photo for you.'}
+            {view === 'FRONT' && !saved.SIDE ? ' Next: your side photo.' : ''}
+          </p>
+          <div className={`${card} mt-6`}>
+            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-xl bg-slate-50 aspect-[3/4]">
+              <img src={attempt.previewUrl} alt="Your photo" className="absolute inset-0 w-full h-full object-contain" />
+              <span className="absolute inset-0 bg-emerald-500/15" />
+              <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xl"><Icon name="check" className="w-8 h-8" /></span>
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-5">
+          </div>
+          <button type="button" onClick={advance} className={`${primary} mt-6`}>{view === 'FRONT' && !saved.SIDE ? 'Continue to side photo' : 'Continue'}</button>
+        </div>
+      )}
+
+      {/* ── Both saved ────────────────────────────────────────────────────── */}
+      {phase === 'done' && (
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 mt-4">Your photos</h1>
+          <p className="text-sm text-slate-500 mt-2">Both photos are saved. Your doctor reviews them with the rest of your application.</p>
+          <div className={`${card} mt-6`}>
+            <div className="grid grid-cols-2 gap-3">
               {(['FRONT', 'SIDE'] as const).map((v) => (
                 <figure key={v} className="text-center">
-                  {saved[v] && <AuthedImage fileId={saved[v]!} alt={`${LABEL[v].name} photo`} className="w-full aspect-[3/4] object-contain bg-slate-100 rounded-2xl border border-slate-200" />}
+                  {saved[v] && <AuthedImage fileId={saved[v]!} alt={`${LABEL[v].name} photo`} className="w-full aspect-[3/4] object-contain bg-slate-50 rounded-xl border border-slate-100" />}
                   <figcaption className="mt-2 text-sm font-medium text-slate-700">{LABEL[v].name}</figcaption>
-                  <button type="button" onClick={() => retakeView(v)} className="text-xs font-semibold text-ink-600 hover:text-ink-800 mt-0.5">Retake</button>
+                  <button type="button" onClick={() => retakeView(v)} className="text-xs font-medium text-ink-600 hover:text-ink-800 mt-0.5">Retake</button>
                 </figure>
               ))}
             </div>
-            <button type="button" onClick={onFinished} className={`${primary} mt-7`}>Continue</button>
           </div>
-        )}
-      </div>
+          <button type="button" onClick={onFinished} className={`${primary} mt-6`}>Continue</button>
+        </div>
+      )}
 
       {cameraOpen && (
         <CameraCapture
