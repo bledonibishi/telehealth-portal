@@ -15,6 +15,9 @@ const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   'prescription-proof': 'PRESCRIPTION_PROOF',
 };
 
+// A clinician's change request, shown on its step as theirs.
+const clinicianNote = (reason?: string | false) => (reason ? `Clinician: “${reason}”` : undefined);
+
 export default function OnboardingLandingPage() {
   const router = useRouter();
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
@@ -42,7 +45,6 @@ export default function OnboardingLandingPage() {
   const bodyHave = [o.bodyPhotoFrontUrl, o.bodyPhotoSideUrl].filter(Boolean).length;
   const idPhotoHint = idHave === 1 ? (o.idDocumentUrl ? 'ID saved — your selfie is left' : 'Selfie saved — your ID is left') : 'A government ID and a selfie';
   const bodyPhotoHint = bodyHave === 1 ? (o.bodyPhotoFrontUrl ? 'Front photo saved — your side photo is left' : 'Side photo saved — your front photo is left') : 'Two full body photos, front and side';
-  const prescriptionProofDone = o.priorMedicationUse === false || (!!o.priorMedicationUse && !!o.prescriptionProofUrl);
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
   const retakeViews: string[] = o.bodyPhotosToRetake ?? [];
@@ -51,7 +53,7 @@ export default function OnboardingLandingPage() {
       ? questionnaireFeedback
       : key === 'body-photo' && retakeViews.length
         ? `Please retake your ${retakeViews.map((v) => (v === 'FRONT' ? 'front' : 'side')).join(' and ')} photo — it hasn’t passed our photo check`
-        : STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason;
+        : clinicianNote(STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
 
   // The questionnaire creates the consultation a doctor reviews.
   const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
@@ -60,7 +62,18 @@ export default function OnboardingLandingPage() {
     ? 'A clinician has asked for more information — please review your answers'
     : undefined;
 
-  const baseSteps: { key: StepKey; label: string; hint: string; done: boolean }[] = [
+  // The proof is checked against the questionnaire's answers, so it comes after it. Proof whose
+  // automatic check found mismatches blocks submitting, so it's marked as needing attention.
+  const prescriptionProofDone =
+    questionnaireDone &&
+    (o.priorMedicationUse === false || (!!o.priorMedicationUse && (!!o.prescriptionProofUrl || o.prescriptionProofUnavailable)));
+  const proofNeedsAttention =
+    prescriptionProofDone &&
+    !!o.priorMedicationUse &&
+    !o.prescriptionProofUnavailable &&
+    ['REUPLOAD', 'CONTACT_US'].includes(o.prescriptionProofReview?.nextStep);
+
+  const baseSteps: { key: StepKey; label: string; hint: string; done: boolean; attention?: boolean }[] = [
     {
       key: 'basic-information',
       label: 'Basic information',
@@ -78,8 +91,17 @@ export default function OnboardingLandingPage() {
     {
       key: 'prescription-proof',
       label: 'Proof of prescription',
-      hint: 'Only if you’ve used this medication before',
-      done: prescriptionProofDone,
+      hint: !questionnaireDone
+        ? 'After your medical questionnaire'
+        : o.prescriptionProofUnavailable
+          ? 'No proof — you’ll start on the lowest dose'
+          : proofNeedsAttention
+            ? 'Details didn’t match — fix to submit'
+            : 'Only if you’ve used this medication before',
+      // Not done while the proof doesn't match: submitting is blocked until it's fixed, or the
+      // patient chooses to continue without proof.
+      done: prescriptionProofDone && !proofNeedsAttention,
+      attention: proofNeedsAttention,
     },
   ];
 
@@ -114,7 +136,7 @@ export default function OnboardingLandingPage() {
       {o.status === 'REJECTED' && (
         <div className="mb-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">
           <p className="font-medium">Your submission needs another look</p>
-          <p className="mt-1 text-danger-500/90">See the step below marked in red for what to fix.</p>
+          <p className="mt-1 text-danger-500/90">See the steps below marked ! for what to fix.</p>
         </div>
       )}
 
@@ -138,16 +160,18 @@ export default function OnboardingLandingPage() {
               className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
                 s.needsChanges
                   ? 'bg-danger-50 text-danger-500'
-                  : s.done
+                  : s.attention
+                    ? 'bg-amber-50 text-amber-700'
+                    : s.done
                     ? 'bg-ink-50 text-ink-700'
                     : 'bg-slate-100 text-slate-500'
               }`}
             >
-              {s.needsChanges ? '!' : s.done ? '✓' : i + 1}
+              {s.needsChanges || s.attention ? '!' : s.done ? '✓' : i + 1}
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-900">{s.label}</p>
-              <p className={`text-xs ${s.needsChanges ? 'text-danger-500 font-medium' : 'text-slate-400'}`}>
+              <p className={`text-xs ${s.needsChanges ? 'text-danger-500 font-medium' : s.attention ? 'text-amber-700 font-medium' : 'text-slate-400'}`}>
                 {s.needsChanges ? s.rejectionReason : s.hint}
               </p>
             </div>

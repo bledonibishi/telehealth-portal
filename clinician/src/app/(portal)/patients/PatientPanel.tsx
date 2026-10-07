@@ -14,7 +14,8 @@ import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
 import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING_STEP } from '@/graphql/onboarding';
 import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
-import AuthedImage from '@/components/AuthedImage';
+import { ProofReviewCard } from '@/components/onboarding/ProofReviewCard';
+import { PhotoTile } from '@/components/PhotoTile';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
@@ -79,76 +80,78 @@ function OnboardingStepSection({
   children: React.ReactNode;
 }) {
   const { t } = useI18n();
+  const actions = inReview && reviewable && !editing;
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t(title)}</p>
+    <section className="rounded-2xl border border-gray-200 bg-white">
+      {/* Title, decision and actions on one line, so each step reads at a glance. */}
+      <header className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100">
+        <h4 className="text-sm font-semibold text-gray-900">{t(title)}</h4>
         {savedDecision && !savedDecision.approved && (
           <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">{t('Changes requested')}</span>
         )}
         {savedDecision && savedDecision.approved && (
           <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{t('Approved')}</span>
         )}
-      </div>
-      {children}
-      {savedDecision && !savedDecision.approved && savedDecision.reason && (
-        <p className="mt-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{savedDecision.reason}</p>
-      )}
-      {inReview && reviewable && (
-        <div className="mt-2 space-y-2">
-          {editing ? (
-            <div className="space-y-2">
-              <textarea
-                rows={2}
-                autoFocus
-                placeholder={t('What does the patient need to fix for {item}?', { item: t(title).toLowerCase() })}
-                value={draftReason}
-                onChange={(e) => onDraftReasonChange(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={onSaveRejection}
-                  disabled={!draftReason.trim() || saving}
-                  className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
-                >
-                  {saving ? t('Saving…') : t('Save')}
-                </button>
-                <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-400 hover:text-gray-600">
-                  {t('Cancel')}
-                </button>
-              </div>
-            </div>
-          ) : (
+        {actions && (
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={onStartReject}
+              disabled={saving}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
+                savedDecision && !savedDecision.approved
+                  ? 'bg-amber-500 text-white border-amber-500'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {t('Request changes')}
+            </button>
+            <button
+              onClick={onApprove}
+              disabled={saving}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
+                savedDecision?.approved
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'border-green-600 text-green-700 hover:bg-green-50'
+              }`}
+            >
+              {saving ? t('Saving…') : savedDecision?.approved ? `✓ ${t('Approved')}` : t('Approve')}
+            </button>
+          </div>
+        )}
+      </header>
+
+      <div className="p-4 space-y-3">
+        {children}
+        {savedDecision && !savedDecision.approved && savedDecision.reason && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{savedDecision.reason}</p>
+        )}
+        {inReview && reviewable && editing && (
+          <div className="space-y-2 border-t border-gray-100 pt-3">
+            <textarea
+              rows={2}
+              autoFocus
+              placeholder={t('What does the patient need to fix for {item}?', { item: t(title).toLowerCase() })}
+              value={draftReason}
+              onChange={(e) => onDraftReasonChange(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
             <div className="flex gap-2">
               <button
-                onClick={onApprove}
-                disabled={saving}
-                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
-                  savedDecision?.approved
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
+                onClick={onSaveRejection}
+                disabled={!draftReason.trim() || saving}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
               >
-                {saving ? t('Saving…') : t('Approve')}
+                {saving ? t('Saving…') : t('Send change request')}
               </button>
-              <button
-                onClick={onStartReject}
-                disabled={saving}
-                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
-                  savedDecision && !savedDecision.approved
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {t('Request changes')}
+              <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-500 hover:text-gray-700">
+                {t('Cancel')}
               </button>
             </div>
-          )}
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
-      )}
-    </div>
+          </div>
+        )}
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    </section>
   );
 }
 
@@ -551,16 +554,16 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                   return (
                     <>
                       <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.idDocumentUrl} alt={t('ID document')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.selfieUrl} alt={t('Selfie')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <PhotoTile path={onboarding.idDocumentUrl} caption={t('ID document')} />
+                          <PhotoTile path={onboarding.selfieUrl} caption={t('Selfie')} />
                         </div>
                       </OnboardingStepSection>
 
                       <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt={t('Front-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.bodyPhotoSideUrl} alt={t('Side-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <PhotoTile path={onboarding.bodyPhotoFrontUrl} caption={t('Front-facing')} height="h-64" />
+                          <PhotoTile path={onboarding.bodyPhotoSideUrl} caption={t('Side-facing')} height="h-64" />
                         </div>
                         <PhotoCheckNotes checks={onboarding.bodyPhotoChecks ?? []} />
                       </OnboardingStepSection>
@@ -570,15 +573,38 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                         reviewable={!!onboarding.priorMedicationUse}
                         {...stepProps('PRESCRIPTION_PROOF')}
                       >
-                        {onboarding.priorMedicationUse ? (
-                          <div>
-                            <p className="text-sm text-gray-800 mb-2">
-                              {t('Yes — proof provided: {proof}', { proof: t(PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType) })}
-                            </p>
-                            <AuthedImage path={onboarding.prescriptionProofUrl} alt={t('Prescription proof')} className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
-                          </div>
+                        {!onboarding.priorMedicationUse ? (
+                          <p className="text-sm text-gray-600">{t('No — first time using this medication.')}</p>
                         ) : (
-                          <p className="text-sm text-gray-500">{t('No — first time using this medication.')}</p>
+                          <>
+                            {onboarding.prescriptionProofUnavailable && (
+                              <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2.5">
+                                {t('Yes — but the patient has no proof. Start-dose rules apply unless you verify their previous dose another way (e.g. with their previous prescriber).')}
+                              </p>
+                            )}
+                            {onboarding.prescriptionProofUrl ? (
+                              // The document beside what the automatic check made of it. Still shown after
+                              // "I don't have any proof", as the upload that came before it.
+                              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
+                                <PhotoTile
+                                  path={onboarding.prescriptionProofUrl}
+                                  height="h-72"
+                                  caption={
+                                    onboarding.prescriptionProofUnavailable
+                                      ? t('Earlier upload, before they said they have no proof')
+                                      : t(PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType ?? 'Prescription proof')
+                                  }
+                                />
+                                {onboarding.prescriptionProofReview ? (
+                                  <ProofReviewCard review={onboarding.prescriptionProofReview} />
+                                ) : (
+                                  <p className="text-xs text-gray-500">{t('Not checked automatically — review the document yourself.')}</p>
+                                )}
+                              </div>
+                            ) : (
+                              !onboarding.prescriptionProofUnavailable && <p className="text-sm text-gray-500">{t('No proof uploaded yet.')}</p>
+                            )}
+                          </>
                         )}
                       </OnboardingStepSection>
 

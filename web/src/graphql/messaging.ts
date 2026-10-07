@@ -27,7 +27,8 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
 `;
 
 // The patient's messages live on each of their consultations; the chat shows them as one conversation.
-// Consultations come newest first, and replies go to the newest one.
+// Consultations come newest first, and replies go to the newest one. Before there is a consultation,
+// messages live on the patient's pre-consultation thread (e.g. asking for help during onboarding).
 export const MY_CONVERSATION = gql`
   query MyConversation {
     myConsultations {
@@ -42,6 +43,20 @@ export const MY_CONVERSATION = gql`
         readAt
       }
     }
+    myPreConsultationMessages {
+      id
+      senderId
+      senderRole
+      content
+      sentAt
+      readAt
+    }
+  }
+`;
+
+export const MARK_PRE_CONSULTATION_READ = gql`
+  mutation MarkPreConsultationMessagesRead {
+    markPreConsultationMessagesRead
   }
 `;
 

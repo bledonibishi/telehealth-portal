@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Resolver, Query, Mutation, Subscription, Args, ID, Int } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { MessagingService } from './messaging.service';
@@ -19,11 +20,35 @@ export class MessagingResolver {
     return this.messagingService.findByConsultation(consultationId);
   }
 
+  @Authorized('PATIENT')
+  @Query(() => [MessageModel], { description: 'Messages from before the patient had a consultation (e.g. help asked for during onboarding)' })
+  myPreConsultationMessages(@CurrentUser() user: AuthUser) {
+    return this.messagingService.findPreConsultation(user.id);
+  }
+
+  @Authorized(...STAFF)
+  @AuditRead('Patient', 'patientId')
+  @Query(() => [MessageModel], { description: 'A patient’s messages from before they had a consultation' })
+  preConsultationMessages(@CurrentUser() user: AuthUser, @Args('patientId', { type: () => ID }) patientId: string) {
+    return this.messagingService.findPreConsultation(patientId);
+  }
+
   @Authorized(...STAFF, 'PATIENT')
   @Mutation(() => MessageModel)
-  async sendMessage(@CurrentUser() user: AuthUser, @Args('input') input: SendMessageInput) {
-    await this.messagingService.assertCanAccess(user, input.consultationId);
-    return this.messagingService.send(user.id, user.role as any, input);
+  sendMessage(@CurrentUser() user: AuthUser, @Args('input') input: SendMessageInput) {
+    // resolveThread checks the sender may write to that thread.
+    return this.messagingService.sendAs(user, input);
+  }
+
+  @Authorized(...STAFF, 'PATIENT')
+  @Mutation(() => Int, { description: 'Marks the pre-consultation thread read for the caller; patients pass no patientId' })
+  markPreConsultationMessagesRead(
+    @CurrentUser() user: AuthUser,
+    @Args('patientId', { type: () => ID, nullable: true }) patientId?: string,
+  ) {
+    const id = user.role === 'PATIENT' ? user.id : patientId;
+    if (!id) throw new BadRequestException('patientId is required');
+    return this.messagingService.markPreConsultationRead(user, id);
   }
 
   @Authorized(...STAFF, 'PATIENT')

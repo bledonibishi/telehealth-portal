@@ -3,11 +3,14 @@ import { CheckoutService } from './checkout.service';
 
 // The real Stripe SDK throws at construction with no key; every test replaces
 // `stripe` with a spy before any call.
-const config = {
-  get: jest.fn((key: string, def?: any) =>
-    key === 'STRIPE_SECRET_KEY' ? 'sk_test_dummy' : key === 'STRIPE_REFERRAL_FRIEND_COUPON_ID' ? 'coupon_ref' : def,
-  ),
+// The configured plan prices: the only prices a page may ask for.
+const SETTINGS: Record<string, string> = {
+  STRIPE_SECRET_KEY: 'sk_test_dummy',
+  STRIPE_REFERRAL_FRIEND_COUPON_ID: 'coupon_ref',
+  STRIPE_PRICE_OESTROGEN: 'price_1',
+  STRIPE_PRICE_GLP1_ADVANCED: 'price_tier',
 };
+const config = { get: jest.fn((key: string, def?: any) => SETTINGS[key] ?? def) };
 
 function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jest.fn() }) {
   const service = new CheckoutService(config as any, prisma, referrals);
@@ -17,7 +20,7 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
 
 const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
 
-function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
+function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?: any[] } = {}) {
   return {
     lead: {
       findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
@@ -25,8 +28,71 @@ function prismaFor(over: { lead?: any; patient?: any; referral?: any } = {}) {
     },
     patient: { findFirst: jest.fn().mockResolvedValue(over.patient ?? null) },
     referral: { findUnique: jest.fn().mockResolvedValue(over.referral ?? null) },
+    product: { findMany: jest.fn().mockResolvedValue(over.products ?? []) },
   };
 }
+
+describe('CheckoutService per-dose prices', () => {
+  const MOUNJARO = {
+    id: 'p1', slug: 'tirzepatide-mounjaro', name: 'Tirzepatide', brandName: 'Mounjaro', category: 'GLP1',
+    strengths: [
+      { id: 's1', label: '2.5 mg', titrationStep: 1, stripePriceId: 'price_m25' },
+      { id: 's3', label: '7.5 mg', titrationStep: 3, stripePriceId: 'price_m75' },
+      { id: 's5', label: '12.5 mg', titrationStep: 5, stripePriceId: null },
+    ],
+  };
+
+  it('charges the chosen dose’s own price, whatever price the page sent', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+      priceId: 'price_cheapest', leadId: 'lead-1', product: 'Mounjaro', dose: '7.5 mg',
+    });
+    expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_m75', quantity: 1 }]);
+  });
+
+  it('uses the page’s plan price for a dose not priced individually', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+      priceId: 'price_tier', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
+    });
+    expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_tier', quantity: 1 }]);
+  });
+
+  it('refuses a price that isn’t one of the configured plans', async () => {
+    const session = { create: jest.fn() };
+    await expect(
+      build(prismaFor(), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_whatever_is_cheapest', leadId: 'lead-1' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses another treatment’s plan price for a GLP-1 dose', async () => {
+    const session = { create: jest.fn() };
+    await expect(
+      build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+        priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses another treatment’s plan price for a GLP-1 lead whose dose the catalog doesn’t know', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, productKind: 'GLP1' };
+    await expect(
+      build(prismaFor({ lead, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+        priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '99 mg',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
+  it('charges the dose already ordered on the lead when the request leaves product and dose out', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    const lead = { ...LEAD, productKind: 'GLP1', quizAnswers: [{ questionId: 'preferred_treatment', answer: 'Mounjaro 7.5 mg' }] };
+    await build(prismaFor({ lead, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' });
+    expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_m75', quantity: 1 }]);
+  });
+});
 
 describe('CheckoutService.createHostedSession', () => {
   const session = { create: jest.fn().mockResolvedValue({ url: 'https://stripe/x' }) };

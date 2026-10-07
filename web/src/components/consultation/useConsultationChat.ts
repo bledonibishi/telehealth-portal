@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
-import { MARK_MESSAGES_READ, MY_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, MY_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import type { ReadReceipt } from './ConversationWatchers';
@@ -35,6 +35,8 @@ const fromTeam = (m: ChatMessage) => m.senderRole !== 'PATIENT';
 // The patient's one conversation with their care team. Messages are stored per consultation,
 // so this merges them across all of them; replies go to the newest consultation, which is
 // where the clinician's replies go too — so both sides see the same thread from any page.
+// A patient with no consultation yet writes to their pre-consultation thread, which moves onto
+// the consultation once the medical questionnaire is submitted.
 export function useConversationChat({ currentUserId }: { currentUserId: string | null }) {
   const client = useApolloClient();
   const connected = useRealtimeConnected(realtime);
@@ -44,9 +46,11 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
 
   const { data, loading, refetch, startPolling, stopPolling } = useQuery(MY_CONVERSATION);
   const consultations: Array<{ id: string; messages: ChatMessage[] }> = data?.myConsultations ?? [];
+  const preConsultation: ChatMessage[] = data?.myPreConsultationMessages ?? [];
   const saved: ChatMessage[] = useMemo(() => {
     const byId = new Map<string, ChatMessage>();
     consultations.forEach((c) => (c.messages ?? []).forEach((m) => byId.set(m.id, m)));
+    preConsultation.forEach((m) => byId.set(m.id, m));
     return [...byId.values()].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -56,7 +60,15 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
 
   const patch = useCallback(
     (change: (c: { id: string; messages: ChatMessage[] }) => { id: string; messages: ChatMessage[] }) => {
-      client.cache.updateQuery({ query: MY_CONVERSATION }, (existing) => (existing ? { myConsultations: existing.myConsultations.map(change) } : existing));
+      client.cache.updateQuery({ query: MY_CONVERSATION }, (existing) => (existing ? { ...existing, myConsultations: existing.myConsultations.map(change) } : existing));
+    },
+    [client],
+  );
+  const patchPre = useCallback(
+    (change: (messages: ChatMessage[]) => ChatMessage[]) => {
+      client.cache.updateQuery({ query: MY_CONVERSATION }, (existing) =>
+        existing ? { ...existing, myPreConsultationMessages: change(existing.myPreConsultationMessages ?? []) } : existing,
+      );
     },
     [client],
   );
@@ -78,16 +90,19 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
     [patch],
   );
 
+  // The pre-consultation thread has no live channel, so it is always polled.
+  const live = connected && consultations.length > 0;
   useEffect(() => {
-    if (connected) return;
+    if (live) return;
     startPolling(FALLBACK_POLL_MS);
     return stopPolling;
-  }, [connected, startPolling, stopPolling]);
+  }, [live, startPolling, stopPolling]);
   // Messages sent while the socket was down were never delivered to it.
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE);
   const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const [markPreRead] = useMutation(MARK_PRE_CONSULTATION_READ);
 
   const unread = useMemo(() => saved.filter((m) => fromTeam(m) && !m.readAt).length, [saved]);
 
@@ -105,6 +120,14 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
         .catch(() => undefined) // still unread on the server; tried again next time the thread is opened
         .finally(() => marking.current.delete(c.id));
     }
+    if (!marking.current.has('pre') && preConsultation.some((m) => fromTeam(m) && !m.readAt)) {
+      marking.current.add('pre');
+      const readAt = new Date().toISOString();
+      markPreRead()
+        .then(() => patchPre((ms) => ms.map((m) => (fromTeam(m) && !m.readAt ? { ...m, readAt } : m))))
+        .catch(() => undefined)
+        .finally(() => marking.current.delete('pre'));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data]);
 
@@ -114,12 +137,17 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
   };
 
   const send = async (content: string) => {
-    if (!replyTo) return;
     const temp: ChatMessage = { id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`, senderId: currentUserId ?? '', senderRole: 'PATIENT', content, sentAt: new Date().toISOString(), pending: true };
     setPending((p) => [...p, temp]);
     try {
-      const res = await sendMessage({ variables: { input: { consultationId: replyTo, content } } });
-      if (res.data?.sendMessage) receive(replyTo, res.data.sendMessage);
+      if (replyTo) {
+        const res = await sendMessage({ variables: { input: { consultationId: replyTo, content } } });
+        if (res.data?.sendMessage) receive(replyTo, res.data.sendMessage);
+      } else {
+        const res = await sendMessage({ variables: { input: { content } } });
+        const saved = res.data?.sendMessage;
+        if (saved) patchPre((ms) => (ms.some((m) => m.id === saved.id) ? ms : [...ms, { readAt: null, ...saved }]));
+      }
     } finally {
       // Gone either way: replaced by the saved message, or dropped so the caller can show the error.
       setPending((p) => p.filter((m) => m.id !== temp.id));

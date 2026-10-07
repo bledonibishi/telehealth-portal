@@ -345,6 +345,7 @@ model Patient {
 
   lead                Lead?                 @relation(fields: [leadId], references: [id])
   consultations       Consultation[]
+  messages            Message[]
   uploadedFiles       UploadedFile[]
   onboarding          OnboardingSubmission?
   checkIns            CheckIn[]
@@ -656,6 +657,9 @@ model ProductStrength {
   defaultQuantity Int     @default(1) @map("default_quantity")
   sortOrder       Int     @default(0) @map("sort_order")
   active          Boolean @default(true)
+  // The monthly Stripe price for this dose (each dose is priced separately).
+  // Null: not sold per dose yet — billing falls back to the plan tier price.
+  stripePriceId   String? @map("stripe_price_id")
 
   product           Product            @relation(fields: [productId], references: [id])
   prescriptionItems PrescriptionItem[]
@@ -666,7 +670,12 @@ model ProductStrength {
 
 model Message {
   id             String    @id @default(cuid())
-  consultationId String    @map("consultation_id")
+  // The conversation is the patient's. Messages sent before the patient has a
+  // consultation (e.g. asking for help during onboarding) have no
+  // consultationId; submitting the medical questionnaire moves them onto the
+  // new consultation (see ConsultationsService.submitIntakeQuiz).
+  patientId      String    @map("patient_id")
+  consultationId String?   @map("consultation_id")
   senderId       String    @map("sender_id")
   senderRole     Role      @map("sender_role")
   content        String
@@ -674,9 +683,11 @@ model Message {
   // When the other side first had the conversation open with this message in it. Null until then.
   readAt         DateTime? @map("read_at")
 
-  consultation Consultation @relation(fields: [consultationId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  consultation Consultation? @relation(fields: [consultationId], references: [id])
 
   @@index([consultationId, readAt])
+  @@index([patientId, consultationId])
   @@map("messages")
 }
 
@@ -962,6 +973,12 @@ model OnboardingSubmission {
   priorMedicationUse      Boolean?               @map("prior_medication_use")
   prescriptionProofType   PrescriptionProofType? @map("prescription_proof_type")
   prescriptionProofFileId String?                @map("prescription_proof_file_id")
+  // Automatic read of the proof and the dose-safety assessment — see
+  // PrescriptionProofReviewService. Advisory only; the clinician decides.
+  prescriptionProofReview Json?                  @map("prescription_proof_review")
+  // The patient used the medicine before but has no proof: they start on the
+  // lowest dose like a new patient, unless a clinician verifies it another way.
+  prescriptionProofUnavailable Boolean          @default(false) @map("prescription_proof_unavailable")
   status                  OnboardingStatus       @default(IN_PROGRESS) @map("status")
   submittedAt             DateTime?              @map("submitted_at")
   reviewedAt              DateTime?              @map("reviewed_at")

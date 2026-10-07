@@ -12,6 +12,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:seed-catalog": "ts-node prisma/catalog.ts",
+    "compare-proof-models": "ts-node scripts/compare-proof-models.ts",
+    "set-dose-price": "ts-node scripts/set-dose-price.ts",
+    "sync-dose-prices": "ts-node scripts/sync-dose-prices.ts",
     "pose-model": "mkdir -p models && curl -L --fail -o models/yolov8n-pose.onnx https://huggingface.co/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx"
   },
   "prisma": {

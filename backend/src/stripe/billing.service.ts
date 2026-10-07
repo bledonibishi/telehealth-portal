@@ -87,6 +87,54 @@ export class BillingService {
     });
   }
 
+  /**
+   * After the first prescription: bill the dose that was prescribed rather than the one ordered.
+   * The subscription moves to `priceId` from the next billing cycle; if the new price is lower,
+   * the difference on the payment already made is refunded to the card. The plan is never moved
+   * to a price that is higher than what the patient agreed to at checkout (or can't be compared
+   * with it): that needs the patient's agreement, so it is left as a note to sort out by hand.
+   * Returns a note for the record, never throws.
+   */
+  async moveToPrescribedPrice(patient: BillingPatient, priceId: string, doseLabel?: string): Promise<string> {
+    return this.withSubscription(patient, async (sub) => {
+      const item = sub.items.data[0];
+      if (!item) return 'Subscription has no items — update the plan in Stripe by hand';
+      if (item.price.id === priceId) return 'Billing already matches the prescribed dose';
+
+      const oldAmount = item.price.unit_amount;
+      const newPrice = await this.stripe.prices.retrieve(priceId);
+      const newAmount = newPrice.unit_amount;
+      const label = doseLabel ?? priceId;
+      if (oldAmount == null || newAmount == null || newPrice.currency !== item.price.currency) {
+        return `Billing unchanged: the price for ${label} can’t be compared with the current plan — check it in Stripe`;
+      }
+      if (newAmount > oldAmount) {
+        return `Billing unchanged: ${label} costs more than the plan the patient paid for — agree the new price with them before changing it in Stripe`;
+      }
+      await this.stripe.subscriptions.update(sub.id, { items: [{ id: item.id, price: priceId }], proration_behavior: 'none' });
+      const moved = `Billing moved to ${label} from the next billing cycle`;
+      if (newAmount === oldAmount) return moved;
+
+      const { data } = await this.stripe.invoices.list({ subscription: sub.id, status: 'paid', limit: 1 });
+      const invoice = data[0] as any; // see refundLatestPaidInvoice on the cast
+      if (!invoice?.amount_paid) return `${moved}; no paid invoice to refund`;
+      // Scaled to what was actually paid, so a discount applied at checkout is shared fairly.
+      const refundCents = Math.round(((oldAmount - newAmount) * invoice.amount_paid) / oldAmount);
+      const target = this.paymentOf(invoice);
+      if (!target || refundCents <= 0) return `${moved}; refund the difference by hand`;
+      try {
+        const refund = await this.stripe.refunds.create(
+          { ...target, amount: refundCents, metadata: { reason: 'prescribed_dose_cheaper', priceId } },
+          { idempotencyKey: `dose-price-refund-${invoice.id}-${priceId}` },
+        );
+        return `${moved}; refunded ${(refundCents / 100).toFixed(2)} ${invoice.currency?.toUpperCase() ?? ''} for this month (${refund.id})`;
+      } catch (err: any) {
+        if (err?.code === 'charge_already_refunded') return `${moved}; payment was already refunded`;
+        throw err;
+      }
+    });
+  }
+
   /** Skips charging while treatment is on hold. */
   async pause(patient: BillingPatient): Promise<string> {
     return this.withSubscription(patient, async (sub) => {
@@ -137,11 +185,7 @@ export class BillingService {
     const invoice = data[0] as any;
     if (!invoice || !invoice.amount_paid) return null;
 
-    const target = invoice.payment_intent
-      ? { payment_intent: typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent.id }
-      : invoice.charge
-        ? { charge: typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id }
-        : null;
+    const target = this.paymentOf(invoice);
     if (!target) return null;
 
     try {
@@ -152,6 +196,14 @@ export class BillingService {
       if (err?.code === 'charge_already_refunded') return null;
       throw err;
     }
+  }
+
+  private paymentOf(invoice: any): { payment_intent: string } | { charge: string } | null {
+    if (invoice.payment_intent) {
+      return { payment_intent: typeof invoice.payment_intent === 'string' ? invoice.payment_intent : invoice.payment_intent.id };
+    }
+    if (invoice.charge) return { charge: typeof invoice.charge === 'string' ? invoice.charge : invoice.charge.id };
+    return null;
   }
 
   // Patients who paid before stripe ids were recorded on the patient row.

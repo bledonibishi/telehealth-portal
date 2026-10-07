@@ -1,4 +1,5 @@
 import { CheckInReviewService } from './check-in-review.service';
+import { DosePricingService } from '../stripe/dose-pricing.service';
 import { planFor } from '../stripe/plan-pricing';
 
 const PATIENT = { id: 'p-1', email: 'p@example.com', firstName: 'Tia', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1' };
@@ -52,6 +53,8 @@ describe('CheckInReviewService.review', () => {
       prescriptions as any,
       config as any,
       { trySend: jest.fn() } as any,
+      // The real pricing rules over the mocked config: no per-dose prices here, so tier prices apply.
+      new DosePricingService(config as any, prisma as any),
     );
   });
 
@@ -114,7 +117,7 @@ describe('CheckInReviewService.queue', () => {
         ]),
       },
     };
-    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const queue = await service.queue();
 

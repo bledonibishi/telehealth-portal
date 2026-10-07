@@ -63,7 +63,19 @@ describe('evaluateAnswers', () => {
     expect(noBp.answers.some((a) => a.questionId === 'bp_systolic')).toBe(false);
 
     const prior = evaluateAnswers(GLP1_INTAKE, glp1({ glp1_prior_use: 'yes' }), true);
-    expect(prior.errors).toEqual([expect.stringContaining('Which medicine')]);
+    expect(prior.errors).toEqual([
+      expect.stringContaining('Which medicine'),
+      expect.stringContaining('When did you last inject'),
+      expect.stringContaining('How long have you been on that dose'),
+    ]);
+
+    const mounjaro = evaluateAnswers(
+      GLP1_INTAKE,
+      glp1({ glp1_prior_use: 'yes', glp1_prior_medicine: 'mounjaro', glp1_prior_dose_tirzepatide: '2.5 mg', glp1_last_dose: '1_2_weeks', glp1_weeks_on_dose: '4_plus_weeks' }),
+      true,
+    );
+    expect(mounjaro.errors).toEqual([]);
+    expect(mounjaro.answers.some((a) => a.questionId === 'glp1_prior_dose_semaglutide')).toBe(false);
   });
 
   it('rejects an exclusive option combined with others', () => {

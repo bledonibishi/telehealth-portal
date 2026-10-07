@@ -13,6 +13,41 @@ export const ONBOARDING_FIELDS = gql`
     bodyPhotoFrontUrl
     bodyPhotoSideUrl
     prescriptionProofUrl
+    prescriptionProofUnavailable
+    prescriptionProofReview {
+      status
+      reason
+      riskLevel
+      findings {
+        severity
+        message
+      }
+      documentIssues {
+        code
+        patientHint
+      }
+      failedAttempts
+      nextStep
+      nameEvidenceUrl
+      nameEvidenceDocumentType
+      nameEvidenceNames
+      reportedMedicine
+      reportedDoseLabel
+      reportedLastDose
+      reportedWeeksOnDose
+      doseClarification
+      requestedDoseLabel
+      suggestedDoseLabel
+      nameMatch
+      patientNameOnDocument
+      medicineName
+      doseMg
+      documentDate
+      dateKind
+      notes
+      model
+      reviewedAt
+    }
     submittedAt
     reviewedAt
     bodyPhotoChecks {

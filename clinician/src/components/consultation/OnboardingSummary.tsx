@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@apollo/client';
 import AuthedImage from '@/components/AuthedImage';
+import { RISK } from '@/components/onboarding/ProofReviewCard';
 import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -40,7 +41,16 @@ export function OnboardingSummary({ patientId }: { patientId: string }) {
               <dt className="text-gray-500">{t('Prior use of this medicine')}</dt>
               <dd>
                 {o.priorMedicationUse === null ? '—' : o.priorMedicationUse ? 'Yes' : 'No'}
-                {o.priorMedicationUse && (o.prescriptionProofUrl ? ' · proof uploaded' : ' · no proof yet')}
+                {o.priorMedicationUse &&
+                  (o.prescriptionProofUnavailable ? ' · has no proof (start dose)' : o.prescriptionProofUrl ? ' · proof uploaded' : ' · no proof yet')}
+                {o.priorMedicationUse && !o.prescriptionProofUnavailable && o.prescriptionProofReview && (
+                  <span className={`ml-1.5 font-medium px-1.5 py-0.5 rounded ${RISK[o.prescriptionProofReview.riskLevel as keyof typeof RISK]?.cls ?? ''}`}>
+                    {t(RISK[o.prescriptionProofReview.riskLevel as keyof typeof RISK]?.label ?? o.prescriptionProofReview.riskLevel)}
+                    {o.prescriptionProofReview.suggestedDoseLabel &&
+                      o.prescriptionProofReview.suggestedDoseLabel !== o.prescriptionProofReview.requestedDoseLabel &&
+                      ` · ${t('safe next dose {dose}', { dose: o.prescriptionProofReview.suggestedDoseLabel })}`}
+                  </span>
+                )}
               </dd>
             </div>
           </dl>

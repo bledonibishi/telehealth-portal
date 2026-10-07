@@ -4,6 +4,7 @@ function makePrisma() {
   return {
     lead: { count: jest.fn().mockResolvedValue(0) },
     consultation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+    patient: { findMany: jest.fn().mockResolvedValue([]) },
     order: { count: jest.fn().mockResolvedValue(0) },
   };
 }

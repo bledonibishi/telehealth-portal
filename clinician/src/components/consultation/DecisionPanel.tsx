@@ -80,11 +80,45 @@ export function DecisionPanel({
   const blocked = claimedByOther && !isAdmin;
 
   const toQueue = { onCompleted() { router.push('/queue'); }, onError(e: Error) { setError(e.message); } };
-  const [approve, { loading: approving }] = useMutation(APPROVE_CONSULTATION, toQueue);
+  // What happened to billing for the prescribed dose, shown before going back to the queue.
+  const [billingNote, setBillingNote] = useState<string | null>(null);
+  const [approve, { loading: approving }] = useMutation(APPROVE_CONSULTATION, {
+    onCompleted(data) {
+      const note: string | null = data?.approveConsultation?.billingNote ?? null;
+      if (note) setBillingNote(note);
+      else router.push('/queue');
+    },
+    onError(e: Error) {
+      setError(e.message);
+    },
+  });
   const [decline, { loading: declining }] = useMutation(DECLINE_CONSULTATION, toQueue);
   const [requestInfo, { loading: requesting }] = useMutation(REQUEST_MORE_INFO, toQueue);
   const [claim, { loading: claiming }] = useMutation(CLAIM_CONSULTATION, { onError: (e) => setError(e.message) });
   const [release, { loading: releasing }] = useMutation(RELEASE_CONSULTATION, { onError: (e) => setError(e.message) });
+
+  // Before the "already decided" view: the approval has just made this consultation APPROVED.
+  if (billingNote) {
+    const refunded = /refunded/i.test(billingNote);
+    const needsHand = /by hand|couldn’t|failed|not configured|No Stripe/i.test(billingNote);
+    return (
+      <Modal title={t('Approved')} subtitle={t('The prescription has been issued and sent to the pharmacy queue.')} onClose={() => router.push('/queue')}>
+        <div
+          className={`rounded-lg p-3 text-sm ${
+            needsHand ? 'bg-warn-50 text-warn-900' : refunded ? 'bg-green-50 text-green-800' : 'bg-gray-50 text-gray-700'
+          }`}
+        >
+          <p className="font-medium">{needsHand ? t('Billing needs checking') : t('Billing updated')}</p>
+          <p className="mt-1">{billingNote}</p>
+        </div>
+        <div className="flex justify-end mt-4">
+          <button onClick={() => router.push('/queue')} className="text-sm font-medium bg-brand-500 text-white rounded-lg px-4 py-2 hover:bg-brand-700">
+            {t('Back to queue')}
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   if (!reviewable) {
     return (
@@ -173,6 +207,7 @@ export function DecisionPanel({
           <PrescriptionForm
             consultationId={consultationId}
             kind={kind}
+            showDoseContext
             submitting={approving}
             onCancel={close}
             onSubmit={(rx: PrescriptionSubmission) => {

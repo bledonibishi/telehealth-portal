@@ -51,6 +51,7 @@ describe('PrescribingService checks', () => {
     prisma = {
       clinician: { findUnique: jest.fn().mockResolvedValue(VERIFIED) },
       onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }) },
+      patient: { findUnique: jest.fn().mockResolvedValue({ lead: null }) },
     };
     config = { get: jest.fn((_k: string, fallback: string) => fallback) };
     service = new PrescribingService(prisma, {} as any, {} as any, config as any);
@@ -96,6 +97,7 @@ describe('PrescribingService.issue', () => {
     const db: any = {
       productStrength: { findMany: jest.fn().mockResolvedValue([strength]) },
       onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED', priorMedicationUse: false }) },
+      patient: { findUnique: jest.fn().mockResolvedValue({ lead: null }) },
       prescriptionItem: { findFirst: jest.fn().mockResolvedValue({ strength: { titrationStep: 1 } }) },
       prescription: { update: jest.fn().mockResolvedValue(created), create: jest.fn().mockResolvedValue(created) },
     };

@@ -28,7 +28,7 @@ export class NotificationsService {
   }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean; includeAppointments?: boolean } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments] =
+    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments] =
       await Promise.all([
         // Leads created in the last 24h
         this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
@@ -54,6 +54,14 @@ export class NotificationsService {
           },
         }),
 
+        // Patients without a consultation yet whose last message is theirs
+        this.prisma.patient.findMany({
+          where: { messages: { some: { consultationId: null } } },
+          select: {
+            messages: { where: { consultationId: null }, orderBy: { sentAt: 'desc' }, take: 1, select: { senderRole: true } },
+          },
+        }),
+
         // GLP-1 patients who may need re-titrating after missed doses
         includeMissedDoses ? this.countMissedDoseAlerts() : 0,
 
@@ -67,9 +75,9 @@ export class NotificationsService {
         includeAppointments ? this.prisma.appointmentRequest.count({ where: { status: 'REQUESTED', urgency: 'URGENT' } }) : 0,
       ]);
 
-    const patientMessages = consultationsWithMessages.filter(
-      (c) => c.messages[0]?.senderRole === 'PATIENT',
-    ).length;
+    const patientMessages =
+      consultationsWithMessages.filter((c) => c.messages[0]?.senderRole === 'PATIENT').length +
+      preConsultationThreads.filter((p) => p.messages[0]?.senderRole === 'PATIENT').length;
 
     return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments };
   }

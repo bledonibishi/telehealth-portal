@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
-import { planFor } from '../stripe/plan-pricing';
+import { DosePricingService } from '../stripe/dose-pricing.service';
+import { planFor, planPriceEnvVars } from '../stripe/plan-pricing';
 import { EmailService } from '../email/email.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { OrdersService } from '../prescriptions/orders.service';
@@ -40,6 +41,7 @@ export class CheckInReviewService {
     private prescriptions: PrescriptionsService,
     private config: ConfigService,
     private partner: PartnerOrdersService,
+    private dosePricing: DosePricingService,
   ) {}
 
   async queue() {
@@ -174,16 +176,16 @@ export class CheckInReviewService {
     return updated;
   }
 
-  // A new dose can mean a different plan (e.g. GLP-1 Starter → Advanced).
+  // A new dose has its own price (or, for doses not priced individually, can mean a different plan tier).
   private async movePlan(patient: Parameters<BillingService['changePrice']>[0], kind: ConsultationKind, prescriptionId: string) {
     const items = await this.prisma.prescriptionItem.findMany({
       where: { prescriptionId },
       include: { product: true, strength: true },
     });
-    const plan = planFor(kind, items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep })));
-    const priceId = this.config.get<string>(`STRIPE_PRICE_${plan}`);
+    const priced = items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId }));
+    const priceId = this.dosePricing.priceIdFor(kind, priced);
     const resumed = await this.billing.resume(patient);
-    if (!priceId) return `${resumed}. No STRIPE_PRICE_${plan} configured — check the plan in Stripe`;
+    if (!priceId) return `${resumed}. No price for this dose and no ${planPriceEnvVars(planFor(kind, priced))[0]} configured — check the plan in Stripe`;
     return `${resumed}. ${await this.billing.changePrice(patient, priceId)}`;
   }
 

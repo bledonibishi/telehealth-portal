@@ -5,6 +5,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { ConsultationKind, RiskTag } from '../common/enums';
 import { triageEligibility } from '../questionnaires/triage';
+import { findGlp1Dose, orderedTreatmentText } from '../catalog/ordered-dose';
+import { PlanKey, planPriceEnvVars } from '../stripe/plan-pricing';
+
+// The plans each treatment can be bought on.
+const PLANS_FOR: Record<ConsultationKind, PlanKey[]> = {
+  [ConsultationKind.GLP1]: ['GLP1_STARTER', 'GLP1_ADVANCED'],
+  [ConsultationKind.HRT]: ['HRT_STARTER', 'HRT_COMPLETE'],
+  [ConsultationKind.TRT]: ['TRT_STANDARD'],
+};
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
 // which posts here directly rather than through GraphQL. Two Stripe flows:
@@ -54,17 +63,16 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    if (!input.priceId) throw new BadRequestException('Missing priceId.');
-
     // With a lead, the email comes from the lead itself, never from the request.
     const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
+    const priceId = await this.priceFor(input, lead);
     const email = lead?.email ?? input.email;
     const referralCoupon = await this.referralCouponFor(lead?.id, input.applyReward);
     if (lead) await this.saveLeadDetails(lead, input.shipping, input);
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: input.priceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${this.webflowSiteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.webflowSiteUrl}/checkout/cancel`,
       ...(email ? { customer_email: email } : {}),
@@ -84,6 +92,29 @@ export class CheckoutService {
     return { url: session.url };
   }
 
+  /**
+   * The price is decided here, never taken on trust from the page. Each GLP-1 dose has its own
+   * price: the dose chosen in this request, or else the one already ordered on the lead, is charged
+   * at that price. Otherwise the page's price must be a configured plan price for the treatment
+   * being bought — the lead's, never the request's — so a request can't buy a treatment at some
+   * cheaper price (e.g. a GLP-1 dose the catalog doesn't know, at the HRT plan's price).
+   */
+  private async priceFor(
+    input: { priceId?: string; product?: string; dose?: string },
+    lead: { quizAnswers: unknown; productKind?: string | null } | null,
+  ): Promise<string> {
+    const ordered = input.product && input.dose ? `${input.product} ${input.dose}` : orderedTreatmentText(lead?.quizAnswers);
+    const chosen = await findGlp1Dose(this.prisma, ordered);
+    if (chosen?.stripePriceId) return chosen.stripePriceId;
+
+    if (!input.priceId) throw new BadRequestException('Missing priceId.');
+    const kind = chosen ? ConsultationKind.GLP1 : (lead?.productKind as ConsultationKind | undefined);
+    const plans = kind && PLANS_FOR[kind] ? PLANS_FOR[kind] : Object.values(PLANS_FOR).flat();
+    const allowed = plans.flatMap((p) => planPriceEnvVars(p).map((v) => this.config.get<string>(v))).filter(Boolean);
+    if (!allowed.includes(input.priceId)) throw new BadRequestException('That plan isn’t available.');
+    return input.priceId;
+  }
+
   async createSubscriptionIntent(input: {
     priceId?: string;
     planName?: string;
@@ -96,11 +127,10 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    if (!input.priceId) throw new BadRequestException('Missing priceId.');
-
     // The lead is the identity of this checkout: its email is the only one we
     // act on, so a request can't name someone else's email to touch their Stripe data.
     const lead = await this.loadOpenLead(input.leadId);
+    const priceId = await this.priceFor(input, lead);
     const customerId = await this.findOrCreateCustomer(lead.email, this.sanitizeShipping(input.shipping));
     // Toggling the reward on the checkout page starts a new payment, so drop this
     // lead's abandoned unpaid ones instead of letting them pile up.
@@ -110,7 +140,7 @@ export class CheckoutService {
 
     const subscription = await this.stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: input.priceId }],
+      items: [{ price: priceId }],
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],

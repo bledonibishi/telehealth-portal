@@ -1,17 +1,20 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UploadKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
 import { PhotoReviewService } from './photo-review.service';
+import { PrescriptionProofReviewService, StoredProofReview } from './prescription-proof-review.service';
+import { DoseClarification } from './prior-dose-assessment';
 import { PhotoCheckService } from './photo-check.service';
 import { UploadsService } from '../uploads/uploads.service';
-import { UploadKind } from '@prisma/client';
 import { SaveBodyPhotoInput } from './dto/body-photo.input';
 import { OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
 import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
+
+const DOSE_CLARIFICATIONS: DoseClarification[] = ['DOCUMENT_CORRECT', 'STEPPED_UP_SINCE', 'STEPPED_DOWN_SINCE', 'NOT_SURE'];
 
 interface StepFeedback {
   step: string;
@@ -29,9 +32,48 @@ export class OnboardingService {
     private prisma: PrismaService,
     private persona: PersonaService,
     private photoReview: PhotoReviewService,
+    private proofReview: PrescriptionProofReviewService,
     private photoCheck: PhotoCheckService,
     private uploads: UploadsService,
   ) {}
+
+  private toReviewModel(row: any) {
+    const review = row.prescriptionProofReview as StoredProofReview | null;
+    // A review of an earlier upload says nothing about the current one.
+    if (!review || review.fileId !== row.prescriptionProofFileId) return null;
+    const { assessment, reading } = review;
+    return {
+      status: review.status,
+      reason: review.reason,
+      model: review.model,
+      riskLevel: assessment.riskLevel,
+      patientMessage: assessment.patientMessage,
+      findings: assessment.findings,
+      // Older stored reviews predate these fields.
+      documentIssues: assessment.documentIssues ?? [],
+      checks: assessment.checks ?? [],
+      reportedMedicine: assessment.reportedMedicineLabel,
+      reportedDoseLabel: assessment.reportedDoseLabel,
+      reportedLastDose: assessment.reportedLastDoseLabel,
+      reportedWeeksOnDose: assessment.reportedWeeksOnDoseLabel,
+      doseClarification: review.doseClarification,
+      failedAttempts: review.failedAttempts ?? 0,
+      nextStep: review.nextStep ?? 'NONE',
+      nameEvidenceUrl: review.nameEvidenceFileId ? `/uploads/${review.nameEvidenceFileId}/file` : null,
+      nameEvidenceDocumentType: review.nameEvidence?.documentType,
+      nameEvidenceNames: review.nameEvidence?.names ?? [],
+      requestedDoseLabel: assessment.requestedDoseLabel,
+      suggestedDoseLabel: assessment.suggestedDoseLabel,
+      nameMatch: assessment.nameMatch,
+      patientNameOnDocument: reading?.patientName,
+      medicineName: reading?.medicineName,
+      doseMg: reading?.doseMg,
+      documentDate: reading?.documentDate,
+      dateKind: reading?.dateKind,
+      notes: reading?.notes,
+      reviewedAt: new Date(review.reviewedAt),
+    };
+  }
 
   /** The saved body photos that would be turned away at submission, so the app can send the patient back to them. */
   bodyPhotosToRetake(row: { patientId: string; bodyPhotoFrontFileId: string | null; bodyPhotoSideFileId: string | null }) {
@@ -57,6 +99,7 @@ export class OnboardingService {
       bodyPhotoFrontUrl: row.bodyPhotoFrontFileId ? `/uploads/${row.bodyPhotoFrontFileId}/file` : null,
       bodyPhotoSideUrl: row.bodyPhotoSideFileId ? `/uploads/${row.bodyPhotoSideFileId}/file` : null,
       prescriptionProofUrl: row.prescriptionProofFileId ? `/uploads/${row.prescriptionProofFileId}/file` : null,
+      prescriptionProofReview: this.toReviewModel(row),
     };
   }
 
@@ -163,7 +206,9 @@ export class OnboardingService {
       where: { patientId },
       data: {
         priorMedicationUse,
-        ...(priorMedicationUse ? {} : { prescriptionProofType: null, prescriptionProofFileId: null }),
+        ...(priorMedicationUse
+          ? {}
+          : { prescriptionProofType: null, prescriptionProofFileId: null, prescriptionProofReview: Prisma.DbNull, prescriptionProofUnavailable: false }),
       },
     });
     return this.toModel(updated);
@@ -171,16 +216,65 @@ export class OnboardingService {
 
   async savePrescriptionProofStep(patientId: string, input: SavePrescriptionProofStepInput) {
     const existing = await this.getOrCreateForPatient(patientId);
+    const file = await this.prisma.uploadedFile.findUnique({ where: { id: input.prescriptionProofFileId } });
+    if (!file || file.patientId !== patientId || file.kind !== UploadKind.PRESCRIPTION_PROOF) {
+      throw new BadRequestException('Please upload your proof again');
+    }
     const stepFeedback = existing.stepFeedback as StepFeedback[];
-    const updated = await this.prisma.onboardingSubmission.update({
+    await this.prisma.onboardingSubmission.update({
       where: { patientId },
       data: {
         prescriptionProofType: input.prescriptionProofType,
         prescriptionProofFileId: input.prescriptionProofFileId,
+        prescriptionProofUnavailable: false,
+        // The previous review is kept: it carries the attempt count and any
+        // name-change document forward, and is hidden once the file differs.
         stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.PRESCRIPTION_PROOF)),
       },
     });
-    return this.toModel(updated);
+    // Read and assess it now, so the patient sees the outcome before moving
+    // on. Takes a few seconds; on any failure it simply goes to manual review.
+    await this.proofReview.review(patientId).catch(() => null);
+    return this.getOrCreateForPatient(patientId);
+  }
+
+  /**
+   * The patient used the medicine before but has no proof to upload. The step is done; they'll
+   * start on the lowest dose like a new patient unless a clinician verifies their use another way.
+   */
+  async declarePrescriptionProofUnavailable(patientId: string) {
+    const existing = await this.getOrCreateForPatient(patientId);
+    if (!existing.priorMedicationUse) throw new BadRequestException('Proof is only needed if you’ve used this medication before');
+    const stepFeedback = existing.stepFeedback as StepFeedback[];
+    await this.prisma.onboardingSubmission.update({
+      where: { patientId },
+      data: {
+        prescriptionProofUnavailable: true,
+        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.PRESCRIPTION_PROOF)),
+      },
+    });
+    await this.proofReview.declareUnavailable(patientId).catch(() => null);
+    return this.getOrCreateForPatient(patientId);
+  }
+
+  /** The patient's answer when the proof's dose differs from the one they gave in the questionnaire. */
+  async clarifyPrescriptionDose(patientId: string, choice: string) {
+    if (!DOSE_CLARIFICATIONS.includes(choice as DoseClarification)) throw new BadRequestException('Please choose one of the options');
+    const review = await this.proofReview.clarifyDose(patientId, choice as DoseClarification);
+    if (!review) throw new BadRequestException('Upload your proof of prescription first');
+    return this.getOrCreateForPatient(patientId);
+  }
+
+  /** A name-change document, for when the name on the proof differs from the account. */
+  async savePrescriptionNameEvidence(patientId: string, fileId: string) {
+    const existing = await this.getOrCreateForPatient(patientId);
+    if (!existing.prescriptionProofFileId) throw new BadRequestException('Upload your proof of prescription first');
+    const file = await this.prisma.uploadedFile.findUnique({ where: { id: fileId } });
+    if (!file || file.patientId !== patientId || file.kind !== UploadKind.PRESCRIPTION_PROOF) {
+      throw new BadRequestException('Please upload your document again');
+    }
+    await this.proofReview.reviewNameEvidence(patientId, fileId).catch(() => null);
+    return this.getOrCreateForPatient(patientId);
   }
 
   async submit(patientId: string) {
@@ -196,7 +290,9 @@ export class OnboardingService {
     if (submission.priorMedicationUse === null || submission.priorMedicationUse === undefined) {
       missing.push('Prior medication use');
     }
-    if (submission.priorMedicationUse && !submission.prescriptionProofFileId) missing.push('Proof of prescription');
+    if (submission.priorMedicationUse && !submission.prescriptionProofFileId && !submission.prescriptionProofUnavailable) {
+      missing.push('Proof of prescription');
+    }
     if (missing.length > 0) {
       throw new BadRequestException(`Missing required steps: ${missing.join(', ')}`);
     }
@@ -204,6 +300,19 @@ export class OnboardingService {
     const retake = await this.photoCheck.viewsToRetake(patientId, { FRONT: submission.bodyPhotoFrontFileId, SIDE: submission.bodyPhotoSideFileId });
     if (retake.length > 0) {
       throw new BadRequestException(`Please retake your ${retake.map((v) => (v === 'FRONT' ? 'front' : 'side')).join(' and ')} photo — it hasn’t passed the photo check yet`);
+    }
+
+    // The questionnaire may have changed since the proof was read — re-run the
+    // dose rules (no model call) so the clinician sees a current assessment.
+    if (submission.priorMedicationUse) {
+      const review = (await this.proofReview.reassess(patientId).catch(() => null)) ?? (submission.prescriptionProofReview as unknown as StoredProofReview | null);
+      // A proof whose details don't match isn't proof: fix it, or carry on without proof (start dose).
+      const current = review && review.fileId === submission.prescriptionProofFileId;
+      if (!submission.prescriptionProofUnavailable && current && review.nextStep !== 'NONE') {
+        throw new BadRequestException(
+          'Some details on your proof of prescription don’t match yet. Upload another document, answer the question about your dose, or choose “Continue without proof”.',
+        );
+      }
     }
 
     const personaStatus = await this.persona.verifyIdentity(

@@ -79,6 +79,7 @@ export function ChatDock({
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
       return {
+        ...existing,
         patient: {
           ...existing.patient,
           consultations: existing.patient.consultations.map((c: any) =>
@@ -104,7 +105,7 @@ export function ChatDock({
   const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
-      return { patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+      return { ...existing, patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
     });
   };
 

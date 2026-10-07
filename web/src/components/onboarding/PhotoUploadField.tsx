@@ -58,7 +58,7 @@ export default function PhotoUploadField({
         </div>
       ) : previewUrl ? (
         <div className="relative">
-          <img src={previewUrl} alt={label} className="w-full max-h-64 object-cover rounded-xl border border-slate-100" />
+          <img src={previewUrl} alt={label} className="w-full max-h-72 object-contain bg-slate-50 rounded-xl border border-slate-100" />
           {status === 'uploading' && (
             <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl">
               <span className="text-xs text-slate-500">Uploading…</span>

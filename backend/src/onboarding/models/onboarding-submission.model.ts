@@ -7,6 +7,7 @@ import {
 } from '../../common/enums';
 import { PatientModel } from '../../patients/models/patient.model';
 import { OnboardingStepFeedbackModel } from './onboarding-step-feedback.model';
+import { PrescriptionProofReviewModel } from './prescription-proof-review.model';
 import { BodyPhotoCheckSummaryModel } from '../dto/body-photo.input';
 
 @ObjectType('OnboardingSubmission')
@@ -32,6 +33,9 @@ export class OnboardingSubmissionModel {
   @Field(() => PrescriptionProofType, { nullable: true })
   prescriptionProofType?: PrescriptionProofType;
 
+  @Field({ description: 'Used the medicine before but has no proof — starts on the lowest dose' })
+  prescriptionProofUnavailable: boolean;
+
   @Field({ nullable: true })
   idDocumentUrl?: string;
 
@@ -46,6 +50,9 @@ export class OnboardingSubmissionModel {
 
   @Field({ nullable: true })
   prescriptionProofUrl?: string;
+
+  @Field(() => PrescriptionProofReviewModel, { nullable: true })
+  prescriptionProofReview?: PrescriptionProofReviewModel;
 
   @Field({ nullable: true })
   submittedAt?: Date;

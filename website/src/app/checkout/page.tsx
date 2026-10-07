@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG, type PlanKey } from '@/lib/config';
+import { useDosePrice } from '@/lib/dose-prices';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
 import { STORE_PRODUCTS } from '@/lib/catalog';
 
@@ -273,11 +274,15 @@ function CheckoutInner() {
     }
   }, [planKeyParam]);
 
-  const plan = planKey ? CONFIG.PLANS[planKey] : null;
+  const basePlan = planKey ? CONFIG.PLANS[planKey] : null;
+  // Each GLP-1 dose has its own price, which the server charges; show that one when it's set.
+  const dosePrice = useDosePrice(session?.productName, session?.dose);
+  const plan =
+    basePlan && dosePrice ? { ...basePlan, price: dosePrice, name: `${session!.productName} ${session!.dose}` } : basePlan;
   // A payment without a saved lead would never get a patient account created.
   const eligible = !!session?.passed && !!session?.leadId && !!plan && plan.product === session?.product;
   // A plan with no display price or Stripe price configured can't be ordered.
-  const planAvailable = !!plan && /\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE');
+  const planAvailable = !!plan && /\d/.test(plan.price) && (!!dosePrice || !plan.priceId.startsWith('price_REPLACE'));
   const shippingValid = !!(shipping.name.trim() && shipping.line1.trim() && shipping.city.trim() && shipping.postalCode.trim());
 
   const canPay = useCallback(() => {

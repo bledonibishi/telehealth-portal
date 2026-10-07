@@ -15,20 +15,25 @@ export const CONFIG = {
     whatsapp: '+49 177 4014024',
   },
   PLANS: {
+    // Internal keys stay HRT_STARTER / HRT_COMPLETE (they're in links and saved checkouts);
+    // patients see the plan by what it contains.
     HRT_STARTER: {
       product: 'HRT' as const,
-      priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_HRT_STARTER ?? 'price_REPLACE_HRT_STARTER',
-      name: 'HRT Starter',
-      desc: 'Estradiol gel 0.1%',
-      price: '£49',
+      priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_OESTROGEN ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_HRT_STARTER ?? 'price_REPLACE_HRT_STARTER',
+      name: 'Oestrogen only',
+      desc: 'For women without a womb (after a hysterectomy)',
+      price: '€39',
       per: '/mo',
     },
     HRT_COMPLETE: {
       product: 'HRT' as const,
-      priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_HRT_COMPLETE ?? 'price_REPLACE_HRT_COMPLETE',
-      name: 'HRT Complete',
-      desc: 'Estradiol gel + micronised progesterone',
-      price: '£79',
+      priceId:
+        process.env.NEXT_PUBLIC_STRIPE_PRICE_OESTROGEN_PROGESTERONE ??
+        process.env.NEXT_PUBLIC_STRIPE_PRICE_HRT_COMPLETE ??
+        'price_REPLACE_HRT_COMPLETE',
+      name: 'Oestrogen + progesterone',
+      desc: 'Complete HRT for women with a womb',
+      price: '€59',
       per: '/mo',
     },
     GLP1_STARTER: {
@@ -36,7 +41,8 @@ export const CONFIG = {
       priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GLP1_STARTER ?? 'price_REPLACE_GLP1_STARTER',
       name: 'GLP-1 Starter',
       desc: 'Starting doses while your body adjusts',
-      price: '£149',
+      // Fallback only: each GLP-1 dose shows its own price from Stripe.
+      price: '€149',
       per: '/mo',
     },
     GLP1_ADVANCED: {
@@ -44,7 +50,7 @@ export const CONFIG = {
       priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GLP1_ADVANCED ?? 'price_REPLACE_GLP1_ADVANCED',
       name: 'GLP-1 Advanced',
       desc: 'Higher maintenance doses',
-      price: '£199',
+      price: '€239',
       per: '/mo',
     },
     TRT_STANDARD: {

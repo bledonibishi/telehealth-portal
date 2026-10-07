@@ -15,6 +15,8 @@ describe('ConsultationsService', () => {
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let consents: { record: jest.Mock };
   let audit: { log: jest.Mock };
+  let proofReview: { reassess: jest.Mock };
+  let dosePricing: { priceIdFor: jest.Mock };
   let service: ConsultationsService;
 
   beforeEach(() => {
@@ -29,8 +31,9 @@ describe('ConsultationsService', () => {
           Promise.resolve({ id: 'new-1', status: 'SUBMITTED', kind: data.kind, redFlags: data.redFlags.create })),
       },
       patient: { findUnique: jest.fn().mockResolvedValue({ ...PATIENT, lead: null }) },
+      message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findMany: jest.fn().mockResolvedValue([]) },
       clinician: { findUnique: jest.fn().mockResolvedValue(VERIFIED_DOCTOR) },
-      onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }) },
+      onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }), upsert: jest.fn() },
       $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
     };
     prescribing = {
@@ -44,6 +47,8 @@ describe('ConsultationsService', () => {
     email = { sendConsultationUpdateEmail: jest.fn() };
     consents = { record: jest.fn() };
     audit = { log: jest.fn() };
+    proofReview = { reassess: jest.fn().mockResolvedValue(null) };
+    dosePricing = { priceIdFor: jest.fn().mockReturnValue(null) };
     service = new ConsultationsService(
       prisma,
       audit as any,
@@ -56,6 +61,8 @@ describe('ConsultationsService', () => {
       email as any,
       consents as any,
       { trySendForPrescription: jest.fn() } as any,
+      proofReview as any,
+      dosePricing as any,
     );
   });
 
@@ -121,6 +128,33 @@ describe('ConsultationsService', () => {
       await expect(service.approve('doc-1', approveInput)).rejects.toThrow('licence');
       expect(prescribing.issue).not.toHaveBeenCalled();
       expect(prisma.consultation.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('billing the prescribed dose on approval', () => {
+    beforeEach(() => {
+      dosePricing.priceIdFor.mockReturnValue('price_low');
+      prisma.prescriptionItem = {
+        findMany: jest.fn().mockResolvedValue([
+          { product: { category: 'GLP1', name: 'Mounjaro', brandName: 'Mounjaro' }, strength: { titrationStep: 1, label: '2.5 mg', stripePriceId: 'price_low' } },
+        ]),
+      };
+      prisma.prescription = { count: jest.fn().mockResolvedValue(0) };
+      (billing as any).moveToPrescribedPrice = jest.fn().mockResolvedValue('Billing moved');
+    });
+
+    it('moves the first prescription onto the prescribed dose’s price', async () => {
+      const result: any = await service.approve('doc-1', approveInput);
+      expect((billing as any).moveToPrescribedPrice).toHaveBeenCalledWith(expect.objectContaining({ id: PATIENT.id }), 'price_low', 'Mounjaro 2.5 mg');
+      expect(result.billingNote).toBe('Billing moved');
+    });
+
+    it('leaves billing alone on a later prescription, so no paid month is refunded', async () => {
+      prisma.prescription.count.mockResolvedValue(1);
+      const result: any = await service.approve('doc-1', approveInput);
+      expect(prisma.prescription.count).toHaveBeenCalledWith({ where: { patientId: PATIENT.id, id: { not: 'rx-1' } } });
+      expect((billing as any).moveToPrescribedPrice).not.toHaveBeenCalled();
+      expect(result.billingNote).toMatch(/not the patient’s first prescription/);
     });
   });
 
@@ -196,11 +230,28 @@ describe('ConsultationsService', () => {
       expect(prisma.consultation.create).not.toHaveBeenCalled();
     });
 
+    it('a GLP-1 “no” to prior use marks the proof step as not needed', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers: glp1Intake() });
+      expect(prisma.onboardingSubmission.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ priorMedicationUse: false, prescriptionProofFileId: null }) }),
+      );
+      expect(proofReview.reassess).not.toHaveBeenCalled();
+    });
+
+    it('a GLP-1 “yes” requires proof and re-checks any proof already uploaded against the answers', async () => {
+      await service.submitIntakeQuiz('patient-1', {
+        kind: 'GLP1' as any,
+        answers: glp1Intake({ glp1_prior_use: 'yes', glp1_prior_medicine: 'mounjaro', glp1_prior_dose_tirzepatide: '5 mg', glp1_last_dose: 'under_1_week', glp1_weeks_on_dose: '4_plus_weeks' }),
+      });
+      expect(prisma.onboardingSubmission.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { priorMedicationUse: true } }));
+      expect(proofReview.reassess).toHaveBeenCalledWith('patient-1');
+    });
+
     it('creates the consultation even with critical answers, as red flags', async () => {
       await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers: glp1Intake({ eating_disorder: 'yes' }) });
 
       const { data } = prisma.consultation.create.mock.calls[0][0];
-      expect(data.questionnaireVersion).toBe('GLP1-intake@1');
+      expect(data.questionnaireVersion).toBe('GLP1-intake@2');
       expect(data.redFlags.create).toEqual(
         expect.arrayContaining([{ severity: 'CRITICAL', description: 'History of eating disorder' }]),
       );

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -27,14 +27,43 @@ export class MessagingService {
     if (consultation?.patientId !== user.id) throw new ForbiddenException();
   }
 
-  async send(senderId: string, senderRole: UserRole, input: SendMessageInput) {
+  /**
+   * Where a new message goes: the consultation given, else the patient's
+   * newest consultation, else — for a patient with none yet — their
+   * pre-consultation thread (consultationId null).
+   */
+  async resolveThread(user: AuthUser, input: Pick<SendMessageInput, 'consultationId' | 'patientId'>) {
+    if (input.consultationId) {
+      await this.assertCanAccess(user, input.consultationId);
+      const consultation = await this.prisma.consultation.findUnique({ where: { id: input.consultationId }, select: { patientId: true } });
+      if (!consultation) throw new ForbiddenException();
+      return { patientId: consultation.patientId, consultationId: input.consultationId };
+    }
+    const patientId = user.role === UserRole.PATIENT ? user.id : input.patientId;
+    if (!patientId) throw new BadRequestException('Say which patient or consultation this message is for');
+    const newest = await this.prisma.consultation.findFirst({ where: { patientId }, orderBy: { submittedAt: 'desc' }, select: { id: true } });
+    return { patientId, consultationId: newest?.id ?? null };
+  }
+
+  /** A message written in the app: the thread is worked out from the sender (see resolveThread). */
+  async sendAs(user: AuthUser, input: SendMessageInput) {
+    return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content);
+  }
+
+  /** A message on a known consultation, e.g. posted by the system on a clinician's behalf. */
+  async send(senderId: string, senderRole: UserRole, input: { consultationId: string; content: string }) {
+    const consultation = await this.prisma.consultation.findUniqueOrThrow({ where: { id: input.consultationId }, select: { patientId: true } });
+    return this.deliver(senderId, senderRole, { patientId: consultation.patientId, consultationId: input.consultationId }, input.content);
+  }
+
+  private async deliver(
+    senderId: string,
+    senderRole: UserRole,
+    { patientId, consultationId }: { patientId: string; consultationId: string | null },
+    content: string,
+  ) {
     const message = await this.prisma.message.create({
-      data: {
-        consultationId: input.consultationId,
-        senderId,
-        senderRole,
-        content: input.content,
-      },
+      data: { patientId, consultationId, senderId, senderRole, content },
     });
 
     await this.audit.log({
@@ -43,17 +72,34 @@ export class MessagingService {
       action: 'MESSAGE_SENT',
       resourceType: 'Message',
       resourceId: message.id,
-      metadata: { consultationId: input.consultationId },
+      patientId,
+      metadata: { consultationId },
     });
 
     this.posthog.capture(senderId, 'message_sent', {
-      consultation_id: input.consultationId,
+      consultation_id: consultationId,
       message_id: message.id,
       sender_role: senderRole,
     });
 
-    pubSub.publish(`NEW_MESSAGE.${input.consultationId}`, { newMessage: message });
+    // The pre-consultation thread has no live channel; both sides poll it.
+    if (consultationId) pubSub.publish(`NEW_MESSAGE.${consultationId}`, { newMessage: message });
     return message;
+  }
+
+  /** Messages a patient sent or received before they had a consultation. */
+  findPreConsultation(patientId: string) {
+    return this.prisma.message.findMany({ where: { patientId, consultationId: null }, orderBy: { sentAt: 'asc' } });
+  }
+
+  /** Like markRead, for the pre-consultation thread. */
+  async markPreConsultationRead(user: AuthUser, patientId: string): Promise<number> {
+    const byPatient = user.role === UserRole.PATIENT;
+    const { count } = await this.prisma.message.updateMany({
+      where: { patientId, consultationId: null, readAt: null, senderRole: byPatient ? { not: UserRole.PATIENT } : UserRole.PATIENT },
+      data: { readAt: new Date() },
+    });
+    return count;
   }
 
   findByConsultation(consultationId: string) {

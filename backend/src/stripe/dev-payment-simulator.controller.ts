@@ -8,8 +8,8 @@ import { StripeWebhookService } from './stripe-webhook.service';
 // instead of a blank price-id box. The actual price/currency lives in Stripe
 // itself against the priceId — this label is just what the quiz shows.
 const PLAN_LABELS = [
-  { key: 'HRT_STARTER', envVar: 'STRIPE_PRICE_HRT_STARTER', name: 'HRT Starter', desc: 'Estradiol gel 0.1%', priceLabel: '£49' },
-  { key: 'HRT_COMPLETE', envVar: 'STRIPE_PRICE_HRT_COMPLETE', name: 'HRT Complete', desc: 'Estradiol gel + micronised progesterone', priceLabel: '£79' },
+  { key: 'HRT_STARTER', envVar: 'STRIPE_PRICE_OESTROGEN', name: 'Oestrogen only', desc: 'HRT without a progestogen, for women without a womb', priceLabel: '€39' },
+  { key: 'HRT_COMPLETE', envVar: 'STRIPE_PRICE_OESTROGEN_PROGESTERONE', name: 'Oestrogen + progesterone', desc: 'Complete HRT for women with a womb', priceLabel: '€59' },
   { key: 'GLP1_STARTER', envVar: 'STRIPE_PRICE_GLP1_STARTER', name: 'GLP-1 Starter', desc: 'Semaglutide 0.25 mg → 0.5 mg titration', priceLabel: '£149' },
   { key: 'GLP1_ADVANCED', envVar: 'STRIPE_PRICE_GLP1_ADVANCED', name: 'GLP-1 Advanced', desc: 'Semaglutide 1 mg maintenance', priceLabel: '£199' },
 ] as const;

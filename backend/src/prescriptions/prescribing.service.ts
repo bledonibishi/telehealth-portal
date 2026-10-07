@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { findGlp1Dose, orderedTreatmentText } from '../catalog/ordered-dose';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -169,16 +170,28 @@ export class PrescribingService {
     items: ResolvedItem[],
     db: Db,
   ): Promise<RuleViolation[]> {
-    const [onboarding, current] = await Promise.all([
+    const [onboarding, current, patient] = await Promise.all([
       db.onboardingSubmission.findUnique({ where: { patientId: input.patientId } }),
       this.currentGlp1Step(input.patientId, db),
+      db.patient.findUnique({ where: { id: input.patientId }, select: { lead: { select: { quizAnswers: true } } } }),
     ]);
+    const ordered = await findGlp1Dose(db, orderedTreatmentText(patient?.lead?.quizAnswers));
+    const proof = onboarding?.prescriptionProofReview as
+      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null } }
+      | null
+      | undefined;
+    // A patient who said they have no proof isn't verified, whatever an earlier upload showed.
+    const noProof = onboarding?.prescriptionProofUnavailable === true;
+    const proofCurrent = !noProof && !!proof && proof.fileId === onboarding?.prescriptionProofFileId;
     return checkPrescribingRules({
       kind: input.kind,
       items,
       answers: input.answers,
-      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED',
+      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof,
       currentGlp1Step: current,
+      priorDoseSafeMaxStep: proofCurrent ? proof!.assessment?.safeMaxStep ?? null : null,
+      priorDoseSafeMaxLabel: proofCurrent ? proof!.assessment?.safeMaxDoseLabel ?? null : null,
+      orderedGlp1: ordered && { productId: ordered.productId, productName: ordered.productName, label: ordered.label, step: ordered.step },
     });
   }
 
