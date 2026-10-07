@@ -8,6 +8,9 @@ export const MY_DOSE_CALENDAR = gql`
       status
       takenAt
       note
+      injectionSite
+      feelingAfter
+      feelingAfterAt
       product {
         id
         name
@@ -26,11 +29,22 @@ export const MY_DOSE_CALENDAR = gql`
 `;
 
 export const MARK_DOSE_TAKEN = gql`
-  mutation MarkDoseTaken($id: ID!) {
-    markDoseTaken(id: $id) {
+  mutation MarkDoseTaken($id: ID!, $injectionSite: InjectionSite) {
+    markDoseTaken(id: $id, injectionSite: $injectionSite) {
       id
       status
       takenAt
+      injectionSite
+    }
+  }
+`;
+
+export const LOG_DOSE_FEELING = gql`
+  mutation LogDoseFeeling($id: ID!, $feeling: CheckInFeeling!) {
+    logDoseFeeling(id: $id, feeling: $feeling) {
+      id
+      feelingAfter
+      feelingAfterAt
     }
   }
 `;

@@ -9,6 +9,8 @@ import { Card } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
+import { PaymentsCard } from '@/components/billing/PaymentsCard';
 
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {
@@ -40,6 +42,7 @@ export default function OrdersPage() {
                 <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${ORDER_STATUS[o.status]?.cls}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>
               </div>
               {o.status !== 'CANCELLED' && <div className="mt-5 max-w-xl"><OrderTracker order={o} /></div>}
+              {o.status !== 'CANCELLED' && <div className="mt-4"><DeliveryAddress order={o} /></div>}
               {(o.carrier || o.trackingNumber || o.trackingUrl) && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                   {o.carrier && <span>{o.carrier}</span>}
@@ -51,6 +54,8 @@ export default function OrdersPage() {
           </li>
         ))}
       </ul>
+
+      <PaymentsCard />
     </div>
   );
 }

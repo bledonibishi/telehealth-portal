@@ -9,12 +9,12 @@ import { ProgressRing } from './ProgressRing';
 import { TargetWeightForm } from './TargetWeightForm';
 import { LogWeightForm } from './LogWeightForm';
 
-/** One line about the monthly check-in: ready (with a Start button), done, or when it is due. */
+/** One line about the next check-in: ready (with a Start button), done, or the date it is due. */
 function CheckInLine({ journey }: { journey: any }) {
   if (journey.checkInState === 'READY') {
     return (
       <div className="bg-brand-50 border border-brand-100 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-brand-900">Your monthly check-in is ready</p>
+        <p className="text-sm font-semibold text-brand-900">Your check-in is ready</p>
         {journey.checkInUrl && (
           <a href={journey.checkInUrl} className="flex-shrink-0 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2 rounded-lg">Start</a>
         )}
@@ -22,9 +22,13 @@ function CheckInLine({ journey }: { journey: any }) {
     );
   }
   const due = journey.nextCheckInDueAt ? differenceInCalendarDays(new Date(journey.nextCheckInDueAt), new Date()) : null;
-  const dueText = due === null ? null : due > 1 ? `in ${due} days` : due === 1 ? 'in 1 day' : due === 0 ? 'today' : 'soon';
-  if (journey.checkInState === 'COMPLETED') return <p className="text-xs text-slate-500">✓ Monthly check-in done{dueText && due !== null && due >= 0 ? ` · next ${dueText}` : ''}</p>;
-  return dueText ? <p className="text-xs text-slate-500">Monthly check-in due {dueText}</p> : null;
+  const dueText = due === null ? null : due > 1 ? `in ${due} days` : due === 1 ? 'tomorrow' : due === 0 ? 'today' : 'soon';
+  // The date first: "in 30 days" alone doesn't say when to expect it.
+  const dueOn = due !== null && due >= 0 ? `${format(new Date(journey.nextCheckInDueAt), 'd MMM yyyy')} (${dueText})` : null;
+  // Check-ins are 4 weeks apart, so the one after n completed ones is the week-4(n+1) review.
+  const week = 4 * ((journey.entries?.length ?? 0) + 1);
+  if (journey.checkInState === 'COMPLETED') return <p className="text-xs text-slate-500">✓ Check-in done{dueOn ? ` · next: week ${week} check-in, ${dueOn}` : ''}</p>;
+  return dueOn ? <p className="text-xs text-slate-500">Next check-in: <span className="font-medium text-slate-700">week {week} · {dueOn}</span></p> : null;
 }
 
 function Stat({ label, value, children }: { label: string; value: string; children?: React.ReactNode }) {
@@ -80,7 +84,7 @@ export function WeightJourneyCard({ journey, showLink = true, allowLog = true }:
         </div>
       ) : (
         <div className="mt-3 bg-slate-50 rounded-xl p-3">
-          {journey.startingWeightKg ? <TargetWeightForm /> : <p className="text-sm text-slate-500">Complete your medical questionnaire and we’ll set up your journey.</p>}
+          {journey.startingWeightKg ? <TargetWeightForm currentKg={journey.currentWeightKg} startKg={journey.startingWeightKg} /> : <p className="text-sm text-slate-500">Complete your medical questionnaire and we’ll set up your journey.</p>}
         </div>
       )}
 
@@ -94,7 +98,7 @@ export function WeightJourneyCard({ journey, showLink = true, allowLog = true }:
       )}
       {dialog === 'target' && hasTarget && (
         <Dialog title="Change your target weight" onClose={() => setDialog(null)}>
-          <TargetWeightForm current={journey.targetWeightKg} onDone={() => setDialog(null)} />
+          <TargetWeightForm current={journey.targetWeightKg} currentKg={journey.currentWeightKg} startKg={journey.startingWeightKg} onDone={() => setDialog(null)} />
         </Dialog>
       )}
     </section>

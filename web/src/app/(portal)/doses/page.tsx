@@ -11,9 +11,16 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import listPlugin from '@fullcalendar/list';
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction';
 import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
-import { differenceInCalendarDays, format, formatDistanceToNow, isPast, isToday } from 'date-fns';
+import { differenceInCalendarDays, differenceInHours, format, isPast, isToday } from 'date-fns';
 import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '@/graphql/dosing';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
+import { InjectionSitePicker } from '@/components/doses/InjectionSitePicker';
+import { InjectionGuide } from '@/components/doses/InjectionGuide';
+import { InjectionVideoDialog } from '@/components/doses/InjectionVideoDialog';
+import { AfterDoseCheck, doseToAskAbout } from '@/components/doses/AfterDoseCheck';
+import { DoseHistory } from '@/components/doses/DoseHistory';
+import { WeeklySideEffectPrompt } from '@/components/doses/SideEffectTracker';
+import { lastSiteOf, SITE_LABEL, suggestNextSite, type InjectionSite } from '@/lib/injection-sites';
 import '@/styles/dose-calendar.css';
 
 type DoseEvent = {
@@ -22,6 +29,9 @@ type DoseEvent = {
   status: 'SCHEDULED' | 'TAKEN' | 'MISSED' | 'SKIPPED';
   takenAt?: string | null;
   note?: string | null;
+  injectionSite?: InjectionSite | null;
+  feelingAfter?: string | null;
+  feelingAfterAt?: string | null;
   product: { id: string; name: string; brandName?: string | null; form: string; category: string; requiresColdChain: boolean };
   strength: { id: string; label: string; titrationStep?: number | null };
 };
@@ -61,6 +71,31 @@ function missedDoseAdvice(d: DoseEvent, needsClinician: boolean): string | null 
     : `It’s more than ${window} days since this dose was due, so skip it and take your next one on your usual day. Never take two doses to catch up.`;
 }
 
+// Where the injection-site picker and the how-to guide apply: pens for the weight-loss medicines.
+const isRotatingPen = (d: DoseEvent) => d.product.category === 'GLP1' && d.product.form === 'INJECTION_PEN';
+
+/** "today" / "tomorrow" / "in 7 days" / "2 days ago", counted in calendar days. */
+function countdown(date: Date): string {
+  const n = differenceInCalendarDays(date, new Date());
+  if (n === 0) return 'today';
+  if (n === 1) return 'tomorrow';
+  if (n === -1) return 'yesterday';
+  return n > 0 ? `in ${n} days` : `${-n} days ago`;
+}
+
+/** "today at 09:00" / "Tue 6 Oct at 09:00" — the actual time, not "about 1 hour ago". */
+function takenAtText(date: Date): string {
+  return `${isToday(date) ? 'today' : format(date, 'EEE d MMM')} at ${format(date, 'HH:mm')}`;
+}
+
+/** A dose two or more days past due and still not logged, when no later one has been dealt with. */
+const OVERDUE_ALERT_HOURS = 48;
+function overdueDose(doses: DoseEvent[], now = new Date()): DoseEvent | null {
+  const latestPast = doses.filter((d) => new Date(d.scheduledFor) <= now).sort((a, b) => b.scheduledFor.localeCompare(a.scheduledFor))[0];
+  if (!latestPast || (latestPast.status !== 'SCHEDULED' && latestPast.status !== 'MISSED')) return null;
+  return differenceInHours(now, new Date(latestPast.scheduledFor)) >= OVERDUE_ALERT_HOURS ? latestPast : null;
+}
+
 function visualStatus(d: DoseEvent): keyof typeof COLORS {
   if (d.status === 'SCHEDULED' && isPast(new Date(d.scheduledFor)) && !isToday(new Date(d.scheduledFor))) return 'DUE';
   return d.status;
@@ -83,8 +118,12 @@ function DoseChip(arg: EventContentArg) {
   );
 }
 
-function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needsClinician: boolean; onClose: () => void }) {
+function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEvent; needsClinician: boolean; lastSite: InjectionSite | null; onClose: () => void }) {
   const [note, setNote] = useState('');
+  const suggestedSite = suggestNextSite(lastSite);
+  const [site, setSite] = useState<InjectionSite | null>(null);
+  const [guide, setGuide] = useState(false);
+  const [video, setVideo] = useState(false);
   const [error, setError] = useState('');
   const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
@@ -94,6 +133,9 @@ function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needs
   const c = COLORS[status];
   const isPatch = dose.product.form === 'PATCH';
   const advice = missedDoseAdvice(dose, needsClinician);
+  const pen = isRotatingPen(dose);
+  // Offered while logging, and afterwards if it was left out.
+  const askSite = pen && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5">
@@ -110,17 +152,36 @@ function DetailPanel({ dose, needsClinician, onClose }: { dose: DoseEvent; needs
         {status === 'DUE' ? 'Due — not yet logged' : statusLabel(status)}
       </span>
 
-      {dose.takenAt && <p className="text-xs text-slate-400 mt-2">Logged {formatDistanceToNow(new Date(dose.takenAt), { addSuffix: true })}</p>}
+      {dose.takenAt && <p className="text-sm font-medium text-emerald-700 mt-3">✅ Taken {takenAtText(new Date(dose.takenAt))}</p>}
+      {dose.injectionSite && <p className="text-xs text-slate-500 mt-1">Injected: {SITE_LABEL[dose.injectionSite].toLowerCase()}</p>}
       {dose.note && <p className="text-xs text-slate-500 mt-2">Note: {dose.note}</p>}
       {dose.product.requiresColdChain && <p className="text-xs text-slate-400 mt-2">Keep refrigerated (2–8°C).</p>}
       {isPatch && <p className="text-xs text-slate-400 mt-2">Put the new patch on a different spot from the last one, below the waist.</p>}
       {(dose.status === 'MISSED' || status === 'DUE') && advice && <p className="text-xs text-slate-600 bg-amber-50 rounded-lg px-3 py-2 mt-3">{advice}</p>}
+      {pen && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+          <button type="button" onClick={() => setVideo(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">▶ Watch how to inject</button>
+          <button type="button" onClick={() => setGuide(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Step-by-step guide →</button>
+        </div>
+      )}
+      {askSite && (
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Where are you injecting?</p>
+          <InjectionSitePicker value={site} suggested={suggestedSite} last={lastSite} onChange={setSite} />
+          {dose.status === 'TAKEN' && (
+            <button type="button" disabled={!site || taking} onClick={() => markTaken({ variables: { id: dose.id, injectionSite: site } })}
+              className="mt-3 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50">Save where I injected</button>
+          )}
+        </div>
+      )}
       {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
+      {guide && <InjectionGuide onClose={() => setGuide(false)} requiresColdChain={dose.product.requiresColdChain} />}
+      {video && <InjectionVideoDialog onClose={() => setVideo(false)} onShowSteps={() => { setVideo(false); setGuide(true); }} />}
 
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
         <div className="mt-4 space-y-2">
           <button
-            onClick={() => markTaken({ variables: { id: dose.id } })}
+            onClick={() => markTaken({ variables: { id: dose.id, injectionSite: pen ? site : undefined } })}
             disabled={taking}
             className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
           >
@@ -159,6 +220,7 @@ export default function DosesPage() {
 
   const doses: DoseEvent[] = data?.myDoseCalendar ?? [];
   const selected = doses.find((d) => d.id === selectedId) ?? null;
+  const overdue = overdueDose(doses);
 
   const next = useMemo(
     () => doses.filter((d) => d.status === 'SCHEDULED').sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))[0],
@@ -172,7 +234,7 @@ export default function DosesPage() {
   const needsClinician: boolean = missed.needsClinician;
   // Straight into the conversation (on the newest consultation, where replies go) rather than the
   // Messages list; skipped until the banner is actually shown.
-  const { data: consultationsData } = useQuery(MY_CONSULTATIONS, { skip: !needsClinician });
+  const { data: consultationsData } = useQuery(MY_CONSULTATIONS, { skip: !needsClinician && !overdue });
   const latestConsultationId: string | undefined = consultationsData?.myConsultations?.[0]?.id;
   const messageClinicianHref = latestConsultationId ? `/consultation/${latestConsultationId}?chat=open` : '/messages';
 
@@ -192,6 +254,9 @@ export default function DosesPage() {
 
   const calendarRef = useRef<FullCalendar>(null);
   const doseDates = useMemo(() => new Set(doses.map((d) => format(new Date(d.scheduledFor), 'yyyy-MM-dd'))), [doses]);
+
+  const askedAbout = doseToAskAbout(doses);
+  const lastSite = lastSiteOf(doses);
 
   const handleEventClick = (arg: EventClickArg) => setSelectedId(arg.event.id);
 
@@ -231,13 +296,26 @@ export default function DosesPage() {
               <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-ink-800 hover:text-ink-900">Message my clinician →</Link>
             </div>
           )}
+          {!needsClinician && overdue && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6" role="alert">
+              <p className="text-sm font-semibold text-amber-900">Your injection from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
+              <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false) ?? 'If you haven’t taken it, message your care team before taking it late.'}</p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
+                <button type="button" onClick={() => setSelectedId(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
+                <Link href={messageClinicianHref} className="text-sm font-semibold text-ink-800 hover:text-ink-900">Message my care team →</Link>
+              </div>
+            </div>
+          )}
+          <WeeklySideEffectPrompt />
+          {askedAbout && <AfterDoseCheck dose={{ id: askedAbout.id, takenAt: askedAbout.takenAt! }} doseName={doseName(askedAbout)} />}
           {next && (
             <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Next dose</p>
+                <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Next {injections ? 'injection' : 'dose'}</p>
                 <p className="text-lg font-semibold text-slate-900 mt-1">{doseName(next)}</p>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  {format(new Date(next.scheduledFor), 'EEEE, d MMMM')} · {formatDistanceToNow(new Date(next.scheduledFor), { addSuffix: true })}
+                  {format(new Date(next.scheduledFor), 'EEEE, d MMMM')} · <b className="text-slate-700">{countdown(new Date(next.scheduledFor))}</b>
+                  {isRotatingPen(next) && <> · try the <b className="text-slate-700">{SITE_LABEL[suggestNextSite(lastSite)].toLowerCase()}</b></>}
                 </p>
               </div>
               <button
@@ -278,7 +356,7 @@ export default function DosesPage() {
 
             <div>
               {selected ? (
-                <DetailPanel dose={selected} needsClinician={needsClinician} onClose={() => setSelectedId(null)} />
+                <DetailPanel key={selected.id} dose={selected} needsClinician={needsClinician} lastSite={lastSite} onClose={() => setSelectedId(null)} />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-100 p-5 text-sm text-slate-400">
                   Click a dose on the calendar to log it or see the details.
@@ -286,6 +364,8 @@ export default function DosesPage() {
               )}
             </div>
           </div>
+
+          <DoseHistory doses={doses} showSite={doses.some(isRotatingPen)} />
         </>
       )}
     </div>

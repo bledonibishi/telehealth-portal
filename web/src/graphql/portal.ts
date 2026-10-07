@@ -142,6 +142,9 @@ export const MY_CARE_TEAM = gql`
       primary
       involvement
       since
+      specialty
+      bio
+      languages
     }
   }
 `;
@@ -197,6 +200,19 @@ export const MY_LAB_RESULTS = gql`
       flagged
       referenceRangeLow
       referenceRangeHigh
+    }
+  }
+`;
+
+export const MY_CHECK_IN_REPORTS = gql`
+  query MyCheckInReports {
+    myCheckInReports {
+      id
+      weekLabel
+      completedAt
+      reviewedAt
+      outcome
+      reportUrl
     }
   }
 `;

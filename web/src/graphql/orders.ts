@@ -13,6 +13,14 @@ export const MY_ORDERS = gql`
       trackingUrl
       outForDeliveryAt
       deliveredAt
+      shippingAddress {
+        name
+        addressLine1
+        addressLine2
+        city
+        postcode
+        country
+      }
       prescription {
         id
         medication

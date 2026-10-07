@@ -212,7 +212,10 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
                 target={target} start={startPoint} selectedId={selectedId} onSelect={setSelectedId} forecast={showForecast ? forecast : null} />
               {tl.loading && <p className="absolute left-2 top-0 text-xs text-slate-400" role="status">Loading…</p>}
               {!tl.loading && points.length === 0 && (
-                <p className="absolute inset-x-0 top-1/3 text-center text-sm text-slate-400 pointer-events-none">No weights yet — tap “Log weight” to add your first.</p>
+                <div className="absolute inset-x-0 top-1/4 flex flex-col items-center gap-3 px-4 text-center pointer-events-none">
+                  <p className="text-sm text-slate-500">🎯 Log your first weight to start tracking your progress.</p>
+                  <button type="button" onClick={() => setLogging(true)} className="pointer-events-auto bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">Log your weight now</button>
+                </div>
               )}
               {!tl.loading && points.length > 0 && view && lowerBound(points, view[1] + 1) - lowerBound(points, view[0]) === 0 && !showForecast && (
                 <p role="note" className="absolute inset-x-0 top-1/3 text-center text-sm text-slate-400 pointer-events-none">No weights recorded in this period.</p>
@@ -285,7 +288,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
                     <p className="text-base font-semibold text-slate-900">{p.w.toFixed(1)} kg{p.hasPhoto && <span className="ml-2 text-sm" role="img" aria-label="Has a progress photo" title="Has a progress photo">📷</span>}</p>
                   </button>
                   {p.kind === 'CHECK_IN' && (
-                    <p className="text-xs text-slate-500 mt-0.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700 mr-1.5" />Monthly check-in{fe ? ` · ${fe.emoji} ${fe.label}` : ''}</p>
+                    <p className="text-xs text-slate-500 mt-0.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700 mr-1.5" />Check-in{fe ? ` · ${fe.emoji} ${fe.label}` : ''}</p>
                   )}
                   {p.note && <p className="text-sm text-slate-500 italic mt-1">“{p.note}”</p>}
                   {p.kind === 'DAILY' && (

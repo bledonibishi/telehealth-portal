@@ -12,6 +12,7 @@ import { OrderEarlyButton } from '@/components/home/OrderEarlyButton';
 import { DoseAdherence } from '@/components/dashboard/DoseAdherence';
 import { ReportSideEffectDialog } from '@/components/doses/ReportSideEffectDialog';
 import { SideEffectHistory } from '@/components/doses/SideEffectHistory';
+import { WeeklySideEffectCard } from '@/components/doses/SideEffectTracker';
 import { TreatmentTimeline } from '@/components/home/TreatmentTimeline';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { Card, CardHeader, btnSoft } from '@/components/portal/Card';
@@ -91,7 +92,10 @@ export default function TreatmentPlanPage() {
 
           <div className="grid lg:grid-cols-2 gap-5 items-start">
             <TreatmentTimeline plan={plan} journey={jData?.myWeightJourney} />
-            <SideEffectHistory onReport={() => setReporting(true)} />
+            <div className="space-y-5">
+              <WeeklySideEffectCard />
+              <SideEffectHistory onReport={() => setReporting(true)} />
+            </div>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-5 items-start">

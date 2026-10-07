@@ -9,6 +9,7 @@ import { ProgressPhotosCard } from '@/components/weight/ProgressPhotosCard';
 import { WeightPhotoJourney } from '@/components/home/WeightPhotoJourney';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Milestones } from '@/components/weight/Milestones';
+import { BodyMeasurementsCard } from '@/components/weight/BodyMeasurementsCard';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
@@ -31,6 +32,7 @@ export default function WeightJourneyPage() {
           <WeightJourneyCard journey={journey} showLink={false} allowLog={false} />
           <Milestones journey={journey} />
           <WeightPhotoJourney journey={journey} />
+          <BodyMeasurementsCard />
 
           <WeightExplorer
             extraTabs={[
@@ -40,7 +42,7 @@ export default function WeightJourneyPage() {
                 label: 'Check-ins',
                 node: (
                   <div className="max-h-[24rem] overflow-y-auto pr-1">
-                    {journey.entries.length === 0 && <p className="text-sm text-slate-400 mb-4">Your first monthly check-in will appear here.</p>}
+                    {journey.entries.length === 0 && <p className="text-sm text-slate-400 mb-4">Your first check-in will appear here.</p>}
                     <WeightHistory starting={journey.startingWeightKg} entries={journey.entries} />
                   </div>
                 ),

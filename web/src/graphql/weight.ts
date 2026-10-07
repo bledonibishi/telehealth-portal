@@ -114,3 +114,40 @@ export const MY_WEIGHT_FORECAST = gql`
     }
   }
 `;
+
+const BODY_MEASUREMENT_FIELDS = gql`
+  fragment BodyMeasurementFields on BodyMeasurement {
+    id
+    measuredAt
+    waistCm
+    hipsCm
+    armCm
+  }
+`;
+
+export const MY_BODY_MEASUREMENTS = gql`
+  ${BODY_MEASUREMENT_FIELDS}
+  query MyBodyMeasurements {
+    myBodyMeasurements {
+      ...BodyMeasurementFields
+    }
+  }
+`;
+
+export const ADD_MY_BODY_MEASUREMENT = gql`
+  ${BODY_MEASUREMENT_FIELDS}
+  mutation AddMyBodyMeasurement($input: AddBodyMeasurementInput!) {
+    addMyBodyMeasurement(input: $input) {
+      ...BodyMeasurementFields
+    }
+  }
+`;
+
+export const VOID_MY_BODY_MEASUREMENT = gql`
+  ${BODY_MEASUREMENT_FIELDS}
+  mutation VoidMyBodyMeasurement($id: ID!) {
+    voidMyBodyMeasurement(id: $id) {
+      ...BodyMeasurementFields
+    }
+  }
+`;

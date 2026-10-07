@@ -258,7 +258,7 @@ export default function PrescriptionProofStepPage() {
         <h1 className="text-xl font-bold text-slate-900 mt-4">Don&rsquo;t have any proof?</h1>
         <p className="text-sm text-slate-500 mt-2">
           You can carry on without it. For your safety, you&rsquo;ll then start on the lowest dose, the same as someone new to
-          this medicine. Your clinician reviews your dose at each monthly check-in, and may still be able to confirm your
+          this medicine. Your clinician reviews your dose at each check-in, and may still be able to confirm your
           previous dose another way.
         </p>
 
@@ -375,7 +375,7 @@ export default function PrescriptionProofStepPage() {
           <div className="border-t border-slate-100 px-4 py-3 space-y-2.5">
             {[
               ['💉', 'You’ll start on the lowest dose', 'The same as someone new to this medicine, while your body adjusts.'],
-              ['📈', 'Any increase is your clinician’s decision', 'They review your dose at each monthly check-in and only increase it if it suits you — never sooner than 4 weeks.'],
+              ['📈', 'Any increase is your clinician’s decision', 'They review your dose at each check-in and only increase it if it suits you — never sooner than 4 weeks.'],
               ['📄', 'Found your proof later?', 'Upload it any time before your clinician decides, and they may continue you at your previous dose.'],
             ].map(([icon, title, body]) => (
               <div key={title} className="flex items-start gap-3">
