@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 
-const STAGES = ['Processing', 'Shipped', 'On the way', 'Delivered'] as const;
+const STAGES = ['Preparing', 'Shipped', 'On the way', 'Delivered'] as const;
 const STAGE_OF: Record<string, number> = { PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
 const WHEN: Array<keyof Order> = ['createdAt', 'dispatchedAt', 'outForDeliveryAt', 'deliveredAt'];
 
@@ -27,7 +27,7 @@ export function OrderTracker({ order }: { order: Order }) {
 }
 
 export const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: 'Processing', cls: 'bg-amber-50 text-amber-700' },
+  PENDING: { label: 'Preparing', cls: 'bg-amber-50 text-amber-700' },
   DISPATCHED: { label: 'Shipped', cls: 'bg-emerald-50 text-emerald-700' },
   OUT_FOR_DELIVERY: { label: 'On the way', cls: 'bg-emerald-50 text-emerald-700' },
   DELIVERED: { label: 'Delivered', cls: 'bg-ink-50 text-ink-700' },
