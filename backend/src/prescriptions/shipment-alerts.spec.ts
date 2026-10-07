@@ -1,4 +1,4 @@
-import { evaluateShipment, refillStateOf, sortAlerts, type ShipmentInput } from './shipment-alerts';
+import { DEFAULT_SUPPLY_CYCLE_DAYS as CYCLE, evaluateShipment, refillStateOf, sortAlerts, type ShipmentInput } from './shipment-alerts';
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-10-15T12:00:00Z');
@@ -7,7 +7,7 @@ const daysAgo = (n: number) => new Date(NOW.getTime() - n * DAY);
 const input = (over: Partial<ShipmentInput> = {}): ShipmentInput => ({
   prescription: { id: 'rx-1', medication: 'Wegovy 0.5 mg', refillsAllowed: 3 },
   patient: { id: 'p-1', name: 'Sofia Meyer' },
-  orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(30) }],
+  orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE) }],
   latestCheckIn: null,
   ...over,
 });
@@ -16,33 +16,33 @@ const alertFor = (over: Partial<ShipmentInput> = {}, opts = {}) => evaluateShipm
 
 describe('evaluateShipment', () => {
   it('stays quiet until the next supply is within the warning window', () => {
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(20) }] })).toBeNull(); // 10 days left
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(25) }] })?.urgency).toBe('UPCOMING'); // 5 days left
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE - 10) }] })).toBeNull(); // 10 days left
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE - 5) }] })?.urgency).toBe('UPCOMING'); // 5 days left
   });
 
   it('is DUE on the day and for 3 days after, then OVERDUE', () => {
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(30) }] })).toMatchObject({ urgency: 'DUE', daysUntilDue: 0 });
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(33) }] })?.urgency).toBe('DUE');
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(34) }] })).toMatchObject({ urgency: 'OVERDUE', daysUntilDue: -4 });
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE) }] })).toMatchObject({ urgency: 'DUE', daysUntilDue: 0 });
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE + 3) }] })?.urgency).toBe('DUE');
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE + 4) }] })).toMatchObject({ urgency: 'OVERDUE', daysUntilDue: -4 });
   });
 
   it('measures from the most recent shipment', () => {
-    const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(60) }, { status: 'DISPATCHED', dispatchedAt: daysAgo(28) }] });
+    const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(2 * CYCLE) }, { status: 'DISPATCHED', dispatchedAt: daysAgo(CYCLE - 2) }] });
     expect(a).toMatchObject({ daysUntilDue: 2, urgency: 'UPCOMING' });
   });
 
   it('ignores a patient whose first supply has not gone out, or who already has an order waiting', () => {
     expect(alertFor({ orders: [{ status: 'PENDING', dispatchedAt: null }] })).toBeNull();
-    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(30) }, { status: 'PENDING', dispatchedAt: null }] })).toBeNull();
+    expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE) }, { status: 'PENDING', dispatchedAt: null }] })).toBeNull();
   });
 
   it('honours a different cycle length and warning window', () => {
     const orders = [{ status: 'DELIVERED', dispatchedAt: daysAgo(20) }];
-    expect(alertFor({ orders }, { cycleDays: 28, leadDays: 10 })).toMatchObject({ daysUntilDue: 8, urgency: 'UPCOMING' });
+    expect(alertFor({ orders }, { cycleDays: 30, leadDays: 12 })).toMatchObject({ daysUntilDue: 10, urgency: 'UPCOMING' });
   });
 
   describe('what is holding it up', () => {
-    const due = [{ status: 'DELIVERED', dispatchedAt: daysAgo(30) }];
+    const due = [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE) }];
     const done = (completed: number, reviewed: number | null, outcome: string | null = 'REPEAT') => ({
       completedAt: daysAgo(completed), reviewedAt: reviewed === null ? null : daysAgo(reviewed), outcome,
     });
@@ -68,7 +68,7 @@ describe('evaluateShipment', () => {
     it('is a new prescription when every repeat has been used — whatever the check-in says', () => {
       const a = alertFor({
         prescription: { id: 'rx-1', medication: 'x', refillsAllowed: 1 },
-        orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(60) }, { status: 'DELIVERED', dispatchedAt: daysAgo(30) }],
+        orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(2 * CYCLE) }, { status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE) }],
         hasCheckIns: true,
         latestCheckIn: done(2, null, null),
       });
@@ -80,14 +80,14 @@ describe('evaluateShipment', () => {
     });
 
     describe('after a hold', () => {
-      // Shipped 62 days ago; the doctor held month 1 (check-in completed 33 days ago, i.e. 29 days after shipping).
-      const held = [{ status: 'DELIVERED', dispatchedAt: daysAgo(62) }];
-      const hold = done(33, 32, 'HOLD');
+      // Shipped two cycles and two days ago; the doctor held month 1 (check-in completed a cycle and three days ago, i.e. a day before it was due).
+      const held = [{ status: 'DELIVERED', dispatchedAt: daysAgo(2 * CYCLE + 2) }];
+      const hold = done(CYCLE + 3, CYCLE + 2, 'HOLD');
 
       it('does not silence the following month: the alert returns when that one is due', () => {
         const a = alertFor({ orders: held, hasCheckIns: true, latestCheckIn: hold });
         expect(a).toMatchObject({ urgency: 'DUE', daysUntilDue: -2 });
-        expect(a!.nextDueAt.getTime()).toBe(daysAgo(62).getTime() + 60 * DAY);
+        expect(a!.nextDueAt.getTime()).toBe(daysAgo(2 * CYCLE + 2).getTime() + 2 * CYCLE * DAY);
       });
 
       it('waits on the next scheduled check-in, which the old hold does not satisfy', () => {
@@ -101,14 +101,15 @@ describe('evaluateShipment', () => {
       });
 
       it('stays quiet while the held month is still the nearest one', () => {
-        // Shipped 28 days ago, held two days ago: the skipped month is not nagged about, nor is the next, 32 days away.
-        expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(28) }], hasCheckIns: true, latestCheckIn: done(2, 1, 'HOLD') })).toBeNull();
+        // Shipped two days before the supply runs out, held two days ago: the skipped month is not nagged about, nor is the next, a cycle further on.
+        expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE - 2) }], hasCheckIns: true, latestCheckIn: done(2, 1, 'HOLD') })).toBeNull();
       });
 
       it('skips two cycles when the hold was made after the first one was already late', () => {
-        // Held 45 days after shipping: that belongs to month 2 (due at day 60), so month 3 (day 90) is next.
-        const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(88) }], hasCheckIns: true, latestCheckIn: done(43, 42, 'HOLD') });
-        expect(a!.nextDueAt.getTime()).toBe(daysAgo(88).getTime() + 90 * DAY);
+        // Held one and a half cycles after shipping: that belongs to month 2, so month 3 is next.
+        const shipped = 3 * CYCLE - 2;
+        const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(shipped) }], hasCheckIns: true, latestCheckIn: done(shipped - 1.5 * CYCLE, shipped - 1.5 * CYCLE - 1, 'HOLD') });
+        expect(a!.nextDueAt.getTime()).toBe(daysAgo(shipped).getTime() + 3 * CYCLE * DAY);
       });
 
       it('does not treat a hold that is still awaiting review as a skipped month', () => {
@@ -121,7 +122,7 @@ describe('evaluateShipment', () => {
 describe('sortAlerts', () => {
   it('puts overdue first, then due, then upcoming, soonest first within each', () => {
     const mk = (id: string, daysAgoShipped: number) => evaluateShipment(input({ patient: { id, name: id }, orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(daysAgoShipped) }] }), { now: NOW })!;
-    const sorted = [mk('upcoming', 26), mk('late-5', 35), mk('due', 30), mk('late-9', 39)].sort(sortAlerts);
+    const sorted = [mk('upcoming', CYCLE - 4), mk('late-5', CYCLE + 5), mk('due', CYCLE), mk('late-9', CYCLE + 9)].sort(sortAlerts);
     expect(sorted.map((a) => a.patientId)).toEqual(['late-9', 'late-5', 'due', 'upcoming']);
   });
 });
@@ -134,10 +135,10 @@ describe('refillStateOf', () => {
     expect(refillStateOf(null, 5)).toBe('UNAVAILABLE');
   });
 
-  it('opens five days before the next supply (day 25 of a 30-day cycle), not earlier', () => {
-    expect(state({}, 24)).toBe('NOT_YET'); // 6 days left
-    expect(state({}, 25)).toBe('READY'); // 5 days left
-    expect(state({}, 31)).toBe('READY'); // late is still fine to ask
+  it('opens five days before the next supply (day 23 of a 28-day cycle), not earlier', () => {
+    expect(state({}, CYCLE - 6)).toBe('NOT_YET'); // 6 days left
+    expect(state({}, CYCLE - 5)).toBe('READY'); // 5 days left
+    expect(state({}, CYCLE + 1)).toBe('READY'); // late is still fine to ask
   });
 
   it('sends the patient to their check-in first, and never over the doctor’s review', () => {

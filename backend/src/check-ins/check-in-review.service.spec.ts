@@ -67,6 +67,11 @@ describe('CheckInReviewService.review', () => {
     expect(saved()).toMatchObject({ outcome: 'REPEAT', reviewedById: 'doc-1', resultOrderId: 'o-2', billingNote: 'Billing active' });
   });
 
+  it('keeps the note for the patient apart from the internal clinical note, so only one is ever printed on their report', async () => {
+    await service.review('doc-1', { checkInId: 'ci-1', outcome: 'REPEAT' as any, note: '  internal: watch tolerance ', messageToPatient: ' Great progress ' });
+    expect(prisma.checkIn.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reviewNote: 'internal: watch tolerance', patientNote: 'Great progress' }) }));
+  });
+
   it('NEW_PRESCRIPTION supersedes the current prescription and moves to the matching plan', async () => {
     const items = [{ productId: 'sema', strengthId: 'step3', quantity: 1, directions: 'Weekly' }];
     await service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items });

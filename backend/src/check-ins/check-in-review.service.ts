@@ -151,6 +151,7 @@ export class CheckInReviewService {
           reviewedById: clinicianId,
           outcome: input.outcome,
           reviewNote: input.note?.trim() || null,
+          patientNote: input.messageToPatient?.trim() || null,
           billingNote,
           resultOrderId,
           resultPrescriptionId,

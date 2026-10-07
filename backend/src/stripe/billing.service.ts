@@ -8,6 +8,23 @@ export type BillingPatient = {
   stripeSubscriptionId: string | null;
 };
 
+export type InvoiceSummary = {
+  id: string;
+  createdAt: Date;
+  amountCents: number;
+  currency: string;
+  /** PAID, or UNPAID while a payment is still owed (including a failed attempt). */
+  status: 'PAID' | 'UNPAID';
+  description: string | null;
+  cardBrand: string | null;
+  cardLast4: string | null;
+  /** Stripe's own invoice page, and a PDF of it. */
+  viewUrl: string | null;
+  pdfUrl: string | null;
+};
+
+export const INVOICE_LIMIT = 12;
+
 export type RefundOutcome =
   | { status: 'REFUNDED'; subscriptionId: string; refundId: string | null }
   | { status: 'NOT_REQUIRED'; reason: string }
@@ -45,6 +62,45 @@ export class BillingService {
       // Typically: the portal hasn't been configured in the Stripe Dashboard yet.
       this.logger.error(`Billing portal session for ${patient.email} failed: ${err.message}`);
       throw new ServiceUnavailableException('Subscription management isn’t available right now. Please message us and we’ll help.');
+    }
+  }
+
+  /**
+   * The patient's most recent payments, newest first, with a link to each invoice's PDF. Drafts and voided
+   * invoices are never shown. The customer is always the patient's own. Empty when there is nothing to show
+   * (Stripe not set up, or no customer yet).
+   */
+  async listInvoices(patient: BillingPatient): Promise<InvoiceSummary[]> {
+    if (!this.configured) return [];
+    try {
+      const customerId = patient.stripeCustomerId ?? (await this.findCustomerIdByEmail(patient.email));
+      if (!customerId) return [];
+      // Drafts and voids are filtered out below, so ask for more than we show.
+      const { data } = await this.stripe.invoices.list({ customer: customerId, limit: INVOICE_LIMIT * 2, expand: ['data.charge'] });
+      return data
+        .filter((i) => i.status === 'paid' || i.status === 'open' || i.status === 'uncollectible')
+        .slice(0, INVOICE_LIMIT)
+        .map((i) => {
+          // Requests are pinned to API version 2023-10-16, where an invoice has a `charge` we expanded above;
+          // this SDK's types describe a newer API without it.
+          const charge = (i as unknown as { charge?: Stripe.Charge | string | null }).charge;
+          const card = typeof charge === 'object' && charge ? charge.payment_method_details?.card ?? null : null;
+          return {
+            id: i.id,
+            createdAt: new Date(i.created * 1000),
+            amountCents: i.status === 'paid' ? i.amount_paid : i.amount_due,
+            currency: i.currency.toUpperCase(),
+            status: i.status === 'paid' ? 'PAID' : 'UNPAID',
+            description: i.lines?.data?.[0]?.description ?? null,
+            cardBrand: card?.brand ?? null,
+            cardLast4: card?.last4 ?? null,
+            viewUrl: i.hosted_invoice_url ?? null,
+            pdfUrl: i.invoice_pdf ?? null,
+          };
+        });
+    } catch (err: any) {
+      this.logger.error(`Listing invoices for ${patient.email} failed: ${err.message}`);
+      throw new ServiceUnavailableException('We couldn’t load your payments right now. Please try again in a moment.');
     }
   }
 

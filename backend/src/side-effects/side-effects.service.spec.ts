@@ -18,6 +18,13 @@ describe('SideEffectsService', () => {
         findUniqueOrThrow: jest.fn().mockResolvedValue(row({ acknowledgedAt: new Date() })),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      sideEffectLog: {
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn(({ data }) => Promise.resolve({ id: 'log-1', recordedAt: new Date('2026-10-30T10:00:00Z'), note: null, ...data })),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      doseEvent: { count: jest.fn().mockResolvedValue(0) },
       prescription: { findFirst: jest.fn().mockResolvedValue({ medication: 'Semaglutide', dosage: '0.25 mg' }) },
       $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
     };
@@ -107,6 +114,74 @@ describe('SideEffectsService', () => {
     it('is not found for an unknown report', async () => {
       prisma.sideEffectReport.findUnique.mockResolvedValue(null);
       await expect(service.acknowledge('doc-1', 'nope')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('weekly scores', () => {
+    const scores = (over: object = {}) => ({ nausea: 2, vomiting: 1, abdominalPain: 1, diarrhoea: 1, constipation: 3, fatigue: 2, ...over });
+
+    it('saves a quiet week without alerting anyone', async () => {
+      const entry = await service.logScores('p-1', { ...scores(), note: ' ok ', clientRequestId: 'r-1' });
+      expect(prisma.sideEffectLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ patientId: 'p-1', nausea: 2, constipation: 3, note: 'ok', clientRequestId: 'r-1' }) });
+      expect(prisma.sideEffectReport.create).not.toHaveBeenCalled();
+      expect(entry.advice).toBeUndefined();
+    });
+
+    it('raises an ordinary side-effect report, in the same transaction, when a score is high', async () => {
+      const entry = await service.logScores('p-1', scores({ nausea: 8, abdominalPain: 7 }));
+      expect(prisma.sideEffectReport.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ patientId: 'p-1', effects: ['nausea', 'abdominal_pain'], severity: 'MODERATE', medication: 'Semaglutide 0.25 mg', note: expect.stringContaining('nausea 8/10') }),
+      });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SIDE_EFFECT_REPORTED', patientId: 'p-1' }), prisma);
+      expect(entry.advice).toMatch(/112/);
+    });
+
+    it('makes it severe from 9', async () => {
+      await service.logScores('p-1', scores({ vomiting: 9 }));
+      expect(prisma.sideEffectReport.create).toHaveBeenCalledWith({ data: expect.objectContaining({ severity: 'SEVERE', effects: ['vomiting'] }) });
+    });
+
+    it.each([[0], [11], [4.5]])('refuses a score of %s', async (bad) => {
+      await expect(service.logScores('p-1', scores({ nausea: bad }))).rejects.toThrow(BadRequestException);
+      expect(prisma.sideEffectLog.create).not.toHaveBeenCalled();
+    });
+
+    it('does not save the same submission twice', async () => {
+      prisma.sideEffectLog.findFirst.mockResolvedValue({ id: 'log-1', recordedAt: new Date(), note: null, ...scores() });
+      await service.logScores('p-1', { ...scores(), clientRequestId: 'r-1' });
+      expect(prisma.sideEffectLog.create).not.toHaveBeenCalled();
+    });
+
+    it('stops a runaway client', async () => {
+      prisma.sideEffectLog.count.mockResolvedValue(3);
+      await expect(service.logScores('p-1', scores())).rejects.toThrow(/already logged this today/);
+    });
+  });
+
+  describe('summaryFor', () => {
+    const now = new Date('2026-10-30T12:00:00Z');
+    const log = (daysAgo: number, over: object = {}) => ({ id: `l-${daysAgo}`, recordedAt: new Date(now.getTime() - daysAgo * 86_400_000), note: null, nausea: 1, vomiting: 1, abdominalPain: 1, diarrhoea: 1, constipation: 1, fatigue: 1, ...over });
+
+    it('needs attention when the latest week has a high score', async () => {
+      prisma.sideEffectLog.findMany.mockResolvedValue([log(2, { nausea: 8 }), log(9, { nausea: 3 })]);
+      const s = await service.summaryFor('p-1', now);
+      expect(s.needsAttention).toBe(true);
+      expect(s.reasons).toEqual(['Nausea 8/10 at the last check']);
+      expect(s.scores.find((r) => r.key === 'nausea')).toMatchObject({ latest: 8, previous: 3, peak: 8, flagged: true });
+      expect(s.stale).toBe(false);
+    });
+
+    it('needs attention for an unacknowledged report or a rough dose, even with no tracker entries', async () => {
+      prisma.sideEffectReport.findMany.mockResolvedValue([row({ severity: 'SEVERE' })]);
+      prisma.doseEvent.count.mockResolvedValue(1);
+      const s = await service.summaryFor('p-1', now);
+      expect(s).toMatchObject({ needsAttention: true, stale: true, scores: [], roughDoses: 1 });
+      expect(s.reasons).toEqual(['1 reported side effect not yet acknowledged', 'Felt unwell after 1 recent dose']);
+    });
+
+    it('is calm when there is nothing to flag, and stale when nothing has been logged', async () => {
+      const s = await service.summaryFor('p-1', now);
+      expect(s).toMatchObject({ needsAttention: false, reasons: [], stale: true });
     });
   });
 });

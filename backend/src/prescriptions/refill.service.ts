@@ -74,7 +74,7 @@ export class RefillService {
 const REFUSAL: Record<string, string> = {
   UNAVAILABLE: 'There is nothing to refill right now.',
   NOT_YET: 'It is too early to ask for your next supply.',
-  CHECK_IN_FIRST: 'Please complete your monthly check-in first, so your doctor can approve your next supply.',
+  CHECK_IN_FIRST: 'Please complete your check-in first, so your doctor can approve your next supply.',
   IN_REVIEW: 'Your doctor is already reviewing your check-in — your next supply follows from that.',
   NO_REPEATS: 'Your prescription has no repeats left. Your doctor will arrange a new one at your check-in.',
 };
