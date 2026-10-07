@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { DosingService } from './dosing.service';
 
 const DAY = 86_400_000;
@@ -138,6 +139,34 @@ describe('DosingService patient actions', () => {
     const result = await service.markTaken('p-1', 'd-1');
     expect(result).toBe(taken);
     expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+  });
+
+  describe('a dose that is not due yet', () => {
+    const due = (hoursAhead: number) => ({ id: 'd-1', patientId: 'p-1', status: 'SCHEDULED', scheduledFor: new Date(Date.now() + hoursAhead * 3_600_000) });
+
+    it('cannot be logged as taken a week early', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(7 * 24));
+      await expect(service.markTaken('p-1', 'd-1')).rejects.toThrow(/is due on .*You can log it then/);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('cannot be logged tomorrow-plus either', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(30));
+      await expect(service.markTaken('p-1', 'd-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('can be logged on its own day, even a few hours before the scheduled time', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(6));
+      prisma.doseEvent.update.mockResolvedValue({ id: 'd-1', status: 'TAKEN' });
+      await service.markTaken('p-1', 'd-1');
+      expect(prisma.doseEvent.update).toHaveBeenCalled();
+    });
+
+    it('can still be skipped ahead of time, as when a clinician has paused treatment', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(7 * 24));
+      await service.markSkipped('p-1', 'd-1', 'Paused');
+      expect(prisma.doseEvent.update).toHaveBeenCalled();
+    });
   });
 
   describe('injection site', () => {

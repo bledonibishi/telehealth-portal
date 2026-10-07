@@ -138,7 +138,9 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const advice = missedDoseAdvice(dose, needsClinician);
   const pen = isRotatingPen(dose);
   // Offered while logging, and afterwards if it was left out.
-  const askSite = pen && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
+  // Logging an injection is for the day it is due (or after): a dose on a later day can only be looked at.
+  const notYet = dose.status === 'SCHEDULED' && differenceInCalendarDays(new Date(dose.scheduledFor), new Date()) > 0;
+  const askSite = pen && !notYet && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-5">
@@ -181,15 +183,21 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       {guide && <InjectionGuide onClose={() => setGuide(false)} requiresColdChain={dose.product.requiresColdChain} />}
       {video && <InjectionVideoDialog onClose={() => setVideo(false)} onShowSteps={() => { setVideo(false); setGuide(true); }} />}
 
+      {notYet && (
+        <p className="text-sm text-slate-600 bg-slate-50 rounded-xl px-3 py-2.5 mt-4" role="status">
+          This {isPatch ? 'patch change' : 'injection'} is due {countdown(new Date(dose.scheduledFor))}, on {format(new Date(dose.scheduledFor), 'EEEE d MMMM')}. You can log it that day.
+        </p>
+      )}
+
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
         <div className="mt-4 space-y-2">
-          <button
+          {!notYet && <button
             onClick={() => markTaken({ variables: { id: dose.id, injectionSite: pen ? site : undefined } })}
             disabled={taking}
             className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
           >
             {taking ? 'Saving…' : isPatch ? 'Mark patch changed' : 'Mark as taken'}
-          </button>
+          </button>}
           <div className="flex gap-2">
             <input
               value={note}

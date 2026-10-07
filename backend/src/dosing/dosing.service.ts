@@ -19,6 +19,9 @@ const WINDOW = 8;
 /** A prescription this new gets its first dose on the day it was issued. */
 const FRESH_PRESCRIPTION_MS = 7 * 86_400_000;
 const MISSED_GRACE_HOURS = 24;
+// A dose can be logged as taken from its own day. The app is strict by the patient's calendar day; the server cannot know the
+// patient's time zone, so it only refuses what is clearly ahead, with slack for a patient logging in the small hours.
+export const FUTURE_DOSE_SLACK_HOURS = 12;
 // How far ahead of a dose we email the patient a reminder.
 const REMINDER_WINDOW_HOURS = 24;
 
@@ -76,6 +79,10 @@ export class DosingService {
       throw new BadRequestException('This dose was already marked as skipped');
     }
     if (site) await this.assertInjectable(event.prescriptionItemId, 'An injection site only applies to an injection');
+    if (event.status !== DoseStatus.TAKEN && event.scheduledFor && event.scheduledFor.getTime() > Date.now() + FUTURE_DOSE_SLACK_HOURS * 3_600_000) {
+      const due = event.scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+      throw new BadRequestException(`This dose is due on ${due}. You can log it then.`);
+    }
     if (event.status === DoseStatus.TAKEN) {
       // Logged without a site earlier: let it be added now, but never overwrite one that was chosen.
       if (site && !event.injectionSite) return this.prisma.doseEvent.update({ where: { id }, data: { injectionSite: site } });

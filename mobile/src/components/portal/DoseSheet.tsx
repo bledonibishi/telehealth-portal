@@ -3,7 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMutation } from '@apollo/client';
 import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '../../graphql/portal';
 import { type Dose, doseName, isRotatingPen, missedDoseAdvice, visualStatus } from '../../lib/doses';
-import { fmtDate, takenAtText } from '../../lib/format';
+import { calendarDaysBetween, countdown, fmtDate, takenAtText } from '../../lib/format';
 import { SITE_LABEL, suggestNextSite, type InjectionSite } from '../../lib/injectionSites';
 import { BottomSheet } from '../BottomSheet';
 import { Button, ErrorText, Pill } from '../ui';
@@ -34,7 +34,9 @@ function Body({ dose, needsClinician, lastSite, onClose }: { dose: Dose; needsCl
   const pen = isRotatingPen(dose);
   const patch = dose.product.form === 'PATCH';
   const advice = missedDoseAdvice(dose, needsClinician);
-  const askSite = pen && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
+  // Logging an injection is for the day it is due (or after): a dose on a later day can only be looked at.
+  const notYet = dose.status === 'SCHEDULED' && calendarDaysBetween(dose.scheduledFor) > 0;
+  const askSite = pen && !notYet && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
   const suggested = suggestNextSite(lastSite);
 
   return (
@@ -64,7 +66,11 @@ function Body({ dose, needsClinician, lastSite, onClose }: { dose: Dose; needsCl
 
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
         <View style={{ gap: 10 }}>
-          <Button label={taking ? 'Saving…' : patch ? 'Mark patch changed' : 'Mark as taken'} loading={taking} onPress={() => markTaken({ variables: { id: dose.id, injectionSite: pen ? site : undefined } })} />
+          {notYet ? (
+            <Text style={styles.notYet} accessibilityRole="alert">This {patch ? 'patch change' : 'injection'} is due {countdown(dose.scheduledFor)}, on {fmtDate(dose.scheduledFor, { weekday: 'long', day: 'numeric', month: 'long' })}. You can log it that day.</Text>
+          ) : (
+            <Button label={taking ? 'Saving…' : patch ? 'Mark patch changed' : 'Mark as taken'} loading={taking} onPress={() => markTaken({ variables: { id: dose.id, injectionSite: pen ? site : undefined } })} />
+          )}
           <TextInput value={note} onChangeText={setNote} placeholder="Reason for skipping (optional)" placeholderTextColor={colors.slate400} style={styles.input} />
           <Button variant="outline" label="Skip this dose" loading={skipping} onPress={() => markSkipped({ variables: { id: dose.id, note: note.trim() || undefined } })} />
         </View>
@@ -90,6 +96,7 @@ const styles = StyleSheet.create({
   date: { fontSize: 12, color: colors.slate500, marginTop: 2 },
   taken: { fontSize: 14, fontWeight: '700', color: colors.emerald700 },
   small: { fontSize: 12, color: colors.slate500, lineHeight: 17 },
+  notYet: { fontSize: 13, color: colors.slate600, backgroundColor: colors.slate50, borderRadius: 12, padding: 12, lineHeight: 19 },
   advice: { fontSize: 13, color: colors.slate700, backgroundColor: colors.amber50, borderRadius: 12, padding: 12, lineHeight: 19 },
   siteBox: { borderTopWidth: 1, borderTopColor: colors.slate100, paddingTop: 12 },
   siteTitle: { fontSize: 13, fontWeight: '700', color: colors.slate700, marginBottom: 10 },
