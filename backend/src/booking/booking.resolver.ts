@@ -2,7 +2,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { BadRequestException } from '@nestjs/common';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 import { BookingService } from './booking.service';
 import { BookingModel, BookingSessionModel, StaffBookingModel } from './models/booking.model';
 
@@ -48,7 +48,7 @@ export class BookingResolver {
     return this.service.cancelMine(user.id, uid, reason);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Query(() => [StaffBookingModel], { description: 'Everything booked in a window (default: the next 14 days), optionally for one patient' })
   bookings(
     @Args('from', { nullable: true }) from?: Date,

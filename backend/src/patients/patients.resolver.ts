@@ -8,7 +8,7 @@ import { UpdatePatientInput } from './dto/update-patient.input';
 import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
 import { CreatePatientInput } from './dto/create-patient.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 import { ClinicianRole, ConsultationKind } from '../common/enums';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PatientProfileService } from './patient-profile.service';
@@ -33,13 +33,13 @@ export class PatientsResolver {
     return this.profile.update(user.id, input);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Query(() => [PatientListItemModel])
   patients() {
     return this.patientsService.findAll();
   }
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Patient')
   @Query(() => PatientModel, { nullable: true })
   patient(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
@@ -67,7 +67,7 @@ export class PatientsResolver {
     return this.patientsService.productKindOf(user.id);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Mutation(() => PatientModel)
   updatePatient(@Args('input') input: UpdatePatientInput) {
     const { id, ...data } = input;

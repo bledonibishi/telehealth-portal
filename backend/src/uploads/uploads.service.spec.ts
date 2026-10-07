@@ -140,8 +140,15 @@ describe('UploadsService.findForAccess', () => {
     await expect(service('PROGRESS_PHOTO').findForAccess('f-1', { id: 'c-1', role: 'CLINICIAN' } as any)).rejects.toThrow('File not found');
   });
 
-  it('keeps identity documents open to all staff, as the onboarding review needs', () => {
-    for (const role of ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER']) expect(staffMayView('ID_DOCUMENT' as any, staff(role))).toBe(true);
+  it('keeps identity documents open to the staff who review onboarding, but not the pharmacy partner', () => {
+    for (const role of ['ADMIN', 'DOCTOR', 'CX_TEAM']) expect(staffMayView('ID_DOCUMENT' as any, staff(role))).toBe(true);
+    expect(staffMayView('ID_DOCUMENT' as any, staff('PROVIDER'))).toBe(false);
+  });
+
+  it('keeps every kind of patient upload away from the pharmacy partner', () => {
+    for (const kind of ['ID_DOCUMENT', 'SELFIE', 'BODY_PHOTO_FRONT', 'BODY_PHOTO_SIDE', 'PRESCRIPTION_PROOF', 'PROGRESS_PHOTO']) {
+      expect(staffMayView(kind as any, staff('PROVIDER'))).toBe(false);
+    }
   });
 });
 

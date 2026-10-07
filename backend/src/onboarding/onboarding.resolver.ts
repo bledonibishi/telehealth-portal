@@ -12,7 +12,7 @@ import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
 import { BodyPhotoCheckResultModel, BodyPhotoCheckSummaryModel, BodyPhotoView, PhotoFrameResultModel, SaveBodyPhotoInput } from './dto/body-photo.input';
 import { PhotoCheckService } from './photo-check.service';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => OnboardingSubmissionModel)
@@ -76,13 +76,13 @@ export class OnboardingResolver {
     return this.onboardingService.getOrCreateForPatient(user.id);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Query(() => [OnboardingSubmissionModel])
   onboardingQueue(@CurrentUser() user: AuthUser) {
     return this.onboardingService.findQueue();
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('OnboardingSubmission', 'patientId')
   @Query(() => OnboardingSubmissionModel, { nullable: true })
   onboardingSubmission(@CurrentUser() user: AuthUser, @Args('patientId', { type: () => ID }) patientId: string) {
@@ -143,7 +143,7 @@ export class OnboardingResolver {
     return this.onboardingService.submit(user.id);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Mutation(() => OnboardingSubmissionModel)
   reviewOnboardingStep(@CurrentUser() user: AuthUser, @Args('input') input: ReviewOnboardingStepInput) {
     return this.onboardingService.reviewOnboardingStep(user.id, input);

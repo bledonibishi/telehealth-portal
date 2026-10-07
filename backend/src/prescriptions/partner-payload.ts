@@ -162,6 +162,21 @@ export function partnerEmailSummary(p: PartnerOrderPayload): { subject: string; 
   return { subject: `New order ${p.reference}${p.prescription.requiresColdChain ? ' (cold chain)' : ''}`, html };
 }
 
+/**
+ * The email for a new order. It carries no patient details: email is not a safe place for a name and an address, and the
+ * pharmacy opens the portal for those. Just the reference and a way in.
+ */
+export function partnerPingSummary(p: { reference: string; requiresColdChain?: boolean }, portalUrl?: string | null): { subject: string; html: string } {
+  const link = portalUrl ? `<p><a href="${portalUrl.replace(/"/g, '')}/orders">Open the orders page</a></p>` : '<p>Log in to the pharmacy portal to see it.</p>';
+  const html = `
+    <div style="font-family:sans-serif;max-width:620px">
+      <h2 style="margin:0 0 4px">New order ${p.reference} is waiting for you${p.requiresColdChain ? ' · <strong>cold chain</strong>' : ''}</h2>
+      <p style="color:#475569;margin:0 0 16px">Patient and prescription details are in the portal only.</p>
+      ${link}
+    </div>`;
+  return { subject: `New order ${p.reference}${p.requiresColdChain ? ' (cold chain)' : ''}`, html };
+}
+
 /** The email for a withdrawn order: short and unmissable, with the JSON attached. */
 export function partnerCancelEmailSummary(p: PartnerCancelPayload): { subject: string; html: string } {
   const html = `

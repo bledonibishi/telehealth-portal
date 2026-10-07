@@ -16,7 +16,7 @@ describe('ConsultationsService', () => {
   let consents: { record: jest.Mock };
   let audit: { log: jest.Mock };
   let proofReview: { reassess: jest.Mock };
-  let dosePricing: { priceIdFor: jest.Mock };
+  let dosePricing: { priceIdsFor: jest.Mock };
   let service: ConsultationsService;
 
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe('ConsultationsService', () => {
     consents = { record: jest.fn() };
     audit = { log: jest.fn() };
     proofReview = { reassess: jest.fn().mockResolvedValue(null) };
-    dosePricing = { priceIdFor: jest.fn().mockReturnValue(null) };
+    dosePricing = { priceIdsFor: jest.fn().mockReturnValue(null) };
     service = new ConsultationsService(
       prisma,
       audit as any,
@@ -133,7 +133,7 @@ describe('ConsultationsService', () => {
 
   describe('billing the prescribed dose on approval', () => {
     beforeEach(() => {
-      dosePricing.priceIdFor.mockReturnValue('price_low');
+      dosePricing.priceIdsFor.mockReturnValue(['price_low']);
       prisma.prescriptionItem = {
         findMany: jest.fn().mockResolvedValue([
           { product: { category: 'GLP1', name: 'Mounjaro', brandName: 'Mounjaro' }, strength: { titrationStep: 1, label: '2.5 mg', stripePriceId: 'price_low' } },
@@ -145,7 +145,7 @@ describe('ConsultationsService', () => {
 
     it('moves the first prescription onto the prescribed dose’s price', async () => {
       const result: any = await service.approve('doc-1', approveInput);
-      expect((billing as any).moveToPrescribedPrice).toHaveBeenCalledWith(expect.objectContaining({ id: PATIENT.id }), 'price_low', 'Mounjaro 2.5 mg');
+      expect((billing as any).moveToPrescribedPrice).toHaveBeenCalledWith(expect.objectContaining({ id: PATIENT.id }), ['price_low'], 'Mounjaro 2.5 mg');
       expect(result.billingNote).toBe('Billing moved');
     });
 

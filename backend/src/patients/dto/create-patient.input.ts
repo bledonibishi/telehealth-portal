@@ -49,6 +49,9 @@ export class CreatePatientInput {
   })
   quizAnswers?: QuizAnswerInput[];
 
+  @Field({ nullable: true, description: 'The medicine and dose this patient is treated as having paid for, e.g. "Mounjaro 5 mg". Defaults to the plan’s starter medicine' })
+  treatment?: string;
+
   @Field({ nullable: true, description: 'Onboarding question: has the patient used this treatment before? Affects GLP-1 starting-dose rules' })
   priorMedicationUse?: boolean;
 }

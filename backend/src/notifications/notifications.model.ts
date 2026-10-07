@@ -25,4 +25,7 @@ export class NotificationCounts {
 
   @Field(() => Int, { description: 'Urgent appointment requests no doctor has answered yet — due within 24 hours (prescribers only; others get 0)' })
   urgentAppointments: number;
+
+  @Field(() => Int, { description: 'Orders that failed, came back, cannot be supplied or are past their expected date (admins only; others get 0)' })
+  orderProblems: number;
 }

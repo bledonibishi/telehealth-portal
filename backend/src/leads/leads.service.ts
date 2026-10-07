@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
 import { ReferralsService } from '../referrals/referrals.service';
+
+export const EMAIL_TAKEN_MESSAGE = 'An account already exists for this email. Please sign in.';
 
 @Injectable()
 export class LeadsService {
@@ -25,10 +27,15 @@ export class LeadsService {
   }
 
   async upsert(input: CreateLeadInput) {
+    // Someone who already has an account (or has paid and is waiting for it) signs in instead of starting again.
+    const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } });
+    if (taken) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
+
     const existingLead = await this.prisma.lead.findUnique({
       where: { email: input.email },
       select: { id: true, convertedAt: true },
     });
+    if (existingLead?.convertedAt) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     const lead = await this.prisma.lead.upsert({
       where: { email: input.email },
       create: {

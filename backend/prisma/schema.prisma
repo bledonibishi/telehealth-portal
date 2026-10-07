@@ -458,33 +458,68 @@ model Prescription {
 // One supply of a prescription: the first fill, then one per repeat. What the
 // pharmacy dispatches and the patient tracks.
 model Order {
-  id               String      @id @default(cuid())
-  prescriptionId   String      @map("prescription_id")
-  patientId        String      @map("patient_id")
+  id                    String      @id @default(cuid())
+  prescriptionId        String      @map("prescription_id")
+  patientId             String      @map("patient_id")
   // 1 = first supply; each repeat increments.
-  sequence         Int
-  status           OrderStatus @default(PENDING)
+  sequence              Int
+  status                OrderStatus @default(PENDING)
   // Snapshot at dispatch, so later address changes don't rewrite history.
-  shippingAddress  Json?       @map("shipping_address")
-  pharmacyRef      String?     @map("pharmacy_ref")
-  dispatchedAt     DateTime?   @map("dispatched_at")
-  carrier          String?
-  trackingNumber   String?     @map("tracking_number")
-  trackingUrl      String?     @map("tracking_url")
-  outForDeliveryAt DateTime?   @map("out_for_delivery_at")
-  deliveredAt      DateTime?   @map("delivered_at")
-  cancelledAt      DateTime?   @map("cancelled_at")
-  cancelReason     String?     @map("cancel_reason")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  shippingAddress       Json?       @map("shipping_address")
+  pharmacyRef           String?     @map("pharmacy_ref")
+  dispatchedAt          DateTime?   @map("dispatched_at")
+  carrier               String?
+  trackingNumber        String?     @map("tracking_number")
+  trackingUrl           String?     @map("tracking_url")
+  // The courier's expected delivery window, given when the pharmacy ships it; shown to the patient.
+  estimatedDeliveryFrom DateTime?   @map("estimated_delivery_from")
+  estimatedDeliveryTo   DateTime?   @map("estimated_delivery_to")
+  // The pharmacy has packed it and is waiting for the courier to collect it.
+  readyForPickupAt      DateTime?   @map("ready_for_pickup_at")
+  // When we last asked a courier's tracking API about this parcel (see couriers/), so it isn't asked too often.
+  trackingCheckedAt     DateTime?   @map("tracking_checked_at")
+  outForDeliveryAt      DateTime?   @map("out_for_delivery_at")
+  deliveredAt           DateTime?   @map("delivered_at")
+  cancelledAt           DateTime?   @map("cancelled_at")
+  cancelReason          String?     @map("cancel_reason")
+  // What happened to the patient's money when an admin cancelled it (refunded, subscription ended, or nothing).
+  cancelBillingNote     String?     @map("cancel_billing_note")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
 
   prescription        Prescription         @relation(fields: [prescriptionId], references: [id])
   patient             Patient              @relation(fields: [patientId], references: [id])
   partnerTransmission PartnerTransmission?
+  trackingEvents      OrderTrackingEvent[]
 
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
+}
+
+// One step in an order's journey, from staff pressing a button or from a courier or tracking service
+// calling our webhook. Kept as a history for the patient and staff; the order's own status is moved
+// forward from these, never back.
+model OrderTrackingEvent {
+  id         String   @id @default(cuid())
+  orderId    String   @map("order_id")
+  // READY_FOR_PICKUP, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RETURNED or EXCEPTION
+  // (see couriers/tracking-status.ts). Text, so a new kind needs no migration.
+  status     String
+  occurredAt DateTime @map("occurred_at")
+  location   String?
+  note       String?
+  // MANUAL (staff) or WEBHOOK (courier / tracking service).
+  source     String
+  // The sender's own id for this event, so a resend is recorded only once.
+  externalId String?  @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, externalId])
+  @@index([orderId, occurredAt])
+  @@map("order_tracking_events")
 }
 
 // A patient's one-tap ask for their next supply. It never creates an order: a doctor still places the

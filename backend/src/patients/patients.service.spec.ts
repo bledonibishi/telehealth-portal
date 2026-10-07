@@ -213,6 +213,8 @@ describe('PatientsService.createByStaff', () => {
   const CATALOG: Record<string, any> = {
     'semaglutide-wegovy': {
       id: 'prod-glp1',
+      name: 'Semaglutide',
+      brandName: 'Wegovy',
       defaultDirections: 'Inject weekly',
       strengths: [{ id: 'str-glp1-0.25', label: '0.25 mg', defaultQuantity: 1 }],
     },
@@ -306,7 +308,11 @@ describe('PatientsService.createByStaff', () => {
     await svc.createByStaff('admin-1', validInput as any);
 
     expect(tx.lead.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ email: 'nora@example.com', productKind: 'GLP1', quizAnswers: [] }),
+      data: expect.objectContaining({
+        email: 'nora@example.com',
+        productKind: 'GLP1',
+        quizAnswers: [expect.objectContaining({ questionId: 'preferred_treatment', answer: expect.stringContaining('0.25 mg') })],
+      }),
     });
     expect(tx.patient.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ firstName: 'Nora', lastName: 'Aliu', leadId: 'lead-1' }),

@@ -5,7 +5,7 @@ import { RecordSymptomsInput } from './dto/record-symptoms.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 import { SymptomScale } from '../common/enums';
 
 @Resolver(() => SymptomAssessmentModel)
@@ -30,13 +30,13 @@ export class SymptomsResolver {
     return this.symptoms.record(user.id, input.answers);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Query(() => SymptomScaleModel, { description: 'A symptom questionnaire’s wording, for showing a patient’s item-by-item answers' })
   symptomScaleDefinition(@Args('scale', { type: () => SymptomScale }) scale: SymptomScale) {
     return this.symptoms.definition(scale);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('Patient', 'patientId')
   @Query(() => [SymptomAssessmentModel], { description: 'A patient’s symptom scores, oldest first' })
   patientSymptomAssessments(@Args('patientId', { type: () => ID }) patientId: string) {

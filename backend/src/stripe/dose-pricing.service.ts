@@ -47,6 +47,17 @@ export class DosePricingService {
     return null;
   }
 
+  /**
+   * What a prescription is billed as: one subscription line per medicine at its own price (so an HRT
+   * patient on oestrogen plus progesterone pays both), or — when any of them has no price of its own —
+   * the single price priceIdFor picks (the GLP-1 dose's, else the plan tier's). Null when nothing is configured.
+   */
+  priceIdsFor(kind: ConsultationKind | string, items: PricedItem[]): string[] | null {
+    if (items.length > 0 && items.every((i) => i.stripePriceId)) return items.map((i) => i.stripePriceId!);
+    const single = this.priceIdFor(kind, items);
+    return single ? [single] : null;
+  }
+
   /** A price's monthly amount, cached briefly. Null when Stripe isn't configured or the price can't be read. */
   async amountOf(priceId: string): Promise<{ amountCents: number; currency: string } | null> {
     const cached = this.amounts.get(priceId);

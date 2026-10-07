@@ -66,6 +66,51 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Your monthly check-in is ready', html });
   }
 
+  /**
+   * Tells a patient their order has moved. Deliberately generic about the medicine: email isn't a secure
+   * channel, so the detail stays in the portal.
+   */
+  async sendOrderUpdateEmail(
+    to: string,
+    firstName: string,
+    kind: 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED',
+    details: { carrier?: string | null; trackingNumber?: string | null; trackingUrl?: string | null; expected?: string | null; ordersUrl: string },
+  ) {
+    const copy = {
+      SHIPPED: { subject: 'Your order is on its way', title: 'Your order is on its way', body: 'Your pharmacy has packed your order and handed it to the courier.' },
+      OUT_FOR_DELIVERY: { subject: 'Your order is out for delivery', title: 'Out for delivery today', body: 'The courier has your order and is on the way to you.' },
+      DELIVERY_FAILED: { subject: 'We couldn’t deliver your order today', title: 'We couldn’t deliver today', body: 'The courier wasn’t able to hand over your order. They will usually try again; if you won’t be home, message your care team from the portal and we’ll help.' },
+      DELIVERED: { subject: 'Your order has been delivered', title: 'Your order has arrived', body: 'Your order has been delivered. If you can’t find it, message your care team from the portal.' },
+    }[kind];
+    const safeName = escapeHtml(firstName);
+    const lines: string[] = [];
+    if (kind !== 'DELIVERED' && kind !== 'DELIVERY_FAILED' && details.expected) lines.push(`Expected delivery: <b>${escapeHtml(details.expected)}</b>`);
+    if (kind !== 'DELIVERED' && details.carrier) lines.push(`Courier: ${escapeHtml(details.carrier)}`);
+    if (kind !== 'DELIVERED' && details.trackingNumber) lines.push(`Tracking number: ${escapeHtml(details.trackingNumber)}`);
+    const track =
+      kind !== 'DELIVERED' && details.trackingUrl
+        ? `<p><a href="${escapeHtml(details.trackingUrl)}" style="color:#2563eb">Track your parcel</a></p>`
+        : '';
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">${copy.title}, ${safeName}</h2>
+        <p style="color:#475569">${copy.body}</p>
+        ${lines.length ? `<p style="color:#475569;line-height:1.7">${lines.join('<br>')}</p>` : ''}
+        ${track}
+        <a href="${escapeHtml(details.ordersUrl)}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          View my order
+        </a>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Order ${kind} email to ${to}${details.expected ? ` (expected ${details.expected})` : ''}${details.trackingNumber ? ` · tracking ${details.trackingNumber}` : ''}`);
+      return;
+    }
+    await this.resend.emails.send({ from: this.from, to, subject: copy.subject, html });
+  }
+
   /** Resolves true only once the provider has confirmed it accepted the send. */
   async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string): Promise<boolean> {
     const when = scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -141,10 +186,10 @@ export class EmailService {
   }
 
   /**
-   * Sends an order summary (with the structured JSON attached) to the pharmacy partner.
+   * Sends a short notice about an order to the pharmacy partner (no patient details).
    * Returns false — instead of pretending — when no email provider is configured.
    */
-  async sendPartnerOrderEmail(to: string[], subject: string, html: string, json: string, filename: string): Promise<boolean> {
+  async sendPartnerOrderEmail(to: string[], subject: string, html: string, attachment?: { json: string; filename: string }): Promise<boolean> {
     if (!this.resend) {
       this.logger.warn(`[DEV] Partner order email "${subject}" to ${to.join(', ')} not sent — RESEND_API_KEY is not set`);
       return false;
@@ -154,7 +199,7 @@ export class EmailService {
       to,
       subject,
       html,
-      attachments: [{ filename, content: Buffer.from(json, 'utf8') }],
+      ...(attachment ? { attachments: [{ filename: attachment.filename, content: Buffer.from(attachment.json, 'utf8') }] } : {}),
     });
     return true;
   }

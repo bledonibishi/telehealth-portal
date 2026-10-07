@@ -82,7 +82,7 @@ describe('CheckInReviewService.review', () => {
       }),
       prisma,
     );
-    expect(billing.changePrice).toHaveBeenCalledWith(PATIENT, 'price_adv');
+    expect(billing.changePrice).toHaveBeenCalledWith(PATIENT, ['price_adv']);
     expect(saved()).toMatchObject({ resultPrescriptionId: 'rx-2', resultOrderId: 'o-new' });
   });
 

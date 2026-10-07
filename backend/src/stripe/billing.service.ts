@@ -13,6 +13,46 @@ export type RefundOutcome =
   | { status: 'NOT_REQUIRED'; reason: string }
   | { status: 'FAILED'; error: string };
 
+type PriceLine = { price: string; quantity: number };
+
+/** One price or several (the same price twice becomes quantity 2) as subscription lines. */
+export function toLines(priceIds: string | string[]): PriceLine[] {
+  const counts = new Map<string, number>();
+  for (const id of Array.isArray(priceIds) ? priceIds : [priceIds]) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return [...counts].map(([price, quantity]) => ({ price, quantity }));
+}
+
+type ExistingItem = { id: string; quantity?: number; price: { id: string } };
+
+const sameLines = (existing: ExistingItem[], lines: PriceLine[]) =>
+  existing.length === lines.length && lines.every((l) => existing.some((i) => i.price.id === l.price && (i.quantity ?? 1) === l.quantity));
+
+/**
+ * What to send Stripe to turn the subscription's items into `lines`: items already on the right price are
+ * kept, a different one is swapped in place, and any left over are added or removed.
+ */
+function itemsUpdate(existing: ExistingItem[], lines: PriceLine[]): Stripe.SubscriptionUpdateParams.Item[] {
+  const update: Stripe.SubscriptionUpdateParams.Item[] = [];
+  const remaining = [...lines];
+  const spare: ExistingItem[] = [];
+  for (const item of existing) {
+    const i = remaining.findIndex((l) => l.price === item.price.id);
+    if (i < 0) {
+      spare.push(item);
+      continue;
+    }
+    const [line] = remaining.splice(i, 1);
+    if ((item.quantity ?? 1) !== line.quantity) update.push({ id: item.id, quantity: line.quantity });
+  }
+  for (const item of spare) {
+    const line = remaining.shift();
+    if (!line) update.push({ id: item.id, deleted: true });
+    else update.push({ id: item.id, price: line.price, ...(line.quantity !== (item.quantity ?? 1) ? { quantity: line.quantity } : {}) });
+  }
+  for (const line of remaining) update.push({ price: line.price, ...(line.quantity !== 1 ? { quantity: line.quantity } : {}) });
+  return update;
+}
+
 // Patients pay up front at checkout, before any clinician has reviewed them.
 // When a clinician declines, this undoes that: the subscription is cancelled so
 // it never renews, and its paid invoice is refunded.
@@ -73,45 +113,48 @@ export class BillingService {
   // for the review record rather than throwing: the clinical decision stands
   // even if billing needs fixing by hand.
 
-  /** Moves the subscription to another plan from the next billing cycle. */
-  async changePrice(patient: BillingPatient, priceId: string): Promise<string> {
+  /** Moves the subscription to another plan (one or more prices) from the next billing cycle. */
+  async changePrice(patient: BillingPatient, priceIds: string | string[]): Promise<string> {
+    const lines = toLines(priceIds);
     return this.withSubscription(patient, async (sub) => {
-      const item = sub.items.data[0];
-      if (!item) return 'Subscription has no items — update the plan in Stripe by hand';
-      if (item.price.id === priceId) return 'Plan unchanged';
-      await this.stripe.subscriptions.update(sub.id, {
-        items: [{ id: item.id, price: priceId }],
-        proration_behavior: 'none',
-      });
-      return `Plan changed to ${priceId} from the next billing cycle`;
+      if (sub.items.data.length === 0) return 'Subscription has no items — update the plan in Stripe by hand';
+      if (sameLines(sub.items.data, lines)) return 'Plan unchanged';
+      await this.stripe.subscriptions.update(sub.id, { items: itemsUpdate(sub.items.data, lines), proration_behavior: 'none' });
+      return `Plan changed to ${lines.map((l) => l.price).join(' + ')} from the next billing cycle`;
     });
   }
 
   /**
-   * After the first prescription: bill the dose that was prescribed rather than the one ordered.
-   * The subscription moves to `priceId` from the next billing cycle; if the new price is lower,
-   * the difference on the payment already made is refunded to the card. The plan is never moved
-   * to a price that is higher than what the patient agreed to at checkout (or can't be compared
+   * After the first prescription: bill the medicines that were prescribed rather than the ones ordered.
+   * The subscription moves to `priceIds` (one line per medicine) from the next billing cycle; if the new
+   * total is lower, the difference on the payment already made is refunded to the card. The plan is never
+   * moved to a total that is higher than what the patient agreed to at checkout (or can't be compared
    * with it): that needs the patient's agreement, so it is left as a note to sort out by hand.
    * Returns a note for the record, never throws.
    */
-  async moveToPrescribedPrice(patient: BillingPatient, priceId: string, doseLabel?: string): Promise<string> {
+  async moveToPrescribedPrice(patient: BillingPatient, priceIds: string | string[], doseLabel?: string): Promise<string> {
+    const lines = toLines(priceIds);
     return this.withSubscription(patient, async (sub) => {
-      const item = sub.items.data[0];
-      if (!item) return 'Subscription has no items — update the plan in Stripe by hand';
-      if (item.price.id === priceId) return 'Billing already matches the prescribed dose';
+      const existing = sub.items.data;
+      if (existing.length === 0) return 'Subscription has no items — update the plan in Stripe by hand';
+      if (sameLines(existing, lines)) return 'Billing already matches the prescribed dose';
 
-      const oldAmount = item.price.unit_amount;
-      const newPrice = await this.stripe.prices.retrieve(priceId);
-      const newAmount = newPrice.unit_amount;
-      const label = doseLabel ?? priceId;
-      if (oldAmount == null || newAmount == null || newPrice.currency !== item.price.currency) {
+      const currency = existing[0].price.currency;
+      const oldAmount = existing.every((i) => i.price.unit_amount != null)
+        ? existing.reduce((sum, i) => sum + i.price.unit_amount! * (i.quantity ?? 1), 0)
+        : null;
+      const newPrices = await Promise.all(lines.map((l) => this.stripe.prices.retrieve(l.price)));
+      const newAmount = newPrices.every((p) => p.unit_amount != null)
+        ? newPrices.reduce((sum, p, i) => sum + p.unit_amount! * lines[i].quantity, 0)
+        : null;
+      const label = doseLabel ?? lines.map((l) => l.price).join(' + ');
+      if (oldAmount == null || newAmount == null || newPrices.some((p) => p.currency !== currency)) {
         return `Billing unchanged: the price for ${label} can’t be compared with the current plan — check it in Stripe`;
       }
       if (newAmount > oldAmount) {
         return `Billing unchanged: ${label} costs more than the plan the patient paid for — agree the new price with them before changing it in Stripe`;
       }
-      await this.stripe.subscriptions.update(sub.id, { items: [{ id: item.id, price: priceId }], proration_behavior: 'none' });
+      await this.stripe.subscriptions.update(sub.id, { items: itemsUpdate(existing, lines), proration_behavior: 'none' });
       const moved = `Billing moved to ${label} from the next billing cycle`;
       if (newAmount === oldAmount) return moved;
 
@@ -122,16 +165,28 @@ export class BillingService {
       const refundCents = Math.round(((oldAmount - newAmount) * invoice.amount_paid) / oldAmount);
       const target = this.paymentOf(invoice);
       if (!target || refundCents <= 0) return `${moved}; refund the difference by hand`;
+      const priceKey = lines.map((l) => l.price).join('+');
       try {
         const refund = await this.stripe.refunds.create(
-          { ...target, amount: refundCents, metadata: { reason: 'prescribed_dose_cheaper', priceId } },
-          { idempotencyKey: `dose-price-refund-${invoice.id}-${priceId}` },
+          { ...target, amount: refundCents, metadata: { reason: 'prescribed_dose_cheaper', priceId: priceKey } },
+          { idempotencyKey: `dose-price-refund-${invoice.id}-${priceKey}` },
         );
         return `${moved}; refunded ${(refundCents / 100).toFixed(2)} ${invoice.currency?.toUpperCase() ?? ''} for this month (${refund.id})`;
       } catch (err: any) {
         if (err?.code === 'charge_already_refunded') return `${moved}; payment was already refunded`;
         throw err;
       }
+    });
+  }
+
+  /**
+   * Refunds the patient's latest paid invoice and leaves the subscription running (an order that couldn't be supplied
+   * isn't always the end of treatment). Returns a note for the record, never throws.
+   */
+  async refundLatestPayment(patient: BillingPatient): Promise<string> {
+    return this.withSubscription(patient, async (sub) => {
+      const refundId = await this.refundLatestPaidInvoice(sub.id);
+      return refundId ? `Refunded the latest payment (${refundId})` : 'Nothing to refund: there is no paid payment, or it was already refunded';
     });
   }
 
