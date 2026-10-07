@@ -8,6 +8,7 @@ import {
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,
+  IdentityVerificationStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
   OnboardingStepKey,
@@ -36,6 +37,7 @@ registerEnumType(RiskTag, { name: 'RiskTag' });
 registerEnumType(ClinicianRole, { name: 'ClinicianRole' });
 registerEnumType(OnboardingStatus, { name: 'OnboardingStatus' });
 registerEnumType(PersonaStatus, { name: 'PersonaStatus' });
+registerEnumType(IdentityVerificationStatus, { name: 'IdentityVerificationStatus' });
 registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
 registerEnumType(OnboardingStepKey, { name: 'OnboardingStepKey' });
@@ -64,6 +66,7 @@ export {
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,
+  IdentityVerificationStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
   OnboardingStepKey,

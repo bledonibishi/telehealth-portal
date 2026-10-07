@@ -2,13 +2,15 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { Prisma, UploadKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
+import { IdentityVerificationService, SUBMITTED_STATUSES, lockPatientIdentity } from '../identity-verification/identity-verification.service';
+import { requiredReviewSteps } from './required-steps';
 import { PhotoReviewService } from './photo-review.service';
 import { PrescriptionProofReviewService, StoredProofReview } from './prescription-proof-review.service';
 import { DoseClarification } from './prior-dose-assessment';
 import { PhotoCheckService } from './photo-check.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { SaveBodyPhotoInput } from './dto/body-photo.input';
-import { OnboardingStatus, OnboardingStepKey } from '../common/enums';
+import { IdentityVerificationStatus, OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
@@ -35,6 +37,7 @@ export class OnboardingService {
     private proofReview: PrescriptionProofReviewService,
     private photoCheck: PhotoCheckService,
     private uploads: UploadsService,
+    private identity: IdentityVerificationService,
   ) {}
 
   private toReviewModel(row: any) {
@@ -284,8 +287,15 @@ export class OnboardingService {
       throw new BadRequestException('Onboarding has already been submitted');
     }
 
+    // With verify-service configured the ID check happens there, not through in-app uploads.
+    const identityViaVerifyService = this.identity.isEnabled;
     const missing: string[] = [];
-    if (!submission.idDocumentFileId || !submission.selfieFileId) missing.push('ID photo');
+    if (identityViaVerifyService) {
+      const idv = await this.identity.getStatus(patientId);
+      if (!idv.status || !SUBMITTED_STATUSES.includes(idv.status)) missing.push('Identity check');
+    } else if (!submission.idDocumentFileId || !submission.selfieFileId) {
+      missing.push('ID photo');
+    }
     if (!submission.bodyPhotoFrontFileId || !submission.bodyPhotoSideFileId) missing.push('Full body photo');
     if (submission.priorMedicationUse === null || submission.priorMedicationUse === undefined) {
       missing.push('Prior medication use');
@@ -315,27 +325,41 @@ export class OnboardingService {
       }
     }
 
-    const personaStatus = await this.persona.verifyIdentity(
-      patientId,
-      submission.idDocumentFileId!,
-      submission.selfieFileId!,
-    );
+    // verify-service keeps personaStatus current itself; only the legacy path computes it here.
+    const personaStatus = identityViaVerifyService
+      ? undefined
+      : await this.persona.verifyIdentity(patientId, submission.idDocumentFileId!, submission.selfieFileId!);
     const photoReviewStatus = await this.photoReview.review(
       patientId,
       submission.bodyPhotoFrontFileId!,
       submission.bodyPhotoSideFileId!,
     );
 
-    const updated = await this.prisma.onboardingSubmission.update({
-      where: { patientId },
-      data: {
-        status: OnboardingStatus.PENDING_REVIEW,
-        personaStatus,
-        photoReviewStatus,
-        submittedAt: new Date(),
-        reviewedAt: null,
-        reviewedByClinicianId: null,
-      },
+    // Checked again and written under the identity lock, so a rejection landing meanwhile can't be
+    // followed by a submission that rests on it.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await lockPatientIdentity(tx, patientId);
+      const current = await tx.onboardingSubmission.findUnique({ where: { patientId } });
+      if (!current || (current.status !== OnboardingStatus.IN_PROGRESS && current.status !== OnboardingStatus.REJECTED)) {
+        throw new BadRequestException('Onboarding has already been submitted');
+      }
+      if (identityViaVerifyService) {
+        const status = await this.identity.storedStatus(tx, patientId);
+        if (!status || !SUBMITTED_STATUSES.includes(status)) throw new BadRequestException('Missing required steps: Identity check');
+      }
+      return tx.onboardingSubmission.update({
+        where: { patientId },
+        data: {
+          status: OnboardingStatus.PENDING_REVIEW,
+          // The flow is fixed here: review and approval follow it even if verify-service is turned off later.
+          identityViaVerifyService,
+          ...(personaStatus ? { personaStatus } : {}),
+          photoReviewStatus,
+          submittedAt: new Date(),
+          reviewedAt: null,
+          reviewedByClinicianId: null,
+        },
+      });
     });
     return this.toModel(updated);
   }
@@ -360,39 +384,61 @@ export class OnboardingService {
   }
 
   async reviewOnboardingStep(clinicianId: string, input: ReviewOnboardingStepInput) {
-    const submission = await this.prisma.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
-    if (!submission) throw new NotFoundException('Onboarding not found');
-    if (submission.status !== OnboardingStatus.PENDING_REVIEW) {
-      throw new BadRequestException('Onboarding is not pending review');
-    }
+    const before = await this.prisma.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
+    if (!before) throw new NotFoundException('Onboarding not found');
+    // Bring an open identity check up to date first (it may have been decided without its webhook).
+    if (before.identityViaVerifyService) await this.identity.getStatus(input.patientId).catch(() => null);
 
-    const requiredSteps = [OnboardingStepKey.ID_PHOTO, OnboardingStepKey.BODY_PHOTO];
-    if (submission.priorMedicationUse) requiredSteps.push(OnboardingStepKey.PRESCRIPTION_PROOF);
-    if (!requiredSteps.includes(input.step)) {
-      throw new BadRequestException('This step is not part of the current review');
-    }
-    if (!input.approved && !input.reason?.trim()) {
-      throw new BadRequestException('A reason is required when rejecting a step');
-    }
+    // The decision is made and written under the identity lock, from the submission and identity
+    // result as they are now — so it can't overwrite a rejection that just landed, or leave an
+    // application pending after an approval that arrived during the review.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await lockPatientIdentity(tx, input.patientId);
+      const submission = await tx.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
+      if (!submission) throw new NotFoundException('Onboarding not found');
+      if (submission.status !== OnboardingStatus.PENDING_REVIEW) {
+        throw new BadRequestException('Onboarding is not pending review');
+      }
 
-    const decisions = (submission.stepFeedback as unknown as StepFeedback[]).filter((d) => d.step !== input.step);
-    decisions.push({ step: input.step, approved: input.approved, reason: input.approved ? undefined : input.reason!.trim() });
+      const identityViaVerifyService = submission.identityViaVerifyService;
+      const requiredSteps = requiredReviewSteps(submission, identityViaVerifyService);
+      if (!requiredSteps.includes(input.step)) {
+        throw new BadRequestException('This step is not part of the current review');
+      }
+      if (!input.approved && !input.reason?.trim()) {
+        throw new BadRequestException('A reason is required when rejecting a step');
+      }
 
-    const allDecided = requiredSteps.every((step) => decisions.some((d) => d.step === step));
-    const anyRejected = decisions.some((d) => requiredSteps.includes(d.step as OnboardingStepKey) && !d.approved);
+      const decisions = (submission.stepFeedback as unknown as StepFeedback[]).filter((d) => d.step !== input.step);
+      decisions.push({ step: input.step, approved: input.approved, reason: input.approved ? undefined : input.reason!.trim() });
 
-    const updated = await this.prisma.onboardingSubmission.update({
-      where: { patientId: input.patientId },
-      data: {
-        stepFeedback: toJson(decisions),
-        ...(allDecided
-          ? {
-              status: anyRejected ? OnboardingStatus.REJECTED : OnboardingStatus.APPROVED,
-              reviewedAt: new Date(),
-              reviewedByClinicianId: clinicianId,
-            }
-          : {}),
-      },
+      const allDecided = requiredSteps.every((step) => decisions.some((d) => d.step === step));
+      const anyRejected = decisions.some((d) => requiredSteps.includes(d.step as OnboardingStepKey) && !d.approved);
+
+      // Approval also needs the identity check approved (the stored result, whether or not
+      // verify-service is configured now). If it is still open the clinician's decisions are saved,
+      // and the submission is approved automatically once verify-service approves.
+      let finalStatus: OnboardingStatus | null = null;
+      if (allDecided && anyRejected) finalStatus = OnboardingStatus.REJECTED;
+      else if (allDecided) {
+        const identityApproved =
+          !identityViaVerifyService || (await this.identity.storedStatus(tx, input.patientId)) === IdentityVerificationStatus.APPROVED;
+        if (identityApproved) finalStatus = OnboardingStatus.APPROVED;
+      }
+
+      return tx.onboardingSubmission.update({
+        where: { patientId: input.patientId },
+        data: {
+          stepFeedback: toJson(decisions),
+          ...(finalStatus
+            ? {
+                status: finalStatus,
+                reviewedAt: new Date(),
+                reviewedByClinicianId: clinicianId,
+              }
+            : {}),
+        },
+      });
     });
     return this.toModel(updated);
   }

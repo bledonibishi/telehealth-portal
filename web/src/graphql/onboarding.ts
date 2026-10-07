@@ -168,3 +168,22 @@ export const CHECK_PHOTO_FRAME = gql`
     }
   }
 `;
+
+export const MY_IDENTITY_VERIFICATION = gql`
+  query MyIdentityVerification {
+    myIdentityVerification {
+      configured
+      status
+      expiresAt
+    }
+  }
+`;
+
+export const START_IDENTITY_VERIFICATION = gql`
+  mutation StartIdentityVerification {
+    startIdentityVerification {
+      hostedUrl
+      expiresAt
+    }
+  }
+`;

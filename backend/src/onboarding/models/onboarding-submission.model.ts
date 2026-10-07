@@ -24,6 +24,10 @@ export class OnboardingSubmissionModel {
   @Field(() => PersonaStatus)
   personaStatus: PersonaStatus;
 
+  /** True when this patient's ID check ran in verify-service, so there are no ID photos to review here. */
+  @Field()
+  identityViaVerifyService: boolean;
+
   @Field(() => PhotoReviewStatus)
   photoReviewStatus: PhotoReviewStatus;
 
