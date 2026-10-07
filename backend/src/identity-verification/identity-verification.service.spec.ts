@@ -4,6 +4,7 @@ import { OnboardingStatus, OnboardingStepKey, PersonaStatus } from '../common/en
 import {
   IdentityVerificationService,
   SUBMITTED_STATUSES,
+  UnknownSessionError,
   canApply,
   parseStatus,
   toPersonaStatus,
@@ -47,6 +48,14 @@ describe('canApply', () => {
     expect(canApply(cur(S.REJECTED, T1), S.APPROVED, T0)).toBe(false);
     expect(canApply(cur(S.REJECTED, T1), S.APPROVED, T1)).toBe(false);
     expect(canApply(cur(S.REJECTED, T1), S.APPROVED, null)).toBe(false); // polling can't override a decision
+  });
+
+  it('lets a session that only expired locally move on once it turns out the photos were sent', () => {
+    expect(canApply(cur(S.EXPIRED), S.PROCESSING, null)).toBe(true);
+    expect(canApply(cur(S.EXPIRED, T0), S.APPROVED, T1)).toBe(true);
+    expect(canApply(cur(S.EXPIRED, T1), S.PROCESSING, T0)).toBe(false); // older than what expired it
+    expect(canApply(cur(S.EXPIRED), S.PENDING, null)).toBe(false);
+    expect(canApply(cur(S.PROCESSING), S.EXPIRED, null)).toBe(false); // sent photos don't expire
   });
 
   it('does nothing when the status is unchanged', () => {
@@ -95,6 +104,7 @@ describe('IdentityVerificationService', () => {
   const SUBMISSION = (over: Record<string, unknown> = {}) => ({
     patientId: 'p1',
     status: OnboardingStatus.IN_PROGRESS,
+    identityViaVerifyService: true,
     priorMedicationUse: false,
     stepFeedback: [],
     ...over,
@@ -118,6 +128,7 @@ describe('IdentityVerificationService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       $transaction: jest.fn((fn: any) => fn(prisma)),
+      $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),
     };
     client = { isConfigured: true, createSession: jest.fn(), getSession: jest.fn() };
     service = new IdentityVerificationService(prisma, client as any);
@@ -209,6 +220,17 @@ describe('IdentityVerificationService', () => {
       await expect(service.start('p1')).resolves.toBeDefined();
     });
 
+    it('checks and creates under the patient’s lock, so two taps at once can’t both create a check', async () => {
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation(async () => order.push('lock'));
+      prisma.identityVerification.findFirst.mockImplementation(async () => (order.push('read latest'), null));
+      client.createSession.mockImplementation(async () => (order.push('create remote'), CREATED));
+      await service.start('p1');
+      expect(order).toEqual(['lock', 'read latest', 'create remote', 'read latest']);
+      // Held across the call to verify-service
+      expect(prisma.$transaction.mock.calls[0][1]).toMatchObject({ timeout: 20_000 });
+    });
+
     it('hides verify-service failures from the patient and does not store a session', async () => {
       client.createSession.mockRejectedValue(new VerifyServiceError(429, 'monthly_cap_reached'));
       await expect(service.start('p1')).rejects.toBeInstanceOf(ServiceUnavailableException);
@@ -246,11 +268,33 @@ describe('IdentityVerificationService', () => {
         .mockResolvedValue(ROW({ status: S.NEEDS_REVIEW }));
       client.getSession.mockResolvedValue({ id: 'sess-1', status: 'NEEDS_REVIEW' });
 
+      prisma.identityVerification.findUnique.mockResolvedValue(ROW({ status: S.PENDING }));
+
       const res = await service.getStatus('p1');
       expect(client.getSession).toHaveBeenCalledWith('sess-1');
-      // Conditional on the status we read, so a concurrent webhook isn't overwritten
-      expect(prisma.identityVerification.updateMany.mock.calls[0][0].where).toEqual({ id: 'iv-1', status: S.PENDING });
+      // Applied under the patient's lock, against the row read again inside it
+      expect(prisma.$queryRaw).toHaveBeenCalled();
+      expect(prisma.identityVerification.findUnique).toHaveBeenCalledWith({ where: { id: 'iv-1' } });
+      expect(prisma.identityVerification.update.mock.calls[0][0].data.status).toBe(S.NEEDS_REVIEW);
       expect(res.status).toBe(S.NEEDS_REVIEW);
+    });
+
+    it('does not overwrite a webhook that landed while verify-service was being asked', async () => {
+      prisma.identityVerification.findFirst.mockResolvedValue(ROW({ status: S.PENDING }));
+      client.getSession.mockResolvedValue({ id: 'sess-1', status: 'PROCESSING' });
+      prisma.identityVerification.findUnique.mockResolvedValue(ROW({ status: S.APPROVED, lastEventAt: T1 }));
+      await service.getStatus('p1');
+      expect(prisma.identityVerification.update).not.toHaveBeenCalled();
+    });
+
+    it('stores the time of a decision learned by polling, so a later webhook can still revise it', async () => {
+      prisma.identityVerification.findFirst.mockResolvedValue(ROW({ status: S.NEEDS_REVIEW }));
+      prisma.identityVerification.findUnique.mockResolvedValue(ROW({ status: S.NEEDS_REVIEW }));
+      client.getSession.mockResolvedValue({ id: 'sess-1', status: 'APPROVED', review: { decidedAt: T1.toISOString() } });
+      await service.getStatus('p1');
+      const data = prisma.identityVerification.update.mock.calls[0][0].data;
+      expect(data).toMatchObject({ status: S.APPROVED, decidedAt: T1, lastEventAt: T1 });
+      expect(canApply({ status: S.APPROVED, lastEventAt: data.lastEventAt }, S.REJECTED, T2)).toBe(true);
     });
 
     it('falls back to the stored status when verify-service is unreachable', async () => {
@@ -259,17 +303,39 @@ describe('IdentityVerificationService', () => {
       await expect(service.getStatus('p1')).resolves.toMatchObject({ configured: true, status: S.PROCESSING });
     });
 
-    it('marks a link that ran out before any photos were sent as expired', async () => {
+    it('marks a link that ran out before any photos were sent as expired, after asking verify-service', async () => {
       prisma.identityVerification.findFirst
         .mockResolvedValueOnce(ROW({ expiresAt: new Date(Date.now() - 1000) }))
         .mockResolvedValue(ROW({ status: S.EXPIRED, expiresAt: new Date(Date.now() - 1000) }));
+      prisma.identityVerification.findUnique.mockResolvedValue(ROW({ expiresAt: new Date(Date.now() - 1000) }));
+      client.getSession.mockResolvedValue({ id: 'sess-1', status: 'PENDING' });
       const res = await service.getStatus('p1');
+      expect(client.getSession).toHaveBeenCalledWith('sess-1');
       expect(prisma.identityVerification.updateMany.mock.calls[0][0]).toMatchObject({
         where: { id: 'iv-1', status: S.PENDING },
         data: { status: S.EXPIRED },
       });
       expect(res.status).toBe(S.EXPIRED);
-      expect(client.getSession).not.toHaveBeenCalled();
+    });
+
+    it('does not expire a check whose photos were sent just in time, when the webhook was missed', async () => {
+      const overdue = ROW({ expiresAt: new Date(Date.now() - 1000) });
+      prisma.identityVerification.findFirst.mockResolvedValueOnce(overdue).mockResolvedValue({ ...overdue, status: S.PROCESSING });
+      prisma.identityVerification.findUnique.mockResolvedValue(overdue);
+      client.getSession.mockResolvedValue({ id: 'sess-1', status: 'PROCESSING' });
+      const res = await service.getStatus('p1');
+      expect(prisma.identityVerification.updateMany).not.toHaveBeenCalled();
+      expect(res.status).toBe(S.PROCESSING);
+    });
+
+    it('still expires the link when verify-service can’t be reached', async () => {
+      prisma.identityVerification.findFirst
+        .mockResolvedValueOnce(ROW({ expiresAt: new Date(Date.now() - 1000) }))
+        .mockResolvedValue(ROW({ status: S.EXPIRED }));
+      client.getSession.mockRejectedValue(new VerifyServiceError(null));
+      const res = await service.getStatus('p1');
+      expect(prisma.identityVerification.updateMany.mock.calls[0][0].data).toEqual({ status: S.EXPIRED });
+      expect(res.status).toBe(S.EXPIRED);
     });
   });
 
@@ -304,10 +370,21 @@ describe('IdentityVerificationService', () => {
       });
     });
 
-    it('acknowledges but ignores a session it does not know', async () => {
+    it('asks for a retry, without recording the event, for a session it does not have yet', async () => {
       prisma.identityVerification.findUnique.mockResolvedValue(null);
-      await expect(service.handleWebhook(event() as any)).resolves.toBe('ignored');
+      await expect(service.handleWebhook(event() as any)).rejects.toBeInstanceOf(UnknownSessionError);
+      expect(prisma.verifyWebhookEvent.createMany).not.toHaveBeenCalled();
       expect(prisma.identityVerification.update).not.toHaveBeenCalled();
+    });
+
+    it('takes the patient’s lock before reading and applying the event', async () => {
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation(async () => order.push('lock'));
+      prisma.verifyWebhookEvent.createMany.mockImplementation(async () => (order.push('record'), { count: 1 }));
+      prisma.identityVerification.update.mockImplementation(async () => order.push('update'));
+      latestIs(ROW({ status: S.APPROVED }));
+      await service.handleWebhook(event() as any);
+      expect(order).toEqual(['lock', 'record', 'update']);
     });
 
     it('applies an approval and marks the patient verified', async () => {
@@ -343,6 +420,25 @@ describe('IdentityVerificationService', () => {
       expect(feedback).toMatchObject({ approved: false });
       expect(feedback.reason).not.toContain('blurry');
       expect(feedback.reason).not.toContain('name does not match');
+    });
+
+    it('withdraws an approved onboarding when a newer decision rejects the identity check', async () => {
+      prisma.identityVerification.findUnique.mockResolvedValue(ROW({ status: S.APPROVED, lastEventAt: T1 }));
+      latestIs(ROW({ status: S.REJECTED }));
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(SUBMISSION({ status: OnboardingStatus.APPROVED }));
+      await expect(service.handleWebhook(event({ status: S.REJECTED, occurredAt: T2 }) as any)).resolves.toBe('applied');
+      const data = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+      expect(data.status).toBe(OnboardingStatus.REJECTED);
+      expect(data.personaStatus).toBe(PersonaStatus.FAILED);
+    });
+
+    it('leaves a submission sent on the in-app upload flow to the clinician', async () => {
+      latestIs(ROW({ status: S.REJECTED }));
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(
+        SUBMISSION({ status: OnboardingStatus.PENDING_REVIEW, identityViaVerifyService: false }),
+      );
+      await service.handleWebhook(event({ status: S.REJECTED }) as any);
+      expect(prisma.onboardingSubmission.update.mock.calls[0][0].data.status).toBeUndefined();
     });
 
     it('does not reject a submission that is not waiting for review', async () => {

@@ -1,6 +1,7 @@
 import { BadRequestException, InternalServerErrorException, ServiceUnavailableException } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { IdentityVerificationController } from './identity-verification.controller';
+import { UnknownSessionError } from './identity-verification.service';
 
 const SECRET = 'whsec_test';
 
@@ -96,6 +97,12 @@ describe('IdentityVerificationController', () => {
     service.handleWebhook.mockRejectedValue(new Error('db down'));
     const { req, header } = signed(payload());
     await expect(controller.handleWebhook(req, header)).rejects.toBeInstanceOf(InternalServerErrorException);
+  });
+
+  it('asks for a retry (503) for a session not stored yet, e.g. one still being created', async () => {
+    service.handleWebhook.mockRejectedValue(new UnknownSessionError('sess-1'));
+    const { req, header } = signed(payload());
+    await expect(controller.handleWebhook(req, header)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('answers 2xx for a duplicate delivery', async () => {

@@ -3,7 +3,7 @@ import { BadRequestException, InternalServerErrorException, ServiceUnavailableEx
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { IdentityVerificationStatus } from '../common/enums';
-import { IdentityVerificationService, VerifyWebhookPayload } from './identity-verification.service';
+import { IdentityVerificationService, UnknownSessionError, VerifyWebhookPayload } from './identity-verification.service';
 import { verifyWebhookSignature } from './webhook-signature';
 
 const asString = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 && v.length <= 200 ? v : null);
@@ -76,6 +76,11 @@ export class IdentityVerificationController {
     try {
       await this.service.handleWebhook(payload);
     } catch (err) {
+      if (err instanceof UnknownSessionError) {
+        // Usually the session row is still being written: answer with an error so it's sent again.
+        this.logger.warn(`Identity webhook ${payload.eventId} is for a session not stored yet: asking for a retry`);
+        throw new ServiceUnavailableException('Session not known yet');
+      }
       // 5xx makes verify-service retry; the event id is only recorded if processing succeeded.
       this.logger.error(`Could not process identity webhook ${payload.eventId}: ${(err as Error).message}`);
       throw new InternalServerErrorException('Could not process the event');

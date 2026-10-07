@@ -992,6 +992,10 @@ model OnboardingSubmission {
   prescriptionProofUnavailable Boolean                @default(false) @map("prescription_proof_unavailable")
   status                       OnboardingStatus       @default(IN_PROGRESS) @map("status")
   submittedAt                  DateTime?              @map("submitted_at")
+  // Which identity flow this submission was sent on, fixed when it is submitted: true when the ID
+  // check ran in verify-service (its result gates approval), false for the in-app ID upload a
+  // clinician reviews. Turning verify-service on or off later doesn't move a submission between them.
+  identityViaVerifyService     Boolean                @default(false) @map("identity_via_verify_service")
   reviewedAt                   DateTime?              @map("reviewed_at")
   reviewedByClinicianId        String?                @map("reviewed_by_clinician_id")
   stepFeedback                 Json                   @default("[]") @map("step_feedback")
