@@ -31,7 +31,7 @@ export function SignUpScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, backgroundColor: '#f9fafb', flexGrow: 1, justifyContent: 'center' },
+  container: { padding: 24, backgroundColor: '#f9fafb', flexGrow: 1, justifyContent: 'center', width: '100%', alignSelf: 'center', maxWidth: 480 },
   title: { fontSize: 22, fontWeight: '600', color: '#111827', marginBottom: 20 },
   input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, fontSize: 15, backgroundColor: '#fff' },
   button: { backgroundColor: '#0ea5e9', borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 4 },

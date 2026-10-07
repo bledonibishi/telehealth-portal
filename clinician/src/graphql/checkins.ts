@@ -136,3 +136,33 @@ export const ACKNOWLEDGE_SIDE_EFFECT = gql`
     }
   }
 `;
+
+export const SIDE_EFFECT_SUMMARY = gql`
+  query SideEffectSummary($patientId: ID!) {
+    sideEffectSummary(patientId: $patientId) {
+      lastLoggedAt
+      daysSinceLastLog
+      stale
+      needsAttention
+      reasons
+      roughDoses
+      scores {
+        key
+        label
+        latest
+        previous
+        peak
+        flagged
+        rising
+      }
+      reports {
+        id
+        effects
+        severity
+        note
+        createdAt
+        acknowledgedAt
+      }
+    }
+  }
+`;

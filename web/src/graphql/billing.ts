@@ -7,3 +7,20 @@ export const CREATE_BILLING_PORTAL_SESSION = gql`
     }
   }
 `;
+
+export const MY_INVOICES = gql`
+  query MyInvoices {
+    myInvoices {
+      id
+      createdAt
+      amountCents
+      currency
+      status
+      description
+      cardBrand
+      cardLast4
+      viewUrl
+      pdfUrl
+    }
+  }
+`;

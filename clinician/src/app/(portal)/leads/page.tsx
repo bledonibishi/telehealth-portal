@@ -4,11 +4,23 @@ import { useState } from 'react';
 import { useQuery } from '@apollo/client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_LEADS } from '@/graphql/leads';
+import ExportCsvButton from '@/components/ExportCsvButton';
+import type { CsvColumn } from '@/lib/csv';
 
 const KIND_BADGE: Record<string, string> = {
   HRT:  'bg-violet-100 text-violet-700',
   GLP1: 'bg-teal-100 text-teal-700',
 };
+
+const LEAD_COLUMNS: CsvColumn<any>[] = [
+  { header: 'First name', value: (l) => l.firstName },
+  { header: 'Last name', value: (l) => l.lastName },
+  { header: 'Email', value: (l) => l.email },
+  { header: 'Programme', value: (l) => l.productKind },
+  { header: 'Became a patient', value: (l) => !!l.convertedAt },
+  { header: 'Converted', value: (l) => l.convertedAt },
+  { header: 'Submitted', value: (l) => l.createdAt },
+];
 
 export default function LeadsPage() {
   const { t, timeAgo } = useI18n();
@@ -32,14 +44,15 @@ export default function LeadsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="px-6 py-5 border-b border-gray-200 bg-white flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{t('Leads')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">
             {t('Users who completed the eligibility quiz')}
           </p>
         </div>
-        <div className="flex gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm">
+          <ExportCsvButton resource="leads" rows={leads} columns={LEAD_COLUMNS} />
           <div className="text-center">
             <p className="font-semibold text-gray-900">{leads.length}</p>
             <p className="text-xs text-gray-400">{t('Total')}</p>
@@ -69,7 +82,8 @@ export default function LeadsPage() {
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
 
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[640px]">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
             <th className="px-6 py-3">{t('Name')}</th>
@@ -139,6 +153,7 @@ export default function LeadsPage() {
           ))}
         </tbody>
       </table>
+      </div>
 
       {!loading && leads.length === 0 && (
         <div className="p-12 text-center text-gray-400 text-sm">{t('No leads yet.')}</div>

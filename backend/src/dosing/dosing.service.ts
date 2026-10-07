@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma } from '@prisma/client';
+import { InjectionSite, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { DoseStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { CheckInFeeling, DoseStatus, PrescriptionStatus, ProductCategory, ProductForm } from '../common/enums';
 import { DosePattern, dosePattern, nextDoseDates } from './dose-pattern';
 import { missedStreak, needsRetitrationReview } from './missed-doses';
 import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
@@ -19,6 +19,9 @@ const WINDOW = 8;
 /** A prescription this new gets its first dose on the day it was issued. */
 const FRESH_PRESCRIPTION_MS = 7 * 86_400_000;
 const MISSED_GRACE_HOURS = 24;
+// A dose can be logged as taken from its own day. The app is strict by the patient's calendar day; the server cannot know the
+// patient's time zone, so it only refuses what is clearly ahead, with slack for a patient logging in the small hours.
+export const FUTURE_DOSE_SLACK_HOURS = 12;
 // How far ahead of a dose we email the patient a reminder.
 const REMINDER_WINDOW_HOURS = 24;
 
@@ -69,13 +72,40 @@ export class DosingService {
     });
   }
 
-  async markTaken(patientId: string, id: string) {
+  /** `site` is where it was injected; it only makes sense for an injectable medicine. */
+  async markTaken(patientId: string, id: string, site?: InjectionSite) {
     const event = await this.findOwned(patientId, id);
-    if (event.status === DoseStatus.TAKEN) return event;
     if (event.status === DoseStatus.SKIPPED) {
       throw new BadRequestException('This dose was already marked as skipped');
     }
-    return this.prisma.doseEvent.update({ where: { id }, data: { status: DoseStatus.TAKEN, takenAt: new Date() } });
+    if (site) await this.assertInjectable(event.prescriptionItemId, 'An injection site only applies to an injection');
+    if (event.status !== DoseStatus.TAKEN && event.scheduledFor && event.scheduledFor.getTime() > Date.now() + FUTURE_DOSE_SLACK_HOURS * 3_600_000) {
+      const due = event.scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+      throw new BadRequestException(`This dose is due on ${due}. You can log it then.`);
+    }
+    if (event.status === DoseStatus.TAKEN) {
+      // Logged without a site earlier: let it be added now, but never overwrite one that was chosen.
+      if (site && !event.injectionSite) return this.prisma.doseEvent.update({ where: { id }, data: { injectionSite: site } });
+      return event;
+    }
+    return this.prisma.doseEvent.update({
+      where: { id },
+      data: { status: DoseStatus.TAKEN, takenAt: new Date(), ...(site ? { injectionSite: site } : {}) },
+    });
+  }
+
+  /** How the patient felt after a dose they took — the doctor's cue for whether to step the dose up. */
+  async logFeeling(patientId: string, id: string, feeling: CheckInFeeling) {
+    const event = await this.findOwned(patientId, id);
+    if (event.status !== DoseStatus.TAKEN) throw new BadRequestException('Mark the dose as taken first');
+    await this.assertInjectable(event.prescriptionItemId, 'How you felt after a dose is only recorded for injections');
+    return this.prisma.doseEvent.update({ where: { id }, data: { feelingAfter: feeling, feelingAfterAt: new Date() } });
+  }
+
+  private async assertInjectable(prescriptionItemId: string, message: string) {
+    const item = await this.prisma.prescriptionItem.findUnique({ where: { id: prescriptionItemId }, select: { product: { select: { form: true } } } });
+    const form = item?.product.form;
+    if (form !== ProductForm.INJECTION_PEN && form !== ProductForm.INJECTION_VIAL) throw new BadRequestException(message);
   }
 
   async markSkipped(patientId: string, id: string, note?: string) {
@@ -93,7 +123,7 @@ export class DosingService {
     const overdue = event.scheduledFor.getTime() < Date.now() - MISSED_GRACE_HOURS * 3_600_000;
     return this.prisma.doseEvent.update({
       where: { id },
-      data: { status: overdue ? DoseStatus.MISSED : DoseStatus.SCHEDULED, takenAt: null, note: null },
+      data: { status: overdue ? DoseStatus.MISSED : DoseStatus.SCHEDULED, takenAt: null, note: null, injectionSite: null, feelingAfter: null, feelingAfterAt: null },
     });
   }
 

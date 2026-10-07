@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { DosingService } from './dosing.service';
 
 const DAY = 86_400_000;
@@ -22,7 +23,7 @@ function makePrisma() {
       count: jest.fn(),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    prescriptionItem: { findMany: jest.fn().mockResolvedValue([]) },
+    prescriptionItem: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
     prescription: { findUnique: jest.fn().mockResolvedValue({ validUntil: null }) },
   };
 }
@@ -140,6 +141,90 @@ describe('DosingService patient actions', () => {
     expect(prisma.doseEvent.update).not.toHaveBeenCalled();
   });
 
+  describe('a dose that is not due yet', () => {
+    const due = (hoursAhead: number) => ({ id: 'd-1', patientId: 'p-1', status: 'SCHEDULED', scheduledFor: new Date(Date.now() + hoursAhead * 3_600_000) });
+
+    it('cannot be logged as taken a week early', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(7 * 24));
+      await expect(service.markTaken('p-1', 'd-1')).rejects.toThrow(/is due on .*You can log it then/);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('cannot be logged tomorrow-plus either', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(30));
+      await expect(service.markTaken('p-1', 'd-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('can be logged on its own day, even a few hours before the scheduled time', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(6));
+      prisma.doseEvent.update.mockResolvedValue({ id: 'd-1', status: 'TAKEN' });
+      await service.markTaken('p-1', 'd-1');
+      expect(prisma.doseEvent.update).toHaveBeenCalled();
+    });
+
+    it('can still be skipped ahead of time, as when a clinician has paused treatment', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue(due(7 * 24));
+      await service.markSkipped('p-1', 'd-1', 'Paused');
+      expect(prisma.doseEvent.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('injection site', () => {
+    const pen = { product: { form: 'INJECTION_PEN' } };
+
+    it('records where an injection went when marking it taken', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'SCHEDULED', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue(pen);
+      await service.markTaken('p-1', 'd-1', 'THIGH_LEFT' as any);
+      expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { status: 'TAKEN', takenAt: expect.any(Date), injectionSite: 'THIGH_LEFT' } });
+    });
+
+    it('refuses a site for something that is not injected', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'SCHEDULED', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue({ product: { form: 'GEL' } });
+      await expect(service.markTaken('p-1', 'd-1', 'ARM_LEFT' as any)).rejects.toThrow(/only applies to an injection/);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('adds a site to a dose already logged without one, but never replaces a chosen one', async () => {
+      prisma.prescriptionItem.findUnique.mockResolvedValue(pen);
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1', injectionSite: null });
+      await service.markTaken('p-1', 'd-1', 'ARM_RIGHT' as any);
+      expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { injectionSite: 'ARM_RIGHT' } });
+
+      prisma.doseEvent.update.mockClear();
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1', injectionSite: 'THIGH_LEFT' });
+      await service.markTaken('p-1', 'd-1', 'ARM_RIGHT' as any);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('feeling after a dose', () => {
+    it('is stored on an injection that was taken', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue({ product: { form: 'INJECTION_PEN' } });
+      await service.logFeeling('p-1', 'd-1', 'NOT_WELL' as any);
+      expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { feelingAfter: 'NOT_WELL', feelingAfterAt: expect.any(Date) } });
+    });
+
+    it('is not recorded for a patch or a gel', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue({ product: { form: 'PATCH' } });
+      await expect(service.logFeeling('p-1', 'd-1', 'GOOD' as any)).rejects.toThrow(/only recorded for injections/);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
+    });
+
+    it('cannot be given for a dose that was not taken', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'MISSED' });
+      await expect(service.logFeeling('p-1', 'd-1', 'GOOD' as any)).rejects.toThrow(/taken first/);
+    });
+
+    it('cannot be given for another patient’s dose', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'someone-else', status: 'TAKEN' });
+      await expect(service.logFeeling('p-1', 'd-1', 'GOOD' as any)).rejects.toThrow(/not found/);
+    });
+  });
+
   it('marks a scheduled dose as skipped with an optional note', async () => {
     prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'SCHEDULED' });
     await service.markSkipped('p-1', 'd-1', '  Paused by clinician  ');
@@ -154,11 +239,11 @@ describe('DosingService patient actions', () => {
   it('unmarks back to scheduled if still within the grace window, or missed if overdue', async () => {
     prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', scheduledFor: new Date() });
     await service.unmark('p-1', 'd-1');
-    expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { status: 'SCHEDULED', takenAt: null, note: null } });
+    expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { status: 'SCHEDULED', takenAt: null, note: null, injectionSite: null, feelingAfter: null, feelingAfterAt: null } });
 
     prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-2', patientId: 'p-1', status: 'TAKEN', scheduledFor: new Date(Date.now() - 3 * DAY) });
     await service.unmark('p-1', 'd-2');
-    expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-2' }, data: { status: 'MISSED', takenAt: null, note: null } });
+    expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-2' }, data: { status: 'MISSED', takenAt: null, note: null, injectionSite: null, feelingAfter: null, feelingAfterAt: null } });
   });
 });
 

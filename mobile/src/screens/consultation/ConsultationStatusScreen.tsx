@@ -43,7 +43,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
               <Text style={styles.stageTitle}>{next.title}</Text>
               <Text style={styles.stageText}>{next.text}</Text>
               {next.action && (
-                <TouchableOpacity style={styles.stageButton} onPress={() => navigation.navigate(next.action!.tab)}>
+                <TouchableOpacity style={styles.stageButton} onPress={() => (next.action!.tab === 'New Consultation' ? navigation.navigate('More', { screen: 'NewConsultation' }) : navigation.navigate(next.action!.tab))}>
                   <Text style={styles.stageButtonText}>{next.action.label}</Text>
                 </TouchableOpacity>
               )}
@@ -99,7 +99,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb', padding: 16 },
+  container: { flex: 1, backgroundColor: '#f9fafb', padding: 16, width: '100%', alignSelf: 'center', maxWidth: 960 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 20, fontWeight: '600', color: '#111827' },
   signOut: { fontSize: 13, color: '#6b7280' },

@@ -14,6 +14,27 @@ export class CheckInFlagModel {
   description: string;
 }
 
+@ObjectType('CheckInReport')
+export class CheckInReportModel {
+  @Field(() => ID)
+  id: string;
+
+  @Field({ description: 'e.g. "Week 8"' })
+  weekLabel: string;
+
+  @Field()
+  completedAt: Date;
+
+  @Field()
+  reviewedAt: Date;
+
+  @Field(() => CheckInOutcome, { nullable: true })
+  outcome?: CheckInOutcome | null;
+
+  @Field({ description: 'Authenticated link to the PDF' })
+  reportUrl: string;
+}
+
 @ObjectType('CheckIn')
 export class CheckInModel {
   @Field(() => ID)
@@ -36,6 +57,9 @@ export class CheckInModel {
 
   @Field({ nullable: true })
   completedAt?: Date;
+
+  @Field(() => String, { nullable: true, description: 'Authenticated link to the check-in report PDF. Set once a doctor has reviewed a weight-management check-in.' })
+  reportUrl?: string | null;
 
   @Field({ nullable: true })
   wantsToReorder?: boolean;

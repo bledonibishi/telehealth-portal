@@ -207,7 +207,7 @@ export function IntakeQuizScreen({ navigation, route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 24, backgroundColor: '#f9fafb' },
+  container: { flexGrow: 1, padding: 24, backgroundColor: '#f9fafb', width: '100%', alignSelf: 'center', maxWidth: 720 },
   title: { fontSize: 20, fontWeight: '600', color: '#111827', marginBottom: 12, lineHeight: 28 },
   sub: { fontSize: 15, color: '#6b7280', marginBottom: 24 },
   progress: { fontSize: 12, color: '#9ca3af', marginBottom: 12 },

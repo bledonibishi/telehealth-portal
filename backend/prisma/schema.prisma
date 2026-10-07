@@ -276,6 +276,10 @@ model Clinician {
   verifiedById  String?       @map("verified_by_id")
   mfaSecret     String?       @map("mfa_secret")
   mfaEnabled    Boolean       @default(false) @map("mfa_enabled")
+  // Shown to the patient on My Doctor, set by an admin. All optional.
+  specialty     String?
+  bio           String?
+  languages     String[]      @default([])
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
@@ -364,8 +368,10 @@ model Patient {
   consents              Consent[]
   weightGoal            WeightGoal?
   weightEntries         WeightEntry[]
+  bodyMeasurements      BodyMeasurement[]
   deviceConnections     DeviceConnection[]
   sideEffectReports     SideEffectReport[]
+  sideEffectLogs        SideEffectLog[]
   doseEvents            DoseEvent[]
   symptomAssessments    SymptomAssessment[]
   labResults            LabResult[]
@@ -589,6 +595,16 @@ model Product {
   @@map("products")
 }
 
+// Where on the body an injection went, so the next one can be somewhere else.
+enum InjectionSite {
+  ABDOMEN_LEFT
+  ABDOMEN_RIGHT
+  THIGH_LEFT
+  THIGH_RIGHT
+  ARM_LEFT
+  ARM_RIGHT
+}
+
 enum DoseStatus {
   SCHEDULED
   TAKEN
@@ -600,18 +616,23 @@ enum DoseStatus {
 // single weekly GLP-1 injection. Generated ahead of time on a rolling window
 // (see DosingService) so the patient always has upcoming dates to see.
 model DoseEvent {
-  id                 String     @id @default(cuid())
-  prescriptionItemId String     @map("prescription_item_id")
-  patientId          String     @map("patient_id")
-  scheduledFor       DateTime   @map("scheduled_for")
-  status             DoseStatus @default(SCHEDULED)
-  takenAt            DateTime?  @map("taken_at")
+  id                 String          @id @default(cuid())
+  prescriptionItemId String          @map("prescription_item_id")
+  patientId          String          @map("patient_id")
+  scheduledFor       DateTime        @map("scheduled_for")
+  status             DoseStatus      @default(SCHEDULED)
+  takenAt            DateTime?       @map("taken_at")
   note               String?
+  // Where the injection went (injectable products only), and how the patient said they felt a day or so
+  // later — the doctor reads these together when deciding whether to step the dose up.
+  injectionSite      InjectionSite?  @map("injection_site")
+  feelingAfter       CheckInFeeling? @map("feeling_after")
+  feelingAfterAt     DateTime?       @map("feeling_after_at")
   // Set once a reminder email has gone out, so the cron doesn't resend one
   // every time it runs while the dose is still upcoming.
-  reminderSentAt     DateTime?  @map("reminder_sent_at")
-  createdAt          DateTime   @default(now()) @map("created_at")
-  updatedAt          DateTime   @updatedAt @map("updated_at")
+  reminderSentAt     DateTime?       @map("reminder_sent_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
   prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Cascade)
   patient          Patient          @relation(fields: [patientId], references: [id])
@@ -717,6 +738,7 @@ model AuditLogEntry {
   timestamp    DateTime @default(now()) @map("created_at")
 
   @@index([patientId, timestamp])
+  @@index([timestamp])
   @@map("audit_logs")
 }
 
@@ -782,6 +804,8 @@ model CheckIn {
   reviewedById         String?           @map("reviewed_by_id")
   outcome              CheckInOutcome?
   reviewNote           String?           @map("review_note")
+  // What the doctor wrote for the patient (internal `reviewNote` is never shown to them). Printed on the check-in report.
+  patientNote          String?           @map("patient_note")
   // What happened to billing as a result (price change, pause, cancellation).
   billingNote          String?           @map("billing_note")
   resultOrderId        String?           @map("result_order_id")
@@ -851,6 +875,28 @@ model WeightEntry {
   @@unique([deviceConnectionId, externalId])
   @@index([patientId, measuredAt])
   @@map("weight_entries")
+}
+
+// Tape measurements the patient takes to see fat loss that the scale alone doesn't show. Any of the
+// three may be left out of one entry. Their own tracking, so a mistake is voided (kept, hidden) rather
+// than edited.
+model BodyMeasurement {
+  id              String    @id @default(cuid())
+  patientId       String    @map("patient_id")
+  measuredAt      DateTime  @map("measured_at")
+  recordedAt      DateTime  @default(now()) @map("recorded_at")
+  waistCm         Decimal?  @map("waist_cm") @db.Decimal(4, 1)
+  hipsCm          Decimal?  @map("hips_cm") @db.Decimal(4, 1)
+  armCm           Decimal?  @map("arm_cm") @db.Decimal(4, 1)
+  // Client-generated id so a double tap or retry can't record the same measuring twice.
+  clientRequestId String?   @map("client_request_id")
+  voidedAt        DateTime? @map("voided_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([patientId, clientRequestId])
+  @@index([patientId, measuredAt])
+  @@map("body_measurements")
 }
 
 // A device or health app a patient has allowed to send their weight (see DeviceReadingsController).
@@ -970,6 +1016,29 @@ model SideEffectReport {
   @@index([acknowledgedAt, createdAt])
   @@index([patientId, createdAt])
   @@map("side_effect_reports")
+}
+
+// The patient's weekly score (1 = none, 10 = worst) for each of the usual GLP-1 side effects. The doctor
+// reads the latest of these, and how they have moved, before approving the next supply or dose.
+model SideEffectLog {
+  id              String   @id @default(cuid())
+  patientId       String   @map("patient_id")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+  nausea          Int
+  vomiting        Int
+  abdominalPain   Int      @map("abdominal_pain")
+  diarrhoea       Int
+  constipation    Int
+  fatigue         Int
+  note            String?
+  // Client-generated id so a double tap or retry can't record the same entry twice.
+  clientRequestId String?  @map("client_request_id")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([patientId, clientRequestId])
+  @@index([patientId, recordedAt])
+  @@map("side_effect_logs")
 }
 
 model OnboardingSubmission {

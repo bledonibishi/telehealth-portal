@@ -2,8 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrescriptionStatus, UserRole } from '../common/enums';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ReportSideEffectsInput, SideEffectAlertModel, SideEffectReportModel } from './models/side-effect.model';
-import { MAX_NOTE_LENGTH, MAX_REPORTS_PER_DAY, OPEN_ALERTS_WHERE, SIDE_EFFECT_KEYS, adviceFor, byUrgency } from './side-effects';
+import { LogSideEffectScoresInput, ReportSideEffectsInput, SideEffectAlertModel, SideEffectReportModel, SideEffectScoreEntryModel, SideEffectSummaryModel } from './models/side-effect.model';
+import { MAX_NOTE_LENGTH, MAX_REPORTS_PER_DAY, OPEN_ALERTS_WHERE, SIDE_EFFECT_KEYS, URGENT_ADVICE, adviceFor, byUrgency } from './side-effects';
+import {
+  MAX_ENTRIES_PER_DAY, MAX_NOTE_LENGTH as MAX_SCORE_NOTE_LENGTH, PEAK_DAYS, REPORT_KEY, SCORE_KEYS, SCORE_LABEL, ScoreEntry, TRACKER_NOTE_PREFIX,
+  HIGH_SCORE, alertSeverityFor, attentionReasons, isValidScore, summariseScores,
+} from './side-effect-scores';
 
 @Injectable()
 export class SideEffectsService {
@@ -47,6 +51,112 @@ export class SideEffectsService {
       return created;
     });
     return this.toModel(row, adviceFor(input.severity));
+  }
+
+  /**
+   * The patient's weekly scores. A high one also raises an ordinary side-effect report, so it shows in the
+   * doctors' list and on the bell and has to be acknowledged like any other.
+   */
+  async logScores(patientId: string, input: LogSideEffectScoresInput): Promise<SideEffectScoreEntryModel> {
+    const scores = Object.fromEntries(SCORE_KEYS.map((k) => [k, input[k]])) as Record<(typeof SCORE_KEYS)[number], number>;
+    for (const k of SCORE_KEYS) if (!isValidScore(scores[k])) throw new BadRequestException(`Please score ${SCORE_LABEL[k].toLowerCase()} from 1 to 10`);
+    const note = input.note?.trim() || null;
+    if (note && note.length > MAX_SCORE_NOTE_LENGTH) throw new BadRequestException(`Notes can be up to ${MAX_SCORE_NOTE_LENGTH} characters`);
+    const clientRequestId = input.clientRequestId?.trim() || null;
+    if (clientRequestId && clientRequestId.length > 100) throw new BadRequestException('Invalid request id');
+
+    if (clientRequestId) {
+      const saved = await this.prisma.sideEffectLog.findFirst({ where: { patientId, clientRequestId } });
+      if (saved) return this.toEntry(saved, alertSeverityFor(saved) ? URGENT_ADVICE : null); // this submission is already saved
+    }
+    const recent = await this.prisma.sideEffectLog.count({ where: { patientId, recordedAt: { gte: new Date(Date.now() - 86_400_000) } } });
+    if (recent >= MAX_ENTRIES_PER_DAY) throw new BadRequestException('You’ve already logged this today — please message your clinician if something has changed');
+
+    const severity = alertSeverityFor(scores);
+    const high = SCORE_KEYS.filter((k) => scores[k] >= HIGH_SCORE);
+    const rx = severity
+      ? await this.prisma.prescription.findFirst({ where: { patientId, status: PrescriptionStatus.ACTIVE }, orderBy: { issuedAt: 'desc' }, select: { medication: true, dosage: true } })
+      : null;
+
+    let row;
+    try {
+      row = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.sideEffectLog.create({ data: { patientId, ...scores, note, clientRequestId } });
+        if (severity) {
+          const report = await tx.sideEffectReport.create({
+            data: {
+              patientId,
+              effects: high.map((k) => REPORT_KEY[k]),
+              severity,
+              note: `${TRACKER_NOTE_PREFIX} ${high.map((k) => `${SCORE_LABEL[k].toLowerCase()} ${scores[k]}/10`).join(', ')}${note ? `. ${note}` : ''}`.slice(0, MAX_NOTE_LENGTH),
+              medication: rx ? `${rx.medication} ${rx.dosage}`.trim() : null,
+            },
+          });
+          await this.audit.log(
+            { actorId: patientId, actorRole: UserRole.PATIENT, action: 'SIDE_EFFECT_REPORTED', resourceType: 'SideEffectReport', resourceId: report.id, patientId, metadata: { effects: report.effects, severity, via: 'weekly tracker' } },
+            tx,
+          );
+        }
+        return created;
+      });
+    } catch (e: any) {
+      // The same submission arriving twice (double tap, retry): it's already saved, so succeed quietly.
+      if (e?.code === 'P2002' && clientRequestId) {
+        const saved = await this.prisma.sideEffectLog.findFirst({ where: { patientId, clientRequestId } });
+        if (saved) return this.toEntry(saved, alertSeverityFor(saved) ? URGENT_ADVICE : null);
+      }
+      throw e;
+    }
+    return this.toEntry(row, severity ? URGENT_ADVICE : null);
+  }
+
+  /** The patient's own weekly entries, newest first. */
+  async myScores(patientId: string): Promise<SideEffectScoreEntryModel[]> {
+    const rows = await this.prisma.sideEffectLog.findMany({ where: { patientId }, orderBy: { recordedAt: 'desc' }, take: 12 });
+    return rows.map((r) => this.toEntry(r));
+  }
+
+  /** What a doctor should read before approving the next supply or dose for this patient. */
+  async summaryFor(patientId: string, now: Date = new Date()): Promise<SideEffectSummaryModel> {
+    const since = new Date(now.getTime() - PEAK_DAYS * 86_400_000);
+    const [logs, reports, roughDoses] = await Promise.all([
+      this.prisma.sideEffectLog.findMany({ where: { patientId }, orderBy: { recordedAt: 'desc' }, take: 8 }),
+      this.prisma.sideEffectReport.findMany({ where: { patientId, createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 10 }),
+      this.prisma.doseEvent.count({ where: { patientId, feelingAfter: { in: ['DIFFICULTIES', 'NOT_WELL'] }, takenAt: { gte: since } } }),
+    ]);
+    const entries = logs as unknown as ScoreEntry[];
+    const summary = summariseScores(entries, now);
+    // A report the tracker raised for a high score is the same event as that score: counting both would show one problem twice.
+    // It still counts when the latest week is no longer high, because the doctor has not acknowledged it.
+    const covered = summary.rows.some((r) => r.flagged);
+    const unacknowledged = reports.filter((r) => !r.acknowledgedAt && !(covered && r.note?.startsWith(TRACKER_NOTE_PREFIX)));
+    const reasons = attentionReasons(summary, { unacknowledgedReports: unacknowledged, roughDoses });
+    return {
+      lastLoggedAt: summary.lastLoggedAt,
+      daysSinceLastLog: summary.daysSinceLastLog,
+      stale: summary.stale,
+      scores: summary.rows,
+      entries: logs.map((r) => this.toEntry(r)),
+      reports: reports.map((r) => this.toModel(r)),
+      roughDoses,
+      needsAttention: reasons.length > 0,
+      reasons,
+    };
+  }
+
+  private toEntry(r: { id: string; recordedAt: Date; note: string | null } & Record<(typeof SCORE_KEYS)[number], number>, advice: string | null = null): SideEffectScoreEntryModel {
+    return {
+      id: r.id,
+      recordedAt: r.recordedAt,
+      nausea: r.nausea,
+      vomiting: r.vomiting,
+      abdominalPain: r.abdominalPain,
+      diarrhoea: r.diarrhoea,
+      constipation: r.constipation,
+      fatigue: r.fatigue,
+      note: r.note ?? undefined,
+      advice: advice ?? undefined,
+    };
   }
 
   async mine(patientId: string): Promise<SideEffectReportModel[]> {

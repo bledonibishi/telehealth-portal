@@ -1,4 +1,4 @@
-import { CheckInsService } from './check-ins.service';
+import { CheckInsService, CHECK_IN_INTERVAL_DAYS } from './check-ins.service';
 
 const DAY = 86_400_000;
 
@@ -151,5 +151,36 @@ describe('CheckInsService.submit — what the patient writes in their notes', ()
   it('adds nothing for an ordinary note or none at all', async () => {
     expect(await submitWith('All good, thanks')).toEqual([]);
     expect(await submitWith()).toEqual([]);
+  });
+});
+
+describe('CheckInsService.ensureScheduled', () => {
+  const build = (patient: any) => {
+    const prisma: any = { patient: { findMany: jest.fn().mockResolvedValue([patient]) }, checkIn: { create: jest.fn().mockResolvedValue({}) } };
+    return { prisma, service: new CheckInsService(prisma, {} as any, { get: jest.fn() } as any) };
+  };
+
+  it('is every 4 weeks, in step with GLP-1 titration (weeks 4, 8, 12)', () => {
+    expect(CHECK_IN_INTERVAL_DAYS).toBe(28);
+  });
+
+  it('schedules the first check-in 28 days after the first prescription', async () => {
+    const issuedAt = new Date('2026-10-07T09:00:00Z');
+    const { prisma, service } = build({ id: 'p-1', email: 'p@example.com', checkIns: [], prescriptions: [{ issuedAt }] });
+    await service.ensureScheduled();
+    expect(prisma.checkIn.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', dueAt: new Date('2026-11-04T09:00:00Z') } });
+  });
+
+  it('schedules the next one 28 days after the last was completed', async () => {
+    const completedAt = new Date('2026-11-05T10:00:00Z');
+    const { prisma, service } = build({ id: 'p-1', email: 'p@example.com', checkIns: [{ status: 'COMPLETED', completedAt }], prescriptions: [{ issuedAt: new Date('2026-10-07T09:00:00Z') }] });
+    await service.ensureScheduled();
+    expect(prisma.checkIn.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', dueAt: new Date('2026-12-03T10:00:00Z') } });
+  });
+
+  it('does not queue another while one is still open', async () => {
+    const { prisma, service } = build({ id: 'p-1', email: 'p@example.com', checkIns: [{ status: 'SCHEDULED', completedAt: null }], prescriptions: [{ issuedAt: new Date() }] });
+    await service.ensureScheduled();
+    expect(prisma.checkIn.create).not.toHaveBeenCalled();
   });
 });

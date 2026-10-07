@@ -11,7 +11,8 @@ import { evaluateAnswers } from '../questionnaires/evaluate';
 import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
 import { noteFlags } from './note-signals';
 
-const CHECK_IN_INTERVAL_DAYS = 30;
+// GLP-1 titration is reviewed every 4 weeks (weeks 4, 8, 12 …), so a check-in is due 28 days after the last one.
+export const CHECK_IN_INTERVAL_DAYS = 28;
 const TOKEN_EXPIRY_DAYS = 14;
 
 @Injectable()

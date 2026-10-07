@@ -18,7 +18,7 @@ const positiveInt = (raw: string | undefined, fallback: number) => {
 /**
  * Looks across everyone on an active prescription and lists whose next supply is coming up or late,
  * and what is holding it up — so treatment doesn't lapse because an order was forgotten.
- *   SHIPMENT_CYCLE_DAYS  how long one supply lasts (default 30)
+ *   SHIPMENT_CYCLE_DAYS  how long one supply lasts (default 28)
  *   SHIPMENT_LEAD_DAYS   how many days before it runs out to start warning (default 5)
  */
 /** The list is the same for everyone and costly to build, so it is shared for a short while. */

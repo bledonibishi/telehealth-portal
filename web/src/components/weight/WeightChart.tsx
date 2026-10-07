@@ -316,7 +316,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
           <p className="text-base font-semibold mt-0.5">{active.w.toFixed(1)} kg</p>
           {active.changeKg !== null && active.changeKg !== undefined && <p className="text-slate-400 mt-0.5">{kgChange(active.changeKg)} since previous</p>}
           {active.kind === 'CHECK_IN' && (
-            <p className="text-brand-100 mt-1">Monthly check-in{feeling ? ` · ${feeling.emoji} ${feeling.label}` : ''}</p>
+            <p className="text-brand-100 mt-1">Check-in{feeling ? ` · ${feeling.emoji} ${feeling.label}` : ''}</p>
           )}
           {active.note && <p className="text-slate-300 italic mt-1 break-words">“{active.note}”</p>}
         </div>
@@ -324,7 +324,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1 px-1">
         <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-brand-600" /> Your weight</span>
-        <span className="inline-flex items-center gap-1.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700" /> Monthly check-in</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700" /> Check-in</span>
         {typeof target === 'number' && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-400" /> Target</span>}
         {forecast && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-brand-600/60" /> If you keep the same pace</span>}
         {/* Hint for the input the device actually has: a mouse, or fingers. */}

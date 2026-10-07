@@ -6,5 +6,6 @@ import { SideEffectsResolver } from './side-effects.resolver';
 @Module({
   imports: [PrismaModule],
   providers: [SideEffectsService, SideEffectsResolver],
+  exports: [SideEffectsService],
 })
 export class SideEffectsModule {}

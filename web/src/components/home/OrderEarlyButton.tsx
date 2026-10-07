@@ -21,7 +21,7 @@ export function OrderEarlyButton({ variant = 'primary', label = 'Order Next Dose
           <Icon name="truck" className="w-4 h-4" /> {r.loading ? 'Sending…' : label}
         </button>
       )}
-      {r.hint && <p className="text-[11px] text-slate-500 mt-1.5 max-w-xs">{r.hint}</p>}
+      {r.hint && <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mt-2 max-w-xs">{r.hint}</p>}
       {r.error && <p role="alert" className="text-[11px] text-red-600 mt-1.5">{r.error.message}</p>}
     </div>
   );

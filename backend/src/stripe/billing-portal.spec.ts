@@ -50,6 +50,48 @@ describe('BillingService.createPortalSession', () => {
   });
 });
 
+describe('BillingService.listInvoices', () => {
+  const invoice = (over: object = {}) => ({
+    id: 'in_1', status: 'paid', created: 1_790_000_000, amount_paid: 8900, amount_due: 0, currency: 'eur',
+    lines: { data: [{ description: 'Semaglutide 0.25 mg' }] },
+    charge: { payment_method_details: { card: { brand: 'visa', last4: '4242' } } },
+    hosted_invoice_url: 'https://invoice.stripe.com/i/1', invoice_pdf: 'https://pay.stripe.com/invoice/1/pdf', ...over,
+  });
+
+  it('lists the patient’s own invoices with amount, card and a PDF link', async () => {
+    const stripe = { invoices: { list: jest.fn().mockResolvedValue({ data: [invoice()] }) } };
+    const result = await buildBilling(stripe).listInvoices(PATIENT);
+    expect(stripe.invoices.list).toHaveBeenCalledWith(expect.objectContaining({ customer: 'cus_1', expand: ['data.charge'] }));
+    expect(result).toEqual([{
+      id: 'in_1', createdAt: new Date(1_790_000_000 * 1000), amountCents: 8900, currency: 'EUR', status: 'PAID', description: 'Semaglutide 0.25 mg',
+      cardBrand: 'visa', cardLast4: '4242', viewUrl: 'https://invoice.stripe.com/i/1', pdfUrl: 'https://pay.stripe.com/invoice/1/pdf',
+    }]);
+  });
+
+  it('leaves out drafts and voided invoices, and shows what is still owed as unpaid', async () => {
+    const stripe = { invoices: { list: jest.fn().mockResolvedValue({ data: [invoice({ id: 'd', status: 'draft' }), invoice({ id: 'v', status: 'void' }), invoice({ id: 'o', status: 'open', amount_due: 8900, charge: null })] }) } };
+    const result = await buildBilling(stripe).listInvoices(PATIENT);
+    expect(result.map((i) => [i.id, i.status, i.amountCents, i.cardLast4])).toEqual([['o', 'UNPAID', 8900, null]]);
+  });
+
+  it('is empty when Stripe is not set up or the patient has no customer', async () => {
+    const off = buildBilling({});
+    (off as any).configured = false;
+    await expect(off.listInvoices(PATIENT)).resolves.toEqual([]);
+    const stripe = { customers: { list: jest.fn().mockResolvedValue({ data: [] }) }, invoices: { list: jest.fn() } };
+    await expect(buildBilling(stripe).listInvoices({ ...PATIENT, stripeCustomerId: null })).resolves.toEqual([]);
+    expect(stripe.invoices.list).not.toHaveBeenCalled();
+  });
+
+  it('gives a plain message, not Stripe’s, when Stripe fails', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stripe = { invoices: { list: jest.fn().mockRejectedValue(new Error('Invalid API Key provided: sk_test_***')) } };
+    const err = await buildBilling(stripe).listInvoices(PATIENT).catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(err.message).not.toContain('API Key');
+  });
+});
+
 describe('BillingPortalResolver', () => {
   it('uses the signed-in patient’s record (never an id from the request), returns to the dashboard and audits', async () => {
     const prisma = { patient: { findUniqueOrThrow: jest.fn().mockResolvedValue(PATIENT) } };

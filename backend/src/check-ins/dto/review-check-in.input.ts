@@ -16,6 +16,9 @@ export class ReviewCheckInInput {
   @Field({ nullable: true, description: 'Sent to the patient as a message' })
   messageToPatient?: string;
 
+  @Field({ nullable: true, description: 'The doctor has read the patient’s side-effect summary. Needed to send a repeat or a new prescription when it flags anything.' })
+  sideEffectsReviewed?: boolean;
+
   // NEW_PRESCRIPTION only
   @Field(() => [PrescriptionItemInput], { nullable: true })
   items?: PrescriptionItemInput[];
