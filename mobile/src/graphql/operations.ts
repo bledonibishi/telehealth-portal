@@ -182,6 +182,19 @@ export const MY_CONVERSATION = gql`
   }
 `;
 
+// Reading the conversation: what the care team sent is marked read so they can see it was.
+export const MARK_MESSAGES_READ = gql`
+  mutation MarkMessagesRead($consultationId: ID!) {
+    markMessagesRead(consultationId: $consultationId)
+  }
+`;
+
+export const MARK_PRE_CONSULTATION_READ = gql`
+  mutation MarkPreConsultationMessagesRead {
+    markPreConsultationMessagesRead
+  }
+`;
+
 export const MY_TREATMENT_PLAN = gql`
   query MyTreatmentPlan {
     myTreatmentPlan {

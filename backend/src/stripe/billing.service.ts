@@ -90,9 +90,10 @@ export class BillingService {
   /**
    * After the first prescription: bill the dose that was prescribed rather than the one ordered.
    * The subscription moves to `priceId` from the next billing cycle; if the new price is lower,
-   * the difference on the payment already made is refunded to the card. A higher price is never
-   * charged for the month already paid (prescribing rules stop a first prescription above the
-   * ordered dose). Returns a note for the record, never throws.
+   * the difference on the payment already made is refunded to the card. The plan is never moved
+   * to a price that is higher than what the patient agreed to at checkout (or can't be compared
+   * with it): that needs the patient's agreement, so it is left as a note to sort out by hand.
+   * Returns a note for the record, never throws.
    */
   async moveToPrescribedPrice(patient: BillingPatient, priceId: string, doseLabel?: string): Promise<string> {
     return this.withSubscription(patient, async (sub) => {
@@ -103,9 +104,16 @@ export class BillingService {
       const oldAmount = item.price.unit_amount;
       const newPrice = await this.stripe.prices.retrieve(priceId);
       const newAmount = newPrice.unit_amount;
+      const label = doseLabel ?? priceId;
+      if (oldAmount == null || newAmount == null || newPrice.currency !== item.price.currency) {
+        return `Billing unchanged: the price for ${label} can’t be compared with the current plan — check it in Stripe`;
+      }
+      if (newAmount > oldAmount) {
+        return `Billing unchanged: ${label} costs more than the plan the patient paid for — agree the new price with them before changing it in Stripe`;
+      }
       await this.stripe.subscriptions.update(sub.id, { items: [{ id: item.id, price: priceId }], proration_behavior: 'none' });
-      const moved = `Billing moved to ${doseLabel ?? priceId} from the next billing cycle`;
-      if (oldAmount == null || newAmount == null || newAmount >= oldAmount) return moved;
+      const moved = `Billing moved to ${label} from the next billing cycle`;
+      if (newAmount === oldAmount) return moved;
 
       const { data } = await this.stripe.invoices.list({ subscription: sub.id, status: 'paid', limit: 1 });
       const invoice = data[0] as any; // see refundLatestPaidInvoice on the cast

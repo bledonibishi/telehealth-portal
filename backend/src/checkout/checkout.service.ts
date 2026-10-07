@@ -5,7 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { ConsultationKind, RiskTag } from '../common/enums';
 import { triageEligibility } from '../questionnaires/triage';
-import { findGlp1Dose } from '../catalog/ordered-dose';
+import { findGlp1Dose, orderedTreatmentText } from '../catalog/ordered-dose';
+import { PlanKey, planPriceEnvVars } from '../stripe/plan-pricing';
+
+const PLANS: PlanKey[] = ['GLP1_STARTER', 'GLP1_ADVANCED', 'HRT_STARTER', 'HRT_COMPLETE', 'TRT_STANDARD'];
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
 // which posts here directly rather than through GraphQL. Two Stripe flows:
@@ -55,10 +58,9 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    const priceId = await this.priceFor(input);
-
     // With a lead, the email comes from the lead itself, never from the request.
     const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
+    const priceId = await this.priceFor(input, lead);
     const email = lead?.email ?? input.email;
     const referralCoupon = await this.referralCouponFor(lead?.id, input.applyReward);
     if (lead) await this.saveLeadDetails(lead, input.shipping, input);
@@ -86,16 +88,23 @@ export class CheckoutService {
   }
 
   /**
-   * Each dose has its own price: when the chosen product and dose have one, it's charged, whatever
-   * price the page sent — so a request can't buy a dose at another dose's price. Doses not priced
-   * individually yet use the plan price the page sends.
+   * The price is decided here, never taken on trust from the page. Each GLP-1 dose has its own
+   * price: the dose chosen in this request, or else the one already ordered on the lead, is charged
+   * at that price. Otherwise the page's price must be one of the configured plan prices (a GLP-1
+   * order: a GLP-1 plan), so a request can't buy a treatment at some cheaper price.
    */
-  private async priceFor(input: { priceId?: string; product?: string; dose?: string }): Promise<string> {
-    if (input.product && input.dose) {
-      const chosen = await findGlp1Dose(this.prisma, `${input.product} ${input.dose}`);
-      if (chosen?.stripePriceId) return chosen.stripePriceId;
-    }
+  private async priceFor(
+    input: { priceId?: string; product?: string; dose?: string },
+    lead: { quizAnswers: unknown } | null,
+  ): Promise<string> {
+    const ordered = input.product && input.dose ? `${input.product} ${input.dose}` : orderedTreatmentText(lead?.quizAnswers);
+    const chosen = await findGlp1Dose(this.prisma, ordered);
+    if (chosen?.stripePriceId) return chosen.stripePriceId;
+
     if (!input.priceId) throw new BadRequestException('Missing priceId.');
+    const plans = chosen ? PLANS.filter((p) => p.startsWith('GLP1_')) : PLANS;
+    const allowed = plans.flatMap((p) => planPriceEnvVars(p).map((v) => this.config.get<string>(v))).filter(Boolean);
+    if (!allowed.includes(input.priceId)) throw new BadRequestException('That plan isn’t available.');
     return input.priceId;
   }
 
@@ -111,11 +120,10 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    const priceId = await this.priceFor(input);
-
     // The lead is the identity of this checkout: its email is the only one we
     // act on, so a request can't name someone else's email to touch their Stripe data.
     const lead = await this.loadOpenLead(input.leadId);
+    const priceId = await this.priceFor(input, lead);
     const customerId = await this.findOrCreateCustomer(lead.email, this.sanitizeShipping(input.shipping));
     // Toggling the reward on the checkout page starts a new payment, so drop this
     // lead's abandoned unpaid ones instead of letting them pile up.

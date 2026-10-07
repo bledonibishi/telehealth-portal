@@ -88,13 +88,25 @@ async function main() {
       );
     }
 
+    // A dose still linked to a price that is gone from Stripe (archived, or its product archived)
+    // would be charged at a price checkout can't use: unlink it so it falls back to its plan price.
+    // Prices linked by hand that are still active are left alone, matched by name or not.
+    const activeMonthly = new Set(prices.filter((p) => p.recurring).map((p) => p.id));
+    const relinked = new Set(matches.map((m) => m.strength.id));
+    const stale = strengths.filter((s) => s.stripePriceId && !activeMonthly.has(s.stripePriceId) && !relinked.has(s.id));
+    if (stale.length) {
+      console.log('\nLinked to a price that is no longer active in Stripe (will be unlinked):');
+      stale.forEach((s) => console.log(`  - ${s.productName} ${s.label}: ${s.stripePriceId}`));
+    }
+
     const changes = matches.filter((m) => m.strength.stripePriceId !== m.price.id);
     if (!apply) {
-      console.log(`\n${changes.length} dose(s) to link. Nothing saved — run with --apply to save.`);
+      console.log(`\n${changes.length} dose(s) to link, ${stale.length} to unlink. Nothing saved — run with --apply to save.`);
       return;
     }
     for (const m of changes) await prisma.productStrength.update({ where: { id: m.strength.id }, data: { stripePriceId: m.price.id } });
-    console.log(`\nLinked ${changes.length} dose(s).`);
+    for (const s of stale) await prisma.productStrength.update({ where: { id: s.id }, data: { stripePriceId: null } });
+    console.log(`\nLinked ${changes.length} dose(s), unlinked ${stale.length}.`);
   } finally {
     await prisma.$disconnect();
   }

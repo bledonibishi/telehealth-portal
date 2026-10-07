@@ -3,10 +3,12 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, 
 import { useMutation, useQuery } from '@apollo/client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
-import { MY_CONVERSATION, SEND_MESSAGE } from '../../graphql/operations';
+import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, MY_CONVERSATION, SEND_MESSAGE } from '../../graphql/operations';
 import { colors } from '../../theme';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
+
+const unreadFromTeam = (ms: Message[] | undefined) => (ms ?? []).some((m) => m.senderRole !== 'PATIENT' && !m.readAt);
 
 // How often to look for replies: the thread before a consultation has no live channel.
 const POLL_MS = 10_000;
@@ -44,6 +46,25 @@ export function OnboardingChatScreen({ navigation, route }: any) {
   }, [data]);
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE);
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const [markPreRead] = useMutation(MARK_PRE_CONSULTATION_READ);
+
+  // The chat fills the screen, so what arrives while it's open has been read: tell the server, once
+  // per thread with something unread (a failure is tried again on the next poll).
+  const marking = useRef(new Set<string>());
+  useEffect(() => {
+    const mark = (key: string, run: () => Promise<unknown>) => {
+      if (marking.current.has(key)) return;
+      marking.current.add(key);
+      run()
+        .then(() => refetch())
+        .catch(() => undefined)
+        .finally(() => marking.current.delete(key));
+    };
+    consultations.forEach((c) => unreadFromTeam(c.messages) && mark(c.id, () => markRead({ variables: { consultationId: c.id } })));
+    if (unreadFromTeam(data?.myPreConsultationMessages)) mark('pre', () => markPreRead());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const send = async () => {
     const text = content.trim();

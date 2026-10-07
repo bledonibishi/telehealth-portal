@@ -281,9 +281,9 @@ export class ConsultationsService {
   }
 
   /**
-   * Each dose has its own price, and the patient paid for the dose they ordered. If the clinician
-   * prescribed a different one (e.g. a lower starting dose), bill that from next month and refund
-   * the difference if it's cheaper. After the approval, never part of it: a billing problem is
+   * Each dose has its own price, and the patient paid for the dose they ordered. If the clinician's
+   * first prescription is a different one (e.g. a lower starting dose), bill that from next month
+   * and refund the difference if it's cheaper. After the approval, never part of it: a billing problem is
    * recorded for fixing by hand rather than undoing the clinical decision.
    */
   private async billPrescribedDose(
@@ -301,6 +301,12 @@ export class ConsultationsService {
       if (!priceId) return null;
       const glp1 = items.find((i) => i.product.category === ProductCategory.GLP1);
       const doseLabel = glp1 ? `${glp1.product.brandName ?? glp1.product.name} ${glp1.strength.label}` : 'the prescribed plan';
+      // Only the first prescription replaces the dose ordered at checkout. A later one (e.g. a new
+      // consultation months in) must not refund a month that was billed correctly.
+      const earlier = await this.prisma.prescription.count({ where: { patientId: patient.id, id: { not: prescriptionId } } });
+      if (earlier > 0) {
+        return `Billing unchanged: not the patient’s first prescription — if ${doseLabel} is priced differently, change the plan in Stripe from the next cycle`;
+      }
       const note = await this.billing.moveToPrescribedPrice(patient, priceId, doseLabel);
       await this.audit.log({
         actorId: clinicianId,

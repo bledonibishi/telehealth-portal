@@ -79,6 +79,9 @@ export type NameEvidenceOutcome = { status: 'COMPLETED'; reading: NameEvidenceRe
  * manual review rather than blocking onboarding: without ANTHROPIC_API_KEY, or
  * on any error, the document simply goes to the clinician unread.
  */
+// The longest a patient waits for their document to be read, retries included.
+const READ_DEADLINE_MS = 35_000;
+
 @Injectable()
 export class ProofReaderService {
   private readonly logger = new Logger(ProofReaderService.name);
@@ -96,7 +99,7 @@ export class ProofReaderService {
   }
 
   private getClient(): Anthropic {
-    this.client ??= new Anthropic({ apiKey: this.config.get<string>('ANTHROPIC_API_KEY'), timeout: 60_000, maxRetries: 2 });
+    this.client ??= new Anthropic({ apiKey: this.config.get<string>('ANTHROPIC_API_KEY'), timeout: READ_DEADLINE_MS, maxRetries: 2 });
     return this.client;
   }
 
@@ -148,7 +151,9 @@ export class ProofReaderService {
             ],
           },
         ],
-      });
+      // The patient waits on the upload for this: past the deadline (retries included) give up and
+      // let a clinician check it, rather than holding the request open past client and proxy timeouts.
+      }, { signal: AbortSignal.timeout(READ_DEADLINE_MS) });
 
       if (response.stop_reason === 'refusal') {
         return { status: 'FAILED', reason: 'The model declined to read this document' };

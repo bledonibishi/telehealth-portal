@@ -310,6 +310,11 @@ describe('matchName', () => {
   });
   it('mismatches a different person', () => {
     expect(matchName('John Smith', patient)).toBe('MISMATCH');
+    // Same surname, someone else's first name: another person's document, not a partial match.
+    expect(matchName('John Lee', patient)).toBe('MISMATCH');
+    expect(matchName('Mrs Lee', patient)).toBe('PARTIAL');
+    expect(matchName('Ann Lee', patient)).toBe('PARTIAL'); // part of her own first name
+    expect(matchName('A. M. Lee', patient)).toBe('PARTIAL');
     expect(matchName(null, patient)).toBe('NOT_FOUND');
   });
 });

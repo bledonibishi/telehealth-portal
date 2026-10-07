@@ -55,6 +55,8 @@ describe('ProofReaderService model choice', () => {
     await expect(reader.read(Buffer.from('x'), 'image/jpeg')).resolves.toMatchObject({ status: 'COMPLETED' });
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'claude-sonnet-5-5', fallbacks: 'default', output_config: expect.objectContaining({ effort: 'medium' }) }),
+      // A hard deadline, so the patient's upload never hangs on a slow read.
+      { signal: expect.any(AbortSignal) },
     );
   });
 

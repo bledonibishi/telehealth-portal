@@ -216,16 +216,24 @@ function words(name: string): string[] {
     .filter(Boolean);
 }
 
-/** Whether the name on the document is the patient's. Initials ("J. Smith") count as partial. */
+const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'mx', 'dr']);
+
+/**
+ * Whether the name on the document is the patient's. Initials ("J. Smith") or a surname on its own
+ * count as partial; the same surname with a different first name ("John Lee" for Ann Lee) doesn't
+ * match — it is someone else's document.
+ */
 export function matchName(onDocument: string | null, patient: { firstName: string; lastName: string }): NameMatch {
   if (!onDocument?.trim()) return 'NOT_FOUND';
-  const doc = words(onDocument);
+  const doc = words(onDocument).filter((w) => !TITLES.has(w));
   const first = words(patient.firstName);
   const last = words(patient.lastName);
   const lastOk = last.length > 0 && last.every((w) => doc.includes(w));
   const firstOk = first.length > 0 && first.every((w) => doc.includes(w));
   const firstInitial = first.length > 0 && doc.some((w) => w.length === 1 && w === first[0][0]);
   if (lastOk && firstOk) return 'MATCH';
+  const otherGivenName = doc.some((w) => w.length > 1 && !last.includes(w) && !first.includes(w));
+  if (lastOk && !firstInitial && otherGivenName) return 'MISMATCH';
   if (lastOk || (firstOk && last.length === 0) || (firstInitial && lastOk)) return 'PARTIAL';
   return 'MISMATCH';
 }

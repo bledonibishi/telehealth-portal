@@ -16,6 +16,7 @@ describe('ConsultationsService', () => {
   let consents: { record: jest.Mock };
   let audit: { log: jest.Mock };
   let proofReview: { reassess: jest.Mock };
+  let dosePricing: { priceIdFor: jest.Mock };
   let service: ConsultationsService;
 
   beforeEach(() => {
@@ -47,6 +48,7 @@ describe('ConsultationsService', () => {
     consents = { record: jest.fn() };
     audit = { log: jest.fn() };
     proofReview = { reassess: jest.fn().mockResolvedValue(null) };
+    dosePricing = { priceIdFor: jest.fn().mockReturnValue(null) };
     service = new ConsultationsService(
       prisma,
       audit as any,
@@ -60,7 +62,7 @@ describe('ConsultationsService', () => {
       consents as any,
       { trySendForPrescription: jest.fn() } as any,
       proofReview as any,
-      { priceIdFor: jest.fn().mockReturnValue(null) } as any,
+      dosePricing as any,
     );
   });
 
@@ -126,6 +128,33 @@ describe('ConsultationsService', () => {
       await expect(service.approve('doc-1', approveInput)).rejects.toThrow('licence');
       expect(prescribing.issue).not.toHaveBeenCalled();
       expect(prisma.consultation.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('billing the prescribed dose on approval', () => {
+    beforeEach(() => {
+      dosePricing.priceIdFor.mockReturnValue('price_low');
+      prisma.prescriptionItem = {
+        findMany: jest.fn().mockResolvedValue([
+          { product: { category: 'GLP1', name: 'Mounjaro', brandName: 'Mounjaro' }, strength: { titrationStep: 1, label: '2.5 mg', stripePriceId: 'price_low' } },
+        ]),
+      };
+      prisma.prescription = { count: jest.fn().mockResolvedValue(0) };
+      (billing as any).moveToPrescribedPrice = jest.fn().mockResolvedValue('Billing moved');
+    });
+
+    it('moves the first prescription onto the prescribed dose’s price', async () => {
+      const result: any = await service.approve('doc-1', approveInput);
+      expect((billing as any).moveToPrescribedPrice).toHaveBeenCalledWith(expect.objectContaining({ id: PATIENT.id }), 'price_low', 'Mounjaro 2.5 mg');
+      expect(result.billingNote).toBe('Billing moved');
+    });
+
+    it('leaves billing alone on a later prescription, so no paid month is refunded', async () => {
+      prisma.prescription.count.mockResolvedValue(1);
+      const result: any = await service.approve('doc-1', approveInput);
+      expect(prisma.prescription.count).toHaveBeenCalledWith({ where: { patientId: PATIENT.id, id: { not: 'rx-1' } } });
+      expect((billing as any).moveToPrescribedPrice).not.toHaveBeenCalled();
+      expect(result.billingNote).toMatch(/not the patient’s first prescription/);
     });
   });
 
