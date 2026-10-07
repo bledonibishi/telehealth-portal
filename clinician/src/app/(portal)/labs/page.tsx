@@ -6,6 +6,30 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { useState } from 'react';
 import { FLAGGED_LAB_RESULT_QUEUE, REVIEW_LAB_RESULT, TRT_MONITORING_QUEUE } from '@/graphql/labs';
 import { KIND_LABEL, type TrtMonitoring } from '@/components/labs/labs-format';
+import ExportCsvButton from '@/components/ExportCsvButton';
+import type { CsvColumn } from '@/lib/csv';
+
+type TrtRow = { patientName: string; monitoring: TrtMonitoring };
+
+const FLAGGED_COLUMNS: CsvColumn<any>[] = [
+  { header: 'First name', value: (r) => r.patient.firstName },
+  { header: 'Last name', value: (r) => r.patient.lastName },
+  { header: 'Test', value: (r) => (r.kind === 'OTHER' ? r.analyteName : KIND_LABEL[r.kind]) },
+  { header: 'Value', value: (r) => r.value },
+  { header: 'Unit', value: (r) => r.unit },
+  { header: 'Range low', value: (r) => r.referenceRangeLow },
+  { header: 'Range high', value: (r) => r.referenceRangeHigh },
+  { header: 'Collected', value: (r) => r.collectedAt },
+];
+
+const TRT_COLUMNS: CsvColumn<TrtRow>[] = [
+  { header: 'Patient', value: (r) => r.patientName },
+  { header: 'Repeats on hold', value: (r) => r.monitoring.refillsOnHold },
+  { header: 'Hold reasons', value: (r) => r.monitoring.holdReasons.join('; ') },
+  { header: 'Warnings', value: (r) => r.monitoring.warnings.join('; ') },
+  { header: 'Next lab due', value: (r) => [...r.monitoring.labs].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0]?.dueAt },
+  { header: 'Overdue labs', value: (r) => r.monitoring.labs.filter((l) => l.overdue).map((l) => KIND_LABEL[l.kind]).join('; ') },
+];
 
 function ReviewButton({ id }: { id: string }) {
   const { t } = useI18n();
@@ -28,7 +52,7 @@ export default function LabsPage() {
   const { t, fmt } = useI18n();
   const { data: trtData, loading: trtLoading } = useQuery(TRT_MONITORING_QUEUE, { pollInterval: 5 * 60_000 });
   const { data: flaggedData, loading: flaggedLoading } = useQuery(FLAGGED_LAB_RESULT_QUEUE, { pollInterval: 60_000 });
-  const trt: { patientName: string; monitoring: TrtMonitoring }[] = trtData?.trtMonitoringQueue ?? [];
+  const trt: TrtRow[] = trtData?.trtMonitoringQueue ?? [];
   const flagged: any[] = flaggedData?.flaggedLabResultQueue ?? [];
 
   return (
@@ -39,7 +63,10 @@ export default function LabsPage() {
       </div>
 
       <section>
-        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('Testosterone monitoring')} · {trt.length}</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t('Testosterone monitoring')} · {trt.length}</h2>
+          <ExportCsvButton resource="trt-monitoring" rows={trt} columns={TRT_COLUMNS} />
+        </div>
         {trtLoading && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
         {!trtLoading && trt.length === 0 && <p className="text-sm text-gray-400">{t('Every patient on testosterone is up to date.')}</p>}
         <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
@@ -65,7 +92,10 @@ export default function LabsPage() {
       </section>
 
       <section>
-        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('Out-of-range results to review')} · {flagged.length}</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t('Out-of-range results to review')} · {flagged.length}</h2>
+          <ExportCsvButton resource="lab-results" rows={flagged} columns={FLAGGED_COLUMNS} />
+        </div>
         {flaggedLoading && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
         {!flaggedLoading && flagged.length === 0 && <p className="text-sm text-gray-400">{t('Nothing waiting for review.')}</p>}
         <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useSubscription } from '@apollo/client';
 import { differenceInYears } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { openAuthedDocument } from '@/lib/documents';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE, NEW_MESSAGE_SUBSCRIPTION } from '@/graphql/messaging';
 import { realtime } from '@/lib/apollo';
@@ -730,9 +731,9 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
         {tab === 'checkin' && (
           <div className="p-5">
             <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">{t('Monthly check-in')}</p>
+              <p className="text-sm font-semibold text-gray-800">{t('Check-in')}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {t('Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
+                {t('Every 4 weeks the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
               </p>
             </div>
 
@@ -765,7 +766,12 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                         >
                           {c.status === 'COMPLETED' ? t('Completed') : overdue ? t('Overdue') : c.status === 'SENT' ? t('Sent — awaiting response') : t('Scheduled')}
                         </span>
-                        <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
+                        <span className="flex items-center gap-3">
+                          {c.reportUrl && (
+                            <button type="button" onClick={() => openAuthedDocument(c.reportUrl)} className="text-xs font-medium text-brand-500 hover:underline">{t('Report PDF')}</button>
+                          )}
+                          <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
+                        </span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 mb-3">

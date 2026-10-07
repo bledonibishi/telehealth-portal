@@ -155,7 +155,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
       {canCorrect && <ProgressPhotos patientId={patientId} />}
 
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Monthly check-ins')}</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Check-ins')}</p>
         {entries.length === 0 ? (
           <p className="text-sm text-gray-400">{t('Nothing recorded yet.')}</p>
         ) : (
@@ -230,7 +230,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
               <p className="text-xs text-gray-400">{fmt(r.measuredAt, 'dd MMM yyyy · HH:mm')}</p>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              {r.kind === 'CHECK_IN' ? t('Monthly check-in') : r.hasPhoto ? `${t('Daily entry')} · 📷` : t('Daily entry')}
+              {r.kind === 'CHECK_IN' ? t('Check-in') : r.hasPhoto ? `${t('Daily entry')} · 📷` : t('Daily entry')}
               {r.changeKg !== null && r.changeKg !== undefined && <> · {kgChange(r.changeKg)}</>}
               {r.feeling && FEELINGS[r.feeling] && <> · {FEELINGS[r.feeling].emoji} {t(FEELINGS[r.feeling].label)}</>}
             </p>

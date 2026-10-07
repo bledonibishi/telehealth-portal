@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useQuery } from '@apollo/client';
 import { GET_ORDERS, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
+import ExportCsvButton from '@/components/ExportCsvButton';
+import type { CsvColumn } from '@/lib/csv';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 const FILTERS = [
@@ -14,6 +16,22 @@ const FILTERS = [
   { key: 'cancelled', label: 'Cancelled', statuses: ['CANCELLED'] },
   { key: 'all', label: 'All orders', statuses: null },
 ] as const;
+
+const ORDER_COLUMNS: CsvColumn<any>[] = [
+  { header: 'Order', value: (o) => `#${o.sequence}` },
+  { header: 'Status', value: (o) => o.status },
+  { header: 'Patient', value: (o) => `${o.patient.firstName} ${o.patient.lastName}` },
+  { header: 'Email', value: (o) => o.patient.email },
+  { header: 'Medication', value: (o) => o.prescription.medication },
+  { header: 'Dose', value: (o) => o.prescription.dosage },
+  { header: 'Placed', value: (o) => o.createdAt },
+  { header: 'Dispatched', value: (o) => o.dispatchedAt },
+  { header: 'Delivered', value: (o) => o.deliveredAt },
+  { header: 'Carrier', value: (o) => o.carrier },
+  { header: 'Tracking number', value: (o) => o.trackingNumber },
+  { header: 'Pharmacy reference', value: (o) => o.pharmacyRef },
+  { header: 'Ship to', value: (o) => [o.shippingAddress?.addressLine1, o.shippingAddress?.addressLine2, o.shippingAddress?.city, o.shippingAddress?.postcode, o.shippingAddress?.country].filter(Boolean).join(', ') },
+];
 
 type FilterKey = (typeof FILTERS)[number]['key'];
 
@@ -41,12 +59,13 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <div className="px-6 py-5 border-b border-gray-200 bg-white flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{t('Orders')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('Each supply of a prescription — first fills and repeats')}</p>
         </div>
-        <div className="flex gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm">
+          <ExportCsvButton resource="orders" rows={orders} columns={ORDER_COLUMNS} />
           <div className="text-center">
             <p className="font-semibold text-amber-600">{countFor(['PENDING'])}</p>
             <p className="text-xs text-gray-400">{t('To dispatch')}</p>

@@ -9,6 +9,7 @@ import {
   UPDATE_CLINICIAN_ROLE,
   VERIFY_CLINICIAN,
   REVOKE_CLINICIAN_VERIFICATION,
+  UPDATE_CLINICIAN_PROFILE,
 } from '@/graphql/clinicians';
 
 // Only these roles can prescribe, so only they need a checked licence.
@@ -55,6 +56,35 @@ function VerifyForm({ clinician, onDone }: { clinician: any; onDone: () => void 
   );
 }
 
+/** What patients read about this clinician on their My Doctor page. */
+function ProfileForm({ clinician, onDone }: { clinician: any; onDone: () => void }) {
+  const { t } = useI18n();
+  const [specialty, setSpecialty] = useState(clinician.specialty ?? '');
+  const [bio, setBio] = useState(clinician.bio ?? '');
+  const [languages, setLanguages] = useState((clinician.languages ?? []).join(', '));
+  const [save, { loading, error }] = useMutation(UPDATE_CLINICIAN_PROFILE, { onCompleted: onDone });
+  const field = 'border border-gray-200 rounded-lg px-2 py-1 text-xs w-full focus:outline-none focus:ring-2 focus:ring-brand-500';
+
+  return (
+    <form
+      className="space-y-1.5 min-w-[16rem]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save({ variables: { input: { clinicianId: clinician.id, specialty, bio, languages: languages.split(',') } } });
+      }}
+    >
+      <input value={specialty} onChange={(e) => setSpecialty(e.target.value)} maxLength={100} placeholder={t('Specialty, e.g. Endocrinologist')} className={field} />
+      <textarea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={500} rows={3} placeholder={t('A line or two about their experience')} className={field} />
+      <input value={languages} onChange={(e) => setLanguages(e.target.value)} placeholder={t('Languages, separated by commas')} className={field} />
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={loading} className="text-xs font-medium bg-brand-500 text-white px-2.5 py-1 rounded-lg disabled:opacity-50">{loading ? t('Saving…') : t('Save')}</button>
+        <button type="button" onClick={onDone} className="text-xs text-gray-500">{t('Cancel')}</button>
+      </div>
+      {error && <p className="text-xs text-red-500">{error.message}</p>}
+    </form>
+  );
+}
+
 const ROLES = ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'] as const;
 
 const ROLE_META: Record<string, { label: string; cls: string; description: string }> = {
@@ -72,6 +102,7 @@ export default function TeamPage() {
   });
   const [revoke] = useMutation(REVOKE_CLINICIAN_VERIFICATION);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   const clinicians = data?.clinicians ?? [];
   const byRole = ROLES.reduce((acc, r) => {
@@ -84,7 +115,7 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-lg font-semibold text-gray-900">{t('Team & Roles')}</h1>
@@ -92,7 +123,7 @@ export default function TeamPage() {
       </div>
 
       {/* Role overview cards */}
-      <div className="grid grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         {ROLES.map((role) => {
           const meta = ROLE_META[role];
           return (
@@ -116,8 +147,8 @@ export default function TeamPage() {
       </p>
 
       {/* Clinicians table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm min-w-[720px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
               <th className="px-5 py-3">{t('Name')}</th>
@@ -138,6 +169,14 @@ export default function TeamPage() {
                     </div>
                     <span className="font-medium text-gray-900">{c.firstName} {c.lastName}</span>
                   </div>
+                  {profileId === c.id ? (
+                    <div className="mt-2"><ProfileForm clinician={c} onDone={() => setProfileId(null)} /></div>
+                  ) : (
+                    <div className="mt-1 text-xs text-gray-400 max-w-xs">
+                      {(c.specialty || c.languages.length > 0) && <p>{[c.specialty, c.languages.join(', ')].filter(Boolean).join(' · ')}</p>}
+                      <button onClick={() => setProfileId(c.id)} className="text-brand-500 hover:underline">{t('Edit what patients see')}</button>
+                    </div>
+                  )}
                 </td>
                 <td className="px-5 py-3 text-gray-500">{c.email}</td>
                 <td className="px-5 py-3 text-gray-400">
