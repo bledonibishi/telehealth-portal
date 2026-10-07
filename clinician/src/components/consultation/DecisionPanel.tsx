@@ -203,10 +203,10 @@ export function DecisionPanel({
 
       {action === 'approve' && (
         <Modal title={t('Approve and prescribe')} subtitle={t('Issues the prescription and sends it to the pharmacy queue.')} onClose={close} wide>
-          {error && <p className="text-sm text-danger-500 mb-3">{error}</p>}
           <PrescriptionForm
             consultationId={consultationId}
             kind={kind}
+            error={error}
             showDoseContext
             submitting={approving}
             onCancel={close}

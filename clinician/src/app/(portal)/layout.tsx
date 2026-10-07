@@ -32,13 +32,13 @@ type NotifCounts = {
 const NAV: NavItem[] = [
   { href: '/',         label: 'Dashboard',     icon: '📊', roles: ['ADMIN'] },
   { href: '/leads',    label: 'Leads',         icon: '🎯', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
-  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
+  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'],                     badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
   { href: '/check-ins', label: 'Check-ins',     icon: '🩺', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/appointments', label: 'Appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR'],                            badgeKey: 'urgentAppointments' },
   { href: '/labs',     label: 'Labs',           icon: '🧪', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
-  { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'],                    badgeKey: 'shipmentsDue' },
+  { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'shipmentsDue' },
   { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
 ];
 
@@ -59,15 +59,23 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [authChecked, setAuthChecked] = useState(false);
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
-  const counts: NotifCounts = data?.notificationCounts ?? {
+  const raw: NotifCounts & { orderProblems?: number } = data?.notificationCounts ?? {
     newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0,
   };
+  // Orders needing attention (admin only) add to the Orders badge.
+  const counts: NotifCounts = { ...raw, pendingOrders: raw.pendingOrders + (raw.orderProblems ?? 0) };
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
     setRole(getCurrentRole());
     setAuthChecked(true);
   }, [router]);
+
+  // The pharmacy partner has one page. If it lands on another (a bookmark, a typed address), send it back:
+  // the server refuses it patient data anyway, this just spares it an error screen.
+  useEffect(() => {
+    if (role === 'PROVIDER' && !pathname.startsWith('/orders')) router.replace('/orders');
+  }, [role, pathname, router]);
 
   const handleLogout = () => { clearToken(); router.replace('/login'); };
 

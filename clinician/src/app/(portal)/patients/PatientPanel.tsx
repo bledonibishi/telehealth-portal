@@ -863,7 +863,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                           <p className="text-xs text-gray-400">
                             {c.status === 'SENT' ? t('Waiting for the patient to complete their check-in.') : t('Will be emailed automatically once due.')}
                           </p>
-                          {c.status === 'SCHEDULED' && canReviewOnboarding && (
+                          {process.env.NODE_ENV !== 'production' && c.status !== 'COMPLETED' && canReviewOnboarding && (
                             editingCheckInId === c.id ? (
                               <div className="mt-2 flex items-center gap-2">
                                 <input

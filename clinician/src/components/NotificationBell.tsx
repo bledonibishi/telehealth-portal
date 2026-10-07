@@ -15,9 +15,10 @@ const ITEMS: Item[] = [
   { label: 'Patient messages with no reply', count: 0, href: '/patients', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] },
   { label: 'Orders pending dispatch',   count: 0, href: '/orders',   roles: ['ADMIN', 'PROVIDER'] },
   { label: 'GLP-1 patients with missed doses', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
-  { label: 'Shipments due or late', count: 0, href: '/shipments', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'] },
+  { label: 'Shipments due or late', count: 0, href: '/shipments', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Side effects reported by patients', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Urgent appointment requests (24h)', count: 0, href: '/appointments', roles: ['ADMIN', 'DOCTOR'] },
+  { label: 'Orders with a delivery problem', count: 0, href: '/orders', roles: ['ADMIN'] },
 ];
 
 export function NotificationBell() {
@@ -39,6 +40,7 @@ export function NotificationBell() {
     { ...ITEMS[5], count: counts?.shipmentsDue ?? 0 },
     { ...ITEMS[6], count: counts?.sideEffectAlerts ?? 0 },
     { ...ITEMS[7], count: counts?.urgentAppointments ?? 0 },
+    { ...ITEMS[8], count: counts?.orderProblems ?? 0 },
   ].filter((item) => !role || item.roles.includes(role));
 
   const total = items.reduce((sum, i) => sum + i.count, 0);

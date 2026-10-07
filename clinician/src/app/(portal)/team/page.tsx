@@ -61,7 +61,7 @@ const ROLE_META: Record<string, { label: string; cls: string; description: strin
   ADMIN:    { label: 'Admin',    cls: 'bg-purple-100 text-purple-700', description: 'Full access to all features' },
   DOCTOR:   { label: 'Doctor',   cls: 'bg-blue-100 text-blue-700',     description: 'Patients, review queue' },
   CX_TEAM:  { label: 'CX Team',  cls: 'bg-teal-100 text-teal-700',     description: 'Leads, patients, messaging' },
-  PROVIDER: { label: 'Provider', cls: 'bg-amber-100 text-amber-700',   description: 'Patients, orders' },
+  PROVIDER: { label: 'Provider', cls: 'bg-amber-100 text-amber-700',   description: 'Orders only (pharmacy partner)' },
 };
 
 export default function TeamPage() {
