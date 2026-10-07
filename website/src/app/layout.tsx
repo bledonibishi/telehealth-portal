@@ -4,9 +4,9 @@ import ReferralCapture from '@/components/ReferralCapture';
 import Analytics from '@/components/Analytics';
 
 export const metadata: Metadata = {
-  title: 'Primavera Healthcare – HRT & GLP-1 Treatment Online',
+  title: 'Primavera Healthcare – Doctor-led menopause, weight and men’s health care',
   description:
-    'Licensed clinicians. Registered HRT and GLP-1 weight-loss medications. Free delivery to Kosovo. Start your 2-minute eligibility assessment.',
+    'Licensed clinicians. Prescription treatment only if your doctor decides it is right for you. Free delivery to Kosovo. Check your eligibility in 2 minutes.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

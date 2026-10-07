@@ -19,13 +19,13 @@ export default function Navbar() {
 
         <div className="pv-nav-cta">
           <Link href="/hrt-eligibility" className="pv-nav-btn outline">
-            Start HRT
+            Menopause
           </Link>
           <Link href="/trt-eligibility" className="pv-nav-btn outline">
-            Start TRT
+            Men&apos;s health
           </Link>
           <Link href="/glp1-eligibility" className="pv-nav-btn solid">
-            Start GLP-1
+            Weight management
           </Link>
         </div>
       </div>

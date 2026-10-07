@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG, type PlanKey } from '@/lib/config';
-import { useDosePrice } from '@/lib/dose-prices';
+import { useTreatmentPrice } from '@/lib/dose-prices';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
 import { STORE_PRODUCTS } from '@/lib/catalog';
 
@@ -38,7 +38,11 @@ async function post<T>(url: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) {
+    // A 4xx carries a message meant for the buyer (e.g. the reward can't be applied); show it as it is.
+    const message = res.status < 500 ? ((await res.json().catch(() => null)) as { message?: string } | null)?.message : undefined;
+    throw Object.assign(new Error('HTTP ' + res.status), { userMessage: typeof message === 'string' ? message : undefined });
+  }
   return res.json() as Promise<T>;
 }
 
@@ -49,7 +53,7 @@ function StripeMount({
   priceId: string; planName: string; leadId?: string | null;
   product?: string | null; dose?: string | null; applyReward: boolean; addProgesterone: boolean;
   confirmRef: MutableRefObject<ConfirmFn | null>;
-  onReady: (mode: 'element' | 'redirect') => void;
+  onReady: (mode: 'element' | 'redirect' | 'error') => void;
   onComplete: (complete: boolean) => void;
   onAmounts: (a: Amounts) => void;
 }) {
@@ -128,6 +132,16 @@ function StripeMount({
       .catch((ex) => {
         if (cancelled) return;
         console.warn('[checkout] Stripe inline unavailable:', ex);
+        const userMessage = (ex as { userMessage?: string })?.userMessage;
+        if (userMessage) {
+          // The server refused this order for a reason the buyer can act on: say so and don't offer to pay.
+          const note = document.createElement('p');
+          note.className = 'pv-panel-note';
+          note.textContent = userMessage;
+          mount.replaceChildren(note);
+          onReady('error');
+          return;
+        }
         mount.innerHTML = '<p class="pv-panel-note">You will enter your card details on Stripe\'s secure checkout page in the next step.</p>';
         onReady('redirect');
       });
@@ -239,7 +253,7 @@ function CheckoutInner() {
   const [planKey, setPlanKey] = useState<PlanKey | null>(null);
 
   const [chosen, setChosen] = useState<PayMethod | null>(null);
-  const [stripeMode, setStripeMode] = useState<'element' | 'redirect' | null>(null);
+  const [stripeMode, setStripeMode] = useState<'element' | 'redirect' | 'error' | null>(null);
   const [stripeComplete, setStripeComplete] = useState(false);
   const [payseraMode, setPayseraMode] = useState<'list' | 'redirect' | null>(null);
   const [payseraMethod, setPayseraMethod] = useState<string | null>(null);
@@ -253,6 +267,8 @@ function CheckoutInner() {
   const [touched, setTouched] = useState(false);
   const [reward, setReward] = useState<Reward | null>(null);
   const [rewardApplied, setRewardApplied] = useState(false);
+  // The card form waits for this, so it starts with the right discount.
+  const [rewardChecked, setRewardChecked] = useState(false);
 
   useEffect(() => {
     const s = loadAssessment();
@@ -269,16 +285,27 @@ function CheckoutInner() {
     if (s?.leadId) {
       fetch(`${CONFIG.API_BASE}/api/checkout/rewards?leadId=${encodeURIComponent(s.leadId)}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { referralReward: Reward | null } | null) => setReward(d?.referralReward ?? null))
-        .catch(() => {});
+        .then((d: { referralReward: Reward | null } | null) => {
+          const offered = d?.referralReward ?? null;
+          setReward(offered);
+          // Only what the buyer chose to apply on the review step. It can't be changed on this page, because
+          // that rebuilds the card form and the card details would have to be retyped.
+          if (offered) setRewardApplied(s?.applyReward ?? false);
+        })
+        .catch(() => {})
+        .finally(() => setRewardChecked(true));
+    } else {
+      setRewardChecked(true);
     }
   }, [planKeyParam]);
 
   const basePlan = planKey ? CONFIG.PLANS[planKey] : null;
-  // Each GLP-1 dose has its own price, which the server charges; show that one when it's set.
-  const dosePrice = useDosePrice(session?.productName, session?.dose);
+  // Each dose has its own price (plus the progesterone's when added), which the server charges; show that one when it's set.
+  const dosePrice = useTreatmentPrice(session?.productName, session?.dose, session?.addProgesterone ?? false);
   const plan =
-    basePlan && dosePrice ? { ...basePlan, price: dosePrice, name: `${session!.productName} ${session!.dose}` } : basePlan;
+    basePlan && dosePrice
+      ? { ...basePlan, price: dosePrice, name: `${session!.productName} ${session!.dose}${session?.addProgesterone ? ' + progesterone' : ''}` }
+      : basePlan;
   // A payment without a saved lead would never get a patient account created.
   const eligible = !!session?.passed && !!session?.leadId && !!plan && plan.product === session?.product;
   // A plan with no display price or Stripe price configured can't be ordered.
@@ -291,15 +318,6 @@ function CheckoutInner() {
     if (chosen === 'paysera') return payseraMode === 'redirect' || (payseraMode === 'list' && !!payseraMethod);
     return false;
   }, [shippingValid, planAvailable, chosen, stripeMode, stripeComplete, payseraMode, payseraMethod]);
-
-  const toggleReward = () => {
-    // The card form is created with (or without) the reward, so it restarts.
-    setRewardApplied((v) => !v);
-    setStripeComplete(false);
-    setStripeMode(null);
-    setAmounts(null);
-    setPayError('');
-  };
 
   const handlePay = async () => {
     if (!plan || !planKey) return;
@@ -407,7 +425,6 @@ function CheckoutInner() {
     );
   }
 
-  const eligUrl = plan!.product === 'HRT' ? '/hrt-eligibility' : plan!.product === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility';
   const storeProduct = STORE_PRODUCTS.find((p) => p.slug === session?.productSlug);
   const medName =
     plan!.product === 'GLP1' && !storeProduct && session?.med && CONFIG.MEDICATIONS[session.med] ? CONFIG.MEDICATIONS[session.med] : null;
@@ -417,6 +434,8 @@ function CheckoutInner() {
   const rewardOff = reward?.amountOffCents != null ? reward.amountOffCents / 100 : reward?.percentOff != null ? (planAmount * reward.percentOff) / 100 : 0;
   const rewardLabel =
     reward?.amountOffCents != null ? money(reward.amountOffCents, reward.currency) : reward?.percentOff != null ? `${reward.percentOff}%` : '';
+  // Once Stripe has priced the order, show what it actually took off, in the order's currency.
+  const rewardTaken = rewardApplied && amounts && amounts.discountCents > 0 ? money(amounts.discountCents, amounts.currency) : rewardLabel;
   // Stripe's own total once the card form has created the payment; otherwise an
   // estimate, and never a made-up £0.00 when the display price isn't configured.
   const dueToday =
@@ -535,7 +554,7 @@ function CheckoutInner() {
                   <div className="th-co-method-desc">Visa, Mastercard &amp; more — powered by Stripe</div>
                 </div>
               </button>
-              {chosen === 'stripe' && (
+              {chosen === 'stripe' && rewardChecked && (
                 <div className="th-co-panel">
                   <StripeMount
                     key={rewardApplied ? 'reward' : 'full'}
@@ -599,26 +618,23 @@ function CheckoutInner() {
               <div className="th-co-divider" />
               <div className="th-co-row"><span>{plan!.name} · billed monthly</span><span>{plan!.price}</span></div>
               {rewardApplied && reward && (
-                <div className="th-co-row reward"><span>Referral reward</span><span>−{rewardLabel}</span></div>
+                <div className="th-co-row reward"><span>Referral reward</span><span>−{rewardTaken}</span></div>
               )}
               <div className="th-co-row total"><span>Due today</span><span>{dueToday}</span></div>
               <p className="th-co-note">Your doctor reviews your assessment first. If they can&apos;t prescribe, you&apos;re refunded.</p>
               <div className="th-co-divider" />
-              <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
-                ← Change plan
+              <Link href="/review" style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
+                ← Change dose or voucher
               </Link>
             </div>
 
-            {reward && (
-              <div className={`th-co-card th-reward${rewardApplied ? ' applied' : ''}`}>
+            {reward && rewardApplied && (
+              <div className="th-co-card th-reward applied">
                 <div className="th-reward-icon">🎁</div>
                 <div className="th-reward-body">
                   <div className="th-reward-title">{rewardLabel} off your first order</div>
-                  <div className="th-reward-desc">{reward.title} · {reward.description}</div>
+                  <div className="th-reward-desc">{reward.title} · applied to this order</div>
                 </div>
-                <button type="button" className={`th-reward-btn${rewardApplied ? ' remove' : ''}`} onClick={toggleReward}>
-                  {rewardApplied ? 'Remove' : 'Apply'}
-                </button>
               </div>
             )}
           </aside>
