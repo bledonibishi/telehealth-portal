@@ -5,6 +5,7 @@ import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '../../graphql/onboarding';
 import { ME_BASIC_INFO, MY_CONSULTATIONS } from '../../graphql/operations';
 import { signOut } from '../../lib/session';
 import { colors } from '../../theme';
+import { identityHint, SUBMITTED_STATUSES, useIdentityVerification } from '../../lib/useIdentityVerification';
 
 // While the application is with a doctor, look again this often: the screen moves on by itself once they decide.
 const REVIEW_POLL_MS = 15_000;
@@ -27,6 +28,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   });
   const { data: meData, refetch: refetchMe } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
   const { data: consultData, refetch: refetchConsults } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const { data: idvData, refetch: refetchIdv } = useIdentityVerification();
   const [submitError, setSubmitError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -34,7 +36,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   const refresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), refetchMe(), refetchConsults()]).catch(() => undefined);
+    await Promise.all([refetch(), refetchMe(), refetchConsults(), refetchIdv()]).catch(() => undefined);
     setRefreshing(false);
   };
 
@@ -46,9 +48,9 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   useEffect(() => {
     // Coming back from a step shows where things stand now.
-    const unsubscribe = navigation.addListener('focus', () => { refetch(); refetchMe(); refetchConsults(); });
+    const unsubscribe = navigation.addListener('focus', () => { refetch(); refetchMe(); refetchConsults(); refetchIdv(); });
     return unsubscribe;
-  }, [navigation, refetch, refetchMe, refetchConsults]);
+  }, [navigation, refetch, refetchMe, refetchConsults, refetchIdv]);
 
   useEffect(() => {
     if (o?.status === 'APPROVED') {
@@ -60,7 +62,10 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   if (error) return <Text style={styles.error}>{error.message}</Text>;
   if (!o) return null;
 
-  const idPhotoDone = !!o.idDocumentUrl && !!o.selfieUrl;
+  // With the verification service the check happens on its own page: the step is done once the
+  // photos are submitted there, whether or not a decision has been made yet.
+  const idv = idvData?.myIdentityVerification;
+  const idPhotoDone = idv?.configured ? SUBMITTED_STATUSES.includes(idv.status ?? '') : !!o.idDocumentUrl && !!o.selfieUrl;
   const bodyPhotoDone = !!o.bodyPhotoFrontUrl && !!o.bodyPhotoSideUrl;
   // Photos are saved one at a time, so a step can be half done: say which part is left.
   const idHave = [o.idDocumentUrl, o.selfieUrl].filter(Boolean).length;
@@ -101,7 +106,12 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   const baseSteps: { key: StepKey; label: string; hint: string; done: boolean; attention?: boolean }[] = [
     { key: 'BasicInformation', label: 'Basic information', hint: 'Your details and where we send your treatment', done: basicDone },
     { key: 'MedicalQuestionnaire', label: 'Medical questionnaire', hint: 'Your health, medicines and measurements', done: questionnaireDone },
-    { key: 'IdPhoto', label: 'ID Photo', hint: idHint, done: idPhotoDone },
+    {
+      key: 'IdPhoto',
+      label: idv?.configured ? 'Verify your identity' : 'ID Photo',
+      hint: idv?.configured ? identityHint(idv.status) : idHint,
+      done: idPhotoDone,
+    },
     { key: 'BodyPhoto', label: 'Full body photo', hint: bodyHint, done: bodyPhotoDone },
     {
       key: 'PrescriptionProof',
