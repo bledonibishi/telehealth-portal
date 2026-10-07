@@ -73,6 +73,8 @@ function missedDoseAdvice(d: DoseEvent, needsClinician: boolean): string | null 
 
 // Where the injection-site picker and the how-to guide apply: pens for the weight-loss medicines.
 const isRotatingPen = (d: DoseEvent) => d.product.category === 'GLP1' && d.product.form === 'INJECTION_PEN';
+/** Pens and vials: "how are you feeling after your injection?" makes no sense for a patch or a gel. */
+const isInjected = (d: DoseEvent) => d.product.form === 'INJECTION_PEN' || d.product.form === 'INJECTION_VIAL';
 
 /** "today" / "tomorrow" / "in 7 days" / "2 days ago", counted in calendar days. */
 function countdown(date: Date): string {
@@ -125,7 +127,8 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const [guide, setGuide] = useState(false);
   const [video, setVideo] = useState(false);
   const [error, setError] = useState('');
-  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
+  // Same variables as the page's own query, or the refetch lands under another cache key and the dose on screen goes stale.
+  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR, variables: { fromDays: 60, toDays: 90 } }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
   const [markSkipped, { loading: skipping }] = useMutation(MARK_DOSE_SKIPPED, opts);
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
@@ -255,7 +258,7 @@ export default function DosesPage() {
   const calendarRef = useRef<FullCalendar>(null);
   const doseDates = useMemo(() => new Set(doses.map((d) => format(new Date(d.scheduledFor), 'yyyy-MM-dd'))), [doses]);
 
-  const askedAbout = doseToAskAbout(doses);
+  const askedAbout = doseToAskAbout(doses.filter(isInjected));
   const lastSite = lastSiteOf(doses);
 
   const handleEventClick = (arg: EventClickArg) => setSelectedId(arg.event.id);

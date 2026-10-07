@@ -38,7 +38,9 @@ function Sparkline({ points }: { points: { weightKg: number; measuredAt: string 
 
 export function WeightScreen() {
   const { data, loading, error, refetch } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
-  const range = useMemo(() => ({ from: new Date(Date.now() - 90 * DAY).toISOString(), to: new Date(Date.now() + DAY).toISOString() }), []);
+  // The window follows the calendar: fixed within a day (so the query is not re-sent on every render) and moved on the next, so a weight logged days after the app opened is still inside it.
+  const today = new Date().toDateString();
+  const range = useMemo(() => ({ from: new Date(Date.now() - 90 * DAY).toISOString(), to: new Date(Date.now() + DAY).toISOString() }), [today]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: tl } = useQuery(MY_WEIGHT_TIMELINE, { variables: { ...range, limit: 200 }, fetchPolicy: 'cache-and-network' });
   const [sheet, setSheet] = useState<'log' | 'target' | null>(null);
 

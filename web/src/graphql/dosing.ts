@@ -64,6 +64,11 @@ export const UNMARK_DOSE = gql`
     unmarkDose(id: $id) {
       id
       status
+      takenAt
+      note
+      injectionSite
+      feelingAfter
+      feelingAfterAt
     }
   }
 `;

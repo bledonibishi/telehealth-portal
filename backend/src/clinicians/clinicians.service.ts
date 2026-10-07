@@ -49,31 +49,42 @@ export class CliniciansService {
     return updated;
   }
 
-  /** What patients read about a clinician. An empty value clears it. */
+  /** What patients read about a clinician. A field that is left out stays as it is; an empty value clears it. */
   async updateProfile(actorId: string, input: UpdateClinicianProfileInput) {
-    const specialty = input.specialty?.trim() || null;
-    const bio = input.bio?.trim() || null;
-    if (specialty && specialty.length > MAX_SPECIALTY_LENGTH) throw new BadRequestException(`The specialty can be up to ${MAX_SPECIALTY_LENGTH} characters`);
-    if (bio && bio.length > MAX_BIO_LENGTH) throw new BadRequestException(`The description can be up to ${MAX_BIO_LENGTH} characters`);
-    // Trimmed, blanks dropped, and no language listed twice however it was capitalised.
-    const languages: string[] = [];
-    for (const l of (input.languages ?? []).map((x) => x.trim()).filter(Boolean)) {
-      if (!languages.some((seen) => seen.toLowerCase() === l.toLowerCase())) languages.push(l);
+    const data: { specialty?: string | null; bio?: string | null; languages?: string[] } = {};
+    if (input.specialty != null) {
+      data.specialty = input.specialty.trim() || null;
+      if (data.specialty && data.specialty.length > MAX_SPECIALTY_LENGTH) throw new BadRequestException(`The specialty can be up to ${MAX_SPECIALTY_LENGTH} characters`);
     }
-    if (languages.length > MAX_LANGUAGES) throw new BadRequestException(`List up to ${MAX_LANGUAGES} languages`);
-    if (languages.some((l) => l.length > MAX_LANGUAGE_LENGTH)) throw new BadRequestException(`A language can be up to ${MAX_LANGUAGE_LENGTH} characters`);
+    if (input.bio != null) {
+      data.bio = input.bio.trim() || null;
+      if (data.bio && data.bio.length > MAX_BIO_LENGTH) throw new BadRequestException(`The description can be up to ${MAX_BIO_LENGTH} characters`);
+    }
+    if (input.languages != null) {
+      // Trimmed, blanks dropped, and no language listed twice however it was capitalised.
+      const languages: string[] = [];
+      for (const l of input.languages.map((x) => x.trim()).filter(Boolean)) {
+        if (!languages.some((seen) => seen.toLowerCase() === l.toLowerCase())) languages.push(l);
+      }
+      if (languages.length > MAX_LANGUAGES) throw new BadRequestException(`List up to ${MAX_LANGUAGES} languages`);
+      if (languages.some((l) => l.length > MAX_LANGUAGE_LENGTH)) throw new BadRequestException(`A language can be up to ${MAX_LANGUAGE_LENGTH} characters`);
+      data.languages = languages;
+    }
 
     const before = await this.prisma.clinician.findUnique({ where: { id: input.clinicianId } });
     if (!before) throw new NotFoundException('Clinician not found');
 
-    const updated = await this.prisma.clinician.update({ where: { id: input.clinicianId }, data: { specialty, bio, languages } });
+    const updated = await this.prisma.clinician.update({ where: { id: input.clinicianId }, data });
     await this.audit.log({
       actorId,
       actorRole: UserRole.CLINICIAN,
       action: 'CLINICIAN_PROFILE_UPDATED',
       resourceType: 'Clinician',
       resourceId: input.clinicianId,
-      metadata: { from: { specialty: before.specialty, bio: before.bio, languages: before.languages }, to: { specialty, bio, languages } },
+      metadata: {
+        from: Object.fromEntries(Object.keys(data).map((k) => [k, (before as any)[k]])),
+        to: data,
+      },
     });
     return updated;
   }

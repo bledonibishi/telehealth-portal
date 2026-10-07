@@ -870,4 +870,5 @@ export const de: Record<string, string> = {
   "Weight lost is each weight-programme patient’s last check-in of the month against the weight they started at, averaged. Patients who gained weight are included. Reached 5% is the share who had lost at least 5%.": "Der Gewichtsverlust ist der letzte Check-in des Monats jedes Patienten im Gewichtsprogramm gegenüber dem Startgewicht, gemittelt. Wer zugenommen hat, ist eingerechnet. „5 % erreicht“ ist der Anteil mit mindestens 5 % Verlust.",
   "Months are calendar months in UTC.": "Monate sind Kalendermonate in UTC.",
   "Only admins can see the monthly report.": "Nur Administratoren können den Monatsbericht sehen.",
+  "The CSV has only the {n} entries loaded. Load more first for the rest.": "Die CSV enthält nur die {n} geladenen Einträge. Zuerst mehr laden für den Rest.",
 };

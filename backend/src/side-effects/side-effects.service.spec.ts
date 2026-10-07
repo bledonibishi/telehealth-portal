@@ -179,6 +179,18 @@ describe('SideEffectsService', () => {
       expect(s.reasons).toEqual(['1 reported side effect not yet acknowledged', 'Felt unwell after 1 recent dose']);
     });
 
+    it('does not count the report a high score raised as a second problem', async () => {
+      prisma.sideEffectLog.findMany.mockResolvedValue([log(1, { nausea: 8 })]);
+      prisma.sideEffectReport.findMany.mockResolvedValue([row({ severity: 'MODERATE', note: 'Weekly tracker: nausea 8/10' })]);
+      expect((await service.summaryFor('p-1', now)).reasons).toEqual(['Nausea 8/10 at the last check']);
+    });
+
+    it('still counts an unacknowledged tracker report once the latest week is no longer high', async () => {
+      prisma.sideEffectLog.findMany.mockResolvedValue([log(1, { nausea: 2 }), log(8, { nausea: 8 })]);
+      prisma.sideEffectReport.findMany.mockResolvedValue([row({ severity: 'MODERATE', note: 'Weekly tracker: nausea 8/10' })]);
+      expect((await service.summaryFor('p-1', now)).reasons).toEqual(['1 reported side effect not yet acknowledged']);
+    });
+
     it('is calm when there is nothing to flag, and stale when nothing has been logged', async () => {
       const s = await service.summaryFor('p-1', now);
       expect(s).toMatchObject({ needsAttention: false, reasons: [], stale: true });

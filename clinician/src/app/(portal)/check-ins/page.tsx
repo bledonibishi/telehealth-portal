@@ -91,6 +91,8 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
           outcome,
           note: note.trim() || undefined,
           messageToPatient: message.trim() || undefined,
+          // The server refuses an approval without this when the summary flags something.
+          sideEffectsReviewed: seReviewed || undefined,
           ...extra,
         },
       },

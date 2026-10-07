@@ -171,10 +171,18 @@ describe('DosingService patient actions', () => {
   });
 
   describe('feeling after a dose', () => {
-    it('is stored on a dose that was taken', async () => {
-      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN' });
+    it('is stored on an injection that was taken', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue({ product: { form: 'INJECTION_PEN' } });
       await service.logFeeling('p-1', 'd-1', 'NOT_WELL' as any);
       expect(prisma.doseEvent.update).toHaveBeenCalledWith({ where: { id: 'd-1' }, data: { feelingAfter: 'NOT_WELL', feelingAfterAt: expect.any(Date) } });
+    });
+
+    it('is not recorded for a patch or a gel', async () => {
+      prisma.doseEvent.findUnique.mockResolvedValue({ id: 'd-1', patientId: 'p-1', status: 'TAKEN', prescriptionItemId: 'item-1' });
+      prisma.prescriptionItem.findUnique.mockResolvedValue({ product: { form: 'PATCH' } });
+      await expect(service.logFeeling('p-1', 'd-1', 'GOOD' as any)).rejects.toThrow(/only recorded for injections/);
+      expect(prisma.doseEvent.update).not.toHaveBeenCalled();
     });
 
     it('cannot be given for a dose that was not taken', async () => {

@@ -28,11 +28,11 @@ export function weightFacts(currentKg: number | null, previousKg: number | null,
 }
 
 export const kgText = (n: number | null) => (n == null ? '—' : `${n} kg`);
-/** "−2.4 kg (−2.4%)" / "+0.5 kg" / "no change" */
+/** "-2.4 kg (-2.4%)" / "+0.5 kg" / "no change". A plain hyphen: the PDF's built-in font has no true minus sign, and would print nothing. */
 export function changeText(kg: number | null, pct: number | null): string {
   if (kg == null) return '—';
   if (kg === 0) return 'no change';
-  const sign = kg < 0 ? '−' : '+';
+  const sign = kg < 0 ? '-' : '+';
   return `${sign}${Math.abs(kg)} kg${pct != null ? ` (${sign}${Math.abs(pct)}%)` : ''}`;
 }
 

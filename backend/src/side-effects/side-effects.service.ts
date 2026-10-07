@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LogSideEffectScoresInput, ReportSideEffectsInput, SideEffectAlertModel, SideEffectReportModel, SideEffectScoreEntryModel, SideEffectSummaryModel } from './models/side-effect.model';
 import { MAX_NOTE_LENGTH, MAX_REPORTS_PER_DAY, OPEN_ALERTS_WHERE, SIDE_EFFECT_KEYS, URGENT_ADVICE, adviceFor, byUrgency } from './side-effects';
 import {
-  MAX_ENTRIES_PER_DAY, MAX_NOTE_LENGTH as MAX_SCORE_NOTE_LENGTH, PEAK_DAYS, REPORT_KEY, SCORE_KEYS, SCORE_LABEL, ScoreEntry,
+  MAX_ENTRIES_PER_DAY, MAX_NOTE_LENGTH as MAX_SCORE_NOTE_LENGTH, PEAK_DAYS, REPORT_KEY, SCORE_KEYS, SCORE_LABEL, ScoreEntry, TRACKER_NOTE_PREFIX,
   HIGH_SCORE, alertSeverityFor, attentionReasons, isValidScore, summariseScores,
 } from './side-effect-scores';
 
@@ -88,7 +88,7 @@ export class SideEffectsService {
               patientId,
               effects: high.map((k) => REPORT_KEY[k]),
               severity,
-              note: `Weekly tracker: ${high.map((k) => `${SCORE_LABEL[k].toLowerCase()} ${scores[k]}/10`).join(', ')}${note ? `. ${note}` : ''}`.slice(0, MAX_NOTE_LENGTH),
+              note: `${TRACKER_NOTE_PREFIX} ${high.map((k) => `${SCORE_LABEL[k].toLowerCase()} ${scores[k]}/10`).join(', ')}${note ? `. ${note}` : ''}`.slice(0, MAX_NOTE_LENGTH),
               medication: rx ? `${rx.medication} ${rx.dosage}`.trim() : null,
             },
           });
@@ -126,7 +126,11 @@ export class SideEffectsService {
     ]);
     const entries = logs as unknown as ScoreEntry[];
     const summary = summariseScores(entries, now);
-    const reasons = attentionReasons(summary, { unacknowledgedReports: reports.filter((r) => !r.acknowledgedAt), roughDoses });
+    // A report the tracker raised for a high score is the same event as that score: counting both would show one problem twice.
+    // It still counts when the latest week is no longer high, because the doctor has not acknowledged it.
+    const covered = summary.rows.some((r) => r.flagged);
+    const unacknowledged = reports.filter((r) => !r.acknowledgedAt && !(covered && r.note?.startsWith(TRACKER_NOTE_PREFIX)));
+    const reasons = attentionReasons(summary, { unacknowledgedReports: unacknowledged, roughDoses });
     return {
       lastLoggedAt: summary.lastLoggedAt,
       daysSinceLastLog: summary.daysSinceLastLog,

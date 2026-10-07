@@ -15,6 +15,8 @@ export type Dose = {
 export const doseName = (d: Dose) => `${d.product.brandName ?? d.product.name} ${d.strength.label}`;
 /** Pens for the weight-loss medicines: where the site picker and the how-to apply. */
 export const isRotatingPen = (d: Dose) => d.product.category === 'GLP1' && d.product.form === 'INJECTION_PEN';
+/** Pens and vials: "how are you feeling after your injection?" makes no sense for a patch or a gel. */
+export const isInjected = (d: Dose) => d.product.form === 'INJECTION_PEN' || d.product.form === 'INJECTION_VIAL';
 
 export type VisualStatus = 'SCHEDULED' | 'DUE' | 'TAKEN' | 'MISSED' | 'SKIPPED';
 /** A scheduled dose from an earlier day that was never logged reads as "due". */
@@ -53,7 +55,7 @@ export const ASK_UNTIL_HOURS = 7 * 24;
 export function doseToAskAbout(doses: Dose[], now: Date = new Date()): Dose | null {
   return (
     doses
-      .filter((d) => d.status === 'TAKEN' && d.takenAt && !d.feelingAfter)
+      .filter((d) => isInjected(d) && d.status === 'TAKEN' && d.takenAt && !d.feelingAfter)
       .filter((d) => { const h = hoursSince(d.takenAt!, now); return h >= ASK_AFTER_HOURS && h < ASK_UNTIL_HOURS; })
       .sort((a, b) => b.takenAt!.localeCompare(a.takenAt!))[0] ?? null
   );

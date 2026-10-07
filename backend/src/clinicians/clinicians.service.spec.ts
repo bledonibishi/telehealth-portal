@@ -22,13 +22,19 @@ describe('CliniciansService.updateProfile', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'CLINICIAN_PROFILE_UPDATED',
       resourceId: 'c-1',
-      metadata: { from: { specialty: 'GP', bio: null, languages: ['Albanian'] }, to: expect.objectContaining({ specialty: 'Endocrinologist' }) },
+      metadata: { from: { specialty: 'GP', bio: null, languages: ['Albanian'] }, to: { specialty: 'Endocrinologist', bio: '10 years with GLP-1 treatment', languages: ['Albanian', 'English'] } },
     }));
   });
 
-  it('clears fields left empty', async () => {
+  it('clears a field sent empty', async () => {
     await service.updateProfile('admin-1', { clinicianId: 'c-1', specialty: '  ', languages: [] });
-    expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: { specialty: null, bio: null, languages: [] } });
+    expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: { specialty: null, languages: [] } });
+  });
+
+  it('leaves alone a field that was not sent, so a partial update never wipes the rest', async () => {
+    await service.updateProfile('admin-1', { clinicianId: 'c-1', bio: 'New bio' });
+    expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: { bio: 'New bio' } });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: { from: { bio: null }, to: { bio: 'New bio' } } }));
   });
 
   it('lists a language once however it is capitalised, and drops blanks', async () => {

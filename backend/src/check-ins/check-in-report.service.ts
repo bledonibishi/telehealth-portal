@@ -133,7 +133,7 @@ export class CheckInReportService {
     row('Now', kgText(data.weight.currentKg));
     row('At your last check-in', data.weight.previousKg == null ? 'This was your first check-in' : kgText(data.weight.previousKg));
     if (data.weight.previousKg != null) row('Change since then', changeText(data.weight.changeKg, data.weight.changePct));
-    if (data.weight.startingKg != null) row('Since you started', `${kgText(data.weight.startingKg)} → ${kgText(data.weight.currentKg)} (${changeText(data.weight.lostSinceStartKg == null ? null : -data.weight.lostSinceStartKg, null)})`);
+    if (data.weight.startingKg != null) row('Since you started', `${kgText(data.weight.startingKg)} to ${kgText(data.weight.currentKg)} (${changeText(data.weight.lostSinceStartKg == null ? null : -data.weight.lostSinceStartKg, null)})`);
     doc.moveDown();
 
     doc.fontSize(12).font('Helvetica-Bold').text('Your dose');

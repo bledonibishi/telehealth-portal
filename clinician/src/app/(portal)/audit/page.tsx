@@ -88,7 +88,10 @@ function AuditLog() {
           <h1 className="text-2xl font-bold tracking-wide text-[color:var(--t-strong)] uppercase">{t('Audit log')}</h1>
           <p className="text-xs text-[color:var(--t-dim)] mt-0.5">{t('Who opened or changed what, and when. Entries can never be edited or deleted.')}</p>
         </div>
-        <ExportCsvButton resource="audit-log" rows={entries} columns={columns} />
+        <div className="flex flex-col items-end gap-1">
+          <ExportCsvButton resource="audit-log" rows={entries} columns={columns} />
+          {nextCursor && <p className="text-[11px] text-amber-600">{t('The CSV has only the {n} entries loaded. Load more first for the rest.', { n: entries.length })}</p>}
+        </div>
       </div>
 
       <form

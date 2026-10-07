@@ -24,7 +24,7 @@ describe('weightFacts', () => {
 
 describe('changeText', () => {
   it('shows direction, size and percentage', () => {
-    expect(changeText(-2.4, -2.5)).toBe('−2.4 kg (−2.5%)');
+    expect(changeText(-2.4, -2.5)).toBe('-2.4 kg (-2.5%)');
     expect(changeText(0.5, 0.5)).toBe('+0.5 kg (+0.5%)');
     expect(changeText(0, 0)).toBe('no change');
     expect(changeText(null, null)).toBe('—');
@@ -89,6 +89,14 @@ describe('CheckInReportService', () => {
   it('never carries the internal clinical note', async () => {
     const data = await service.build(await service.load('ci-2'));
     expect(JSON.stringify(data)).not.toContain('INTERNAL');
+  });
+
+  it('writes only characters the PDF font can draw, so a loss never prints without its sign', async () => {
+    const data = await service.build(await service.load('ci-2'));
+    const texts = [changeText(data.weight.changeKg, data.weight.changePct), data.decision.title, data.decision.detail ?? '', data.doctorNote ?? ''];
+    // WinAnsi covers Latin-1 plus a few typographic marks; the minus sign and arrows are outside it.
+    expect(texts.join('')).not.toMatch(/[\u2190-\u21ff\u2212]/);
+    expect(changeText(data.weight.changeKg, data.weight.changePct)).toContain('-2.4');
   });
 
   it('renders a PDF', async () => {

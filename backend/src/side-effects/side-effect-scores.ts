@@ -36,6 +36,8 @@ export const PEAK_DAYS = 28;
 /** Weekly, with a few days' grace: older than this and the doctor is told the picture may be out of date. */
 export const STALE_AFTER_DAYS = 10;
 export const MAX_NOTE_LENGTH = 500;
+/** Starts the note of the report a high weekly score raises, so that report can be told apart from one the patient wrote. */
+export const TRACKER_NOTE_PREFIX = 'Weekly tracker:';
 export const MAX_ENTRIES_PER_DAY = 3;
 
 export type ScoreEntry = { id: string; recordedAt: Date } & Record<ScoreKey, number> & { note?: string | null };

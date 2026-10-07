@@ -870,4 +870,5 @@ export const sq: Record<string, string> = {
   "Weight lost is each weight-programme patient’s last check-in of the month against the weight they started at, averaged. Patients who gained weight are included. Reached 5% is the share who had lost at least 5%.": "Pesha e humbur është kontrolli i fundit i muajit i çdo pacienti të programit të peshës krahasuar me peshën e nisjes, në mesatare. Përfshihen edhe pacientët që shtuan peshë. «Arritën 5%» është pjesa që humbi të paktën 5%.",
   "Months are calendar months in UTC.": "Muajt janë muaj kalendarikë në UTC.",
   "Only admins can see the monthly report.": "Vetëm administratorët mund ta shohin raportin mujor.",
+  "The CSV has only the {n} entries loaded. Load more first for the rest.": "CSV ka vetëm {n} regjistrimet e ngarkuara. Ngarko më shumë së pari për pjesën tjetër.",
 };

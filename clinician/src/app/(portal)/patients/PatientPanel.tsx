@@ -783,7 +783,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                           {c.status === 'COMPLETED' ? t('Completed') : overdue ? t('Overdue') : c.status === 'SENT' ? t('Sent — awaiting response') : t('Scheduled')}
                         </span>
                         <span className="flex items-center gap-3">
-                          {c.reportUrl && (
+                          {c.reportUrl && hasAccess(['ADMIN', 'DOCTOR']) && (
                             <button type="button" onClick={() => openAuthedDocument(c.reportUrl)} className="text-xs font-medium text-brand-500 hover:underline">{t('Report PDF')}</button>
                           )}
                           <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
