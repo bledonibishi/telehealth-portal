@@ -344,4 +344,26 @@ describe('WeightMeasurementsService', () => {
       expect(await service.trend('p-1')).toMatchObject({ level: 'TOO_FEW', notifyDoctor: false });
     });
   });
+  describe('trendsFor', () => {
+    const DAY = 86_400_000;
+    const w = (patientId: string, daysAgo: number, kg: number) => ({ patientId, measuredAt: new Date(Date.now() - daysAgo * DAY), weightKg: String(kg) });
+
+    it('works out each patient’s trend from their own daily weights and check-ins, in three queries', async () => {
+      prisma.weightEntry.findMany.mockResolvedValue([w('a', 21, 101.1), w('a', 14, 102.2), w('a', 7, 103.4), w('b', 14, 90), w('b', 7, 90)]);
+      prisma.checkIn.findMany.mockResolvedValue([{ patientId: 'a', completedAt: new Date(Date.now() - 28 * DAY), weightKg: '100' }, { patientId: 'a', completedAt: new Date(), weightKg: '104.5' }]);
+      prisma.weightGoal = { findMany: jest.fn().mockResolvedValue([{ patientId: 'a', targetWeightKg: '80' }]) };
+      const trends = await service.trendsFor(['a', 'b', 'c']);
+      expect(trends.get('a')).toMatchObject({ level: 'GAIN', notifyDoctor: true });
+      expect(trends.get('b')?.level).toBe('TOO_FEW');
+      expect(trends.get('c')?.level).toBe('TOO_FEW'); // no weights at all
+      expect(prisma.weightEntry.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.checkIn.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.weightEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ voidedAt: null }) }));
+    });
+
+    it('asks nothing for no patients', async () => {
+      expect((await service.trendsFor([])).size).toBe(0);
+      expect(prisma.weightEntry.findMany).not.toHaveBeenCalled();
+    });
+  });
 });

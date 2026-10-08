@@ -12,6 +12,6 @@ import { BodyMeasurementsResolver } from './body-measurements.resolver';
 @Module({
   imports: [PrismaModule, AuditModule, CheckInsModule],
   providers: [WeightJourneyService, WeightJourneyResolver, WeightMeasurementsService, WeightMeasurementsResolver, BodyMeasurementsService, BodyMeasurementsResolver],
-  exports: [WeightJourneyService],
+  exports: [WeightJourneyService, WeightMeasurementsService],
 })
 export class WeightJourneyModule {}

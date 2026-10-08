@@ -17,3 +17,18 @@ export const GET_DASHBOARD_METRICS = gql`
     }
   }
 `;
+
+export const HEALTH_ALERTS = gql`
+  query HealthAlerts {
+    healthAlerts {
+      id
+      level
+      kind
+      count
+      value
+      other
+      effects
+      patients { id name }
+    }
+  }
+`;
