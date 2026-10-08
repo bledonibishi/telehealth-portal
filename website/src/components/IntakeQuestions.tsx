@@ -46,6 +46,13 @@ export default function IntakeQuestions() {
         setQuestions(qs);
         setConsent(c);
         setValues(loadDraft(s.leadId!));
+        // Coming back to this page (Back from checkout) lands on the question the history entry was made for,
+        // not the first one, so the entry isn't replaced by a new one and Forward still works.
+        const t = window.history.state?.thqi;
+        if (t && (t.stage === 'consent' || Number.isInteger(t.idx))) {
+          depth.current = t.depth ?? 0;
+          setPos({ stage: t.stage, idx: Math.max(0, Math.min(t.idx, qs.length)) });
+        }
         setState('ready');
         setHydrated(true);
       })

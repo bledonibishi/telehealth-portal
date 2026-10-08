@@ -9,7 +9,7 @@ import { BillingService } from '../stripe/billing.service';
 import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { ConsentType, ConsultationKind, OnboardingStatus, OnboardingStepKey, ProductCategory, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
-import { requiredReviewSteps } from '../onboarding/required-steps';
+import { requiredReviewSteps, stepFiles } from '../onboarding/required-steps';
 import { lockPatientIdentity } from '../identity-verification/identity-verification.service';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
 import { DeclineConsultationInput } from './dto/decline-consultation.input';
@@ -154,7 +154,10 @@ export class ConsultationsService {
 
     // Stable sort: within a tag, the longest wait stays first.
     const rank = (c: (typeof rows)[number]) => RISK_RANK[triage(c.redFlags).riskTag];
-    return rows.sort((a, b) => rank(a) - rank(b));
+    const sorted = rows.sort((a, b) => rank(a) - rank(b));
+    // Whether each can be decided yet, worked out once for the whole queue rather than per row.
+    const blocked = await this.prescribing.notReadyReasons(sorted.map((c) => c.patientId));
+    return sorted.map((c) => Object.assign(c, { decisionBlockedReason: blocked.get(c.patientId) ?? null }));
   }
 
   async findById(id: string) {
@@ -481,7 +484,7 @@ export class ConsultationsService {
         throw new BadRequestException('This step is not part of the current review');
       }
       const earlier = submission.status === OnboardingStatus.REJECTED ? ((submission.stepFeedback as any[]) ?? []) : [];
-      const feedback = [...earlier.filter((f) => f.step !== step && !f.approved), { step, approved: false, reason: reason.trim() }];
+      const feedback = [...earlier.filter((f) => f.step !== step && !f.approved), { step, approved: false, reason: reason.trim(), files: stepFiles(submission, step) }];
       await tx.onboardingSubmission.update({
         where: { patientId: c.patientId },
         data: {

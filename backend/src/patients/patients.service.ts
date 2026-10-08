@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -60,6 +60,8 @@ function generateTempPassword(length = 12): string {
 
 @Injectable()
 export class PatientsService {
+  private readonly logger = new Logger(PatientsService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -355,12 +357,20 @@ export class PatientsService {
       return created;
     });
 
+    let intakeSubmitted = false;
     if (intakeForPatient) {
-      await this.moduleRef.get(ConsultationsService, { strict: false }).submitIntakeQuiz(
-        patient.id,
-        { kind: input.plan, answers: input.quizAnswers!, telehealthConsentVersion: this.consents.current(ConsentType.TELEHEALTH).version },
-        {},
-      );
+      // The patient already exists: a failure here must not look like the creation failed (a retry would hit the
+      // duplicate email). They answer the questionnaire in the portal instead.
+      try {
+        await this.moduleRef.get(ConsultationsService, { strict: false }).submitIntakeQuiz(
+          patient.id,
+          { kind: input.plan, answers: input.quizAnswers!, telehealthConsentVersion: this.consents.current(ConsentType.TELEHEALTH).version },
+          {},
+        );
+        intakeSubmitted = true;
+      } catch (err: any) {
+        this.logger.error(`Creating the consultation for staff-created patient ${patient.id} failed: ${err?.message}`);
+      }
     }
 
     await this.audit.log({
@@ -369,7 +379,7 @@ export class PatientsService {
       action: 'PATIENT_CREATED_BY_STAFF',
       resourceType: 'Patient',
       resourceId: patient.id,
-      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted, intakeSubmitted: intakeForPatient },
+      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted, intakeSubmitted },
     });
     this.posthog.capture(actorId, 'patient_created_by_staff', {
       plan: input.plan,

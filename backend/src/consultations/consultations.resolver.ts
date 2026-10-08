@@ -28,6 +28,8 @@ export class ConsultationsResolver {
   @ResolveField(() => String, { nullable: true })
   decisionBlockedReason(@Parent() consultation: ConsultationModel & { patientId: string }, @CurrentUser() user: AuthUser) {
     if (user.role === 'PATIENT') return null;
+    // The queue works it out for all its rows at once.
+    if (consultation.decisionBlockedReason !== undefined) return consultation.decisionBlockedReason;
     return this.consultationsService.decisionBlockedReason(consultation);
   }
 

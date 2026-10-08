@@ -113,6 +113,25 @@ describe('PrescribingService first decision', () => {
     expect(await build(via, { status: 'APPROVED' }).service.notReadyReason('p-1')).toBeNull();
   });
 
+  it('works out the queue’s readiness for many patients with two queries', async () => {
+    const prisma: any = {
+      onboardingSubmission: { findMany: jest.fn().mockResolvedValue([
+        { patientId: 'ready', status: 'PENDING_REVIEW', identityViaVerifyService: false },
+        { patientId: 'idv-open', status: 'PENDING_REVIEW', identityViaVerifyService: true },
+        { patientId: 'redo', status: 'REJECTED', identityViaVerifyService: false },
+      ]) },
+      identityVerification: { findMany: jest.fn().mockResolvedValue([{ patientId: 'idv-open', status: 'NEEDS_REVIEW' }, { patientId: 'idv-open', status: 'APPROVED' }]) },
+    };
+    const service = new PrescribingService(prisma, {} as any, {} as any, { get: jest.fn() } as any);
+    const reasons = await service.notReadyReasons(['ready', 'idv-open', 'redo', 'none']);
+    expect(reasons.get('ready')).toBeNull();
+    expect(reasons.get('idv-open')).toMatch(/identity check/); // the newest result is the one that counts
+    expect(reasons.get('redo')).toMatch(/redo/);
+    expect(reasons.get('none')).toMatch(/finished onboarding/);
+    expect(prisma.onboardingSubmission.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.identityVerification.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it('approves the onboarding with the decision, recording who and which steps', async () => {
     const { service, prisma } = build({ ...submitted, priorMedicationUse: true });
     expect(await service.approveOnboarding(prisma, 'p-1', 'doc-1')).toBe(true);

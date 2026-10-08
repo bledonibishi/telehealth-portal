@@ -77,6 +77,12 @@ describe('StripeWebhookService website questionnaire', () => {
     expect(submitFromLead).toHaveBeenCalledWith('p-1');
   });
 
+  it('tries again on a later payment event when it failed the first time', async () => {
+    const { service, submitFromLead } = build({ convertedAt: new Date() });
+    await service.handle(sessionEvent(0));
+    expect(submitFromLead).toHaveBeenCalledWith('p-1');
+  });
+
   it('still activates the patient when creating the consultation fails', async () => {
     const { service, submitFromLead, referrals } = build();
     submitFromLead.mockRejectedValue(new Error('boom'));

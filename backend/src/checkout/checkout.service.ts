@@ -71,8 +71,10 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    // With a lead, the email comes from the lead itself, never from the request.
-    const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
+    // With a lead, the email comes from the lead itself, never from the request. A request that names only an
+    // email is held to the same checks when that email has a lead: the payment would be matched to it by email.
+    const leadId = input.leadId ?? (input.email ? (await this.prisma.lead.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } }))?.id : undefined);
+    const lead = leadId ? await this.loadOpenLead(leadId) : null;
     const lines = await this.priceFor(input, lead);
     const email = lead?.email ?? input.email;
     const currency = lead && input.applyReward ? (await this.stripe.prices.retrieve(lines[0].price)).currency : undefined;

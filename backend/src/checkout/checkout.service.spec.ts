@@ -24,6 +24,8 @@ function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?:
   return {
     lead: {
       findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
+      // Looked up by email when a request names only an email.
+      findFirst: jest.fn().mockResolvedValue(('lead' in over ? over.lead : LEAD) ? { id: 'lead-1' } : null),
       update: jest.fn().mockResolvedValue({}),
     },
     patient: { findFirst: jest.fn().mockResolvedValue(over.patient ?? null) },
@@ -74,6 +76,15 @@ describe('CheckoutService per-dose prices', () => {
         priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('holds an email-only request to the same checks, so leaving the lead id out doesn’t skip the health questions', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, intakeSavedAt: null };
+    await expect(
+      build(prismaFor({ lead }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', email: 'buyer@b.com' }),
+    ).rejects.toThrow(/health questions/);
+    expect(session.create).not.toHaveBeenCalled();
   });
 
   it('refuses to take payment before the health questions are answered', async () => {

@@ -32,6 +32,20 @@ export interface IssueInput {
   overrideReason?: string;
 }
 
+/** Why a patient's first decision has to wait, or null when it can be made (see notReadyReason). */
+function notReady(
+  onboarding: { status: string; identityViaVerifyService: boolean } | null,
+  identityStatus: string | null,
+): string | null {
+  if (onboarding?.status === OnboardingStatus.APPROVED) return null;
+  if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
+  if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
+  if (onboarding.identityViaVerifyService && identityStatus !== IdentityVerificationStatus.APPROVED) {
+    return 'The identity check hasn’t been approved yet';
+  }
+  return null;
+}
+
 type ResolvedItem = RuleItem & { input: PrescriptionItemInput; product: RuleItem['product'] & { brandName: string | null } };
 
 @Injectable()
@@ -74,14 +88,23 @@ export class PrescribingService {
    */
   async notReadyReason(patientId: string, db: Db = this.prisma): Promise<string | null> {
     const onboarding = await db.onboardingSubmission.findUnique({ where: { patientId } });
-    if (onboarding?.status === OnboardingStatus.APPROVED) return null;
-    if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
-    if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
-    if (onboarding.identityViaVerifyService) {
-      const idv = await db.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } });
-      if (idv?.status !== IdentityVerificationStatus.APPROVED) return 'The identity check hasn’t been approved yet';
-    }
-    return null;
+    const idv = onboarding?.identityViaVerifyService
+      ? await db.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } })
+      : null;
+    return notReady(onboarding, idv?.status ?? null);
+  }
+
+  /** notReadyReason for many patients at once (the review queue): two queries however many there are. */
+  async notReadyReasons(patientIds: string[]): Promise<Map<string, string | null>> {
+    const ids = [...new Set(patientIds)];
+    const [submissions, identities] = await Promise.all([
+      this.prisma.onboardingSubmission.findMany({ where: { patientId: { in: ids } } }),
+      this.prisma.identityVerification.findMany({ where: { patientId: { in: ids } }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    const onboardingOf = new Map(submissions.map((o) => [o.patientId, o]));
+    const latestIdentity = new Map<string, string>();
+    for (const i of identities) if (!latestIdentity.has(i.patientId)) latestIdentity.set(i.patientId, i.status);
+    return new Map(ids.map((id) => [id, notReady(onboardingOf.get(id) ?? null, latestIdentity.get(id) ?? null)]));
   }
 
   async assertReadyForDecision(patientId: string) {

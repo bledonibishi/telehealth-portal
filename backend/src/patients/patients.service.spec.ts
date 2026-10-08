@@ -320,6 +320,14 @@ describe('PatientsService.createByStaff', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: true }) }));
   });
 
+  it('still creates the patient, and says nothing failed, when the consultation can’t be created', async () => {
+    const { svc, submitIntakeQuiz, audit } = build();
+    submitIntakeQuiz.mockRejectedValue(new Error('boom'));
+    const result = await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false } as any);
+    expect(result.temporaryPassword).toBeTruthy();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: false }) }));
+  });
+
   it('leaves the questionnaire to the patient when none was entered', async () => {
     const { svc, submitIntakeQuiz } = build();
     await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false, quizAnswers: [] } as any);

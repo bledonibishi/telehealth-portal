@@ -95,6 +95,16 @@ export class StripeWebhookService {
     });
   }
 
+  /** Never throws: a failure is logged and the patient is asked the questionnaire in the portal instead. */
+  private async createConsultationFromLead(email: string) {
+    try {
+      const patient = await this.prisma.patient.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
+      if (patient) await this.moduleRef.get(ConsultationsService, { strict: false }).submitFromLead(patient.id);
+    } catch (err: any) {
+      this.logger.error(`Creating the consultation from the website answers for ${email} failed: ${err?.message}`);
+    }
+  }
+
   private async activatePatient(
     email: string | null | undefined,
     stripeReferenceId: string,
@@ -125,6 +135,9 @@ export class StripeWebhookService {
       if (Object.keys(billing).length) {
         await this.prisma.patient.updateMany({ where: { email }, data: billing });
       }
+      // A payment event after the first (renewals, the second event of one payment) is another chance to turn the
+      // website answers into the consultation if that failed the first time. Harmless when it already exists.
+      await this.createConsultationFromLead(email);
       this.logger.log(`Lead ${lead.id} already converted — skipping`);
       return;
     }
@@ -177,11 +190,7 @@ export class StripeWebhookService {
 
     // The medical questionnaire answered on the website becomes the consultation now, so onboarding doesn't
     // ask for it again. If it can't (nothing answered, or it needs redoing) the portal asks as before.
-    try {
-      await this.moduleRef.get(ConsultationsService, { strict: false }).submitFromLead(patient.id);
-    } catch (err: any) {
-      this.logger.error(`Creating the consultation for patient ${patient.id} failed: ${err?.message}`);
-    }
+    await this.createConsultationFromLead(email);
 
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding

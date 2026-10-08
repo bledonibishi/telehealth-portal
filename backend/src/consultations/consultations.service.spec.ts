@@ -10,7 +10,7 @@ describe('ConsultationsService', () => {
   let prisma: any;
   let billing: { cancelAndRefund: jest.Mock };
   let config: { get: jest.Mock };
-  let prescribing: { issue: jest.Mock; assertCanPrescribe: jest.Mock; assertReadyForDecision: jest.Mock; approveOnboarding: jest.Mock; notReadyReason: jest.Mock };
+  let prescribing: { issue: jest.Mock; assertCanPrescribe: jest.Mock; assertReadyForDecision: jest.Mock; approveOnboarding: jest.Mock; notReadyReason: jest.Mock; notReadyReasons: jest.Mock };
   let messaging: { send: jest.Mock };
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let consents: { record: jest.Mock };
@@ -42,6 +42,7 @@ describe('ConsultationsService', () => {
       assertReadyForDecision: jest.fn(),
       approveOnboarding: jest.fn().mockResolvedValue(true),
       notReadyReason: jest.fn().mockResolvedValue(null),
+      notReadyReasons: jest.fn().mockResolvedValue(new Map()),
     };
     billing = { cancelAndRefund: jest.fn().mockResolvedValue({ status: 'REFUNDED', subscriptionId: 'sub_1', refundId: 're_1' }) };
     config = { get: jest.fn((_key: string, fallback: string) => fallback) };
@@ -184,6 +185,15 @@ describe('ConsultationsService', () => {
       ]);
       const queue = await service.findQueue();
       expect(queue.map((c: any) => c.id)).toEqual(['red-new', 'red-newest', 'orange-old', 'green-old', 'green-new']);
+    });
+
+    it('works out which rows can’t be decided yet once for the whole queue', async () => {
+      const row = (id: string, patientId: string) => ({ id, patientId, redFlags: [] });
+      prisma.consultation.findMany = jest.fn().mockResolvedValue([row('a', 'p1'), row('b', 'p2')]);
+      prescribing.notReadyReasons.mockResolvedValue(new Map([['p1', null], ['p2', 'The patient hasn’t finished onboarding yet']]));
+      const queue: any[] = await service.findQueue();
+      expect(prescribing.notReadyReasons).toHaveBeenCalledTimes(1);
+      expect(queue.map((c) => c.decisionBlockedReason)).toEqual([null, 'The patient hasn’t finished onboarding yet']);
     });
   });
 
@@ -369,10 +379,17 @@ describe('ConsultationsService', () => {
       await service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, ' The side photo is blurred ');
       expect(prisma.onboardingSubmission.update).toHaveBeenCalledWith({
         where: { patientId: PATIENT.id },
-        data: expect.objectContaining({ status: 'REJECTED', stepFeedback: [{ step: 'BODY_PHOTO', approved: false, reason: 'The side photo is blurred' }], reviewedByClinicianId: 'doc-1' }),
+        data: expect.objectContaining({ status: 'REJECTED', stepFeedback: [{ step: 'BODY_PHOTO', approved: false, reason: 'The side photo is blurred', files: [null, null] }], reviewedByClinicianId: 'doc-1' }),
       });
       expect(messaging.send).toHaveBeenCalled();
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ONBOARDING_REDO_REQUESTED' }), prisma);
+    });
+
+    it('remembers which files the step rested on, so sending the same ones back isn’t taken as a redo', async () => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue({ ...submission, bodyPhotoFrontFileId: 'front', bodyPhotoSideFileId: 'side' });
+      await service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, 'Blurred');
+      const { stepFeedback } = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+      expect(stepFeedback[0]).toMatchObject({ step: 'BODY_PHOTO', files: ['front', 'side'] });
     });
 
     it('adds to an earlier request the patient hasn’t answered yet', async () => {
