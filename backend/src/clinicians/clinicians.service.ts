@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -45,6 +45,8 @@ export interface InviteDelivery {
 
 @Injectable()
 export class CliniciansService {
+  private readonly logger = new Logger(CliniciansService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -109,19 +111,35 @@ export class CliniciansService {
     }
     if (Object.keys(data).length === 0) throw new BadRequestException('Nothing to change');
 
+    // A link already sent went to the old address. Once the address changes, whoever holds that link must not be able
+    // to set this account's password with it: it stops working in the same write as the change. Someone still waiting
+    // on their invitation gets a new one at the new address; a password link is simply voided (the admin can send another).
+    const emailChanged = data.email !== undefined && data.email !== before.email;
+    const hadLink = emailChanged && !!before.inviteToken;
+    const reinvite = hadLink && !before.passwordSetAt && !before.deactivatedAt;
+    const fresh = reinvite ? newActivationToken() : null;
+    const link = hadLink ? { inviteToken: fresh?.activationToken ?? null, inviteTokenExpiresAt: fresh?.activationTokenExpiresAt ?? null } : {};
+
+    let updated: Clinician;
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.clinician.update({ where: { id: before.id }, data });
+      updated = await this.prisma.$transaction(async (tx) => {
+        const row = await tx.clinician.update({ where: { id: before.id }, data: { ...data, ...link } });
         await this.audit.log(
-          { actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_DETAILS_CHANGED', resourceType: 'Clinician', resourceId: before.id, metadata: { from: Object.fromEntries(Object.keys(data).map((k) => [k, (before as any)[k]])), to: data } },
+          {
+            actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_DETAILS_CHANGED', resourceType: 'Clinician', resourceId: before.id,
+            metadata: { from: Object.fromEntries(Object.keys(data).map((k) => [k, (before as any)[k]])), to: data, ...(hadLink ? { oldLinkVoided: true, newInvitationSent: reinvite } : {}) },
+          },
           tx,
         );
-        return updated;
+        return row;
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('Someone else on the team already has that email');
       throw err;
     }
+    // If this email does not go out, the member still shows as invited and "Resend invitation" gives the admin the link.
+    if (reinvite) await this.deliverInvite(actorId, updated, true);
+    return updated;
   }
 
   /**
@@ -166,10 +184,13 @@ export class CliniciansService {
     if (actorId === id) throw new BadRequestException('You cannot delete your own account');
     const before = await this.prisma.clinician.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Team member not found');
-    if (before.passwordSetAt) throw new BadRequestException('This person has used their account, so it is kept for the record. Deactivate it instead.');
+    const used = () => new BadRequestException('This person has used their account, so it is kept for the record. Deactivate it instead.');
+    if (before.passwordSetAt) throw used();
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.clinician.delete({ where: { id } });
+        // Still unused at the moment it is removed: they may have accepted the invitation since it was read above.
+        const { count } = await tx.clinician.deleteMany({ where: { id, passwordSetAt: null } });
+        if (count !== 1) throw used();
         await this.audit.log({ actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_DELETED', resourceType: 'Clinician', resourceId: id, metadata: { email: before.email, role: before.role } }, tx);
       });
     } catch (err) {
@@ -185,8 +206,10 @@ export class CliniciansService {
     let emailSent = false;
     try {
       emailSent = await this.email.sendClinicianInviteEmail(clinician.email, clinician.firstName, url, firstTime);
-    } catch {
+    } catch (err: any) {
       emailSent = false;
+      // Why it failed, for whoever has to fix the mail set-up. Never the link itself: it is as good as a password.
+      this.logger.error(`The invitation email to clinician ${clinician.id} could not be sent: ${err?.message ?? err}`, err?.stack);
     }
     await this.audit.log({ actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_INVITE_SENT', resourceType: 'Clinician', resourceId: clinician.id, metadata: { emailSent, firstTime } });
     return emailSent ? { emailSent } : { emailSent, inviteUrl: url };

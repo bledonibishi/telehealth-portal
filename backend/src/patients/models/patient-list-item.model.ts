@@ -7,6 +7,8 @@ export enum PatientTreatmentStatus {
   ACTIVE = 'ACTIVE',
   /** Activated, but no current prescription (not started, or stopped) */
   INACTIVE = 'INACTIVE',
+  /** Every consultation was declined (and nothing is prescribed): not a patient who simply hasn't started */
+  DECLINED = 'DECLINED',
   /** Has not activated their account yet */
   PENDING = 'PENDING',
 }

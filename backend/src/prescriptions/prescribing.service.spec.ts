@@ -84,6 +84,78 @@ describe('PrescribingService checks', () => {
   });
 });
 
+describe('PrescribingService first decision', () => {
+  const build = (onboarding: any, identity: any = null) => {
+    const prisma: any = {
+      onboardingSubmission: { findUnique: jest.fn().mockResolvedValue(onboarding), update: jest.fn().mockResolvedValue({}) },
+      identityVerification: { findFirst: jest.fn().mockResolvedValue(identity) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    return { prisma, service: new PrescribingService(prisma, {} as any, {} as any, { get: jest.fn() } as any) };
+  };
+  const submitted = { status: 'PENDING_REVIEW', identityViaVerifyService: false, priorMedicationUse: false };
+
+  it('can be decided once onboarding is submitted', async () => {
+    expect(await build(submitted).service.notReadyReason('p-1')).toBeNull();
+  });
+
+  it('can’t be decided before onboarding is submitted, or while the patient is redoing a step', async () => {
+    expect(await build(null).service.notReadyReason('p-1')).toMatch(/finished onboarding/);
+    expect(await build({ ...submitted, status: 'IN_PROGRESS' }).service.notReadyReason('p-1')).toMatch(/finished onboarding/);
+    expect(await build({ ...submitted, status: 'REJECTED' }).service.notReadyReason('p-1')).toMatch(/redo/);
+    await expect(build(null).service.assertReadyForDecision('p-1')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('keeps the verification service’s identity result as a hard gate', async () => {
+    const via = { ...submitted, identityViaVerifyService: true };
+    expect(await build(via, { status: 'NEEDS_REVIEW' }).service.notReadyReason('p-1')).toMatch(/identity check/);
+    expect(await build(via, null).service.notReadyReason('p-1')).toMatch(/identity check/);
+    expect(await build(via, { status: 'APPROVED' }).service.notReadyReason('p-1')).toBeNull();
+  });
+
+  it('works out the queue’s readiness for many patients with two queries', async () => {
+    const prisma: any = {
+      onboardingSubmission: { findMany: jest.fn().mockResolvedValue([
+        { patientId: 'ready', status: 'PENDING_REVIEW', identityViaVerifyService: false },
+        { patientId: 'idv-open', status: 'PENDING_REVIEW', identityViaVerifyService: true },
+        { patientId: 'redo', status: 'REJECTED', identityViaVerifyService: false },
+      ]) },
+      identityVerification: { findMany: jest.fn().mockResolvedValue([{ patientId: 'idv-open', status: 'NEEDS_REVIEW' }, { patientId: 'idv-open', status: 'APPROVED' }]) },
+    };
+    const service = new PrescribingService(prisma, {} as any, {} as any, { get: jest.fn() } as any);
+    const reasons = await service.notReadyReasons(['ready', 'idv-open', 'redo', 'none']);
+    expect(reasons.get('ready')).toBeNull();
+    expect(reasons.get('idv-open')).toMatch(/identity check/); // the newest result is the one that counts
+    expect(reasons.get('redo')).toMatch(/redo/);
+    expect(reasons.get('none')).toMatch(/finished onboarding/);
+    expect(prisma.onboardingSubmission.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.identityVerification.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('approves the onboarding with the decision, recording who and which steps', async () => {
+    const { service, prisma } = build({ ...submitted, priorMedicationUse: true });
+    expect(await service.approveOnboarding(prisma, 'p-1', 'doc-1')).toBe(true);
+    expect(prisma.onboardingSubmission.update).toHaveBeenCalledWith({
+      where: { patientId: 'p-1' },
+      data: expect.objectContaining({
+        status: 'APPROVED',
+        reviewedByClinicianId: 'doc-1',
+        stepFeedback: [{ step: 'ID_PHOTO', approved: true }, { step: 'BODY_PHOTO', approved: true }, { step: 'PRESCRIPTION_PROOF', approved: true }],
+      }),
+    });
+  });
+
+  it('leaves an onboarding that was already approved alone, and refuses to approve over an identity rejection', async () => {
+    const approved = build({ ...submitted, status: 'APPROVED' });
+    expect(await approved.service.approveOnboarding(approved.prisma, 'p-1', 'doc-1')).toBe(false);
+    expect(approved.prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+
+    const rejected = build({ ...submitted, identityViaVerifyService: true }, { status: 'REJECTED' });
+    await expect(rejected.service.approveOnboarding(rejected.prisma, 'p-1', 'doc-1')).rejects.toThrow(/identity check/);
+    expect(rejected.prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('PrescribingService.issue', () => {
   const strength = { id: 'str-2', label: '0.5 mg', titrationStep: 2, active: true, productId: 'sema', packDescription: null,
     product: { id: 'sema', name: 'Semaglutide', brandName: 'Wegovy', kind: 'GLP1', category: 'GLP1', active: true } };

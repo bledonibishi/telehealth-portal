@@ -3,6 +3,8 @@
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
+import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
+import { OnboardingReview } from '@/components/onboarding/OnboardingReview';
 import { RedFlagBanner } from './RedFlagBanner';
 import { RiskBadge } from './RiskBadge';
 import { DecisionPanel } from './DecisionPanel';
@@ -46,6 +48,10 @@ const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0
 export function ConsultationDetail({ id }: { id: string }) {
   const { t, timeAgo, fmt } = useI18n();
   const { data, loading, error } = useQuery(GET_CONSULTATION, { variables: { id } });
+  const patientId: string | undefined = data?.consultation?.patient?.id;
+  // Shared with the decision panel and the side summary through the cache.
+  const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId }, skip: !patientId });
+  const onboarding = onboardingData?.onboardingSubmission;
 
   if (loading) return <p className="p-6 text-sm text-gray-500">{t('Loading…')}</p>;
   if (error) return <p className="p-6 text-sm text-danger-500">{error.message}</p>;
@@ -94,6 +100,8 @@ export function ConsultationDetail({ id }: { id: string }) {
             refundStatus={c.refundStatus}
             clinician={c.clinician}
             currentUserId={currentUserId}
+            patientId={c.patient.id}
+            blockedReason={c.decisionBlockedReason}
           />
         </header>
 
@@ -101,6 +109,13 @@ export function ConsultationDetail({ id }: { id: string }) {
           <div className="p-4 sm:p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
             <div className="space-y-5 min-w-0">
               <RedFlagBanner redFlags={c.redFlags} />
+
+              {onboarding && onboarding.status !== 'IN_PROGRESS' && (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-gray-900">{t('Identity & onboarding')}</h2>
+                  <OnboardingReview onboarding={onboarding} />
+                </section>
+              )}
 
               {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
                 <section key={section} className="bg-white rounded-xl border border-gray-200 overflow-hidden">

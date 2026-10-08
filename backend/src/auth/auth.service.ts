@@ -30,7 +30,12 @@ export class AuthService {
   ) {}
 
   async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
-    const clinician = await this.prisma.clinician.findUnique({ where: { email } });
+    // Team management keeps addresses lower-case, while people type their own with capitals. The address exactly as
+    // typed is tried first, so an older account saved with capitals is still found; then any spelling of it.
+    const typed = (email ?? '').trim();
+    const clinician =
+      (await this.prisma.clinician.findUnique({ where: { email: typed } })) ??
+      (typed ? await this.prisma.clinician.findFirst({ where: { email: { equals: typed, mode: 'insensitive' } }, orderBy: { createdAt: 'asc' } }) : null);
     if (!clinician || !(await bcrypt.compare(password, clinician.passwordHash))) {
       await this.audit.log({
         actorId: clinician?.id ?? 'anonymous',
@@ -110,7 +115,8 @@ export class AuthService {
     // The password, the spent link and the audit row commit together; matching the token again makes it single-use even if two requests race.
     const claimed = await this.prisma.$transaction(async (tx) => {
       const result = await tx.clinician.updateMany({
-        where: { id: clinician.id, inviteToken: token },
+        // Checked again as the link is spent: it may have expired, or the account been turned off, while the password was being hashed.
+        where: { id: clinician.id, inviteToken: token, inviteTokenExpiresAt: { gt: new Date() }, deactivatedAt: null },
         data: { passwordHash, passwordSetAt: new Date(), inviteToken: null, inviteTokenExpiresAt: null },
       });
       if (result.count !== 1) return false;

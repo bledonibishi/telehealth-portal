@@ -14,7 +14,7 @@ const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 
 export function QueueRow({ consultation }: { consultation: any }) {
   const { t, timeAgo } = useI18n();
-  const { id, patient, kind, status, submittedAt, redFlags, clinician, riskTag } = consultation;
+  const { id, patient, kind, status, submittedAt, redFlags, clinician, riskTag, decisionBlockedReason } = consultation;
   const hasCritical = redFlags.some((f: any) => f.severity === 'CRITICAL');
   const hasWarning = redFlags.some((f: any) => f.severity === 'WARNING');
   const badge = STATUS_LABELS[status] ?? { label: status, cls: 'bg-gray-100 text-gray-600' };
@@ -35,6 +35,9 @@ export function QueueRow({ consultation }: { consultation: any }) {
         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>
           {t(badge.label)}
         </span>
+        {decisionBlockedReason && (
+          <div className="text-xs text-warn-900 mt-0.5">{t(decisionBlockedReason)}</div>
+        )}
         {status === 'IN_REVIEW' && clinician && (
           <div className="text-xs text-gray-400 mt-0.5">{t('Dr {name}', { name: clinician.lastName })}</div>
         )}

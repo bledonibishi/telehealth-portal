@@ -87,6 +87,8 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "DevPaymentSimulatorController.plans",
   "DevPaymentSimulatorController.simulatePayment",
   "DosingCronController.triggerDoseReminders",
+  "EmailVerificationResolver.requestEmailCode",
+  "EmailVerificationResolver.verifyEmailCode",
   "IdentityVerificationController.handleWebhook",
   "LeadsResolver.createLead",
   "PartnerOrdersCronController.sweep",

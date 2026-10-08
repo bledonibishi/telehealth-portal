@@ -58,6 +58,9 @@ export class GqlThrottlerGuard extends ThrottlerGuard {
     const args = GqlExecutionContext.create(context).getArgs();
     if (args.input?.email) return args.input.email.trim().toLowerCase();
     if (args.input?.token) return args.input.token;
+    // A clinician's invitation link passes its token as an argument of its own. Without this every invitation attempt
+    // shared one bucket, and five bad links from anyone locked every invited clinician out.
+    if (typeof args.token === 'string' && args.token) return args.token;
     try {
       return this.jwtService.verify(args.pendingToken).sub;
     } catch {

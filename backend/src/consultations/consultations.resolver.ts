@@ -9,7 +9,7 @@ import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
-import { ClinicianRole, RiskTag } from '../common/enums';
+import { ClinicianRole, OnboardingStepKey, RiskTag } from '../common/enums';
 import { triage } from '../questionnaires/triage';
 
 const isAdmin = (user: AuthUser) => user.clinicianRole === ClinicianRole.ADMIN;
@@ -22,6 +22,15 @@ export class ConsultationsResolver {
   @ResolveField(() => RiskTag)
   riskTag(@Parent() consultation: ConsultationModel) {
     return triage(consultation.redFlags ?? []).riskTag;
+  }
+
+  // Looked up per consultation, only for ones still waiting for a decision and only for staff.
+  @ResolveField(() => String, { nullable: true })
+  decisionBlockedReason(@Parent() consultation: ConsultationModel & { patientId: string }, @CurrentUser() user: AuthUser) {
+    if (user.role === 'PATIENT') return null;
+    // The queue works it out for all its rows at once.
+    if (consultation.decisionBlockedReason !== undefined) return consultation.decisionBlockedReason;
+    return this.consultationsService.decisionBlockedReason(consultation);
   }
 
   @Authorized(...PRESCRIBERS)
@@ -89,6 +98,17 @@ export class ConsultationsResolver {
     @Args('message', { nullable: true, description: 'What the patient needs to tell us; sent as a message' }) message?: string,
   ) {
     return this.consultationsService.requestMoreInfo(user.id, consultationId, message, isAdmin(user));
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Mutation(() => ConsultationModel, { description: 'Ask the patient to redo one onboarding step, with the reason; the consultation can’t be approved until they have' })
+  requestOnboardingRedo(
+    @CurrentUser() user: AuthUser,
+    @Args('consultationId', { type: () => ID }) consultationId: string,
+    @Args('step', { type: () => OnboardingStepKey }) step: OnboardingStepKey,
+    @Args('reason') reason: string,
+  ) {
+    return this.consultationsService.requestOnboardingRedo(user.id, consultationId, step, reason, isAdmin(user));
   }
 
   @Authorized(...PRESCRIBERS)

@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useOpenOnboardingChat } from '@/components/onboarding/OnboardingChat';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
 import { useIdentityVerification } from '@/lib/useIdentityVerification';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
+import { MY_TELEHEALTH_CONSENT } from '@/graphql/intake';
 
-type StepKey = 'basic-information' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
+type StepKey = 'basic-information' | 'consent' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
 
 const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   'id-photo': 'ID_PHOTO',
@@ -21,9 +23,11 @@ const clinicianNote = (reason?: string | false) => (reason ? `Clinician: “${re
 
 export default function OnboardingLandingPage() {
   const router = useRouter();
+  const openChat = useOpenOnboardingChat();
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
   const { data: meData, loading: meLoading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
+  const { data: consentData, loading: consentLoading } = useQuery(MY_TELEHEALTH_CONSENT, { fetchPolicy: 'network-only' });
   const { data: idvData, loading: idvLoading } = useIdentityVerification();
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
@@ -36,7 +40,7 @@ export default function OnboardingLandingPage() {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
   }, [o?.status, router]);
 
-  if (loading || consultationsLoading || meLoading || idvLoading || !o) {
+  if (loading || consultationsLoading || meLoading || consentLoading || idvLoading || !o) {
     return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   }
 
@@ -74,7 +78,7 @@ export default function OnboardingLandingPage() {
         : clinicianNote(STEP_REJECTION_KEY[key] && stepFeedback.find((f) => f.step === STEP_REJECTION_KEY[key])?.reason);
 
   // The questionnaire creates the consultation a doctor reviews.
-  const consultations: { status: string }[] = consultationsData?.myConsultations ?? [];
+  const consultations: { status: string; refundStatus?: string | null }[] = consultationsData?.myConsultations ?? [];
   const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
   const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
     ? 'A clinician has asked for more information — please review your answers'
@@ -97,6 +101,12 @@ export default function OnboardingLandingPage() {
       label: 'Basic information',
       hint: 'Your details and where we send your treatment',
       done: !!(meData?.me?.addressLine1 && meData?.me?.city && meData?.me?.postcode && meData?.me?.phone),
+    },
+    {
+      key: 'consent',
+      label: 'Consent',
+      hint: 'How your online consultation works',
+      done: !!consentData?.myTelehealthConsent,
     },
     {
       key: 'medical-questionnaire',
@@ -128,10 +138,36 @@ export default function OnboardingLandingPage() {
     },
   ];
 
-  const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
+  // The medical questionnaire is answered on the website before paying, so it only appears here when it
+  // still needs doing (an older account) or the clinician has asked for changes.
+  const steps = baseSteps
+    .map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }))
+    .filter((s) => !(s.key === 'medical-questionnaire' && s.done && !s.needsChanges))
+    // Proof of a previous prescription only matters for someone who has used the medicine: not shown otherwise.
+    .filter((s) => !(s.key === 'prescription-proof' && o.priorMedicationUse === false))
+    // The consent is normally accepted on the website or in the questionnaire; it only appears for a patient an admin set up.
+    .filter((s) => !(s.key === 'consent' && s.done));
 
   const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
+
+  // Declined: nothing is waiting for review any more, so say so rather than "Under review".
+  if (o.status === 'DECLINED') {
+    const refunded = consultations.some((c: any) => c.refundStatus === 'REFUNDED');
+    return (
+      <div className="text-center py-10">
+        <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-2xl mx-auto mb-4">✕</div>
+        <h1 className="text-xl font-bold text-slate-900">We can&rsquo;t offer this treatment</h1>
+        <p className="text-sm text-slate-500 mt-2">
+          Your clinician has reviewed your application and decided it isn&rsquo;t safe to prescribe online. They&rsquo;ve sent you a message explaining why.
+        </p>
+        {refunded && <p className="text-sm text-slate-500 mt-2">Your subscription has been cancelled and your payment refunded.</p>}
+        <button type="button" onClick={() => openChat()} className="inline-block mt-6 text-sm font-semibold text-white bg-ink-700 hover:bg-ink-800 rounded-xl px-5 py-2.5">
+          Read your clinician&rsquo;s message
+        </button>
+      </div>
+    );
+  }
 
   if (o.status === 'PENDING_REVIEW') {
     return (

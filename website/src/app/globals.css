@@ -244,6 +244,18 @@ ul,ol{list-style:none}
 .thq-field input:focus,.thq-field-full input:focus{outline:none;border-color:#1E4FD8;box-shadow:0 0 0 3px rgba(30,79,216,.12)}
 .thq-consent{display:flex;gap:10px;align-items:flex-start;margin-top:18px;font-size:14px;line-height:1.5;color:#52607A;cursor:pointer}
 .thq-consent input{margin-top:3px;accent-color:#1E4FD8}
+.thq-optional{font-weight:500;color:#52607A;font-size:.6em}
+.thq-input{width:100%;padding:15px 16px;border:1.5px solid #E6ECF5;border-radius:12px;font:inherit;font-size:16px;color:#0E1A2B;background:#fff}
+.thq-input:focus{outline:none;border-color:#1E4FD8;box-shadow:0 0 0 3px rgba(30,79,216,.12)}
+.thq-numrow{display:flex;align-items:center;gap:10px;max-width:260px}
+.thq-unit{font-size:16px;color:#52607A}
+.thq-consent-list{margin:0 0 6px;padding-left:20px;font-size:15px;line-height:1.55;color:#334155}
+.thq-consent-list li{margin-bottom:6px}
+.thq-code{width:100%;padding:15px 16px;border:1.5px solid #E6ECF5;border-radius:12px;font:inherit;font-size:28px;letter-spacing:10px;text-align:center;color:#0E1A2B;background:#fff}
+.thq-code:focus{outline:none;border-color:#1E4FD8;box-shadow:0 0 0 3px rgba(30,79,216,.12)}
+.thq-resend{margin-top:16px;font-size:14px;color:#52607A;text-align:center}
+.thq-resend button{background:none;border:0;padding:0;color:#1E4FD8;font:inherit;font-weight:600;cursor:pointer}
+.thq-resend button:disabled{color:#94A3B8;cursor:default}
 .thq-error{min-height:1em;margin-top:12px;font-size:14px;color:#B42318}
 
 /* =========================================================
