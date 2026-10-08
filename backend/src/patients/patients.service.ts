@@ -14,6 +14,8 @@ import { PrescribingService } from '../prescriptions/prescribing.service';
 import { WeightJourneyService } from '../weight-journey/weight-journey.service';
 import { ConsultationsService } from '../consultations/consultations.service';
 import { PatientTreatmentStatus } from './models/patient-list-item.model';
+import { intakeNumber } from './patient-profile.service';
+import { bmiOf, plausibleHeightCm } from './bmi';
 import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import {
@@ -113,6 +115,26 @@ export class PatientsService {
       .map((r) => r.id);
     const journeys = await this.weightJourney.summariesFor(glp1Ids);
 
+    // Height is on the profile when the patient set it; until then it is the intake answer, which is read only for those who need it.
+    const withoutHeight = rows.filter((r) => r.heightCm == null).map((r) => r.id);
+    const intake = withoutHeight.length
+      ? await this.prisma.consultation.findMany({
+          where: { patientId: { in: withoutHeight } },
+          // Newest first, as on the patient's own profile: intakeNumber takes the first height it meets.
+          orderBy: { submittedAt: 'desc' },
+          select: { patientId: true, quizAnswers: true },
+        })
+      : [];
+    // Grouped in one pass, keeping that order, instead of searching the whole list again for every patient.
+    const intakeByPatient = new Map<string, Array<{ quizAnswers: unknown }>>();
+    for (const c of intake) {
+      const list = intakeByPatient.get(c.patientId);
+      if (list) list.push(c);
+      else intakeByPatient.set(c.patientId, [c]);
+    }
+    const intakeHeight = new Map<string, number | null>();
+    for (const id of withoutHeight) intakeHeight.set(id, intakeNumber(intakeByPatient.get(id) ?? [], 'height_cm'));
+
     return rows.map(({ lead, consultations, prescriptions, checkIns, messages: preConsultation = [], ...patient }) => {
       const journey = journeys.get(patient.id);
       const prescription = prescriptions[0];
@@ -146,6 +168,8 @@ export class PatientsService {
         targetWeightKg: journey?.targetWeightKg ?? null,
         weightLostKg: journey?.weightLostKg ?? null,
         progressPercentage: journey?.progressPercentage ?? null,
+        heightCm: plausibleHeightCm(patient.heightCm ?? intakeHeight.get(patient.id)),
+        bmi: bmiOf(journey?.currentWeightKg, patient.heightCm ?? intakeHeight.get(patient.id)),
         lastWeighedAt: journey?.latestMeasurementAt ?? null,
         awaitingReply: newest?.senderRole === UserRole.PATIENT,
         lastMessageAt: lastFromPatient?.sentAt ?? null,

@@ -11,6 +11,8 @@ export const GET_PATIENTS = gql`
       leadId
       activatedAt
       createdAt
+      heightCm
+      bmi
       productKind
       latestConsultationStatus
       hasActivePrescription
