@@ -32,7 +32,7 @@ export type Forecast =
       reachesTargetAt: Date | null;
     };
 
-const DAY_MS = 86_400_000;
+export const DAY_MS = 86_400_000;
 const MONTH_DAYS = 30.4375;
 export const HORIZON_MONTHS = 6;
 /** Only the recent pace counts: weight loss slows over time, so old measurements would flatter the trend. */
@@ -42,7 +42,7 @@ export const MIN_SPAN_DAYS = 14;
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-const median = (xs: number[]) => {
+export const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
@@ -51,9 +51,9 @@ const median = (xs: number[]) => {
 /** Beyond this share of body weight a week, a loss is not believable (a typo or a bad scale), so the pace is held there. */
 export const MAX_WEEKLY_LOSS_SHARE = 0.015;
 /** How far a typical weigh-in may sit from the trend line before the trend is not worth showing. */
-const MAX_TYPICAL_MISS_KG = 2.5;
+export const MAX_TYPICAL_MISS_KG = 2.5;
 /** Only the newest weigh-ins are used, which also bounds the work. */
-const MAX_POINTS = 150;
+export const MAX_POINTS = 150;
 
 /**
  * A straight-line trend through the last 90 days of measurements, carried forward 6 months. The line is

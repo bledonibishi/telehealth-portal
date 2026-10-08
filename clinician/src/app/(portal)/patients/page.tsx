@@ -15,6 +15,7 @@ import ProgressRing from '@/components/patients/ProgressRing';
 import { kg } from '@/lib/weight';
 import { TREATMENT_STATUS, STALE_WEIGH_IN_DAYS, type TreatmentStatus } from '@/lib/patient-status';
 import { hasAccess } from '@/lib/role';
+import { bmiBand, inBmiRange, joinedWithin, type BmiRange, type JoinedRange } from '@/lib/bmi';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
 
@@ -41,13 +42,26 @@ const REVIEW_OPTIONS = [
   { value: 'NONE', label: 'No consultation' },
   ...Object.entries(REVIEW_STATUS).map(([value, { label }]) => ({ value, label })),
 ];
+const BMI_OPTIONS: { value: BmiRange; label: string }[] = [
+  { value: 'ALL', label: 'Any BMI' },
+  { value: '25-30', label: 'BMI 25 to 30' },
+  { value: '30-35', label: 'BMI 30 to 35' },
+  { value: '35+', label: 'BMI 35 and over' },
+  { value: 'NONE', label: 'No BMI yet' },
+];
+const JOINED_OPTIONS: { value: JoinedRange; label: string }[] = [
+  { value: 'ALL', label: 'Any time joined' },
+  { value: 'WEEK', label: 'Joined in the last 7 days' },
+  { value: 'MONTH', label: 'Joined in the last 30 days' },
+  { value: 'QUARTER', label: 'Joined in the last 3 months' },
+];
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'All statuses' },
   ...Object.entries(TREATMENT_STATUS).map(([value, { label }]) => ({ value, label })),
 ];
 
 type Quick = 'ACTIVE' | 'REVIEW' | 'TARGET' | 'REPLY';
-type SortKey = 'name' | 'status' | 'medication' | 'lost' | 'target' | 'progress' | 'lastCheckIn' | 'review';
+type SortKey = 'name' | 'status' | 'medication' | 'bmi' | 'lost' | 'target' | 'progress' | 'lastCheckIn' | 'review';
 type Sort = { key: SortKey; dir: 'asc' | 'desc' };
 
 const selectCls = 'border border-[color:var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[color:var(--t-body)] bg-[color:var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-sky-500';
@@ -63,6 +77,8 @@ const PATIENT_COLUMNS: CsvColumn<any>[] = [
   { header: 'Starting weight (kg)', value: (p) => p.startingWeightKg },
   { header: 'Current weight (kg)', value: (p) => p.currentWeightKg },
   { header: 'Target weight (kg)', value: (p) => p.targetWeightKg },
+  { header: 'Height (cm)', value: (p) => p.heightCm },
+  { header: 'BMI', value: (p) => p.bmi },
   { header: 'Weight lost (kg)', value: (p) => p.weightLostKg },
   { header: 'Progress (%)', value: (p) => p.progressPercentage },
   { header: 'Last weighed', value: (p) => p.lastWeighedAt },
@@ -81,6 +97,7 @@ function sortValue(p: any, key: SortKey): string | number | null {
     case 'name': return `${p.firstName} ${p.lastName}`.toLowerCase();
     case 'status': return TREATMENT_STATUS[p.treatmentStatus as TreatmentStatus]?.rank ?? 9;
     case 'medication': return p.medications[0]?.label.toLowerCase() ?? null;
+    case 'bmi': return p.bmi ?? null;
     case 'lost': return p.weightLostKg ?? null;
     case 'target': return p.targetWeightKg ?? null;
     case 'progress': return p.progressPercentage ?? null;
@@ -163,6 +180,8 @@ function Patients() {
   const [reviewStatus, setReviewStatus] = useState('ALL');
   const [status, setStatus] = useState('ALL');
   const [medication, setMedication] = useState('ALL');
+  const [bmiRange, setBmiRange] = useState<BmiRange>('ALL');
+  const [joined, setJoined] = useState<JoinedRange>('ALL');
   const [quick, setQuick] = useState<Quick | null>(null);
   const [sort, setSort] = useState<Sort>({ key: 'status', dir: 'asc' });
   // ?patient=<id> opens that patient directly (linked from a consultation).
@@ -218,13 +237,15 @@ function Patients() {
       }
       if (status !== 'ALL' && p.treatmentStatus !== status) return false;
       if (medication !== 'ALL' && !p.medications.some((m: any) => m.label === medication)) return false;
+      if (!inBmiRange(p.bmi, bmiRange)) return false;
+      if (!joinedWithin(p.createdAt, joined)) return false;
       if (quick === 'ACTIVE' && p.treatmentStatus !== 'ACTIVE') return false;
       if (quick === 'REVIEW' && !needsReview(p)) return false;
       if (quick === 'TARGET' && !targetReached(p)) return false;
       if (quick === 'REPLY' && !p.awaitingReply) return false;
       return true;
     });
-  }, [all, search, programme, reviewStatus, status, medication, quick]);
+  }, [all, search, programme, reviewStatus, status, medication, bmiRange, joined, quick]);
 
   const patients = useMemo(() => {
     const dir = sort.dir === 'asc' ? 1 : -1;
@@ -253,10 +274,10 @@ function Patients() {
   };
   const toggleQuick = (q: Quick) => setQuick((cur) => (cur === q ? null : q));
 
-  const filtersActive = programme !== 'ALL' || reviewStatus !== 'ALL' || status !== 'ALL' || medication !== 'ALL' || quick !== null;
+  const filtersActive = programme !== 'ALL' || reviewStatus !== 'ALL' || status !== 'ALL' || medication !== 'ALL' || bmiRange !== 'ALL' || joined !== 'ALL' || quick !== null;
   // The Total card: every patient, whatever filters or search were on.
   const showAll = () => { resetFilters(); setSearch(''); };
-  const resetFilters = () => { setProgramme('ALL'); setReviewStatus('ALL'); setStatus('ALL'); setMedication('ALL'); setQuick(null); };
+  const resetFilters = () => { setProgramme('ALL'); setReviewStatus('ALL'); setStatus('ALL'); setMedication('ALL'); setBmiRange('ALL'); setJoined('ALL'); setQuick(null); };
 
   const previewPatient = previewId && !chatMode ? all.find((p: any) => p.id === previewId) : null;
   const chatPatient = chatId ? all.find((p: any) => p.id === chatId) : null;
@@ -312,6 +333,12 @@ function Patients() {
           <select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)} className={selectCls}>
             {REVIEW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
           </select>
+          <select value={bmiRange} onChange={(e) => setBmiRange(e.target.value as BmiRange)} className={selectCls} aria-label={t('BMI range')}>
+            {BMI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+          </select>
+          <select value={joined} onChange={(e) => setJoined(e.target.value as JoinedRange)} className={selectCls} aria-label={t('Date joined')}>
+            {JOINED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+          </select>
           {filtersActive && (
             <button onClick={resetFilters} className="text-xs text-[color:var(--t-muted)] hover:text-[color:var(--t-body)] underline">
               {t('Clear filters')}
@@ -333,6 +360,7 @@ function Patients() {
                 <SortHeader label="Patient name" sortKey="name" sort={sort} onSort={handleSort} className="pl-5" />
                 <SortHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
                 <SortHeader label="Medication" sortKey="medication" sort={sort} onSort={handleSort} />
+                <SortHeader label="BMI" sortKey="bmi" sort={sort} onSort={handleSort} />
                 <SortHeader label="Weight lost" sortKey="lost" sort={sort} onSort={handleSort} />
                 <SortHeader label="Target" sortKey="target" sort={sort} onSort={handleSort} />
                 <SortHeader label="Goal progress" sortKey="progress" sort={sort} onSort={handleSort} />
@@ -390,6 +418,17 @@ function Patients() {
                           {patient.medications.map((m: any, i: number) => <MedicationPill key={i} label={m.label} dose={m.dose} solid />)}
                         </div>
                       ) : <span className="text-[color:var(--t-dim)]">—</span>}
+                    </td>
+                    <td className="px-4 py-1.5 whitespace-nowrap">
+                      {patient.bmi == null ? <span className="text-[color:var(--t-dim)]" title={patient.heightCm == null ? t('No height on file') : undefined}>—</span> : (() => {
+                        const band = bmiBand(patient.bmi);
+                        return (
+                          <span className={band.cls} title={t(band.label)}>
+                            <span className="tabular-nums font-medium">{patient.bmi}</span>
+                            <span className="block text-[11px] font-normal opacity-80">{t(band.label)}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-1.5 whitespace-nowrap">
                       {lost === null ? <span className="text-[color:var(--t-dim)]">—</span> : (

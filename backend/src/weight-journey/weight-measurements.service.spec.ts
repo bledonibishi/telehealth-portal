@@ -328,4 +328,20 @@ describe('WeightMeasurementsService', () => {
       expect(await service.forecast('p-1', NOW)).toEqual({ available: false, reason: 'NOT_ENOUGH_DATA', points: [] });
     });
   });
+  describe('trend', () => {
+    const DAY = 86_400_000;
+    const at = (daysAgo: number, weightKg: number) => ({ measuredAt: new Date(Date.now() - daysAgo * DAY), weightKg });
+
+    it('reads the patient’s own recent weights and reports a sustained rise for the doctor', async () => {
+      jest.spyOn(service, 'timeline').mockResolvedValue({ measurements: [at(28, 100), at(21, 101.1), at(14, 102.2), at(7, 103.4), at(0, 104.5)], targetWeightKg: 80 } as any);
+      const t = await service.trend('p-1');
+      expect(t).toMatchObject({ level: 'GAIN', notifyDoctor: true });
+      expect(service.timeline).toHaveBeenCalledWith('p-1', expect.any(Date), expect.any(Date));
+    });
+
+    it('says nothing is known yet for a patient with no weights', async () => {
+      jest.spyOn(service, 'timeline').mockResolvedValue({ measurements: [], targetWeightKg: null } as any);
+      expect(await service.trend('p-1')).toMatchObject({ level: 'TOO_FEW', notifyDoctor: false });
+    });
+  });
 });

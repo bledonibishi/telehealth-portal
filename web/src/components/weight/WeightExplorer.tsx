@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
-import { MY_WEIGHT_FORECAST, MY_WEIGHT_JOURNEY, VOID_MY_WEIGHT } from '@/graphql/weight';
+import { MY_WEIGHT_FORECAST, MY_WEIGHT_JOURNEY, MY_WEIGHT_TREND, VOID_MY_WEIGHT } from '@/graphql/weight';
 import { useWeightTimeline } from '@/lib/useWeightTimeline';
 import { fromMonthKey, lowerBound, monthEnd, monthKey, monthStart, panBy, Point, View } from '@/lib/timeseries';
 import { feelingOf, kg, kgChange } from '@/lib/weight';
@@ -52,7 +52,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [voidError, setVoidError] = useState<string | null>(null);
-  const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }] });
+  const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, { query: MY_WEIGHT_TREND }] });
 
   const { data: forecastData } = useQuery(MY_WEIGHT_FORECAST, { fetchPolicy: 'cache-and-network' });
   const fc = forecastData?.myWeightForecast;
