@@ -13,7 +13,7 @@ export function LogWeightForm({ onSaved }: { onSaved: () => void }) {
   const [weight, setWeight] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const id = useRef(requestId());
-  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: ['MyWeightJourney', 'MyWeightTimeline'], awaitRefetchQueries: true });
+  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: ['MyWeightJourney', 'MyWeightTimeline', 'MyWeightTrend'], awaitRefetchQueries: true });
 
   const submit = async () => {
     const n = Number(weight.replace(',', '.'));

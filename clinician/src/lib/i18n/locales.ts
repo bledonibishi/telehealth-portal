@@ -6,7 +6,8 @@ import { sq } from 'date-fns/locale/sq';
 
 export type Locale = 'sq' | 'en' | 'de' | 'es';
 
-export const DEFAULT_LOCALE: Locale = 'en';
+// Shown to anyone who has not chosen a language yet; a choice made with the switcher is remembered and wins.
+export const DEFAULT_LOCALE: Locale = 'sq';
 export const LOCALE_STORAGE_KEY = 'clinician.lang';
 
 /** `name` is always written in the language itself, so anyone can find theirs. */

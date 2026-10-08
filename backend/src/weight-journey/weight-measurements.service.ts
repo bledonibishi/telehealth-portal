@@ -6,9 +6,10 @@ import { UploadKind } from '@prisma/client';
 import { CheckInFeeling } from '../common/enums';
 import { AddWeightInput, CorrectWeightEntryInput, EditMyWeightInput } from './dto/weight-journey.input';
 import {
-  ForecastConfidence, ForecastUnavailableReason, ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel,
+  ForecastConfidence, ForecastUnavailableReason, ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel, WeightTrendModel,
 } from './models/weight-journey.model';
 import { forecastWeight } from './weight-forecast';
+import { assessWeightTrend } from './weight-trend';
 import { assertValidWeight, WeightJourneyService } from './weight-journey.service';
 import { latestOf, RawMeasurement, sortMeasurements, withChanges } from './weight-timeline';
 import { round1 } from './weight-math';
@@ -366,6 +367,15 @@ export class WeightMeasurementsService {
       take: 500,
     });
     return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId!, note: r.note ?? undefined, patientCanEdit: r.source !== 'STAFF' }));
+  }
+
+  // ── trend ─────────────────────────────────────────────────────────────────
+
+  /** What the recent weights say, for the patient and for their doctor. */
+  async trend(patientId: string, now = new Date()): Promise<WeightTrendModel> {
+    const from = new Date(now.getTime() - 120 * 86_400_000);
+    const tl = await this.timeline(patientId, from, new Date(now.getTime() + 60_000));
+    return assessWeightTrend(tl.measurements.map((m) => ({ measuredAt: m.measuredAt, weightKg: m.weightKg })), { targetKg: tl.targetWeightKg, now }) as WeightTrendModel;
   }
 
   // ── forecast ──────────────────────────────────────────────────────────────

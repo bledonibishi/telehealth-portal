@@ -21,7 +21,7 @@ describe('PatientsService.findAll', () => {
   });
 
   it('flattens the lead, latest consultation, active prescription and latest check-in onto the patient', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
     const deps = noopDeps();
     const [result] = await new PatientsService(prisma as any, ...deps).findAll();
 
@@ -42,7 +42,7 @@ describe('PatientsService.findAll', () => {
 
   it('marks a patient whose every consultation was declined as Declined, not Inactive', async () => {
     const statusOf = async (over: Partial<any>) => {
-      const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
       const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
       return result.treatmentStatus;
     };
@@ -55,7 +55,7 @@ describe('PatientsService.findAll', () => {
   });
 
   it('only counts active prescriptions', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [] })]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [] })]) } };
     const deps = noopDeps();
     const [result] = await new PatientsService(prisma as any, ...deps).findAll();
     expect(result.hasActivePrescription).toBe(false);
@@ -63,6 +63,7 @@ describe('PatientsService.findAll', () => {
 
   it('defaults everything to null for a patient with no lead, consultations or check-ins', async () => {
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([row({ lead: null, consultations: [], checkIns: [], prescriptions: [] })]),
       },
@@ -81,19 +82,20 @@ describe('PatientsService.findAll', () => {
 
   it('names the medication after the brand, with the prescribed strength', async () => {
     const items = [{ product: { name: 'Semaglutide', brandName: 'Wegovy' }, strength: { label: '0.5 mg' } }];
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [{ id: 'rx-1', medication: 'x', dosage: 'y', items }] })]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [{ id: 'rx-1', medication: 'x', dosage: 'y', items }] })]) } };
     const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
     expect(result.medications).toEqual([{ label: 'Wegovy', dose: '0.5 mg' }]);
   });
 
   it('falls back to the prescription summary when it has no items', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
     const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
     expect(result.medications).toEqual([{ label: 'Oestrogel', dose: '0.75 mg' }]);
   });
 
   it('is ACTIVE with a prescription, INACTIVE without one and PENDING before activation', async () => {
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([row(), row({ prescriptions: [] }), row({ activatedAt: null })]),
       },
@@ -109,6 +111,7 @@ describe('PatientsService.findAll', () => {
       ),
     };
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([
           row({ lead: { productKind: 'GLP1' } }),
@@ -127,6 +130,7 @@ describe('PatientsService.findAll', () => {
     const at = (d: string) => new Date(d);
     const thread = (...m: [string, string][]) => ({ status: 'APPROVED', kind: 'GLP1', messages: [{ senderRole: m[0][0], sentAt: at(m[0][1]) }] });
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([
           row({ consultations: [thread(['PATIENT', '2026-09-20'])] }),
@@ -151,6 +155,49 @@ describe('PatientsService.findAll', () => {
     expect(include.consultations).not.toHaveProperty('take');
     expect(include.checkIns).toMatchObject({ take: 1, orderBy: { createdAt: 'desc' } });
     expect(include.prescriptions).toMatchObject({ where: { status: 'ACTIVE' } });
+  });
+
+  describe('height and BMI', () => {
+    const journeys = (currentWeightKg: number) => ({ summariesFor: jest.fn().mockResolvedValue(new Map([['p-1', { currentWeightKg, startingWeightKg: currentWeightKg + 5 }]])) });
+    const run = async (patient: any, intake: any[] = [], weight = 80) => {
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue(intake) }, patient: { findMany: jest.fn().mockResolvedValue([patient]) } };
+      const deps = noopDeps(journeys(weight));
+      return { result: (await new PatientsService(prisma as any, ...deps).findAll())[0], prisma };
+    };
+
+    it('works the BMI out from the height on their profile and their current weight', async () => {
+      const { result, prisma } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: 180 }), [], 80);
+      expect(result).toMatchObject({ heightCm: 180, bmi: 24.7 });
+      expect(prisma.consultation.findMany).not.toHaveBeenCalled(); // nothing to look up when the profile has the height
+    });
+
+    it('falls back to the height they gave at intake until they set one', async () => {
+      const { result } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), [{ patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', answer: '170', value: '170' }] }], 100);
+      expect(result).toMatchObject({ heightCm: 170, bmi: 34.6 });
+    });
+
+    it('takes the newest intake height when there are several, and asks for them newest first', async () => {
+      const intake = [
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '172' }] }, // newest, as the query returns it
+        { patientId: 'p-other', quizAnswers: [{ questionId: 'height_cm', value: '150' }] },
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '160' }] },
+      ];
+      const { result, prisma } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), intake, 100);
+      expect(result.heightCm).toBe(172);
+      expect(prisma.consultation.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { submittedAt: 'desc' } }));
+    });
+
+    it('shows neither a height nor a BMI for a height that cannot be real', async () => {
+      expect((await run(row({ lead: { productKind: 'GLP1' }, heightCm: 17 }))).result).toMatchObject({ heightCm: null, bmi: null });
+    });
+
+    it('has no BMI without a height, or for a programme without a weight journey', async () => {
+      expect((await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }))).result).toMatchObject({ heightCm: null, bmi: null });
+      // The journey service only returns a journey for weight programmes, so an HRT patient has none.
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ lead: { productKind: 'HRT' }, heightCm: 170 })]) } };
+      const [hrt] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+      expect(hrt.bmi).toBeNull();
+    });
   });
 });
 

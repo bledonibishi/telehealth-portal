@@ -164,5 +164,22 @@ export const VOID_MY_BODY_MEASUREMENT = gql`
   }
 `;
 
+export const MY_WEIGHT_TREND = gql`
+  query MyWeightTrend {
+    myWeightTrend {
+      level
+      kgPerWeek
+      changePct28Days
+      basedOnPoints
+      unusuallyFast
+      kgIn3Months
+      notifyDoctor
+      latestKg
+      previousKg
+      jumpPct
+    }
+  }
+`;
+
 /** What to reload after a weighing is added, changed or removed. The chart reloads itself (see lib/weights-changed). */
-export const WEIGHT_REFETCH = [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }, { query: MY_WEIGHT_FORECAST }];
+export const WEIGHT_REFETCH = [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }, { query: MY_WEIGHT_FORECAST }, { query: MY_WEIGHT_TREND }];

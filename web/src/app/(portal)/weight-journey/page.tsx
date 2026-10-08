@@ -13,6 +13,7 @@ import { ComparePhotos } from '@/components/weight/ComparePhotos';
 import { WeightCards } from '@/components/weight/WeightCards';
 import { PhotoTimeline } from '@/components/weight/PhotoTimeline';
 import { MeasurementsChart } from '@/components/weight/MeasurementsChart';
+import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
@@ -35,6 +36,7 @@ export default function WeightJourneyPage() {
         <JourneyPhotosProvider journey={journey}>
           <div className="space-y-6">
             <WeightJourneyCard journey={journey} showLink={false} allowLog={false} />
+            <WeightTrendNotice />
             <Milestones journey={journey} />
             <ComparePhotos />
             <WeightCards />

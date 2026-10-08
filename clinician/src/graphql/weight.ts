@@ -116,3 +116,18 @@ export const PROGRESS_PHOTOS_FOR_PATIENT = gql`
     }
   }
 `;
+
+export const WEIGHT_TREND_FOR_PATIENT = gql`
+  query WeightTrendForPatient($patientId: ID!) {
+    weightTrendForPatient(patientId: $patientId) {
+      level
+      kgPerWeek
+      changePct28Days
+      kgIn3Months
+      notifyDoctor
+      latestKg
+      previousKg
+      jumpPct
+    }
+  }
+`;
