@@ -11,7 +11,6 @@ import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
-import { PaymentsCard } from '@/components/billing/PaymentsCard';
 
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {
@@ -21,7 +20,7 @@ export default function OrdersPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
       <PageHeader title="Orders" subtitle="Your deliveries and where they are.">
-        <OrderEarlyButton />
+        <OrderEarlyButton className="flex flex-col items-end" />
       </PageHeader>
 
       {loading && !orders.length && <Card><p className="text-sm text-slate-400">Loading…</p></Card>}
@@ -78,8 +77,6 @@ export default function OrdersPage() {
           </li>
         ))}
       </ul>
-
-      <PaymentsCard />
     </div>
   );
 }

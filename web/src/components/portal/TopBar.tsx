@@ -123,16 +123,16 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
   const p = data?.myProfile;
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-3 rounded-full pl-1 pr-2 py-1 hover:bg-slate-100">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={`w-full flex items-center gap-3 pl-1 pr-3 py-1 border transition-colors ${open ? 'bg-white border-slate-200 rounded-t-3xl border-b-transparent' : 'border-transparent rounded-full hover:bg-slate-100'}`}>
         <Avatar first={p?.firstName} last={p?.lastName} />
         <span className="hidden sm:block text-left">
           <span className="block text-sm font-semibold text-ink-900 leading-tight">{p ? `${p.firstName} ${p.lastName}` : ' '}</span>
           {p && <span className="block text-xs text-slate-500">Patient ID: {p.patientNumber}</span>}
         </span>
-        <Icon name="chevron" className="w-4 h-4 text-slate-500" />
+        <Icon name="chevron" className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl z-40 p-1.5">
+        <div className="absolute right-0 top-full -mt-px w-full min-w-[13rem] bg-white rounded-b-3xl border border-slate-200 shadow-xl z-40 p-1.5 pt-0">
           {[{ href: '/profile', label: 'Profile', icon: 'user' as const }, { href: '/settings', label: 'Settings', icon: 'settings' as const }].map((i) => (
             <Link key={i.href} href={i.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
               <Icon name={i.icon} className="w-4 h-4" /> {i.label}
