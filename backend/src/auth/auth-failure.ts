@@ -7,6 +7,7 @@ export enum AuthFailureReason {
   WRONG_TOKEN_TYPE = 'WRONG_TOKEN_TYPE',
   MFA_REQUIRED = 'MFA_REQUIRED',
   ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+  ACCOUNT_DEACTIVATED = 'ACCOUNT_DEACTIVATED',
   UNKNOWN_ROLE = 'UNKNOWN_ROLE',
 }
 
@@ -17,6 +18,7 @@ const MESSAGES: Record<AuthFailureReason, string> = {
   [AuthFailureReason.WRONG_TOKEN_TYPE]: 'Token cannot be used for this request',
   [AuthFailureReason.MFA_REQUIRED]: 'MFA verification required',
   [AuthFailureReason.ACCOUNT_NOT_FOUND]: 'Account no longer exists',
+  [AuthFailureReason.ACCOUNT_DEACTIVATED]: 'This account has been deactivated',
   [AuthFailureReason.UNKNOWN_ROLE]: 'Token has an unknown role',
 };
 

@@ -262,26 +262,34 @@ enum LabResultKind {
 }
 
 model Clinician {
-  id            String        @id @default(cuid())
-  email         String        @unique
-  passwordHash  String        @map("password_hash")
-  firstName     String        @map("first_name")
-  lastName      String        @map("last_name")
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  passwordHash         String        @map("password_hash")
+  firstName            String        @map("first_name")
+  lastName             String        @map("last_name")
   // Medical licence — required (with isVerified) before a clinician can prescribe
-  licenseNumber String?       @unique @map("license_number")
-  licensingBody String?       @map("licensing_body")
-  role          ClinicianRole @default(DOCTOR)
-  isVerified    Boolean       @default(false) @map("is_verified")
-  verifiedAt    DateTime?     @map("verified_at")
-  verifiedById  String?       @map("verified_by_id")
-  mfaSecret     String?       @map("mfa_secret")
-  mfaEnabled    Boolean       @default(false) @map("mfa_enabled")
+  licenseNumber        String?       @unique @map("license_number")
+  licensingBody        String?       @map("licensing_body")
+  role                 ClinicianRole @default(DOCTOR)
+  isVerified           Boolean       @default(false) @map("is_verified")
+  verifiedAt           DateTime?     @map("verified_at")
+  verifiedById         String?       @map("verified_by_id")
+  mfaSecret            String?       @map("mfa_secret")
+  mfaEnabled           Boolean       @default(false) @map("mfa_enabled")
+  // An admin turned the account off: it cannot sign in, and its open sessions stop working. Nothing it did is touched.
+  deactivatedAt        DateTime?     @map("deactivated_at")
+  // When the person chose their own password. Null for someone invited who has not accepted yet (their stored hash is
+  // an unguessable placeholder). Only such an account can be deleted outright: it has never been used.
+  passwordSetAt        DateTime?     @map("password_set_at")
+  // A single-use link to set a password: for an invitation, or sent again to a member who lost theirs.
+  inviteToken          String?       @unique @map("invite_token")
+  inviteTokenExpiresAt DateTime?     @map("invite_token_expires_at")
   // Shown to the patient on My Doctor, set by an admin. All optional.
-  specialty     String?
-  bio           String?
-  languages     String[]      @default([])
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  specialty            String?
+  bio                  String?
+  languages            String[]      @default([])
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
 
   consultations       Consultation[]
   reviewedOnboardings OnboardingSubmission[]
@@ -420,10 +428,10 @@ model Patient {
   bodyPhotoChecks       BodyPhotoCheck[]
   bookings              Booking[]
   identityVerifications IdentityVerification[]
+  refundRequests        RefundRequest[]
+  pushDevices           PushDevice[]
 
   @@map("patients")
-  refundRequests RefundRequest[]
-  pushDevices    PushDevice[]
 }
 
 model Consultation {
@@ -532,17 +540,17 @@ model Order {
   createdAt             DateTime    @default(now()) @map("created_at")
   updatedAt             DateTime    @updatedAt @map("updated_at")
 
-  prescription        Prescription         @relation(fields: [prescriptionId], references: [id])
-  patient             Patient              @relation(fields: [patientId], references: [id])
-  partnerTransmission PartnerTransmission?
-  trackingEvents      OrderTrackingEvent[]
+  prescription         Prescription         @relation(fields: [prescriptionId], references: [id])
+  patient              Patient              @relation(fields: [patientId], references: [id])
+  partnerTransmission  PartnerTransmission?
+  trackingEvents       OrderTrackingEvent[]
+  // What the pharmacy charged per unit when this order was handed over: [{ product, strength, quantity, unitCost }].
+  // Kept so a later change to a dose's cost never rewrites an earlier month's statement.
+  pharmacyCostSnapshot Json?                @map("pharmacy_cost_snapshot")
 
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
-  // What the pharmacy charged per unit when this order was handed over: [{ product, strength, quantity, unitCost }].
-  // Kept so a later change to a dose's cost never rewrites an earlier month's statement.
-  pharmacyCostSnapshot Json? @map("pharmacy_cost_snapshot")
 }
 
 // One step in an order's journey, from staff pressing a button or from a courier or tracking service
@@ -757,18 +765,18 @@ model LabResult {
 }
 
 model ProductStrength {
-  id              String  @id @default(cuid())
-  productId       String  @map("product_id")
-  label           String
-  packDescription String? @map("pack_description")
+  id               String   @id @default(cuid())
+  productId        String   @map("product_id")
+  label            String
+  packDescription  String?  @map("pack_description")
   // 1 = starting dose. Null for products that aren't titrated.
-  titrationStep   Int?    @map("titration_step")
-  defaultQuantity Int     @default(1) @map("default_quantity")
-  sortOrder       Int     @default(0) @map("sort_order")
-  active          Boolean @default(true)
+  titrationStep    Int?     @map("titration_step")
+  defaultQuantity  Int      @default(1) @map("default_quantity")
+  sortOrder        Int      @default(0) @map("sort_order")
+  active           Boolean  @default(true)
   // The monthly Stripe price for this dose (each dose is priced separately).
   // Null: not sold per dose yet — billing falls back to the plan tier price.
-  stripePriceId   String? @map("stripe_price_id")
+  stripePriceId    String?  @map("stripe_price_id")
   // What the pharmacy partner charges us for one unit of this dose, in the clinic's currency. Null: not known yet.
   pharmacyUnitCost Decimal? @map("pharmacy_unit_cost") @db.Decimal(10, 2)
 

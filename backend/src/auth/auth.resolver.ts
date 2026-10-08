@@ -42,6 +42,12 @@ export class AuthResolver {
   }
 
   @ThrottleLoginAttempts()
+  @Mutation(() => Boolean, { description: 'Sets a clinician’s password with the single-use link an admin sent them. Does not sign them in.' })
+  acceptClinicianInvite(@Args('token') token: string, @Args('password') password: string, @Context() ctx: any) {
+    return this.authService.acceptClinicianInvite(token, password, loginAttempt(ctx));
+  }
+
+  @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
   verifyMfa(
     @Args('pendingToken') pendingToken: string,

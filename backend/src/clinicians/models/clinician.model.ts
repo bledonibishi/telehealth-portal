@@ -33,6 +33,15 @@ export class ClinicianModel {
   @Field()
   mfaEnabled: boolean;
 
+  @Field({ nullable: true, description: 'Set when an admin turned the account off. It cannot sign in; its history stays.' })
+  deactivatedAt?: Date;
+
+  @Field({ description: 'Invited and has not chosen a password yet' })
+  invitePending: boolean;
+
+  @Field({ nullable: true, description: 'When the link they were sent stops working, while one is outstanding' })
+  inviteExpiresAt?: Date;
+
   @Field({ nullable: true, description: 'Shown to patients, e.g. "Endocrinologist"' })
   specialty?: string;
 
@@ -44,4 +53,16 @@ export class ClinicianModel {
 
   @Field()
   createdAt: Date;
+}
+
+@ObjectType('ClinicianInviteResult')
+export class ClinicianInviteResultModel {
+  @Field(() => ClinicianModel)
+  clinician: ClinicianModel;
+
+  @Field({ description: 'The email was accepted by the mail provider' })
+  emailSent: boolean;
+
+  @Field({ nullable: true, description: 'Only when the email did not go out: the single-use link, for the admin to pass on themselves' })
+  inviteUrl?: string;
 }

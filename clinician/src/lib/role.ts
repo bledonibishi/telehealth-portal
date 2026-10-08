@@ -13,6 +13,13 @@ export function getCurrentRole(): ClinicianRole | null {
   return parseJwt(token)?.role ?? null;
 }
 
+/** Who is signed in, read from the token (the server checks it again on every request). */
+export function getCurrentUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const token = getToken();
+  return token ? (parseJwt(token)?.sub ?? null) : null;
+}
+
 export function hasAccess(allowed: ClinicianRole[]): boolean {
   const role = getCurrentRole();
   return role !== null && allowed.includes(role);

@@ -1,0 +1,167 @@
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { CliniciansService, cleanEmail } from './clinicians.service';
+
+describe('CliniciansService team management', () => {
+  let prisma: any;
+  let audit: { log: jest.Mock };
+  let email: { sendClinicianInviteEmail: jest.Mock };
+  let config: { get: jest.Mock };
+  let service: CliniciansService;
+  const row = (over: object = {}) => ({ id: 'c-2', email: 'new@clinic.dev', firstName: 'Nia', lastName: 'Doe', role: 'DOCTOR', deactivatedAt: null, passwordSetAt: new Date('2026-09-01'), inviteToken: null, inviteTokenExpiresAt: null, ...over });
+
+  beforeEach(() => {
+    prisma = {
+      clinician: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(row()),
+        create: jest.fn(({ data }) => Promise.resolve(row({ ...data, id: 'c-new', passwordSetAt: null }))),
+        update: jest.fn(({ data }) => Promise.resolve(row(data))),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      consultation: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
+    };
+    audit = { log: jest.fn() };
+    email = { sendClinicianInviteEmail: jest.fn().mockResolvedValue(true) };
+    config = { get: jest.fn((k: string) => (k === 'CLINICIAN_APP_URL' ? 'https://clinic.example.com/' : undefined)) };
+    service = new CliniciansService(prisma, audit as any, email as any, config as any);
+  });
+
+  describe('cleanEmail', () => {
+    it('trims and lower-cases, and refuses what is not an address', () => {
+      expect(cleanEmail('  Dr.Arta@Clinic.DEV ')).toBe('dr.arta@clinic.dev');
+      for (const bad of ['', 'no-at-sign', 'a@b', 'a b@c.com', undefined]) expect(() => cleanEmail(bad as any)).toThrow(BadRequestException);
+    });
+  });
+
+  describe('create', () => {
+    const input = { firstName: ' Nia ', lastName: 'Doe', email: ' New@Clinic.dev ', role: 'DOCTOR' as any };
+
+    it('adds the member with their role, an unguessable placeholder password and a 7-day link, and emails the link', async () => {
+      const { clinician, delivery } = await service.create('admin-1', input);
+      const data = prisma.clinician.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({ firstName: 'Nia', lastName: 'Doe', email: 'new@clinic.dev', role: 'DOCTOR' });
+      expect(data.passwordHash).toMatch(/^\$2[aby]\$/); // a real hash of a random value, never anything the admin typed
+      expect(data.inviteToken).toHaveLength(64);
+      expect(data.inviteTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + 6 * 86_400_000);
+      expect(email.sendClinicianInviteEmail).toHaveBeenCalledWith('new@clinic.dev', 'Nia', `https://clinic.example.com/accept-invite?token=${data.inviteToken}`, true);
+      expect(delivery).toEqual({ emailSent: true });
+      expect(clinician.id).toBe('c-new');
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_CREATED', metadata: { email: 'new@clinic.dev', role: 'DOCTOR' } }), prisma);
+    });
+
+    it('hands the admin the link when the email did not go out, so the new member is not stranded', async () => {
+      email.sendClinicianInviteEmail.mockResolvedValue(false);
+      const { delivery } = await service.create('admin-1', input);
+      expect(delivery.emailSent).toBe(false);
+      expect(delivery.inviteUrl).toMatch(/^https:\/\/clinic\.example\.com\/accept-invite\?token=[0-9a-f]{64}$/);
+    });
+
+    it('still creates the account when sending throws', async () => {
+      email.sendClinicianInviteEmail.mockRejectedValue(new Error('provider down'));
+      const { clinician, delivery } = await service.create('admin-1', input);
+      expect(clinician.id).toBe('c-new');
+      expect(delivery.emailSent).toBe(false);
+    });
+
+    it('refuses an address already on the team, in any capitals, and a race that slips past the check', async () => {
+      prisma.clinician.findFirst.mockResolvedValue({ id: 'x' });
+      await expect(service.create('admin-1', input)).rejects.toThrow(ConflictException);
+      expect(prisma.clinician.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { email: { equals: 'new@clinic.dev', mode: 'insensitive' } } }));
+      prisma.clinician.findFirst.mockResolvedValue(null);
+      prisma.clinician.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }));
+      await expect(service.create('admin-1', input)).rejects.toThrow(ConflictException);
+    });
+
+    it.each([[{ firstName: ' ' }], [{ lastName: '' }], [{ email: 'nope' }], [{ role: 'OWNER' }], [{ firstName: 'x'.repeat(61) }]])('refuses bad input %j', async (over) => {
+      await expect(service.create('admin-1', { ...input, ...(over as object) } as any)).rejects.toThrow(BadRequestException);
+      expect(prisma.clinician.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update', () => {
+    it('changes only what was sent and records the before and after', async () => {
+      await service.update('admin-1', { clinicianId: 'c-2', firstName: ' Nina ' });
+      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-2' }, data: { firstName: 'Nina' } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_DETAILS_CHANGED', metadata: { from: { firstName: 'Nia' }, to: { firstName: 'Nina' } } }), prisma);
+    });
+
+    it('refuses an email that belongs to someone else, but not their own', async () => {
+      prisma.clinician.findFirst.mockResolvedValue({ id: 'other' });
+      await expect(service.update('admin-1', { clinicianId: 'c-2', email: 'taken@clinic.dev' })).rejects.toThrow(ConflictException);
+      expect(prisma.clinician.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { not: 'c-2' } }) }));
+    });
+
+    it('refuses an empty change and an unknown member', async () => {
+      await expect(service.update('admin-1', { clinicianId: 'c-2' })).rejects.toThrow('Nothing to change');
+      prisma.clinician.findUnique.mockResolvedValue(null);
+      await expect(service.update('admin-1', { clinicianId: 'nope', firstName: 'A' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deactivate', () => {
+    it('turns the account off, voids any link, puts claimed consultations back in the queue, and says so in the audit log', async () => {
+      await service.deactivate('admin-1', 'c-2');
+      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-2' }, data: { deactivatedAt: expect.any(Date), inviteToken: null, inviteTokenExpiresAt: null } });
+      expect(prisma.consultation.updateMany).toHaveBeenCalledWith({ where: { clinicianId: 'c-2', status: 'IN_REVIEW' }, data: { status: 'SUBMITTED', clinicianId: null } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_DEACTIVATED', metadata: { releasedConsultations: 2 } }), prisma);
+    });
+
+    it('will not let an admin deactivate themselves', async () => {
+      await expect(service.deactivate('c-2', 'c-2')).rejects.toThrow('your own account');
+      expect(prisma.clinician.update).not.toHaveBeenCalled();
+    });
+
+    it('does nothing twice', async () => {
+      prisma.clinician.findUnique.mockResolvedValue(row({ deactivatedAt: new Date() }));
+      await service.deactivate('admin-1', 'c-2');
+      expect(prisma.clinician.update).not.toHaveBeenCalled();
+    });
+
+    it('can be undone', async () => {
+      prisma.clinician.findUnique.mockResolvedValue(row({ deactivatedAt: new Date() }));
+      await service.reactivate('admin-1', 'c-2');
+      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-2' }, data: { deactivatedAt: null } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_REACTIVATED' }));
+    });
+  });
+
+  describe('sendInvite', () => {
+    it('replaces the link and says it is a first invitation only when they never set a password', async () => {
+      prisma.clinician.findUnique.mockResolvedValue(row({ passwordSetAt: null }));
+      await service.sendInvite('admin-1', 'c-2');
+      expect(email.sendClinicianInviteEmail).toHaveBeenCalledWith('new@clinic.dev', 'Nia', expect.stringContaining('/accept-invite?token='), true);
+      email.sendClinicianInviteEmail.mockClear();
+      prisma.clinician.findUnique.mockResolvedValue(row());
+      await service.sendInvite('admin-1', 'c-2');
+      expect(email.sendClinicianInviteEmail).toHaveBeenCalledWith('new@clinic.dev', 'Nia', expect.any(String), false);
+    });
+
+    it('refuses to send one to a deactivated account', async () => {
+      prisma.clinician.findUnique.mockResolvedValue(row({ deactivatedAt: new Date() }));
+      await expect(service.sendInvite('admin-1', 'c-2')).rejects.toThrow('back on');
+    });
+  });
+
+  describe('deleteUnused', () => {
+    it('removes someone who never signed in, and records it', async () => {
+      prisma.clinician.findUnique.mockResolvedValue(row({ passwordSetAt: null }));
+      await expect(service.deleteUnused('admin-1', 'c-2')).resolves.toBe(true);
+      expect(prisma.clinician.delete).toHaveBeenCalledWith({ where: { id: 'c-2' } });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_DELETED' }), prisma);
+    });
+
+    it('keeps anyone who has used their account: their history stays, so they are deactivated, not deleted', async () => {
+      await expect(service.deleteUnused('admin-1', 'c-2')).rejects.toThrow(/Deactivate it instead/);
+      expect(prisma.clinician.delete).not.toHaveBeenCalled();
+    });
+
+    it('will not delete the admin’s own account, and explains a record that still points at it', async () => {
+      await expect(service.deleteUnused('c-2', 'c-2')).rejects.toThrow('your own account');
+      prisma.clinician.findUnique.mockResolvedValue(row({ passwordSetAt: null }));
+      prisma.clinician.delete.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('fk', { code: 'P2003', clientVersion: 'x' }));
+      await expect(service.deleteUnused('admin-1', 'c-2')).rejects.toThrow(/Deactivate it instead/);
+    });
+  });
+});

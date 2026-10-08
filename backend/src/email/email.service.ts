@@ -45,6 +45,37 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Activate your account', html });
   }
 
+  /**
+   * Tells a clinician they were added to the team (or sends a fresh link to one who lost their password), with the single-use link
+   * to choose a password. Nothing about any patient. Resolves true only once the provider has accepted it.
+   */
+  async sendClinicianInviteEmail(to: string, firstName: string, inviteUrl: string, firstTime: boolean): Promise<boolean> {
+    const safeName = escapeHtml(firstName);
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">${firstTime ? `Welcome to the team, ${safeName}` : `Set a new password, ${safeName}`}</h2>
+        <p style="color:#475569">${firstTime ? 'An administrator has added you to the clinic portal. Choose a password to get started.' : 'An administrator sent you this link to choose a new password for the clinic portal.'}</p>
+        <a href="${inviteUrl}"
+          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
+          Choose my password
+        </a>
+        <p style="color:#94a3b8;font-size:13px">This link works once and expires in 7 days. If you weren't expecting it, ignore this email.</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      // Not a real send: the caller must not treat this as delivered.
+      this.logger.log(`[DEV] Clinician invitation to ${to}: ${inviteUrl}`);
+      return false;
+    }
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject: firstTime ? 'You have been added to the clinic portal' : 'Choose a new password for the clinic portal', html });
+    if (error) {
+      this.logger.error(`Clinician invitation email to ${to} failed: ${error.message}`);
+      return false;
+    }
+    return true;
+  }
+
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
