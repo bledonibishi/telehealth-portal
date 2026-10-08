@@ -898,4 +898,11 @@ export const sq: Record<string, string> = {
   'Our courier delivers it. You hand the parcel over, nothing else.': 'Kurieri ynë e dorëzon. Ju vetëm ia jepni pakon, asgjë tjetër.',
   'Month': 'Muaji',
   'Pharmacy statement (CSV)': 'Pasqyra e barnatores (CSV)',
+  'Refund requests': 'Kërkesa për rimbursim',
+  'No order yet': 'Ende pa porosi',
+  'Order is still at the pharmacy': 'Porosia është ende te farmacia',
+  'Order was delivered': 'Porosia u dorëzua',
+  'Order has left the pharmacy': 'Porosia ka dalë nga farmacia',
+  'Refund last payment': 'Ktheji pagesën e fundit',
+  'Refund requests from patients': 'Kërkesa për rimbursim nga pacientët',
 };

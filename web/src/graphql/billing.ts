@@ -7,3 +7,29 @@ export const CREATE_BILLING_PORTAL_SESSION = gql`
     }
   }
 `;
+
+export const MY_OPEN_REFUND_REQUEST = gql`
+  query MyOpenRefundRequest {
+    myOpenRefundRequest {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const REQUEST_MY_REFUND = gql`
+  mutation RequestMyRefund {
+    requestMyRefund {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const CANCEL_MY_SUBSCRIPTION = gql`
+  mutation CancelMySubscription {
+    cancelMySubscription
+  }
+`;

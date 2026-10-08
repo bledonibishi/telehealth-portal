@@ -28,4 +28,7 @@ export class NotificationCounts {
 
   @Field(() => Int, { description: 'Orders that failed, came back, cannot be supplied or are past their expected date (admins only; others get 0)' })
   orderProblems: number;
+
+  @Field(() => Int, { description: 'Refund requests from patients waiting for an admin (admins only; others get 0)' })
+  refundRequests: number;
 }

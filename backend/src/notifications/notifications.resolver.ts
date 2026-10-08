@@ -23,7 +23,7 @@ export class NotificationsResolver {
     // The pharmacy partner sees only the number of orders waiting for it: leads, consultations and
     // patient messages are not its business.
     if (role && !CLINICAL_STAFF.includes(role)) {
-      return { ...counts, newLeads: 0, pendingConsultations: 0, patientMessages: 0, missedDoseAlerts: 0, shipmentsDue: 0, sideEffectAlerts: 0, urgentAppointments: 0, orderProblems: 0 };
+      return { ...counts, newLeads: 0, pendingConsultations: 0, patientMessages: 0, missedDoseAlerts: 0, shipmentsDue: 0, sideEffectAlerts: 0, urgentAppointments: 0, orderProblems: 0, refundRequests: 0 };
     }
     return counts;
   }

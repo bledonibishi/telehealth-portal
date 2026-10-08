@@ -232,3 +232,26 @@ export const PHARMACY_STATEMENT = gql`
     pharmacyStatement(year: $year, month: $month)
   }
 `;
+
+export const REFUND_REQUESTS = gql`
+  query RefundRequests {
+    refundRequests {
+      id
+      requestedAt
+      patientName
+      patientEmail
+      latestOrderStatus
+      latestOrderSequence
+    }
+  }
+`;
+
+export const DECIDE_REFUND_REQUEST = gql`
+  mutation DecideRefundRequest($id: ID!, $approve: Boolean!, $endSubscription: Boolean) {
+    decideRefundRequest(id: $id, approve: $approve, endSubscription: $endSubscription) {
+      id
+      status
+      outcome
+    }
+  }
+`;

@@ -315,6 +315,26 @@ model Lead {
   @@map("leads")
 }
 
+// A patient's one-tap ask for their money back. It refunds nothing by itself: an admin sees whether the medicine has
+// already left the pharmacy and decides (see stripe/refund-requests.service.ts). No reason is asked for.
+model RefundRequest {
+  id          String    @id @default(cuid())
+  patientId   String    @map("patient_id")
+  // REQUESTED, APPROVED or DECLINED.
+  status      String    @default("REQUESTED")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  decidedAt   DateTime? @map("decided_at")
+  decidedById String?   @map("decided_by_id")
+  // What happened to the money (the refund and subscription outcome), shown to the admin.
+  outcome     String?
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
+  @@index([patientId])
+  @@map("refund_requests")
+}
+
 model Patient {
   id                       String    @id @default(cuid())
   email                    String    @unique
@@ -379,6 +399,7 @@ model Patient {
   identityVerifications IdentityVerification[]
 
   @@map("patients")
+  refundRequests RefundRequest[]
 }
 
 model Consultation {

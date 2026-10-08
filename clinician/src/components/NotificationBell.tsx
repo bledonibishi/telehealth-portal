@@ -19,6 +19,7 @@ const ITEMS: Item[] = [
   { label: 'Side effects reported by patients', count: 0, href: '/check-ins', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Urgent appointment requests (24h)', count: 0, href: '/appointments', roles: ['ADMIN', 'DOCTOR'] },
   { label: 'Orders with a delivery problem', count: 0, href: '/orders', roles: ['ADMIN'] },
+  { label: 'Refund requests from patients', count: 0, href: '/orders', roles: ['ADMIN'] },
 ];
 
 export function NotificationBell() {
@@ -41,6 +42,7 @@ export function NotificationBell() {
     { ...ITEMS[6], count: counts?.sideEffectAlerts ?? 0 },
     { ...ITEMS[7], count: counts?.urgentAppointments ?? 0 },
     { ...ITEMS[8], count: counts?.orderProblems ?? 0 },
+    { ...ITEMS[9], count: counts?.refundRequests ?? 0 },
   ].filter((item) => !role || item.roles.includes(role));
 
   const total = items.reduce((sum, i) => sum + i.count, 0);

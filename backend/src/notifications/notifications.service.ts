@@ -31,7 +31,7 @@ export class NotificationsService {
   }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean; includeAppointments?: boolean; includeOrderProblems?: boolean } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems] =
+    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests] =
       await Promise.all([
         // Leads created in the last 24h
         this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
@@ -79,13 +79,16 @@ export class NotificationsService {
 
         // Orders that went wrong on the way, or that the pharmacy cannot supply
         includeOrderProblems ? this.countOrderProblems() : 0,
+
+        // Patients asking for their money back
+        includeOrderProblems ? this.prisma.refundRequest.count({ where: { status: 'REQUESTED' } }) : 0,
       ]);
 
     const patientMessages =
       consultationsWithMessages.filter((c) => c.messages[0]?.senderRole === 'PATIENT').length +
       preConsultationThreads.filter((p) => p.messages[0]?.senderRole === 'PATIENT').length;
 
-    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems };
+    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests };
   }
 
   /** Open orders whose latest tracking word is a problem, or whose expected date has passed. */

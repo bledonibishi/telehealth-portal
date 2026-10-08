@@ -12,6 +12,7 @@ export const GET_NOTIFICATION_COUNTS = gql`
       sideEffectAlerts
       urgentAppointments
       orderProblems
+      refundRequests
     }
   }
 `;

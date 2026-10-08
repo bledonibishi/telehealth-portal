@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { GET_ORDERS, NEXT_SHIPMENT_ALERTS, PHARMACY_STATEMENT } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
+import { RefundRequests } from '@/components/orders/RefundRequests';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import { openProblem, overdueSince } from '@/lib/tracking';
@@ -103,6 +104,7 @@ export default function OrdersPage() {
 
   return (
     <div>
+      {isAdmin && <RefundRequests />}
       <div className="px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
         <div className="flex items-start justify-between gap-4">
           <div>

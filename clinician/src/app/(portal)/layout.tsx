@@ -59,11 +59,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const [authChecked, setAuthChecked] = useState(false);
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
-  const raw: NotifCounts & { orderProblems?: number } = data?.notificationCounts ?? {
+  const raw: NotifCounts & { orderProblems?: number; refundRequests?: number } = data?.notificationCounts ?? {
     newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0,
   };
   // Orders needing attention (admin only) add to the Orders badge.
-  const counts: NotifCounts = { ...raw, pendingOrders: raw.pendingOrders + (raw.orderProblems ?? 0) };
+  const counts: NotifCounts = { ...raw, pendingOrders: raw.pendingOrders + (raw.orderProblems ?? 0) + (raw.refundRequests ?? 0) };
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }

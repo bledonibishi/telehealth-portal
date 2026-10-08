@@ -898,4 +898,11 @@ export const es: Record<string, string> = {
   'Our courier delivers it. You hand the parcel over, nothing else.': 'Nuestro mensajero lo entrega. Usted solo le entrega el paquete, nada más.',
   'Month': 'Mes',
   'Pharmacy statement (CSV)': 'Extracto de la farmacia (CSV)',
+  'Refund requests': 'Solicitudes de reembolso',
+  'No order yet': 'Aún sin pedido',
+  'Order is still at the pharmacy': 'El pedido sigue en la farmacia',
+  'Order was delivered': 'El pedido fue entregado',
+  'Order has left the pharmacy': 'El pedido salió de la farmacia',
+  'Refund last payment': 'Reembolsar el último pago',
+  'Refund requests from patients': 'Solicitudes de reembolso de pacientes',
 };
