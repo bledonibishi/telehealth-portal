@@ -5,6 +5,7 @@ import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { EmailVerificationService } from '../auth/email-verification.service';
 import { findQuestionnaire } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { CURRENT_CONSENTS } from '../consents/consent-texts';
@@ -20,6 +21,7 @@ export class LeadsService {
     private posthog: PostHogService,
     private posthogLogger: PostHogLoggerService,
     private referrals: ReferralsService,
+    private verification: EmailVerificationService,
   ) {}
 
   findAll() {
@@ -33,6 +35,9 @@ export class LeadsService {
   }
 
   async upsert(input: CreateLeadInput, meta: RequestMeta = {}) {
+    // First, so nothing about this email (not even that it has an account) is revealed to someone who can't read its inbox.
+    await this.verification.assertVerified(input.email, input.emailVerificationToken);
+
     // Someone who already has an account (or has paid and is waiting for it) signs in instead of starting again.
     const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } });
     if (taken) throw new ConflictException(EMAIL_TAKEN_MESSAGE);

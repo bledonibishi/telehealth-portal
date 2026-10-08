@@ -25,6 +25,9 @@ export class CreateLeadInput {
   @Field({ nullable: true, description: 'Version of the telehealth consent accepted with them (see consentText). Required with intakeAnswers' })
   telehealthConsentVersion?: string;
 
+  @Field({ nullable: true, description: 'The proof from verifyEmailCode: the visitor entered the code emailed to this address' })
+  emailVerificationToken?: string;
+
   @Field({ nullable: true })
   stripeSessionId?: string;
 

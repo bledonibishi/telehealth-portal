@@ -9,6 +9,7 @@ import { loadReferralCode } from '@/lib/referral';
 import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
 import { track } from '@/lib/analytics';
 import { fetchIntake, hasAnswer, isVisible, prefillFromBmi, toAnswer, type IntakeQuestion, type IntakeValues } from '@/lib/intake';
+import { requestEmailCode, verifyEmailCode } from '@/lib/email-verification';
 import ProductPicker from './ProductPicker';
 import IntakeQuestionView from './IntakeQuestionView';
 
@@ -40,6 +41,7 @@ async function createLead(
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
   health: { answers: ReturnType<typeof toAnswer>[]; consentVersion: string },
+  emailVerificationToken: string,
 ): Promise<LeadResult | 'EMAIL_TAKEN' | { error: string } | null> {
   const apiBase = CONFIG.API_BASE;
   if (!apiBase) return null;
@@ -72,6 +74,7 @@ async function createLead(
             lastName: data.lastName,
             productKind: product,
             quizAnswers,
+            emailVerificationToken,
             intakeAnswers: health.answers,
             telehealthConsentVersion: health.consentVersion,
             referralCode: loadReferralCode(),
@@ -165,6 +168,23 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [intake, setIntake] = useState<{ questions: IntakeQuestion[]; consent: { version: string; text: string } } | null>(null);
   const [intakeFailed, setIntakeFailed] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  // The details step: name and email first, then the code emailed to that address, then the quiz is saved.
+  const [contact, setContact] = useState<{ firstName: string; lastName: string; email: string } | null>(null);
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  // The proof for the address that entered the code, kept while this page is open so a retry doesn't ask again.
+  const [proof, setProof] = useState<{ email: string; token: string } | null>(null);
+  useEffect(() => {
+    if (resendAt <= Date.now()) return;
+    const t = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() >= resendAt) clearInterval(t);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [resendAt]);
 
   const loadIntake = useCallback(() => {
     setIntakeFailed(false);
@@ -373,14 +393,17 @@ export default function Quiz({ product }: { product: ProductKind }) {
   };
 
   /* ── Details form submit — block on failed lead creation ── */
-  const submitDetails = async (firstName: string, lastName: string, email: string) => {
+  const submitDetails = async (firstName: string, lastName: string, email: string, token: string) => {
     if (!intake) { setDetailsErr('The health questions haven’t loaded yet. Please try again in a moment.'); return; }
     setSaving(true);
     const lead = await createLead(
       product, visible(), st.answers, { firstName, lastName, email },
       { answers: healthQs.concat((intake.questions).filter((x) => x.id in prefilled)).filter((x) => hasAnswer(x, health)).map((x) => toAnswer(x, health[x.id])), consentVersion: intake.consent.version },
+      token,
     );
     if (lead && typeof lead === 'object' && 'error' in lead) {
+      // The proof ran out (or was never right): back to asking for a code.
+      if (/verify your email/i.test(lead.error)) { setProof(null); setCode(''); setCodeSent(false); }
       setDetailsErr(lead.error);
       setSaving(false);
       return;
@@ -536,57 +559,137 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* ── Details form ── */
   if (st.view === 'details') {
+    const cooldown = Math.max(0, Math.ceil((resendAt - now) / 1000));
+
+    const sendCode = async (c: { firstName: string; lastName: string; email: string }) => {
+      setDetailsErr('');
+      setCodeBusy(true);
+      try {
+        await requestEmailCode(c.email);
+        setContact(c);
+        setCode('');
+        setCodeSent(true);
+        setResendAt(Date.now() + 30_000);
+        setNow(Date.now());
+      } catch (err) {
+        setDetailsErr(err instanceof Error ? err.message : 'We couldn’t send the code. Please try again.');
+      } finally {
+        setCodeBusy(false);
+      }
+    };
+
+    const checkCode = async () => {
+      if (!contact) return;
+      setDetailsErr('');
+      setCodeBusy(true);
+      try {
+        const token = await verifyEmailCode(contact.email, code);
+        setProof({ email: contact.email, token });
+        await submitDetails(contact.firstName, contact.lastName, contact.email, token);
+      } catch (err) {
+        setDetailsErr(err instanceof Error ? err.message : 'That code didn’t work. Please try again.');
+      } finally {
+        setCodeBusy(false);
+      }
+    };
+
     return (
       <div className="thq-in">
         <div className="thq-top">
-          <button className="thq-arrow" onClick={back} aria-label="Back">←</button>
+          <button className="thq-arrow" onClick={codeSent ? () => { setCodeSent(false); setDetailsErr(''); } : back} aria-label="Back">←</button>
           <div className="thq-progress"><div className="thq-bar" style={{ width: '95%' }} /></div>
           <div className="thq-count">Last step</div>
         </div>
         <div className="thq-time">◷ Takes about 5 minutes</div>
-        <h2 className="thq-q">Where should we send your results?</h2>
-        <p className="thq-help">Your doctor uses these details to review your answers.</p>
-        <form
-          noValidate
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            const firstName = (fd.get('firstName') as string).trim();
-            const lastName = (fd.get('lastName') as string).trim();
-            const email = (fd.get('email') as string).trim();
-            if (!firstName || !lastName) { setDetailsErr('Please enter your first and last name.'); return; }
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setDetailsErr('Please enter a valid email address.'); return; }
-            setDetailsErr('');
-            setEmailTaken(false);
-            await submitDetails(firstName, lastName, email);
-          }}
-        >
-          <div className="thq-fields">
-            <div className="thq-field">
-              <label htmlFor="thq-fn">First name</label>
-              <input id="thq-fn" name="firstName" type="text" autoComplete="given-name" />
-            </div>
-            <div className="thq-field">
-              <label htmlFor="thq-ln">Last name</label>
-              <input id="thq-ln" name="lastName" type="text" autoComplete="family-name" />
-            </div>
-            <div className="thq-field-full">
-              <label htmlFor="thq-em">Email</label>
-              <input id="thq-em" name="email" type="email" autoComplete="email" />
-            </div>
-          </div>
-          {emailTaken && (
-            <div className="thq-error" role="alert">
-              An account already exists for this email.{' '}
-              <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
-              {' '}instead, or use a different email address.
-            </div>
-          )}
-          {detailsErr && <div className="thq-error">{detailsErr}</div>}
-          <button type="submit" className="thq-next" disabled={saving}>
-            {saving ? 'Saving…' : 'See my treatments'}
-          </button>
-        </form>
+
+        {!codeSent ? (
+          <>
+            <h2 className="thq-q">Where should we send your results?</h2>
+            <p className="thq-help">Your doctor uses these details to review your answers. We’ll email you a code to confirm the address.</p>
+            <form
+              noValidate
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                const c = { firstName: (fd.get('firstName') as string).trim(), lastName: (fd.get('lastName') as string).trim(), email: (fd.get('email') as string).trim() };
+                if (!c.firstName || !c.lastName) { setDetailsErr('Please enter your first and last name.'); return; }
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) { setDetailsErr('Please enter a valid email address.'); return; }
+                setEmailTaken(false);
+                // Already proved for this address on this page (for instance saving failed): no second code.
+                if (proof && proof.email.toLowerCase() === c.email.toLowerCase()) { setContact(c); setDetailsErr(''); await submitDetails(c.firstName, c.lastName, c.email, proof.token); return; }
+                await sendCode(c);
+              }}
+            >
+              <div className="thq-fields">
+                <div className="thq-field">
+                  <label htmlFor="thq-fn">First name</label>
+                  <input id="thq-fn" name="firstName" type="text" autoComplete="given-name" defaultValue={contact?.firstName} />
+                </div>
+                <div className="thq-field">
+                  <label htmlFor="thq-ln">Last name</label>
+                  <input id="thq-ln" name="lastName" type="text" autoComplete="family-name" defaultValue={contact?.lastName} />
+                </div>
+                <div className="thq-field-full">
+                  <label htmlFor="thq-em">Email</label>
+                  <input id="thq-em" name="email" type="email" autoComplete="email" defaultValue={contact?.email} />
+                </div>
+              </div>
+              {emailTaken && (
+                <div className="thq-error" role="alert">
+                  An account already exists for this email.{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
+                  {' '}instead, or use a different email address.
+                </div>
+              )}
+              {detailsErr && <div className="thq-error" role="alert">{detailsErr}</div>}
+              <button type="submit" className="thq-next" disabled={saving || codeBusy}>
+                {codeBusy ? 'Sending the code…' : saving ? 'Saving…' : 'Send me a code'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2 className="thq-q">Check your email</h2>
+            <p className="thq-help">We sent a six-digit code to <strong>{contact?.email}</strong>. It can take a minute to arrive; check your spam folder too.</p>
+            <form
+              noValidate
+              onSubmit={(e) => { e.preventDefault(); if (/^\d{6}$/.test(code.trim())) void checkCode(); else setDetailsErr('Please enter the six digits from the email.'); }}
+            >
+              <div className="thq-field-full">
+                <label htmlFor="thq-code">Verification code</label>
+                <input
+                  id="thq-code"
+                  className="thq-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  autoFocus
+                />
+              </div>
+              {emailTaken && (
+                <div className="thq-error" role="alert">
+                  An account already exists for this email.{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
+                  {' '}instead, or use a different email address.
+                </div>
+              )}
+              {detailsErr && <div className="thq-error" role="alert">{detailsErr}</div>}
+              <button type="submit" className="thq-next" disabled={saving || codeBusy || code.length !== 6}>
+                {saving || codeBusy ? 'Checking…' : 'Confirm and see my treatments'}
+              </button>
+              <p className="thq-resend">
+                Didn’t get it?{' '}
+                <button type="button" disabled={cooldown > 0 || codeBusy} onClick={() => contact && sendCode(contact)}>
+                  {cooldown > 0 ? `Send again in ${cooldown}s` : 'Send a new code'}
+                </button>
+                {' · '}
+                <button type="button" onClick={() => { setCodeSent(false); setDetailsErr(''); }}>Use a different email</button>
+              </p>
+            </form>
+          </>
+        )}
       </div>
     );
   }

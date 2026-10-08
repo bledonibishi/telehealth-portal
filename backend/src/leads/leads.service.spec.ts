@@ -14,7 +14,9 @@ function build(over: { patient?: any; lead?: any } = {}) {
   const posthog = { identify: jest.fn(), capture: jest.fn() };
   const logger = { info: jest.fn() };
   const referrals = { validateAndAttach: jest.fn() };
-  return { svc: new LeadsService(prisma as any, posthog as any, logger as any, referrals as any), prisma };
+  // The email proof is checked first; by default the visitor has it.
+  const verification = { assertVerified: jest.fn().mockResolvedValue(undefined) };
+  return { svc: new LeadsService(prisma as any, posthog as any, logger as any, referrals as any, verification as any), prisma, verification };
 }
 
 const input = { email: 'a@b.com', firstName: 'A', lastName: 'B', productKind: 'GLP1', quizAnswers: [] } as any;
@@ -36,6 +38,23 @@ describe('LeadsService.upsert', () => {
     const { svc, prisma } = build({ lead: { id: 'l-1', convertedAt: null } });
     await svc.upsert(input);
     expect(prisma.lead.upsert).toHaveBeenCalled();
+  });
+});
+
+describe('LeadsService.upsert email proof', () => {
+  it('saves nothing without the proof that the visitor can read the inbox, and says nothing about the address', async () => {
+    const { svc, prisma, verification } = build({ patient: { id: 'p-1' } });
+    verification.assertVerified.mockRejectedValue(new BadRequestException('Please verify your email address first.'));
+    // Even for an email that has an account, the answer is the same: no "account exists" before the proof.
+    await expect(svc.upsert(input)).rejects.toThrow(/verify your email/);
+    expect(prisma.patient.findFirst).not.toHaveBeenCalled();
+    expect(prisma.lead.upsert).not.toHaveBeenCalled();
+  });
+
+  it('checks the proof against the email and the token that came with the quiz', async () => {
+    const { svc, verification } = build();
+    await svc.upsert({ ...input, emailVerificationToken: 'tok' });
+    expect(verification.assertVerified).toHaveBeenCalledWith('a@b.com', 'tok');
   });
 });
 

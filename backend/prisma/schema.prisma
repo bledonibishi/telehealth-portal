@@ -1298,3 +1298,23 @@ model Voucher {
   @@index([patientId])
   @@map("vouchers")
 }
+
+// A code emailed to someone starting the quiz, and the short-lived proof that they entered it. The quiz needs the proof
+// to save a lead for that email, so nobody can save or change answers under an email they can't read.
+model EmailVerification {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  codeSalt         String?   @map("code_salt")
+  codeHash         String?   @map("code_hash")
+  codeExpiresAt    DateTime? @map("code_expires_at")
+  attempts         Int       @default(0)
+  lastSentAt       DateTime  @map("last_sent_at")
+  sentCount        Int       @default(1) @map("sent_count")
+  sentWindowStart  DateTime  @map("sent_window_start")
+  tokenHash        String?   @map("token_hash")
+  tokenExpiresAt   DateTime? @map("token_expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("email_verifications")
+}
