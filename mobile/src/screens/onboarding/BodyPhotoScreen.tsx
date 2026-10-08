@@ -59,7 +59,7 @@ export function BodyPhotoScreen({ navigation }: any) {
   }, [o, ready]);
 
   // A passed photo is shown for a moment, then the flow moves on by itself.
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (phase !== 'saved') return;
     timer.current = setTimeout(advance, 1600);

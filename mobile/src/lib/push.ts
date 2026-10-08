@@ -10,7 +10,7 @@ const TOKEN_KEY = 'push_token';
 
 // A notice that arrives while the app is open still shows.
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: false, shouldSetBadge: false }),
+  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
 });
 
 /**
