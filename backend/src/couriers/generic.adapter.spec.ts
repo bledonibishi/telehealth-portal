@@ -27,6 +27,24 @@ describe('GenericCourierAdapter.verify', () => {
   });
 });
 
+describe('GenericCourierAdapter.parse: events without an id', () => {
+  const adapter = new GenericCourierAdapter();
+  const body = { reference: 'o-1', status: 'Delivery failed', occurredAt: '2026-10-13T08:00:00Z' };
+
+  it('gives a resend of the same event the same id, so it is recorded once', () => {
+    expect(adapter.parse(body)[0].externalId).toBe(adapter.parse({ ...body })[0].externalId);
+    expect(adapter.parse(body)[0].externalId).toMatch(/^body:[0-9a-f]{32}$/);
+  });
+
+  it('gives a different event a different id', () => {
+    expect(adapter.parse(body)[0].externalId).not.toBe(adapter.parse({ ...body, status: 'Delivered' })[0].externalId);
+  });
+
+  it('prefers the sender’s own event id', () => {
+    expect(adapter.parse({ ...body, eventId: 'abc' })[0].externalId).toBe('abc');
+  });
+});
+
 describe('GenericCourierAdapter.parse', () => {
   it('reads one event, or a list', () => {
     const one = adapter.parse({ reference: 'o-1', status: 'Out for delivery', eventId: 'e1', occurredAt: '2026-10-13T08:00:00Z', location: 'Prishtinë' });

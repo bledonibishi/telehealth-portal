@@ -540,6 +540,9 @@ model Order {
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
+  // What the pharmacy charged per unit when this order was handed over: [{ product, strength, quantity, unitCost }].
+  // Kept so a later change to a dose's cost never rewrites an earlier month's statement.
+  pharmacyCostSnapshot Json? @map("pharmacy_cost_snapshot")
 }
 
 // One step in an order's journey, from staff pressing a button or from a courier or tracking service

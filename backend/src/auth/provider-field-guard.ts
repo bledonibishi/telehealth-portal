@@ -11,7 +11,7 @@ import { accessRoleOf } from './access-roles';
  * Other staff are not affected.
  */
 export const PROVIDER_VISIBLE_FIELDS: Record<string, ReadonlySet<string>> = {
-  Patient: new Set(['id', 'firstName', 'lastName', 'email', 'phone', 'addressLine1', 'addressLine2', 'city', 'postcode', 'country']),
+  Patient: new Set(['id', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'postcode', 'country']),
   Prescription: new Set(['id', 'status', 'medication', 'dosage', 'instructions', 'issuedAt', 'validUntil', 'refillsAllowed', 'documentUrl', 'consultation', 'items']),
   Consultation: new Set(['id', 'kind']),
 };
@@ -27,6 +27,9 @@ const DELIVERY_TYPES = new Set(['Patient', 'DeliveryAddress']);
 export const providerFieldGuard: FieldMiddleware = async (ctx, next) => {
   const user = ctx.context?.req?.user;
   if (accessRoleOf(user) !== ClinicianRole.PROVIDER) return next();
+
+  // The pharmacy is not told how to reach a patient: it reads as empty (the field can't be null, so a blank).
+  if (ctx.info.parentType.name === 'Patient' && ctx.info.fieldName === 'email') return '';
 
   const allowed = PROVIDER_VISIBLE_FIELDS[ctx.info.parentType.name];
   if (allowed && !allowed.has(ctx.info.fieldName)) {

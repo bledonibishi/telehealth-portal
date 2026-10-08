@@ -58,6 +58,21 @@ describe('providerFieldGuard', () => {
   });
 });
 
+describe('providerFieldGuard: how to reach the patient', () => {
+  it('shows the pharmacy a blank where the patient’s email would be, with the setting on or off', async () => {
+    const { result, next } = run(provider, 'Patient', 'email');
+    await expect(result).resolves.toBe('');
+    expect(next).not.toHaveBeenCalled();
+    process.env.PHARMACY_SEES_DELIVERY_ADDRESS = 'true';
+    await expect(run(provider, 'Patient', 'email').result).resolves.toBe('');
+    delete process.env.PHARMACY_SEES_DELIVERY_ADDRESS;
+  });
+
+  it('still gives our own staff the email', async () => {
+    await expect(run({ id: 'a', role: 'CLINICIAN', clinicianRole: 'ADMIN' }, 'Patient', 'email').result).resolves.toBe('value');
+  });
+});
+
 describe('providerFieldGuard: where the parcel goes', () => {
   afterEach(() => delete process.env.PHARMACY_SEES_DELIVERY_ADDRESS);
   const asValue = async (user: object | undefined, type: string, field: string) => {

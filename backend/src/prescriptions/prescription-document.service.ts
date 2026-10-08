@@ -11,9 +11,12 @@ export class PrescriptionDocumentService {
     private config: ConfigService,
   ) {}
 
-  /** Whether an order that hasn't been cancelled is waiting on this prescription, i.e. a pharmacy has a reason to open it. */
+  /**
+   * Whether an order is still with the pharmacy or on its way, i.e. it has a reason to open this prescription. Once it
+   * has been delivered, or cancelled, the pharmacy has no further need of it (nor of the patient's details on it).
+   */
   async hasLiveOrder(prescriptionId: string): Promise<boolean> {
-    return (await this.prisma.order.count({ where: { prescriptionId, status: { not: 'CANCELLED' } } })) > 0;
+    return (await this.prisma.order.count({ where: { prescriptionId, status: { in: ['PENDING', 'DISPATCHED', 'OUT_FOR_DELIVERY'] } } })) > 0;
   }
 
   async load(id: string) {

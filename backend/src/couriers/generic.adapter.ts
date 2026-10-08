@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import type { CourierAdapter, TrackingEventInput } from './courier-adapter';
 import { TRACKING_STATUSES, parseTrackingStatus } from './tracking-status';
 
@@ -50,7 +50,9 @@ export class GenericCourierAdapter implements CourierAdapter {
         trackingNumber,
         status,
         occurredAt: date(raw.occurredAt, 'occurredAt') ?? new Date(),
-        externalId: text(raw.eventId, 100),
+        // Without the sender's own id, a resend of the same event is recognised by its content, so replaying a captured
+        // request (or a courier retrying) records it once and never tells the patient twice.
+        externalId: text(raw.eventId, 100) ?? `body:${createHash('sha256').update(JSON.stringify(raw)).digest('hex').slice(0, 32)}`,
         location: text(raw.location, 200),
         note: text(raw.note, 500),
         carrier: text(raw.carrier, 100),

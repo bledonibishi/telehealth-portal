@@ -37,3 +37,22 @@ describe('OrdersService.findAll', () => {
     expect(JSON.stringify(where())).toMatch(/email/);
   });
 });
+
+describe('OrdersService.statementOrders', () => {
+  const build = (orders: any[]) => {
+    const prisma: any = { order: { findMany: jest.fn().mockResolvedValue(orders) } };
+    return new OrdersService(prisma, { log: jest.fn() } as any, {} as any, {} as any);
+  };
+  const item = (cost: string | null) => ({ quantity: 1, product: { name: 'Ozempic', brandName: null }, strength: { label: '0.5 mg', pharmacyUnitCost: cost } });
+
+  it('uses the cost recorded when the order was handed over, not today’s cost', async () => {
+    const snapshot = [{ product: 'Ozempic', strength: '0.5 mg', quantity: 1, unitCost: 80 }];
+    const [row] = await build([{ id: 'o-1', sequence: 1, dispatchedAt: new Date(), pharmacyCostSnapshot: snapshot, prescription: { items: [item('95')] } }]).statementOrders(2026, 10);
+    expect(row.items[0].unitCost).toBe(80);
+  });
+
+  it('falls back to today’s cost only for an order handed over before costs were recorded', async () => {
+    const [row] = await build([{ id: 'o-1', sequence: 1, dispatchedAt: new Date(), pharmacyCostSnapshot: null, prescription: { items: [item('95')] } }]).statementOrders(2026, 10);
+    expect(row.items[0].unitCost).toBe(95);
+  });
+});

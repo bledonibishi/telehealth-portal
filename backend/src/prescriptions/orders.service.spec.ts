@@ -17,13 +17,14 @@ describe('OrdersService', () => {
     partner = { trySend: jest.fn(), markCancelled: jest.fn(), flushCancellations: jest.fn() };
     prisma = {
       order: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'o-1', status: 'PENDING', patient: PATIENT, prescription: ACTIVE_RX }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'o-1', status: 'PENDING', sequence: 1, createdAt: new Date(), patient: PATIENT, prescription: ACTIVE_RX }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'o-new' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'o-new', ...data })),
       },
       prescription: { findUnique: jest.fn() },
+      prescriptionItem: { findMany: jest.fn().mockResolvedValue([]) },
       refillRequest: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     audit = { log: jest.fn() };
@@ -320,7 +321,7 @@ describe('OrdersService', () => {
 
     it('with both ticked ends the subscription and refunds, as a declined consultation does, and records it', async () => {
       await withBilling.cancel('admin-1', 'o-1', 'Out of stock', { refund: true, endSubscription: true });
-      expect(billing.cancelAndRefund).toHaveBeenCalledWith(expect.objectContaining({ firstName: 'Emma' }));
+      expect(billing.cancelAndRefund).toHaveBeenCalledWith(expect.objectContaining({ firstName: 'Emma' }), { paidBefore: expect.any(Date) });
       expect(prisma.order.update).toHaveBeenCalledWith({ where: { id: 'o-1' }, data: { cancelBillingNote: 'Subscription ended and the latest payment refunded (re_1)' } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ORDER_CANCELLED', metadata: expect.objectContaining({ refund: true, endSubscription: true }) }));
     });
@@ -331,6 +332,18 @@ describe('OrdersService', () => {
       expect(billing.cancelAndRefund).not.toHaveBeenCalled();
       await withBilling.cancel('admin-1', 'o-1', 'Patient left', { endSubscription: true });
       expect(billing.cancelAtPeriodEnd).toHaveBeenCalled();
+    });
+
+    it('refunds only the payment made before the order, never a later bill', async () => {
+      await withBilling.cancel('admin-1', 'o-1', 'Out of stock', { refund: true });
+      expect(billing.refundLatestPayment).toHaveBeenCalledWith(expect.anything(), { paidBefore: expect.any(Date) });
+    });
+
+    it('does not refund a repeat supply from here, since its payment cannot be matched to it', async () => {
+      prisma.order.findUnique.mockResolvedValue({ id: 'o-1', status: 'PENDING', sequence: 2, createdAt: new Date(), patient: PATIENT, prescription: ACTIVE_RX });
+      await expect(withBilling.cancel('admin-1', 'o-1', 'Out of stock', { refund: true })).rejects.toThrow(/repeat supply/);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      expect(billing.refundLatestPayment).not.toHaveBeenCalled();
     });
 
     it('keeps the order cancelled and writes the problem down when billing fails', async () => {

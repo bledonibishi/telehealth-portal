@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '../common/enums';
@@ -29,7 +30,17 @@ export class RefundRequestsService {
   async request(patientId: string) {
     const existing = await this.open(patientId);
     if (existing) return existing;
-    const created = await this.prisma.refundRequest.create({ data: { patientId } });
+    let created;
+    try {
+      created = await this.prisma.refundRequest.create({ data: { patientId } });
+    } catch (err) {
+      // Two taps at once: the database allows only one open request per patient, so the other tap lands here.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const open = await this.open(patientId);
+        if (open) return open;
+      }
+      throw err;
+    }
     await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'REFUND_REQUESTED', resourceType: 'RefundRequest', resourceId: created.id, patientId });
     return created;
   }
@@ -37,7 +48,10 @@ export class RefundRequestsService {
   /** Stops the next payment; what has been paid stays paid. */
   async cancelSubscription(patientId: string): Promise<string> {
     const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: patientId }, select: BILLING_PATIENT });
-    const note = await this.billing.cancelAtPeriodEnd(patient);
+    const result = await this.billing.cancelAtPeriodEndResult(patient);
+    // A failure is told as one: the patient must never believe the charges have stopped when they have not.
+    if (!result.ok) throw new BadRequestException('We couldn’t stop your subscription just now. Please try again, or message us and we’ll do it for you.');
+    const note = result.note;
     await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'SUBSCRIPTION_CANCEL_REQUESTED', resourceType: 'Patient', resourceId: patientId, patientId });
     return note;
   }
@@ -73,8 +87,14 @@ export class RefundRequestsService {
     if (approve) {
       try {
         const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: request.patientId }, select: BILLING_PATIENT });
-        const refunded = await this.billing.refundLatestPayment(patient);
-        outcome = endSubscription ? `${refunded}. ${await this.billing.cancelAtPeriodEnd(patient)}` : refunded;
+        const refunded = await this.billing.refundLatestPaymentResult(patient);
+        // Nothing was refunded (Stripe said no, no subscription, nothing paid, already refunded): not an approval.
+        if (!refunded.ok) throw new BadRequestException(`Nothing was refunded: ${refunded.note}. The request is still open; decline it if it should not be refunded.`);
+        outcome = refunded.note;
+        if (endSubscription) {
+          const stopped = await this.billing.cancelAtPeriodEndResult(patient);
+          outcome += stopped.ok ? `. ${stopped.note}` : `. The subscription was NOT stopped (${stopped.note}); stop it in Stripe`;
+        }
       } catch (err) {
         // Stripe said no: put the request back so it can be tried again, instead of leaving it "approved" with no refund.
         await this.prisma.refundRequest.update({ where: { id }, data: { status: 'REQUESTED', decidedAt: null, decidedById: null } });

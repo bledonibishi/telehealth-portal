@@ -459,10 +459,13 @@ export function OrderCard({
               <input placeholder={t('Reason for cancelling…')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full sm:w-72`} autoFocus />
               {canConfirmDelivery && (
                 <div className="w-full flex flex-col gap-1 text-xs text-gray-600">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} />
-                    {t('Refund the patient’s last payment')}
-                  </label>
+                  {/* Only the first supply can be matched to a payment; a repeat is refunded in Stripe. */}
+                  {order.sequence === 1 && (
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={refund} onChange={(e) => setRefund(e.target.checked)} />
+                      {t('Refund the patient’s last payment')}
+                    </label>
+                  )}
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={endSubscription} onChange={(e) => setEndSubscription(e.target.checked)} />
                     {t('End the subscription')}
@@ -470,7 +473,7 @@ export function OrderCard({
                 </div>
               )}
               <button
-                onClick={() => run(() => cancel({ variables: { id: order.id, reason: reason.trim(), ...(canConfirmDelivery ? { refund, endSubscription } : {}) } }))}
+                onClick={() => run(() => cancel({ variables: { id: order.id, reason: reason.trim(), ...(canConfirmDelivery ? { refund: refund && order.sequence === 1, endSubscription } : {}) } }))}
                 disabled={!reason.trim() || cancelling}
                 className="px-3 py-1.5 bg-danger-500 text-white text-sm rounded-lg disabled:opacity-40"
               >

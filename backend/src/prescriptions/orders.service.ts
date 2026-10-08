@@ -8,6 +8,7 @@ import { describeEstimate } from './delivery-estimate';
 import type { TrackingEventInput } from '../couriers/courier-adapter';
 import { orderStatusFor, rankOf, type TrackingStatus } from '../couriers/tracking-status';
 import { PushService } from '../push/push.service';
+import type { StatementOrder } from './pharmacy-statement';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrtMonitoringService } from '../labs/trt-monitoring.service';
@@ -204,6 +205,7 @@ export class OrdersService {
     await this.transition(id, OrderStatus.PENDING, {
       status: OrderStatus.DISPATCHED,
       dispatchedAt: new Date(),
+      pharmacyCostSnapshot: await this.costSnapshot(order.prescriptionId),
       ...(ref ? { pharmacyRef: ref } : {}),
       shippingAddress: address as unknown as Prisma.InputJsonValue,
       ...details,
@@ -335,7 +337,10 @@ export class OrdersService {
     if (moves && target) {
       data.status = target;
       // A step the courier never reported (e.g. delivered, with no pickup event) is filled in with the same time.
-      if (rankOf(target) >= 1 && !order.dispatchedAt) data.dispatchedAt = at;
+      if (rankOf(target) >= 1 && !order.dispatchedAt) {
+        data.dispatchedAt = at;
+        data.pharmacyCostSnapshot = await this.costSnapshot(order.prescriptionId);
+      }
       if (rankOf(target) >= 2 && !order.outForDeliveryAt) data.outForDeliveryAt = at;
       if (target === OrderStatus.DELIVERED) data.deliveredAt = at;
       const address = deliveryAddressOf(order.patient);
@@ -397,6 +402,17 @@ export class OrdersService {
     }
   }
 
+  /** The pharmacy's cost per unit as it is now, written onto the order as it is handed over. */
+  private async costSnapshot(prescriptionId: string): Promise<Prisma.InputJsonValue | undefined> {
+    const items = await this.prisma.prescriptionItem.findMany({ where: { prescriptionId }, include: { product: true, strength: true } });
+    return items.map((it) => ({
+      product: it.product.brandName ?? it.product.name,
+      strength: it.strength.label,
+      quantity: it.quantity,
+      unitCost: it.strength.pharmacyUnitCost ? Number(it.strength.pharmacyUnitCost) : null,
+    }));
+  }
+
   /** Everything the pharmacy handed over in a month (not cancelled), for checking what we owe it. */
   async statementOrders(year: number, month: number) {
     const from = new Date(Date.UTC(year, month - 1, 1));
@@ -409,7 +425,10 @@ export class OrdersService {
       id: o.id,
       sequence: o.sequence,
       dispatchedAt: o.dispatchedAt!,
-      items: o.prescription.items.map((it) => ({ product: it.product.brandName ?? it.product.name, strength: it.strength.label, quantity: it.quantity, unitCost: it.strength.pharmacyUnitCost ? Number(it.strength.pharmacyUnitCost) : null })),
+      // What it cost when it was handed over; only an order from before that was kept falls back to today's costs.
+      items: Array.isArray(o.pharmacyCostSnapshot)
+        ? (o.pharmacyCostSnapshot as StatementOrder['items'])
+        : o.prescription.items.map((it) => ({ product: it.product.brandName ?? it.product.name, strength: it.strength.label, quantity: it.quantity, unitCost: it.strength.pharmacyUnitCost ? Number(it.strength.pharmacyUnitCost) : null })),
     }));
   }
 
@@ -420,6 +439,11 @@ export class OrdersService {
    */
   async cancel(actorId: string, id: string, reason: string, money: { refund?: boolean; endSubscription?: boolean } = {}) {
     if (!reason.trim()) throw new BadRequestException('A reason is required to cancel an order');
+    // A payment can be matched to an order only for the first supply (it was paid for at checkout). A repeat is billed
+    // by the subscription, not per order, so "the latest payment" could be a different month's: refund that in Stripe.
+    if (money.refund && (await this.find(id)).sequence !== 1) {
+      throw new BadRequestException('A repeat supply isn’t refunded from here: it is billed by the subscription, so refund the right payment in Stripe');
+    }
     await this.transition(id, OrderStatus.PENDING, {
       status: OrderStatus.CANCELLED,
       cancelledAt: new Date(),
@@ -431,7 +455,7 @@ export class OrdersService {
     if ((money.refund || money.endSubscription) && this.billing) {
       const patient = order.patient;
       if (money.refund && money.endSubscription) {
-        const outcome = await this.billing.cancelAndRefund(patient);
+        const outcome = await this.billing.cancelAndRefund(patient, { paidBefore: order.createdAt });
         billingNote =
           outcome.status === 'REFUNDED'
             ? `Subscription ended and the latest payment refunded${outcome.refundId ? ` (${outcome.refundId})` : ''}`
@@ -439,7 +463,7 @@ export class OrdersService {
             ? `Nothing to end or refund: ${outcome.reason}`
             : `Billing could not be changed (${outcome.error}) — fix it in Stripe by hand`;
       } else if (money.refund) {
-        billingNote = await this.billing.refundLatestPayment(patient);
+        billingNote = await this.billing.refundLatestPayment(patient, { paidBefore: order.createdAt });
       } else {
         billingNote = await this.billing.cancelAtPeriodEnd(patient);
       }

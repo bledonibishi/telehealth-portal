@@ -25,6 +25,9 @@ export type InvoiceSummary = {
 
 export const INVOICE_LIMIT = 12;
 
+/** What a billing action did: `ok` only when it really happened. */
+export type BillingResult = { ok: boolean; note: string };
+
 export type RefundOutcome =
   | { status: 'REFUNDED'; subscriptionId: string; refundId: string | null }
   | { status: 'NOT_REQUIRED'; reason: string }
@@ -144,7 +147,7 @@ export class BillingService {
     }
   }
 
-  async cancelAndRefund(patient: BillingPatient): Promise<RefundOutcome> {
+  async cancelAndRefund(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<RefundOutcome> {
     if (!this.configured) return { status: 'FAILED', error: 'Stripe is not configured' };
 
     try {
@@ -156,7 +159,7 @@ export class BillingService {
         await this.stripe.subscriptions.cancel(subscriptionId);
       }
 
-      const refundId = await this.refundLatestPaidInvoice(subscriptionId);
+      const refundId = await this.refundLatestPaidInvoice(subscriptionId, opts.paidBefore);
       this.logger.log(`Cancelled ${subscriptionId}, refund ${refundId ?? 'none needed'}`);
       return { status: 'REFUNDED', subscriptionId, refundId };
     } catch (err: any) {
@@ -239,10 +242,20 @@ export class BillingService {
    * Refunds the patient's latest paid invoice and leaves the subscription running (an order that couldn't be supplied
    * isn't always the end of treatment). Returns a note for the record, never throws.
    */
-  async refundLatestPayment(patient: BillingPatient): Promise<string> {
-    return this.withSubscription(patient, async (sub) => {
-      const refundId = await this.refundLatestPaidInvoice(sub.id);
-      return refundId ? `Refunded the latest payment (${refundId})` : 'Nothing to refund: there is no paid payment, or it was already refunded';
+  async refundLatestPayment(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<string> {
+    return (await this.refundLatestPaymentResult(patient, opts)).note;
+  }
+
+  /**
+   * Like refundLatestPayment, but says whether money was actually refunded, so a caller never reports a refund that
+   * did not happen. `paidBefore` limits it to payments made up to then (an order's own payment, not a later bill).
+   */
+  async refundLatestPaymentResult(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<BillingResult> {
+    return this.withSubscriptionResult(patient, async (sub) => {
+      const refundId = await this.refundLatestPaidInvoice(sub.id, opts.paidBefore);
+      return refundId
+        ? { ok: true, note: `Refunded the latest payment (${refundId})` }
+        : { ok: false, note: 'Nothing to refund: there is no paid payment, or it was already refunded' };
     });
   }
 
@@ -266,34 +279,51 @@ export class BillingService {
 
   /** Ends the subscription once the period already paid for runs out. */
   async cancelAtPeriodEnd(patient: BillingPatient): Promise<string> {
-    return this.withSubscription(patient, async (sub) => {
-      await this.stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
-      return 'Subscription cancels at the end of the current period';
-    });
+    return (await this.cancelAtPeriodEndResult(patient)).note;
   }
 
-  private async withSubscription(
+  /** Like cancelAtPeriodEnd, but says whether the subscription now really ends, so a failure is never shown as success. */
+  async cancelAtPeriodEndResult(patient: BillingPatient): Promise<BillingResult> {
+    return this.withSubscriptionResult(
+      patient,
+      async (sub) => {
+        if (sub.cancel_at_period_end) return { ok: true, note: 'Subscription already ends after the period that is paid for' };
+        await this.stripe.subscriptions.update(sub.id, { cancel_at_period_end: true });
+        return { ok: true, note: 'Subscription cancels at the end of the current period' };
+      },
+      { alreadyCancelledIsOk: true },
+    );
+  }
+
+  private async withSubscription(patient: BillingPatient, fn: (sub: Stripe.Subscription) => Promise<string>): Promise<string> {
+    return (await this.withSubscriptionResult(patient, async (sub) => ({ ok: true, note: await fn(sub) }))).note;
+  }
+
+  /** Finds the patient's subscription and runs `fn` on it. Never throws: a problem comes back as `ok: false` with a note. */
+  private async withSubscriptionResult(
     patient: BillingPatient,
-    fn: (sub: Stripe.Subscription) => Promise<string>,
-  ): Promise<string> {
-    if (!this.configured) return 'Stripe is not configured — update billing by hand';
+    fn: (sub: Stripe.Subscription) => Promise<BillingResult>,
+    opts: { alreadyCancelledIsOk?: boolean } = {},
+  ): Promise<BillingResult> {
+    if (!this.configured) return { ok: false, note: 'Stripe is not configured — update billing by hand' };
     try {
       const id = patient.stripeSubscriptionId ?? (await this.findSubscriptionByEmail(patient.email));
-      if (!id) return 'No Stripe subscription found for this patient';
+      if (!id) return { ok: false, note: 'No Stripe subscription found for this patient' };
       const sub = await this.stripe.subscriptions.retrieve(id);
-      if (sub.status === 'canceled') return 'Subscription is already cancelled';
+      if (sub.status === 'canceled') return { ok: !!opts.alreadyCancelledIsOk, note: 'Subscription is already cancelled' };
       return await fn(sub);
     } catch (err: any) {
       this.logger.error(`Billing update for ${patient.email} failed: ${err.message}`);
-      return `Billing update failed (${err.message}) — fix in Stripe by hand`;
+      return { ok: false, note: `Billing update failed (${err.message}) — fix in Stripe by hand` };
     }
   }
 
-  private async refundLatestPaidInvoice(subscriptionId: string): Promise<string | null> {
-    const { data } = await this.stripe.invoices.list({ subscription: subscriptionId, status: 'paid', limit: 1 });
+  private async refundLatestPaidInvoice(subscriptionId: string, paidBefore?: Date): Promise<string | null> {
     // Cast: the SDK's types target a newer API version than the '2023-10-16'
     // this app pins, where these invoice fields have moved.
-    const invoice = data[0] as any;
+    const { data } = await this.stripe.invoices.list({ subscription: subscriptionId, status: 'paid', limit: paidBefore ? 20 : 1 });
+    const paidAt = (i: any) => (i.status_transitions?.paid_at ?? i.created ?? 0) * 1000;
+    const invoice = (paidBefore ? (data as any[]).find((i) => paidAt(i) <= paidBefore.getTime()) : data[0]) as any;
     if (!invoice || !invoice.amount_paid) return null;
 
     const target = this.paymentOf(invoice);
