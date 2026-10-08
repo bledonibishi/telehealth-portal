@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Telehealth",
-    "slug": "telehealth-patient",
+    "slug": "omopharmacy",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
@@ -13,7 +13,11 @@
       "bundleIdentifier": "com.telehealth.patient"
     },
     "android": {
-      "package": "com.telehealth.patient"
+      "package": "com.telehealth.patient",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA"
+      ]
     },
     "plugins": [
       "expo-notifications",
@@ -31,6 +35,12 @@
           "cameraPermission": "Used to take your full body photos for clinical verification."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6d070af0-1b39-48b2-a592-f63d291fbe1d"
+      }
+    },
+    "owner": "bledonibishi-omos-team"
   }
 }
