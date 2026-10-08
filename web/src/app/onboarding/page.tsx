@@ -143,6 +143,8 @@ export default function OnboardingLandingPage() {
   const steps = baseSteps
     .map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }))
     .filter((s) => !(s.key === 'medical-questionnaire' && s.done && !s.needsChanges))
+    // Proof of a previous prescription only matters for someone who has used the medicine: not shown otherwise.
+    .filter((s) => !(s.key === 'prescription-proof' && o.priorMedicationUse === false))
     // The consent is normally accepted on the website or in the questionnaire; it only appears for a patient an admin set up.
     .filter((s) => !(s.key === 'consent' && s.done));
 
