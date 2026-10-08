@@ -905,4 +905,6 @@ export const es: Record<string, string> = {
   'Order has left the pharmacy': 'El pedido salió de la farmacia',
   'Refund last payment': 'Reembolsar el último pago',
   'Refund requests from patients': 'Solicitudes de reembolso de pacientes',
+  'Menu': 'Menú',
+  '← Check-ins': '← Controles',
 };

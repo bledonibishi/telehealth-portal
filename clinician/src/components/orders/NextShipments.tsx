@@ -54,7 +54,7 @@ export default function NextShipments() {
 
   return (
     <div>
-      <p className="px-6 py-3 text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+      <p className="px-4 sm:px-6 py-3 text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
         {t('Patients whose next supply is coming up or late. Once the order is placed it is passed to the pharmacy partner.')}
       </p>
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
@@ -67,7 +67,7 @@ export default function NextShipments() {
           const blocker = BLOCKER[a.blocker];
           const thisError = errorFor && errorFor.id === a.prescriptionId ? errorFor.message : null;
           return (
-            <li key={a.prescriptionId} className="px-6 py-4 bg-white hover:bg-gray-50 flex flex-wrap items-start gap-x-6 gap-y-2">
+            <li key={a.prescriptionId} className="px-4 sm:px-6 py-4 bg-white hover:bg-gray-50 flex flex-wrap items-start gap-x-6 gap-y-2">
               <div className="min-w-[220px] flex-1">
                 <div className="flex items-center gap-2">
                   <Link href={`/patients?patient=${a.patientId}`} className="font-medium text-gray-900 hover:underline">{a.patientName}</Link>

@@ -28,7 +28,7 @@ export function TrtMonitoringCard({ monitoring }: { monitoring: TrtMonitoring })
         </ul>
       )}
 
-      <table className="w-full text-sm mt-3">
+      <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-sm mt-3">
         <thead>
           <tr className="text-left text-xs text-gray-400">
             <th className="font-medium py-1">{t('Test')}</th>
@@ -51,7 +51,7 @@ export function TrtMonitoringCard({ monitoring }: { monitoring: TrtMonitoring })
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

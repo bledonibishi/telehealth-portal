@@ -64,7 +64,7 @@ export function ConsultationDetail({ id }: { id: string }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Identity + decision stay in view while the questionnaire scrolls. */}
         <header className="shrink-0 bg-white border-b border-gray-200">
-          <div className="px-6 pt-3 pb-3">
+          <div className="px-4 sm:px-6 pt-3 pb-3">
             <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
               {t('← Review queue')}
             </Link>
@@ -98,7 +98,7 @@ export function ConsultationDetail({ id }: { id: string }) {
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+          <div className="p-4 sm:p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
             <div className="space-y-5 min-w-0">
               <RedFlagBanner redFlags={c.redFlags} />
 

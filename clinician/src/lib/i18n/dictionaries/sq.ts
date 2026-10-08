@@ -905,4 +905,6 @@ export const sq: Record<string, string> = {
   'Order has left the pharmacy': 'Porosia ka dalë nga farmacia',
   'Refund last payment': 'Ktheji pagesën e fundit',
   'Refund requests from patients': 'Kërkesa për rimbursim nga pacientët',
+  'Menu': 'Menuja',
+  '← Check-ins': '← Kontrollet',
 };

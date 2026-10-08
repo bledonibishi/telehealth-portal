@@ -92,7 +92,7 @@ export default function TeamPage() {
       </div>
 
       {/* Role overview cards */}
-      <div className="grid grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {ROLES.map((role) => {
           const meta = ROLE_META[role];
           return (
@@ -116,8 +116,8 @@ export default function TeamPage() {
       </p>
 
       {/* Clinicians table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
               <th className="px-5 py-3">{t('Name')}</th>

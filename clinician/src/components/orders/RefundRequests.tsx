@@ -22,7 +22,7 @@ export function RefundRequests() {
     : t('Order has left the pharmacy');
 
   return (
-    <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+    <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
       <p className="text-sm font-semibold text-amber-900">{t('Refund requests')} ({requests.length})</p>
       <ul className="mt-2 divide-y divide-amber-200">
         {requests.map((r) => (

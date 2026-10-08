@@ -188,8 +188,8 @@ export function OrderCard({
   const showDetail = open || !finished;
 
   return (
-    <div className={`px-6 py-5 bg-white hover:bg-gray-50/60 ${cancelled ? 'opacity-70' : ''}`}>
-      <div className="flex items-start gap-6">
+    <div className={`px-4 sm:px-6 py-5 bg-white hover:bg-gray-50/60 ${cancelled ? 'opacity-70' : ''}`}>
+      <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-6">
         <div className="flex-1 min-w-0">
           {/* Who it is for, where it stands, and the code on the parcel */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -456,7 +456,7 @@ export function OrderCard({
 
           {mode === 'cancel' && (
             <div className="mt-3 flex flex-wrap gap-2 items-center">
-              <input placeholder={t('Reason for cancelling…')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-72`} autoFocus />
+              <input placeholder={t('Reason for cancelling…')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full sm:w-72`} autoFocus />
               {canConfirmDelivery && (
                 <div className="w-full flex flex-col gap-1 text-xs text-gray-600">
                   <label className="flex items-center gap-2">
@@ -482,7 +482,7 @@ export function OrderCard({
         </div>
 
         {!mode && !cancelled && (
-          <div className="shrink-0 flex flex-col gap-2">
+          <div className="sm:shrink-0 flex flex-row flex-wrap items-center sm:items-stretch sm:flex-col gap-2">
             {canFulfil && order.status === 'PENDING' && (
               <button onClick={() => { if (!printPackingSlip(order)) setError(t('Allow pop-ups for this site to print the packing slip.')); }} className={actionCls}>{t('Print packing slip')}</button>
             )}

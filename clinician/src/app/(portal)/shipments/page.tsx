@@ -8,7 +8,7 @@ export default function ShipmentsPage() {
   const { t } = useI18n();
   return (
     <div>
-      <div className="px-6 py-5 border-b border-gray-200 bg-white">
+      <div className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white">
         <h1 className="text-lg font-semibold text-gray-900">{t('Next shipments')}</h1>
         <p className="text-xs text-gray-500 mt-0.5">{t('Make sure no patient runs out of medicine before the next supply reaches them')}</p>
       </div>

@@ -105,7 +105,7 @@ export default function OrdersPage() {
   return (
     <div>
       {isAdmin && <RefundRequests />}
-      <div className="px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
+      <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{t('Orders')}</h1>
@@ -163,7 +163,7 @@ export default function OrdersPage() {
         )}
       </div>
 
-      <div className="px-6 py-3 border-b border-gray-200 bg-white">
+      <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white">
         <div className="relative max-w-xl">
           <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
             <circle cx="9" cy="9" r="5.5" />
@@ -205,7 +205,7 @@ export default function OrdersPage() {
         )}
       </div>
 
-      <div className="flex border-b border-gray-200 px-6 bg-white overflow-x-auto">
+      <div className="flex border-b border-gray-200 px-4 sm:px-6 bg-white overflow-x-auto">
         {FILTERS.map((f) => (
           <button
             key={f.key}

@@ -57,6 +57,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   // Hold back the pages until the browser confirms a token, so their queries never run
   // during server rendering or before the redirect to /login.
   const [authChecked, setAuthChecked] = useState(false);
+  // On a phone the menu is a drawer that opens from the header; from `md` up it is the fixed sidebar.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [pathname]);
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
   const raw: NotifCounts & { orderProblems?: number; refundRequests?: number } = data?.notificationCounts ?? {
@@ -84,7 +87,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   return (
     <div style={ready ? undefined : { visibility: 'hidden' }} className="dark-surface flex h-screen bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
-      <aside className="w-56 shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)]">
+      {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto transition-transform md:static md:z-auto md:w-56 md:translate-x-0 md:overflow-visible shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)] ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="px-4 py-5 border-b border-[color:var(--border-subtle)] flex flex-col items-start gap-2">
           <span className="text-sm font-semibold text-[color:var(--t-strong)]">{t('Telehealth Portal')}</span>
           {badge && (
@@ -124,22 +128,26 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </nav>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-12 border-b flex items-center justify-between px-6 shrink-0 bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)]">
-          <div /> {/* spacer */}
-          <div className="flex items-center gap-3">
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <header className="h-12 border-b flex items-center justify-between px-3 sm:px-6 shrink-0 bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)]">
+          <button type="button" onClick={() => setMenuOpen(true)} aria-label={t('Menu')} aria-expanded={menuOpen} className="md:hidden -ml-1 p-2 rounded-md text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
+          </button>
+          <div className="hidden md:block" />
+          <div className="flex items-center gap-2 sm:gap-3">
             <LanguageSwitcher />
             <ThemeToggle />
             <NotificationBell />
             <div className="w-px h-5 bg-[color:var(--border)]" />
             <button
               onClick={handleLogout}
+              aria-label={t('Sign out')}
               className="text-sm flex items-center gap-1.5 text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M18 12H9m0 0l3-3m-3 3l3 3" />
               </svg>
-              {t('Sign out')}
+              <span className="hidden sm:inline">{t('Sign out')}</span>
             </button>
           </div>
         </header>

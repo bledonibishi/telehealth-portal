@@ -55,7 +55,7 @@ export function ChatDock({
   const { t, fmt } = useI18n();
   const dayLabel = (d: Date) => (isToday(d) ? t('Today') : isYesterday(d) ? t('Yesterday') : fmt(d, 'd MMM yyyy'));
   const client = useApolloClient();
-  const [open, setOpen] = useState(() => readStorage(OPEN_PREF_KEY) === '1');
+  const [open, setOpen] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 1024 ? false : readStorage(OPEN_PREF_KEY) === '1')); // on a phone it opens on request, as a full screen
   const [content, setContent] = useState('');
   const [seenAt, setSeenAt] = useState(() => Number(readStorage(seenKey(patientId))) || 0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -178,7 +178,7 @@ export function ChatDock({
 
   if (!open) {
     return (
-      <div className="w-14 shrink-0 border-l border-gray-200 bg-white flex flex-col items-center pt-4">
+      <div className="fixed bottom-4 right-4 z-30 rounded-full border border-gray-200 bg-white p-1 shadow-lg lg:static lg:z-auto lg:w-14 lg:shrink-0 lg:rounded-none lg:border-0 lg:border-l lg:p-0 lg:pt-4 lg:shadow-none flex flex-col items-center">
         {watchers}
         <button
           type="button"
@@ -212,7 +212,7 @@ export function ChatDock({
   });
 
   return (
-    <aside className="w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
+    <aside className="fixed inset-0 z-40 w-full lg:static lg:z-auto lg:w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
       {watchers}
       <div className="h-16 shrink-0 px-4 flex items-center gap-3 border-b border-gray-200">
         <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-900 text-xs font-semibold flex items-center justify-center">

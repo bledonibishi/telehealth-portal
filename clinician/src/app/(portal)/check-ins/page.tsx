@@ -170,8 +170,8 @@ export default function CheckInsPage() {
   const selected = queue.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <div className="w-96 border-r border-gray-200 flex flex-col bg-white shrink-0">
+    <div className="flex h-full overflow-hidden">
+      <div className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
         <div className="px-5 py-4 border-b border-gray-200">
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: queue.length })}</p>
@@ -207,12 +207,13 @@ export default function CheckInsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className={`${selected ? 'block' : 'hidden md:block'} flex-1 min-w-0 overflow-y-auto bg-gray-50`}>
         {!selected ? (
           <div className="h-full flex items-center justify-center text-sm text-gray-400">{t('Select a check-in')}</div>
         ) : (
-          <div className="p-6 max-w-5xl mx-auto space-y-6">
-            <div className="flex items-start justify-between">
+          <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+            <button type="button" onClick={() => setSelectedId(null)} className="md:hidden text-xs text-gray-500 hover:text-gray-800">{t('← Check-ins')}</button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">{selected.patient.firstName} {selected.patient.lastName}</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -238,7 +239,7 @@ export default function CheckInsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div className="col-span-2 space-y-6">
                 <section className="bg-white rounded-lg border border-gray-200">
                   <div className="px-4 py-3 border-b border-gray-200">
