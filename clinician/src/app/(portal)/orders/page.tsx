@@ -106,14 +106,14 @@ export default function OrdersPage() {
     <div>
       {isAdmin && <RefundRequests />}
       <div className="px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{t('Orders')}</h1>
             <p className="text-xs text-gray-500 mt-0.5">{t('Pack, hand over to the courier, and follow each parcel until it arrives')}</p>
           </div>
           {isAdmin && (
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col items-start sm:items-end gap-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <input type="month" value={statementMonth} onChange={(e) => setStatementMonth(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700" aria-label={t('Month')} />
                 <button type="button" onClick={downloadStatement} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50">{t('Pharmacy statement (CSV)')}</button>
               </div>

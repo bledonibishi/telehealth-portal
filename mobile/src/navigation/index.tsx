@@ -13,6 +13,7 @@ import { IdPhotoScreen } from '../screens/onboarding/IdPhotoScreen';
 import { BodyPhotoScreen } from '../screens/onboarding/BodyPhotoScreen';
 import { PrescriptionProofScreen } from '../screens/onboarding/PrescriptionProofScreen';
 import { OnboardingChatScreen } from '../screens/onboarding/OnboardingChatScreen';
+import { AccountScreen } from '../screens/account/AccountScreen';
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -25,6 +26,7 @@ function PatientTabs() {
       <Tab.Screen name="Status" component={ConsultationStatusScreen} />
       <Tab.Screen name="New Consultation" component={IntakeQuizScreen} />
       <Tab.Screen name="Messages" component={MessagingScreen} />
+      <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
   );
 }
