@@ -30,7 +30,12 @@ export class AuthService {
   ) {}
 
   async loginClinician(email: string, password: string, attempt: LoginAttempt = {}) {
-    const clinician = await this.prisma.clinician.findUnique({ where: { email } });
+    // Team management keeps addresses lower-case, while people type their own with capitals. The address exactly as
+    // typed is tried first, so an older account saved with capitals is still found; then any spelling of it.
+    const typed = (email ?? '').trim();
+    const clinician =
+      (await this.prisma.clinician.findUnique({ where: { email: typed } })) ??
+      (typed ? await this.prisma.clinician.findFirst({ where: { email: { equals: typed, mode: 'insensitive' } }, orderBy: { createdAt: 'asc' } }) : null);
     if (!clinician || !(await bcrypt.compare(password, clinician.passwordHash))) {
       await this.audit.log({
         actorId: clinician?.id ?? 'anonymous',
@@ -41,6 +46,19 @@ export class AuthService {
         metadata: { email, reason: clinician ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', ...attempt },
       });
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Said only after the password was right, so it cannot be used to find out who has an account.
+    if (clinician.deactivatedAt) {
+      await this.audit.log({
+        actorId: clinician.id,
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_LOGIN_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician.id,
+        metadata: { email, reason: 'DEACTIVATED', ...attempt },
+      });
+      throw new UnauthorizedException('This account has been deactivated. Ask an admin to turn it back on.');
     }
 
     await this.audit.log({
@@ -70,6 +88,46 @@ export class AuthService {
       mfa_enabled: false,
     });
     return { mfaRequired: false, pendingToken: null, ...this.issueTokens(clinician.id, clinician.role), clinician };
+  }
+
+  /**
+   * Spends a clinician's invitation (or password) link to set their password. It does not sign them in: they sign in the
+   * normal way next, with MFA if they have it, so a link in an inbox never gives access on its own.
+   */
+  async acceptClinicianInvite(token: string, password: string, attempt: LoginAttempt = {}): Promise<boolean> {
+    const invalidLink = () => new UnauthorizedException('This link is invalid or has expired. Ask an admin to send a new one.');
+    if (password.length < 10 || password.length > 72) throw new BadRequestException('Password must be between 10 and 72 characters');
+
+    const clinician = token ? await this.prisma.clinician.findUnique({ where: { inviteToken: token } }) : null;
+    if (!clinician?.inviteTokenExpiresAt || clinician.inviteTokenExpiresAt < new Date() || clinician.deactivatedAt) {
+      await this.audit.log({
+        actorId: clinician?.id ?? 'anonymous',
+        actorRole: UserRole.CLINICIAN,
+        action: 'AUTH_INVITE_FAILED',
+        resourceType: 'Clinician',
+        resourceId: clinician?.id ?? 'unknown',
+        metadata: { reason: !clinician ? 'UNKNOWN_TOKEN' : clinician.deactivatedAt ? 'DEACTIVATED' : 'EXPIRED', ...attempt },
+      });
+      throw invalidLink();
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    // The password, the spent link and the audit row commit together; matching the token again makes it single-use even if two requests race.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.clinician.updateMany({
+        // Checked again as the link is spent: it may have expired, or the account been turned off, while the password was being hashed.
+        where: { id: clinician.id, inviteToken: token, inviteTokenExpiresAt: { gt: new Date() }, deactivatedAt: null },
+        data: { passwordHash, passwordSetAt: new Date(), inviteToken: null, inviteTokenExpiresAt: null },
+      });
+      if (result.count !== 1) return false;
+      await this.audit.log(
+        { actorId: clinician.id, actorRole: UserRole.CLINICIAN, action: 'AUTH_INVITE_ACCEPTED', resourceType: 'Clinician', resourceId: clinician.id, metadata: { firstTime: !clinician.passwordSetAt, ...attempt } },
+        tx,
+      );
+      return true;
+    });
+    if (!claimed) throw invalidLink();
+    return true;
   }
 
   async loginPatient(email: string, password: string, attempt: LoginAttempt = {}) {
@@ -239,6 +297,7 @@ export class AuthService {
 
     const clinician = await this.prisma.clinician.findUnique({ where: { id: payload.sub } });
     if (!clinician?.mfaSecret) throw new UnauthorizedException('MFA not configured');
+    if (clinician.deactivatedAt) throw new UnauthorizedException('This account has been deactivated. Ask an admin to turn it back on.');
 
     if (!authenticator.verify({ token: totpCode, secret: clinician.mfaSecret })) {
       await this.audit.log({
@@ -296,6 +355,7 @@ export class AuthService {
         ? await this.prisma.clinician.findUnique({ where: { id: payload.sub } })
         : null;
     if (!clinician) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+    if (clinician.deactivatedAt) throw authFailure(AuthFailureReason.ACCOUNT_DEACTIVATED);
 
     return this.issueTokens(clinician.id, clinician.role);
   }

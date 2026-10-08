@@ -35,6 +35,8 @@ describe('ConsultationsService', () => {
       clinician: { findUnique: jest.fn().mockResolvedValue(VERIFIED_DOCTOR) },
       onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }), upsert: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
+      // The claim's check that the clinician's account is still on.
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 'doc-1' }]),
     };
     prescribing = {
       issue: jest.fn().mockResolvedValue({ id: 'rx-1', medication: 'Estradiol', dosage: '0.06% × 1', contentHash: 'abc' }),
@@ -488,6 +490,20 @@ describe('ConsultationsService', () => {
         where: { id: 'consult-1', OR: [{ status: 'SUBMITTED' }] },
         data: { status: 'IN_REVIEW', clinicianId: 'doc-1' },
       });
+    });
+
+    it('is refused once the account has been deactivated, so a request already on its way cannot leave a review with them', async () => {
+      prisma.$queryRaw.mockResolvedValue([]); // no active clinician row to hold
+      await expect(service.claim('doc-1', 'consult-1')).rejects.toThrow(/deactivated/);
+      expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('holds the clinician’s row while it claims, in one transaction with the claim', async () => {
+      await service.claim('doc-1', 'consult-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      const [sql, id] = prisma.$queryRaw.mock.calls[0];
+      expect(sql.join('?')).toMatch(/FROM clinicians WHERE id = \? AND deactivated_at IS NULL FOR SHARE/);
+      expect(id).toBe('doc-1');
     });
 
     it('reports a lost race', async () => {

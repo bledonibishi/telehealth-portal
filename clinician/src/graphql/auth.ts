@@ -59,3 +59,9 @@ export const ENABLE_MFA = gql`
     enableMfa(totpCode: $totpCode)
   }
 `;
+
+export const ACCEPT_CLINICIAN_INVITE = gql`
+  mutation AcceptClinicianInvite($token: String!, $password: String!) {
+    acceptClinicianInvite(token: $token, password: $password)
+  }
+`;

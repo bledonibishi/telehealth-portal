@@ -13,6 +13,9 @@ export const GET_CLINICIANS = gql`
       isVerified
       verifiedAt
       mfaEnabled
+      deactivatedAt
+      invitePending
+      inviteExpiresAt
       specialty
       bio
       languages
@@ -60,5 +63,74 @@ export const REVOKE_CLINICIAN_VERIFICATION = gql`
       isVerified
       verifiedAt
     }
+  }
+`;
+
+const INVITE_RESULT = gql`
+  fragment InviteResultFields on ClinicianInviteResult {
+    emailSent
+    inviteUrl
+    clinician {
+      id
+      email
+      firstName
+      lastName
+      role
+      invitePending
+      inviteExpiresAt
+    }
+  }
+`;
+
+export const CREATE_CLINICIAN = gql`
+  ${INVITE_RESULT}
+  mutation CreateClinician($input: CreateClinicianInput!) {
+    createClinician(input: $input) {
+      ...InviteResultFields
+    }
+  }
+`;
+
+export const SEND_CLINICIAN_INVITE = gql`
+  ${INVITE_RESULT}
+  mutation SendClinicianInvite($id: ID!) {
+    sendClinicianInvite(id: $id) {
+      ...InviteResultFields
+    }
+  }
+`;
+
+export const UPDATE_CLINICIAN = gql`
+  mutation UpdateClinician($input: UpdateClinicianInput!) {
+    updateClinician(input: $input) {
+      id
+      firstName
+      lastName
+      email
+    }
+  }
+`;
+
+export const DEACTIVATE_CLINICIAN = gql`
+  mutation DeactivateClinician($id: ID!) {
+    deactivateClinician(id: $id) {
+      id
+      deactivatedAt
+    }
+  }
+`;
+
+export const REACTIVATE_CLINICIAN = gql`
+  mutation ReactivateClinician($id: ID!) {
+    reactivateClinician(id: $id) {
+      id
+      deactivatedAt
+    }
+  }
+`;
+
+export const DELETE_UNUSED_CLINICIAN = gql`
+  mutation DeleteUnusedClinician($id: ID!) {
+    deleteUnusedClinician(id: $id)
   }
 `;

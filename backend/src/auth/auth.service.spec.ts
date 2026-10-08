@@ -9,7 +9,7 @@ jest.mock('otplib', () => ({ authenticator: { verify: jest.fn() } }));
 
 describe('AuthService', () => {
   let prisma: {
-    clinician: { findUnique: jest.Mock; update: jest.Mock };
+    clinician: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     patient: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -42,7 +42,7 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     prisma = {
-      clinician: { findUnique: jest.fn(), update: jest.fn() },
+      clinician: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
       patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       $transaction: jest.fn(),
     };
@@ -383,6 +383,80 @@ describe('AuthService', () => {
     it.each(['short', 'x'.repeat(73)])('rejects a password outside 10-72 characters (%#)', async (password) => {
       await expect(service.activateAccount('tok', password)).rejects.toThrow(BadRequestException);
       expect(prisma.patient.findUnique).not.toHaveBeenCalled();
+    });
+  });
+  describe('team accounts', () => {
+    const compare = bcrypt.compare as unknown as jest.Mock;
+    const hash = bcrypt.hash as unknown as jest.Mock;
+    const future = () => new Date(Date.now() + 86_400_000);
+
+    it('refuses a deactivated clinician at sign-in, but only after the password was right', async () => {
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, deactivatedAt: new Date() });
+      compare.mockResolvedValue(true);
+      await expect(service.loginClinician('doc@clinic.dev', 'right-password')).rejects.toThrow(/deactivated/);
+      expect(jwtService.sign).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_LOGIN_FAILED', metadata: expect.objectContaining({ reason: 'DEACTIVATED' }) }));
+
+      compare.mockResolvedValue(false);
+      await expect(service.loginClinician('doc@clinic.dev', 'wrong')).rejects.toThrow('Invalid credentials'); // not told it exists
+    });
+
+    it('stops a deactivated clinician refreshing a session', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'clinician-1', role: 'DOCTOR', type: 'refresh' });
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, deactivatedAt: new Date() });
+      await expect(service.refreshAccessToken('refresh-token')).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'ACCOUNT_DEACTIVATED' }) });
+    });
+
+    it('sets the password with a valid link, spends it, records it, and does not sign anyone in', async () => {
+      hash.mockResolvedValue('new-hash');
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, passwordSetAt: null, inviteToken: 'tok', inviteTokenExpiresAt: future(), deactivatedAt: null });
+      (prisma.clinician as any).updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      await expect(service.acceptClinicianInvite('tok', 'a-long-enough-password')).resolves.toBe(true);
+      expect((prisma.clinician as any).updateMany).toHaveBeenCalledWith({
+        // The link is checked again as it is spent: still unexpired, account still on.
+        where: { id: 'clinician-1', inviteToken: 'tok', inviteTokenExpiresAt: { gt: expect.any(Date) }, deactivatedAt: null },
+        data: { passwordHash: 'new-hash', passwordSetAt: expect.any(Date), inviteToken: null, inviteTokenExpiresAt: null },
+      });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_INVITE_ACCEPTED', metadata: expect.objectContaining({ firstTime: true }) }), prisma);
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
+    it('refuses a short password before looking at the link', async () => {
+      await expect(service.acceptClinicianInvite('tok', 'short')).rejects.toThrow(BadRequestException);
+      expect(prisma.clinician.findUnique).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an unknown link', null],
+      ['an expired link', { ...CLINICIAN, inviteToken: 'tok', inviteTokenExpiresAt: new Date(Date.now() - 1000), deactivatedAt: null }],
+      ['a link for a deactivated account', { ...CLINICIAN, inviteToken: 'tok', inviteTokenExpiresAt: future(), deactivatedAt: new Date() }],
+    ])('refuses %s, with the same message each time', async (_n, found) => {
+      prisma.clinician.findUnique.mockResolvedValue(found);
+      await expect(service.acceptClinicianInvite('tok', 'a-long-enough-password')).rejects.toThrow('invalid or has expired');
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_INVITE_FAILED' }));
+    });
+
+    it('finds a clinician whatever capitals they type their address with, preferring the address exactly as typed', async () => {
+      compare.mockResolvedValue(true);
+      // Saved lower-case by team management; typed with capitals and a stray space.
+      prisma.clinician.findUnique.mockResolvedValue(null);
+      prisma.clinician.findFirst.mockResolvedValue({ ...CLINICIAN, deactivatedAt: null, mfaEnabled: false });
+      await expect(service.loginClinician('  Doc@Clinic.DEV ', 'right-password')).resolves.toMatchObject({ mfaRequired: false });
+      expect(prisma.clinician.findUnique).toHaveBeenCalledWith({ where: { email: 'Doc@Clinic.DEV' } });
+      expect(prisma.clinician.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { email: { equals: 'Doc@Clinic.DEV', mode: 'insensitive' } } }));
+
+      // An exact match is used as it is, without the wider search.
+      prisma.clinician.findFirst.mockClear();
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, deactivatedAt: null, mfaEnabled: false });
+      await service.loginClinician(CLINICIAN.email, 'right-password');
+      expect(prisma.clinician.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('lets only one of two racing requests use the link', async () => {
+      hash.mockResolvedValue('h');
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, inviteToken: 'tok', inviteTokenExpiresAt: future(), deactivatedAt: null });
+      (prisma.clinician as any).updateMany = jest.fn().mockResolvedValue({ count: 0 });
+      await expect(service.acceptClinicianInvite('tok', 'a-long-enough-password')).rejects.toThrow('invalid or has expired');
     });
   });
 });

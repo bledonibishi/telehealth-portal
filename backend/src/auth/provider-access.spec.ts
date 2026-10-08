@@ -65,6 +65,7 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
     const unchecked = all.filter((o) => !o.roles).map((o) => o.name);
     expect(unchecked).toMatchInlineSnapshot(`
 [
+  "AuthResolver.acceptClinicianInvite",
   "AuthResolver.activateAccount",
   "AuthResolver.loginClinician",
   "AuthResolver.loginPatient",

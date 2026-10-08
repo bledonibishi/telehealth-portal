@@ -71,13 +71,21 @@ export class ConsultationsService {
     this.assertMayDecide(c, clinicianId, isAdmin);
     if (c.status === ConsultationStatus.IN_REVIEW && c.clinicianId === clinicianId) return c;
 
-    // Conditional update: two doctors clicking at once can't both win.
-    const { count } = await this.prisma.consultation.updateMany({
-      where: {
-        id: consultationId,
-        OR: [{ status: ConsultationStatus.SUBMITTED }, ...(isAdmin ? [{ status: ConsultationStatus.IN_REVIEW }] : [])],
-      },
-      data: { status: ConsultationStatus.IN_REVIEW, clinicianId },
+    const count = await this.prisma.$transaction(async (tx) => {
+      // The clinician's row is held for the length of the claim. Deactivating an account writes that same row before
+      // it hands its claimed consultations back, so one of the two goes first: either this claim is already saved and
+      // gets handed back, or the account is already off and the claim is refused. A deactivated doctor never keeps one.
+      const active = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM clinicians WHERE id = ${clinicianId} AND deactivated_at IS NULL FOR SHARE`;
+      if (active.length === 0) throw new ForbiddenException('This account has been deactivated');
+      // Conditional update: two doctors clicking at once can't both win.
+      const result = await tx.consultation.updateMany({
+        where: {
+          id: consultationId,
+          OR: [{ status: ConsultationStatus.SUBMITTED }, ...(isAdmin ? [{ status: ConsultationStatus.IN_REVIEW }] : [])],
+        },
+        data: { status: ConsultationStatus.IN_REVIEW, clinicianId },
+      });
+      return result.count;
     });
     if (count === 0) throw new ConflictException('Someone else has just claimed this consultation');
 

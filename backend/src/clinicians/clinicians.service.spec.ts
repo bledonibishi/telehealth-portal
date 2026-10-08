@@ -10,7 +10,7 @@ describe('CliniciansService.updateProfile', () => {
   beforeEach(() => {
     prisma = { clinician: { findUnique: jest.fn().mockResolvedValue(before), update: jest.fn().mockResolvedValue({ id: 'c-1' }) } };
     audit = { log: jest.fn() };
-    service = new CliniciansService(prisma, audit as any);
+    service = new CliniciansService(prisma, audit as any, { sendClinicianInviteEmail: jest.fn() } as any, { get: jest.fn() } as any);
   });
 
   it('saves the trimmed profile and records what it changed from', async () => {
