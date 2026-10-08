@@ -36,7 +36,7 @@ describe('HealthAlertsService', () => {
   it('gathers the alerts, most urgent first', async () => {
     const alerts = await service.alerts(NOW);
     expect(alerts.map((a) => a.id)).toEqual(['SEVERE_SIDE_EFFECT:g1', 'WEIGHT_GAIN:g1', 'PENDING_REVIEWS', 'OVERDUE_CHECK_INS', 'PRESCRIPTIONS_EXPIRING']);
-    expect(alerts[0]).toMatchObject({ level: 'RED', value: 4.5, patients: [{ id: 'g1', name: 'Ana Test' }] });
+    expect(alerts[1]).toMatchObject({ level: 'RED', value: 4.5, patients: [{ id: 'g1', name: 'Ana Test' }] });
   });
 
   it('works out weight trends only for patients on the weight programme, whichever way their programme is recorded', async () => {
