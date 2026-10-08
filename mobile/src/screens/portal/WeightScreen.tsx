@@ -48,7 +48,9 @@ export function WeightScreen({ navigation }: any) {
   const { data: consultations } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'cache-first' });
   const [sheet, setSheet] = useState<'log' | 'target' | null>(null);
   const message = trendData?.myWeightTrend ? trendMessage(trendData.myWeightTrend) : null;
-  const messageDoctor = () => navigation.navigate('Messages', consultations?.myConsultations?.[0]?.id ? { consultationId: consultations.myConsultations[0].id } : undefined);
+  // Messages are written inside a consultation, so the button is only offered once one is known: without it the screen it opens has nowhere to type.
+  const consultationId: string | undefined = consultations?.myConsultations?.[0]?.id;
+  const messageDoctor = () => navigation.navigate('Messages', { consultationId });
 
   const journey = data?.myWeightJourney;
   const points: { weightKg: number; measuredAt: string }[] = tl?.myWeightTimeline?.measurements ?? [];
@@ -65,7 +67,7 @@ export function WeightScreen({ navigation }: any) {
         <View style={{ gap: 14 }}>
           {message && (
             <Notice tone={message.tone === 'red' ? 'danger' : message.tone === 'orange' ? 'warn' : message.tone === 'green' ? 'good' : 'info'} title={`${message.icon} ${message.title}`}
-              action={message.action === 'MESSAGE_DOCTOR' ? <Button small variant="soft" label="Message my doctor" onPress={messageDoctor} style={{ alignSelf: 'flex-start', marginTop: 10 }} /> : undefined}>
+              action={message.action === 'MESSAGE_DOCTOR' && consultationId ? <Button small variant="soft" label="Message my doctor" onPress={messageDoctor} style={{ alignSelf: 'flex-start', marginTop: 10 }} /> : undefined}>
               {message.text}
             </Notice>
           )}

@@ -34,7 +34,7 @@ function WeightTrendFlag({ patientId }: { patientId: string }) {
       <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
         <p className="text-sm font-semibold text-red-700">{t('Weight is trending up')}</p>
         <p className="text-xs text-red-700/90 mt-0.5">
-          {t('About +{pct}% over the last 4 weeks ({rate} kg a week). If it continues: about +{kg} kg in 3 months.', { pct: trend.changePct28Days, rate: trend.kgPerWeek, kg: trend.kgIn3Months })}
+          {t('About +{pct}% every 4 weeks at the pace of the recent weigh-ins ({rate} kg a week). If it continues: about +{kg} kg in 3 months.', { pct: trend.changePct28Days, rate: trend.kgPerWeek, kg: trend.kgIn3Months })}
         </p>
       </div>
     );
@@ -44,7 +44,7 @@ function WeightTrendFlag({ patientId }: { patientId: string }) {
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
         <p className="text-sm font-semibold text-amber-800">{t('The latest weight may be a typing mistake')}</p>
         <p className="text-xs text-amber-800/90 mt-0.5">
-          {t('{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient has been asked to check it.', { latest: trend.latestKg, pct: Math.round(trend.jumpPct), previous: trend.previousKg })}
+          {t('{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient sees a note to check it the next time they open their weights; nobody has contacted them.', { latest: trend.latestKg, pct: Math.round(trend.jumpPct), previous: trend.previousKg })}
         </p>
       </div>
     );
@@ -112,7 +112,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
   const [editingGoal, setEditingGoal] = useState(false);
   const [editingCheckIn, setEditingCheckIn] = useState<string | null>(null);
 
-  const refetch = { refetchQueries: [{ query: GET_WEIGHT_JOURNEY, variables: { patientId } }] };
+  const refetch = { refetchQueries: [{ query: GET_WEIGHT_JOURNEY, variables: { patientId } }, { query: WEIGHT_TREND_FOR_PATIENT, variables: { patientId } }] };
   const [correctGoal, goal] = useMutation(CORRECT_WEIGHT_GOAL, refetch);
   const [correctWeight, weight] = useMutation(CORRECT_CHECK_IN_WEIGHT, refetch);
 
@@ -242,7 +242,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
   const [range] = useState(() => ({ from: new Date(Date.now() - YEAR_MS).toISOString(), to: new Date(Date.now() + 3_600_000).toISOString() }));
   const variables = { patientId, ...range, limit: 500 };
   const { data, loading, error } = useQuery(GET_WEIGHT_TIMELINE, { variables, fetchPolicy: 'cache-and-network' });
-  const refetch = { refetchQueries: [{ query: GET_WEIGHT_TIMELINE, variables }, { query: GET_WEIGHT_JOURNEY, variables: { patientId } }] };
+  const refetch = { refetchQueries: [{ query: GET_WEIGHT_TIMELINE, variables }, { query: GET_WEIGHT_JOURNEY, variables: { patientId } }, { query: WEIGHT_TREND_FOR_PATIENT, variables: { patientId } }] };
   const [correct, corr] = useMutation(CORRECT_WEIGHT_ENTRY, refetch);
   const [voidEntry, vd] = useMutation(VOID_WEIGHT_ENTRY, refetch);
   const [open, setOpen] = useState<{ id: string; action: 'correct' | 'void' } | null>(null);

@@ -15,6 +15,10 @@ export const STEADY_LOSS_KG_PER_WEEK = 0.5;
 /** The latest weight differs from the one before it by this share or more, within a week: far more than a body changes. */
 export const JUMP_PCT = 5;
 export const JUMP_WITHIN_DAYS = 7;
+/** How many weights before the suspect pair are looked at to tell which of the two is the odd one out. */
+export const JUMP_LOOK_BACK = 4;
+/** With no weigh-in for this long there is nothing current to say: an old trend is not what is happening now. */
+export const MAX_AGE_DAYS = 28;
 
 export interface WeightTrend {
   level: WeightTrendLevel;
@@ -49,13 +53,19 @@ export function assessWeightTrend(measurements: ForecastInput[], opts: { targetK
     .sort((a, b) => a.measuredAt.getTime() - b.measuredAt.getTime())
     .slice(-MAX_POINTS);
 
+  // Everything below speaks in the present tense ("is going up", "please check your last weight"), so it needs a recent weigh-in.
+  if (recent.length === 0 || recent[recent.length - 1].measuredAt.getTime() < now - MAX_AGE_DAYS * DAY_MS) return base({ basedOnPoints: recent.length });
+
   // A last entry that is wildly different from the one before it is checked first: it is far more likely a typo than a change in the body.
   if (recent.length >= 2) {
     const last = recent[recent.length - 1];
     const before = recent[recent.length - 2];
     const days = (last.measuredAt.getTime() - before.measuredAt.getTime()) / DAY_MS;
-    const jump = (Math.abs(last.weightKg - before.weightKg) / before.weightKg) * 100;
-    if (days <= JUMP_WITHIN_DAYS && jump >= JUMP_PCT) {
+    const apart = (a: number, b: number) => (Math.abs(a - b) / b) * 100;
+    const jump = apart(last.weightKg, before.weightKg);
+    // When an earlier weight agrees with the latest, the one before it was the mistake (a typo, then the right weight added): the latest is fine.
+    const agreesWithEarlier = recent.slice(-2 - JUMP_LOOK_BACK, -2).some((m) => apart(last.weightKg, m.weightKg) < JUMP_PCT);
+    if (days <= JUMP_WITHIN_DAYS && jump >= JUMP_PCT && !agreesWithEarlier) {
       return base({ level: 'CHECK_ENTRY', basedOnPoints: recent.length, latestKg: round1(last.weightKg), previousKg: round1(before.weightKg), jumpPct: round1(jump) });
     }
   }
@@ -84,9 +94,11 @@ export function assessWeightTrend(measurements: ForecastInput[], opts: { targetK
   if (miss > MAX_TYPICAL_MISS_KG) return base({ level: 'UNSTABLE', ...shared });
   if (changePct28Days >= GAIN_PCT_28_DAYS) return base({ level: 'GAIN', ...shared, kgIn3Months: round1(slope * 84), notifyDoctor: true });
   if (slope * 7 <= -STEADY_LOSS_KG_PER_WEEK) {
-    const forecast = forecastWeight(measurements, { targetKg: opts.targetKg, now: new Date(now) });
-    const at3 = forecast.available ? forecast.points.find((p) => p.monthsAhead === 3)?.weightKg ?? null : null;
-    return base({ level: 'STEADY_LOSS', ...shared, kgIn3Months: at3, unusuallyFast: -slope * 7 > MAX_WEEKLY_LOSS_SHARE * nowKg });
+    const unusuallyFast = -slope * 7 > MAX_WEEKLY_LOSS_SHARE * nowKg;
+    // The forecast will not believe a loss this fast and projects a slower one, which would sit oddly beside the pace given: no projection then.
+    const forecast = unusuallyFast ? null : forecastWeight(measurements, { targetKg: opts.targetKg, now: new Date(now) });
+    const at3 = forecast?.available ? forecast.points.find((p) => p.monthsAhead === 3)?.weightKg ?? null : null;
+    return base({ level: 'STEADY_LOSS', ...shared, kgIn3Months: at3, unusuallyFast });
   }
   return base({ level: 'HOLDING', ...shared });
 }

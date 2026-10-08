@@ -30,7 +30,7 @@ function Preview({ currentKg, startKg, targetKg }: { currentKg: number; startKg?
 
 export function TargetWeightForm({ current, currentKg, startKg, onDone }: { current?: number | null; currentKg?: number | null; startKg?: number | null; onDone?: () => void }) {
   const [value, setValue] = useState(current ? String(current) : '');
-  const [save, { loading, error }] = useMutation(SET_MY_TARGET_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }], awaitRefetchQueries: true });
+  const [save, { loading, error }] = useMutation(SET_MY_TARGET_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, 'MyWeightTrend'], awaitRefetchQueries: true });
   const n = Number(value.replace(',', '.'));
   const valid = value.trim() !== '' && Number.isFinite(n) && n > 0;
 

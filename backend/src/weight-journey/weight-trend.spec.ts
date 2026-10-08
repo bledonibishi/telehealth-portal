@@ -32,6 +32,22 @@ describe('assessWeightTrend', () => {
     expect(t.jumpPct).toBeGreaterThan(80);
   });
 
+  it('does not flag the right weight added after a typo: 118, then 220 by mistake, then 118 again', () => {
+    const typoThenRight = [...series([120, 119, 118], 7).map((m) => ({ ...m, measuredAt: new Date(m.measuredAt.getTime() - 7 * DAY) })), { measuredAt: new Date(NOW.getTime() - DAY), weightKg: 220 }, { measuredAt: NOW, weightKg: 118 }];
+    expect(assessWeightTrend(typoThenRight, { now: NOW }).level).not.toBe('CHECK_ENTRY');
+    // With nothing earlier to compare with, two weights that disagree are still worth a look.
+    expect(assessWeightTrend([{ measuredAt: new Date(NOW.getTime() - DAY), weightKg: 220 }, { measuredAt: NOW, weightKg: 118 }], { now: NOW }).level).toBe('CHECK_ENTRY');
+  });
+
+  it('says nothing about the present from old weights: no weigh-in in the last 4 weeks, no notice', () => {
+    const old = (weights: number[]) => series(weights).map((m) => ({ ...m, measuredAt: new Date(m.measuredAt.getTime() - 40 * DAY) }));
+    expect(assessWeightTrend(old([100, 101.1, 102.2, 103.4, 104.5]), { now: NOW })).toMatchObject({ level: 'TOO_FEW', notifyDoctor: false });
+    expect(assessWeightTrend(old([120, 119, 118, 220]), { now: NOW }).level).toBe('TOO_FEW');
+    // The same rise with the last weigh-in 3 weeks ago is still current.
+    const threeWeeksAgo = series([100, 101.1, 102.2, 103.4, 104.5]).map((m) => ({ ...m, measuredAt: new Date(m.measuredAt.getTime() - 21 * DAY) }));
+    expect(assessWeightTrend(threeWeeksAgo, { now: NOW }).level).toBe('GAIN');
+  });
+
   it('is not thrown by one mistyped weight in the middle: the median trend ignores it', () => {
     const t = assessWeightTrend(series([100, 99, 98, 150, 96, 95, 94, 93]), { now: NOW });
     expect(t.level).not.toBe('GAIN');
