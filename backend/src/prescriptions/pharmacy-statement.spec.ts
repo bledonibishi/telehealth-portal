@@ -1,15 +1,14 @@
 import { pharmacyStatementCsv } from './pharmacy-statement';
 import { partnerReference as parcelCode } from './partner-payload';
 
-const order = (id: string, day: string, items: Array<[string, string, number]>) => ({
-  id, sequence: 1, dispatchedAt: new Date(`${day}T10:00:00Z`), items: items.map(([product, strength, quantity]) => ({ product, strength, quantity })),
+const order = (id: string, day: string, items: Array<[string, string, number, number?]>) => ({
+  id, sequence: 1, dispatchedAt: new Date(`${day}T10:00:00Z`), items: items.map(([product, strength, quantity, unitCost]) => ({ product, strength, quantity, unitCost })),
 });
 
 describe('pharmacyStatementCsv', () => {
   it('lists each line in date order with the parcel code, and totals what has a cost', () => {
     const csv = pharmacyStatementCsv(
-      [order('abcdefgh12345678', '2026-10-05', [['Ozempic', '0.5 mg', 2]]), order('zzzzzzzz00000001', '2026-10-02', [['Evorel', '50', 1]])],
-      { 'Ozempic 0.5 mg': 85.5, 'Evorel 50': 12 },
+      [order('abcdefgh12345678', '2026-10-05', [['Ozempic', '0.5 mg', 2, 85.5]]), order('zzzzzzzz00000001', '2026-10-02', [['Evorel', '50', 1, 12]])]
     );
     const lines = csv.trim().split('\n');
     expect(lines[1]).toBe(`2026-10-02,${parcelCode('zzzzzzzz00000001')},1,Evorel,50,1,12.00,12.00`);

@@ -161,16 +161,10 @@ export class PrescriptionsResolver {
   }
 
   @Authorized(ClinicianRole.ADMIN)
-  @Query(() => String, { description: 'CSV of what the pharmacy handed over in a month, with costs from PHARMACY_UNIT_COSTS where set' })
+  @Query(() => String, { description: 'CSV of what the pharmacy handed over in a month, with the pharmacy unit cost where it is set on the dose' })
   async pharmacyStatement(@Args('year', { type: () => Int }) year: number, @Args('month', { type: () => Int }) month: number) {
     if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12 || year < 2020 || year > 2100) throw new BadRequestException('Pick a valid month');
-    let costs: Record<string, number> = {};
-    try {
-      costs = JSON.parse(process.env.PHARMACY_UNIT_COSTS || '{}');
-    } catch {
-      throw new BadRequestException('PHARMACY_UNIT_COSTS is not valid JSON');
-    }
-    return pharmacyStatementCsv(await this.ordersService.statementOrders(year, month), costs);
+    return pharmacyStatementCsv(await this.ordersService.statementOrders(year, month));
   }
 
   @Authorized(...PRESCRIBERS)

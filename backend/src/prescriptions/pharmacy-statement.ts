@@ -4,7 +4,7 @@ export type StatementOrder = {
   id: string;
   sequence: number;
   dispatchedAt: Date;
-  items: Array<{ product: string; strength: string; quantity: number }>;
+  items: Array<{ product: string; strength: string; quantity: number; unitCost?: number | null }>;
 };
 
 
@@ -15,16 +15,16 @@ const cell = (v: string | number) => {
 
 /**
  * A month of what the pharmacy handed over, as CSV, so what we owe it can be checked against its own invoice. Costs are
- * optional: `costs` maps "<product> <strength>" to what one unit costs us. Without one the amount is left blank rather
- * than guessed.
+ * optional: each line carries what one unit costs us (set on the dose in the catalog). Without one the amount is left
+ * blank rather than guessed.
  */
-export function pharmacyStatementCsv(orders: StatementOrder[], costs: Record<string, number> = {}): string {
+export function pharmacyStatementCsv(orders: StatementOrder[]): string {
   const rows = [['Handed over', 'Parcel code', 'Supply', 'Medicine', 'Strength', 'Quantity', 'Unit cost', 'Amount']];
   let total = 0;
   let unpriced = 0;
   for (const o of [...orders].sort((a, b) => a.dispatchedAt.getTime() - b.dispatchedAt.getTime())) {
     for (const i of o.items) {
-      const unit = costs[`${i.product} ${i.strength}`];
+      const unit = i.unitCost ?? undefined;
       if (unit === undefined) unpriced += 1;
       else total += unit * i.quantity;
       rows.push([
@@ -34,6 +34,6 @@ export function pharmacyStatementCsv(orders: StatementOrder[], costs: Record<str
     }
   }
   rows.push(['', '', '', '', '', '', 'Total', total.toFixed(2)]);
-  if (unpriced > 0) rows.push([`${unpriced} line(s) have no unit cost set (PHARMACY_UNIT_COSTS), so they are not in the total`]);
+  if (unpriced > 0) rows.push([`${unpriced} line(s) have no unit cost set (set it on the dose), so they are not in the total`]);
   return rows.map((r) => r.map(cell).join(',')).join('\n') + '\n';
 }

@@ -402,7 +402,7 @@ export class OrdersService {
       id: o.id,
       sequence: o.sequence,
       dispatchedAt: o.dispatchedAt!,
-      items: o.prescription.items.map((it) => ({ product: it.product.brandName ?? it.product.name, strength: it.strength.label, quantity: it.quantity })),
+      items: o.prescription.items.map((it) => ({ product: it.product.brandName ?? it.product.name, strength: it.strength.label, quantity: it.quantity, unitCost: it.strength.pharmacyUnitCost ? Number(it.strength.pharmacyUnitCost) : null })),
     }));
   }
 

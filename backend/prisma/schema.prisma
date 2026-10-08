@@ -706,6 +706,8 @@ model ProductStrength {
   // The monthly Stripe price for this dose (each dose is priced separately).
   // Null: not sold per dose yet — billing falls back to the plan tier price.
   stripePriceId   String? @map("stripe_price_id")
+  // What the pharmacy partner charges us for one unit of this dose, in the clinic's currency. Null: not known yet.
+  pharmacyUnitCost Decimal? @map("pharmacy_unit_cost") @db.Decimal(10, 2)
 
   product           Product            @relation(fields: [productId], references: [id])
   prescriptionItems PrescriptionItem[]
