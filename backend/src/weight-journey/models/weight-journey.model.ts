@@ -210,3 +210,46 @@ export class WeightForecastModel {
   @Field({ nullable: true, description: 'When the trend reaches the target weight, if within the 6 months' })
   reachesTargetAt?: Date;
 }
+
+export enum WeightTrendLevelEnum {
+  GAIN = 'GAIN',
+  CHECK_ENTRY = 'CHECK_ENTRY',
+  STEADY_LOSS = 'STEADY_LOSS',
+  HOLDING = 'HOLDING',
+  UNSTABLE = 'UNSTABLE',
+  TOO_FEW = 'TOO_FEW',
+}
+registerEnumType(WeightTrendLevelEnum, { name: 'WeightTrendLevel' });
+
+@ObjectType('WeightTrend', { description: 'What the recent weights say: rising, losing steadily, holding, too scattered to read, or a last entry that looks like a typo' })
+export class WeightTrendModel {
+  @Field(() => WeightTrendLevelEnum)
+  level: WeightTrendLevelEnum;
+
+  @Field(() => Float, { nullable: true, description: 'The trend’s pace, negative while losing' })
+  kgPerWeek?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'Share of body weight the trend moves in 4 weeks, negative while losing' })
+  changePct28Days?: number | null;
+
+  @Field(() => Int)
+  basedOnPoints: number;
+
+  @Field({ description: 'Losing faster than is usual' })
+  unusuallyFast: boolean;
+
+  @Field(() => Float, { nullable: true, description: 'GAIN: about how many kg it adds in 3 months at this pace. STEADY_LOSS: where the weight would be.' })
+  kgIn3Months?: number | null;
+
+  @Field({ description: 'The doctor should be told: true only for a sustained rise' })
+  notifyDoctor: boolean;
+
+  @Field(() => Float, { nullable: true, description: 'CHECK_ENTRY: the latest weight' })
+  latestKg?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'CHECK_ENTRY: the weight before it' })
+  previousKg?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'CHECK_ENTRY: how far apart the two are, in percent' })
+  jumpPct?: number | null;
+}

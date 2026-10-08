@@ -1,6 +1,6 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { WeightMeasurementsService } from './weight-measurements.service';
-import { ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightTimelineModel } from './models/weight-journey.model';
+import { ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightTimelineModel, WeightTrendModel } from './models/weight-journey.model';
 import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -27,6 +27,20 @@ export class WeightMeasurementsResolver {
   @Query(() => WeightForecastModel, { description: 'Where the signed-in patient’s weight is heading in 3 and 6 months at their current pace' })
   myWeightForecast(@CurrentUser() user: AuthUser) {
     return this.measurements.forecast(user.id);
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => WeightTrendModel, { description: 'What the signed-in patient’s recent weights say: rising, losing steadily, holding, scattered, or a last entry to double-check' })
+  myWeightTrend(@CurrentUser() user: AuthUser) {
+    return this.measurements.trend(user.id);
+  }
+
+  // Weight history is clinical: doctors only, not support or fulfilment staff.
+  @Authorized(...PRESCRIBERS)
+  @AuditRead('WeightJourney', 'patientId')
+  @Query(() => WeightTrendModel, { description: 'What a patient’s recent weights say. Doctors only; the view is audited.' })
+  weightTrendForPatient(@Args('patientId', { type: () => ID }) patientId: string) {
+    return this.measurements.trend(patientId);
   }
 
   @Authorized('PATIENT')
