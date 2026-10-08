@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { format } from 'date-fns';
-import { ADD_MY_WEIGHT, MY_PROGRESS_PHOTOS, MY_WEIGHT_JOURNEY } from '@/graphql/weight';
+import { ADD_MY_WEIGHT, MY_PROGRESS_PHOTOS, MY_WEIGHT_JOURNEY, MY_WEIGHT_TREND } from '@/graphql/weight';
 import { uploadFile } from '@/lib/upload';
 import { prepareProgressPhoto } from '@/lib/image';
 
@@ -33,7 +33,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
   const uploaded = useRef<{ file: File; id: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
-  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }], awaitRefetchQueries: true });
+  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }, { query: MY_WEIGHT_TREND }], awaitRefetchQueries: true });
 
   const choosePhoto = (file: File | undefined) => {
     if (!file) return;

@@ -34,7 +34,7 @@ export function trendMessage(t: WeightTrend): TrendMessage | null {
         tone: 'red',
         icon: '⚠️',
         title: 'Your weight has been going up',
-        text: `Over the last 4 weeks your weight has risen by about ${Math.abs(t.changePct28Days ?? 0)}%. That isn't usual on this treatment.${t.kgIn3Months ? ` If it continues you could gain about ${kg(t.kgIn3Months)} in 3 months.` : ''} Please message your doctor so they can look at your plan.`,
+        text: `Going by your recent weigh-ins, your weight is rising by about ${Math.abs(t.changePct28Days ?? 0)}% every 4 weeks. That isn't usual on this treatment.${t.kgIn3Months ? ` If it continues you could gain about ${kg(t.kgIn3Months)} in 3 months.` : ''} Please message your doctor so they can look at your plan.`,
         action: 'MESSAGE_DOCTOR',
       };
     case 'CHECK_ENTRY':
@@ -42,7 +42,7 @@ export function trendMessage(t: WeightTrend): TrendMessage | null {
         tone: 'orange',
         icon: '⚠️',
         title: 'Please check your last weight',
-        text: `Your last weight (${kg(t.latestKg ?? 0)}) is ${Math.round(t.jumpPct ?? 0)}% different from the one before it (${kg(t.previousKg ?? 0)}), which is more than a body changes in a week. If it was a typing mistake, remove it from your weigh-ins and add the right one. If it is correct, please tell your doctor.`,
+        text: `Your last weight (${kg(t.latestKg ?? 0)}) is ${Math.round(t.jumpPct ?? 0)}% different from the one before it (${kg(t.previousKg ?? 0)}), which is more than a body changes in a week. If it was a typing mistake, add the right weight and let your doctor know, so the wrong one can be taken out. If it is correct, please tell your doctor.`,
         action: 'MESSAGE_DOCTOR',
       };
     case 'STEADY_LOSS':
