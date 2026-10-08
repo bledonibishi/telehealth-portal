@@ -984,4 +984,8 @@ export const sq: Record<string, string> = {
   "Months are calendar months in UTC.": "Muajt janë muaj kalendarikë në UTC.",
   "Only admins can see the monthly report.": "Vetëm administratorët mund ta shohin raportin mujor.",
   "The CSV has only the {n} entries loaded. Load more first for the rest.": "CSV ka vetëm {n} regjistrimet e ngarkuara. Ngarko më shumë së pari për pjesën tjetër.",
+  "Weight is trending up": "Pesha po rritet",
+  "About +{pct}% every 4 weeks at the pace of the recent weigh-ins ({rate} kg a week). If it continues: about +{kg} kg in 3 months.": "Rreth +{pct}% çdo 4 javë me ritmin e matjeve të fundit ({rate} kg në javë). Nëse vazhdon: rreth +{kg} kg në 3 muaj.",
+  "The latest weight may be a typing mistake": "Pesha e fundit mund të jetë gabim shkrimi",
+  "{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient sees a note to check it the next time they open their weights; nobody has contacted them.": "{latest} kg është {pct}% larg peshës para saj ({previous} kg). Pacienti sheh një njoftim për ta kontrolluar kur të hapë sërish peshat; askush nuk e ka kontaktuar.",
 };

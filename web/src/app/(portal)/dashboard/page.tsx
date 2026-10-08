@@ -12,6 +12,7 @@ import { ReportSideEffectDialog } from '@/components/doses/ReportSideEffectDialo
 import { PlanHero } from '@/components/home/PlanHero';
 import { ProgressOverview } from '@/components/home/ProgressOverview';
 import { WeightProgressCard } from '@/components/home/WeightProgressCard';
+import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
 import { ProfileSummaryCard } from '@/components/home/ProfileSummaryCard';
 import { WeightPhotoJourney } from '@/components/home/WeightPhotoJourney';
 import { TreatmentPlanCard } from '@/components/home/TreatmentPlanCard';
@@ -67,6 +68,7 @@ export default function DashboardPage() {
         {!loading && needsInfo && (
           <Notice tone="warn" title="Your clinician needs more information." text="Check your messages, then update your answers." href="/onboarding/medical-questionnaire?from=dashboard" action="Update answers →" />
         )}
+        {journey && <WeightTrendNotice />}
       </div>
 
       <ProgressOverview journey={journey} plan={plan} />
