@@ -7,6 +7,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { SignUpScreen } from '../screens/auth/SignUpScreen';
 import { IntakeQuizScreen } from '../screens/intake/IntakeQuizScreen';
+import { ConsentScreen } from '../screens/onboarding/ConsentScreen';
 import { ConsultationStatusScreen } from '../screens/consultation/ConsultationStatusScreen';
 import { MessagingScreen } from '../screens/messaging/MessagingScreen';
 import { OnboardingChecklistScreen } from '../screens/onboarding/OnboardingChecklistScreen';
@@ -79,6 +80,7 @@ function OnboardingFlow() {
     <OnboardingStack.Navigator screenOptions={{ headerTintColor: '#0d9488', contentStyle: { backgroundColor: colors.page } }}>
       <OnboardingStack.Screen name="Checklist" component={OnboardingChecklistScreen} options={{ title: 'Onboarding', headerShown: false }} />
       <OnboardingStack.Screen name="BasicInformation" component={BasicInformationScreen} options={{ title: '' }} />
+      <OnboardingStack.Screen name="Consent" component={ConsentScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="MedicalQuestionnaire" component={IntakeQuizScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="IdPhoto" component={IdPhotoScreen} options={{ title: '' }} />
       <OnboardingStack.Screen name="BodyPhoto" component={BodyPhotoScreen} options={{ title: '' }} />

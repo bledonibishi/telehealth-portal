@@ -27,7 +27,9 @@ export function currentMedications(prescriptions: any[]): { label: string; dose?
 
 export function treatmentStatusOf(patient: any, prescriptions: any[]): TreatmentStatus {
   if (!patient.activatedAt) return 'PENDING';
-  return prescriptions.some((r) => r.status === 'ACTIVE') ? 'ACTIVE' : 'INACTIVE';
+  if (prescriptions.some((r) => r.status === 'ACTIVE')) return 'ACTIVE';
+  const consultations: { status: string }[] = patient.consultations ?? [];
+  return consultations.length > 0 && consultations.every((c) => c.status === 'DECLINED') ? 'DECLINED' : 'INACTIVE';
 }
 
 export function heightMetres(consultations: any[]): number | null {

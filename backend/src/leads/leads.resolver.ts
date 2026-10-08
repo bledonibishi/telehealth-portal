@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent, Context } from '@nestjs/graphql';
 import { LeadsService } from './leads.service';
 import { LeadModel } from './models/lead.model';
 import { CreateLeadInput } from './dto/create-lead.input';
@@ -36,7 +36,7 @@ export class LeadsResolver {
 
   // Public — called from /website after quiz completion (before payment)
   @Mutation(() => LeadModel)
-  createLead(@Args('input') input: CreateLeadInput) {
-    return this.leadsService.upsert(input);
+  createLead(@Args('input') input: CreateLeadInput, @Context() ctx: any) {
+    return this.leadsService.upsert(input, { ip: ctx.req?.ip, userAgent: ctx.req?.headers?.['user-agent'] });
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import Stripe from 'stripe';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -9,6 +10,7 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { newActivationToken } from '../auth/activation-token';
+import { ConsultationsService } from '../consultations/consultations.service';
 
 @Injectable()
 export class StripeWebhookService {
@@ -21,6 +23,8 @@ export class StripeWebhookService {
     private config: ConfigService,
     private referrals: ReferralsService,
     private audit: AuditService,
+    // Looked up when needed: ConsultationsModule already imports this module, so it can't be injected directly.
+    private moduleRef: ModuleRef,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3001';
   }
@@ -91,6 +95,16 @@ export class StripeWebhookService {
     });
   }
 
+  /** Never throws: a failure is logged and the patient is asked the questionnaire in the portal instead. */
+  private async createConsultationFromLead(email: string) {
+    try {
+      const patient = await this.prisma.patient.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
+      if (patient) await this.moduleRef.get(ConsultationsService, { strict: false }).submitFromLead(patient.id);
+    } catch (err: any) {
+      this.logger.error(`Creating the consultation from the website answers for ${email} failed: ${err?.message}`);
+    }
+  }
+
   private async activatePatient(
     email: string | null | undefined,
     stripeReferenceId: string,
@@ -121,6 +135,9 @@ export class StripeWebhookService {
       if (Object.keys(billing).length) {
         await this.prisma.patient.updateMany({ where: { email }, data: billing });
       }
+      // A payment event after the first (renewals, the second event of one payment) is another chance to turn the
+      // website answers into the consultation if that failed the first time. Harmless when it already exists.
+      await this.createConsultationFromLead(email);
       this.logger.log(`Lead ${lead.id} already converted — skipping`);
       return;
     }
@@ -170,6 +187,10 @@ export class StripeWebhookService {
     });
 
     this.logger.log(`Patient created/updated for ${email} — patient ${patient.id}`);
+
+    // The medical questionnaire answered on the website becomes the consultation now, so onboarding doesn't
+    // ask for it again. If it can't (nothing answered, or it needs redoing) the portal asks as before.
+    await this.createConsultationFromLead(email);
 
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding

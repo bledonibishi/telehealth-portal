@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, Suspense, type MutableRefObject } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG, type PlanKey } from '@/lib/config';
@@ -245,6 +245,7 @@ const parseAmount = (label: string) => parseFloat(label.replace(/[^0-9.]/g, ''))
 
 /* ── Inner component uses useSearchParams (must be inside Suspense) ── */
 function CheckoutInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const planKeyParam = searchParams.get('plan') as PlanKey | null;
 
@@ -401,7 +402,14 @@ function CheckoutInner() {
     mergeAssessment({ method: m });
   };
 
-  if (!ready) return null;
+  // The health questions are part of the quiz, and the server refuses a payment without them. Someone whose quiz
+  // pre-dates them (or whose answers were never saved) takes the quiz again.
+  const needsIntake = ready && eligible && !session?.intakeDone;
+  useEffect(() => {
+    if (needsIntake) router.replace(session?.product === 'HRT' ? '/hrt-eligibility' : session?.product === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility');
+  }, [needsIntake, router, session?.product]);
+
+  if (!ready || needsIntake) return null;
 
   /* No valid session */
   if (!eligible) {

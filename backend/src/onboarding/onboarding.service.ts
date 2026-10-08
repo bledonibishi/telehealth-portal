@@ -3,18 +3,17 @@ import { Prisma, UploadKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
 import { IdentityVerificationService, SUBMITTED_STATUSES, lockPatientIdentity } from '../identity-verification/identity-verification.service';
-import { requiredReviewSteps } from './required-steps';
+import { requiredReviewSteps, stepFiles, stepLabel, unchangedRedoSteps } from './required-steps';
 import { PhotoReviewService } from './photo-review.service';
 import { PrescriptionProofReviewService, StoredProofReview } from './prescription-proof-review.service';
 import { DoseClarification } from './prior-dose-assessment';
 import { PhotoCheckService } from './photo-check.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { SaveBodyPhotoInput } from './dto/body-photo.input';
-import { IdentityVerificationStatus, OnboardingStatus, OnboardingStepKey } from '../common/enums';
+import { ConsentType, IdentityVerificationStatus, OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
-import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
 
 const DOSE_CLARIFICATIONS: DoseClarification[] = ['DOCUMENT_CORRECT', 'STEPPED_UP_SINCE', 'STEPPED_DOWN_SINCE', 'NOT_SURE'];
 
@@ -22,6 +21,20 @@ interface StepFeedback {
   step: string;
   approved: boolean;
   reason?: string;
+  /** For a step sent back to be redone: what it rested on then, so the same files again aren't taken as a redo. */
+  files?: (string | null)[];
+}
+
+/**
+ * The feedback that is left once a step has been saved again. A step sent back to be redone keeps its feedback
+ * while it rests on the very same files; saving something different (or an older entry with no record of
+ * the files) clears it, as before.
+ */
+function feedbackAfterSave(feedback: StepFeedback[], step: OnboardingStepKey, next: Parameters<typeof stepFiles>[0]): StepFeedback[] {
+  const now = stepFiles(next, step);
+  return feedback.filter(
+    (f) => f.step !== step || (Array.isArray(f.files) && f.files.length === now.length && f.files.every((id, i) => id === now[i])),
+  );
 }
 
 function toJson(feedback: StepFeedback[]): Prisma.InputJsonValue {
@@ -123,7 +136,13 @@ export class OnboardingService {
         // Either photo can be saved on its own, so a patient who leaves halfway keeps what they did.
         ...(input.idDocumentFileId && { idDocumentFileId: input.idDocumentFileId }),
         ...(input.selfieFileId && { selfieFileId: input.selfieFileId }),
-        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.ID_PHOTO)),
+        stepFeedback: toJson(
+          feedbackAfterSave(stepFeedback, OnboardingStepKey.ID_PHOTO, {
+            ...existing,
+            idDocumentFileId: input.idDocumentFileId || existing.idDocumentFileId,
+            selfieFileId: input.selfieFileId || existing.selfieFileId,
+          }),
+        ),
       },
     });
     return this.toModel(updated);
@@ -150,7 +169,13 @@ export class OnboardingService {
       data: {
         bodyPhotoFrontFileId: input.bodyPhotoFrontFileId,
         bodyPhotoSideFileId: input.bodyPhotoSideFileId,
-        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)),
+        stepFeedback: toJson(
+          feedbackAfterSave(stepFeedback, OnboardingStepKey.BODY_PHOTO, {
+            ...existing,
+            bodyPhotoFrontFileId: input.bodyPhotoFrontFileId,
+            bodyPhotoSideFileId: input.bodyPhotoSideFileId,
+          }),
+        ),
       },
     });
     return this.toModel(updated);
@@ -178,7 +203,10 @@ export class OnboardingService {
       if (input.sendForReview) await this.photoCheck.markSentForReview(patientId, input.fileId, input.view, tx);
       return tx.onboardingSubmission.update({
         where: { patientId },
-        data: { [column]: input.fileId, stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.BODY_PHOTO)) },
+        data: {
+          [column]: input.fileId,
+          stepFeedback: toJson(feedbackAfterSave(stepFeedback, OnboardingStepKey.BODY_PHOTO, { ...existing, [column]: input.fileId })),
+        },
       });
     });
     if (previous && previous !== input.fileId) {
@@ -232,7 +260,13 @@ export class OnboardingService {
         prescriptionProofUnavailable: false,
         // The previous review is kept: it carries the attempt count and any
         // name-change document forward, and is hidden once the file differs.
-        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.PRESCRIPTION_PROOF)),
+        stepFeedback: toJson(
+          feedbackAfterSave(stepFeedback, OnboardingStepKey.PRESCRIPTION_PROOF, {
+            ...existing,
+            prescriptionProofFileId: input.prescriptionProofFileId,
+            prescriptionProofUnavailable: false,
+          }),
+        ),
       },
     });
     // Read and assess it now, so the patient sees the outcome before moving
@@ -253,7 +287,7 @@ export class OnboardingService {
       where: { patientId },
       data: {
         prescriptionProofUnavailable: true,
-        stepFeedback: toJson(stepFeedback.filter((f) => f.step !== OnboardingStepKey.PRESCRIPTION_PROOF)),
+        stepFeedback: toJson(feedbackAfterSave(stepFeedback, OnboardingStepKey.PRESCRIPTION_PROOF, { ...existing, prescriptionProofUnavailable: true })),
       },
     });
     await this.proofReview.declareUnavailable(patientId).catch(() => null);
@@ -285,6 +319,20 @@ export class OnboardingService {
     if (!submission) throw new NotFoundException('Onboarding not started');
     if (submission.status !== OnboardingStatus.IN_PROGRESS && submission.status !== OnboardingStatus.REJECTED) {
       throw new BadRequestException('Onboarding has already been submitted');
+    }
+
+    // The telehealth consent is on the record before an application goes to a clinician: given on the website,
+    // in the questionnaire, or in onboarding (for a patient an admin set up).
+    if ((await this.prisma.consent.count({ where: { patientId, type: ConsentType.TELEHEALTH } })) === 0) {
+      throw new BadRequestException('Please read and accept the consent statement before sending your application.');
+    }
+
+    // A step the clinician sent back has to actually be replaced: the same files again is not a redo.
+    if (submission.status === OnboardingStatus.REJECTED) {
+      const unchanged = unchangedRedoSteps(submission as any);
+      if (unchanged.length) {
+        throw new BadRequestException(`Please replace your ${unchanged.map(stepLabel).join(' and ')} as your clinician asked before sending it again.`);
+      }
     }
 
     // With verify-service configured the ID check happens there, not through in-app uploads.
@@ -381,65 +429,5 @@ export class OnboardingService {
     // Null, not a 404 — a clinician can open any patient, most of whom
     // haven't started onboarding yet.
     return row ? this.toModel(row) : null;
-  }
-
-  async reviewOnboardingStep(clinicianId: string, input: ReviewOnboardingStepInput) {
-    const before = await this.prisma.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
-    if (!before) throw new NotFoundException('Onboarding not found');
-    // Bring an open identity check up to date first (it may have been decided without its webhook).
-    if (before.identityViaVerifyService) await this.identity.getStatus(input.patientId).catch(() => null);
-
-    // The decision is made and written under the identity lock, from the submission and identity
-    // result as they are now — so it can't overwrite a rejection that just landed, or leave an
-    // application pending after an approval that arrived during the review.
-    const updated = await this.prisma.$transaction(async (tx) => {
-      await lockPatientIdentity(tx, input.patientId);
-      const submission = await tx.onboardingSubmission.findUnique({ where: { patientId: input.patientId } });
-      if (!submission) throw new NotFoundException('Onboarding not found');
-      if (submission.status !== OnboardingStatus.PENDING_REVIEW) {
-        throw new BadRequestException('Onboarding is not pending review');
-      }
-
-      const identityViaVerifyService = submission.identityViaVerifyService;
-      const requiredSteps = requiredReviewSteps(submission, identityViaVerifyService);
-      if (!requiredSteps.includes(input.step)) {
-        throw new BadRequestException('This step is not part of the current review');
-      }
-      if (!input.approved && !input.reason?.trim()) {
-        throw new BadRequestException('A reason is required when rejecting a step');
-      }
-
-      const decisions = (submission.stepFeedback as unknown as StepFeedback[]).filter((d) => d.step !== input.step);
-      decisions.push({ step: input.step, approved: input.approved, reason: input.approved ? undefined : input.reason!.trim() });
-
-      const allDecided = requiredSteps.every((step) => decisions.some((d) => d.step === step));
-      const anyRejected = decisions.some((d) => requiredSteps.includes(d.step as OnboardingStepKey) && !d.approved);
-
-      // Approval also needs the identity check approved (the stored result, whether or not
-      // verify-service is configured now). If it is still open the clinician's decisions are saved,
-      // and the submission is approved automatically once verify-service approves.
-      let finalStatus: OnboardingStatus | null = null;
-      if (allDecided && anyRejected) finalStatus = OnboardingStatus.REJECTED;
-      else if (allDecided) {
-        const identityApproved =
-          !identityViaVerifyService || (await this.identity.storedStatus(tx, input.patientId)) === IdentityVerificationStatus.APPROVED;
-        if (identityApproved) finalStatus = OnboardingStatus.APPROVED;
-      }
-
-      return tx.onboardingSubmission.update({
-        where: { patientId: input.patientId },
-        data: {
-          stepFeedback: toJson(decisions),
-          ...(finalStatus
-            ? {
-                status: finalStatus,
-                reviewedAt: new Date(),
-                reviewedByClinicianId: clinicianId,
-              }
-            : {}),
-        },
-      });
-    });
-    return this.toModel(updated);
   }
 }

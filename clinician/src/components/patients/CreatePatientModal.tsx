@@ -134,7 +134,8 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
             country: form.country.trim() || null,
             plan: form.plan,
             onboardingCompleted: form.onboardingCompleted,
-            quizAnswers: form.onboardingCompleted ? buildQuizAnswerInputs(questions, quizAnswers) : undefined,
+            // Always sent: with onboarding left to the patient these still become their consultation, so it isn't asked again.
+            quizAnswers: buildQuizAnswerInputs(questions, quizAnswers),
             priorMedicationUse,
           },
         },
@@ -171,22 +172,27 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
 
   if (created) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-gray-900">{t('Patient created')}</h2>
-          </div>
-          <div className="px-6 py-4 space-y-4">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4" onClick={onClose}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-4">
             <div>
-              <label className={labelCls}>{t('Email')}</label>
-              <p className="text-sm text-gray-900">{created.email}</p>
+              <h2 className="text-base font-semibold text-gray-900">{t('Patient created')}</h2>
+              <p className="text-sm text-gray-500 mt-0.5">{t('Share these details so they can sign in.')}</p>
             </div>
-            <div>
-              <label className={labelCls}>{t('Temporary password')}</label>
-              <div className="flex items-center gap-2">
-                <p className="flex-1 font-mono text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 select-all">
-                  {created.temporaryPassword}
-                </p>
+            <button onClick={onClose} aria-label={t('Close')} className="text-gray-400 hover:text-gray-600 text-sm -mt-0.5">✕</button>
+          </div>
+
+          <div className="px-6 pb-5 space-y-4">
+            <dl className="rounded-xl border border-gray-200 divide-y divide-gray-100">
+              <div className="px-4 py-3">
+                <dt className="text-xs text-gray-400">{t('Email')}</dt>
+                <dd className="text-sm text-gray-900 break-all mt-0.5">{created.email}</dd>
+              </div>
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <dt className="text-xs text-gray-400">{t('Temporary password')}</dt>
+                  <dd className="font-mono text-sm text-gray-900 break-all select-all mt-0.5">{created.temporaryPassword}</dd>
+                </div>
                 <button
                   onClick={handleCopyPassword}
                   className="shrink-0 text-xs font-medium text-brand-500 border border-brand-200 rounded-lg px-3 py-1.5 hover:bg-brand-50"
@@ -194,14 +200,17 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                   {copied ? t('Copied') : t('Copy')}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-1">{t('Shown once — it isn\'t saved anywhere. Copy it now if you need to log in as this patient.')}</p>
-            </div>
+            </dl>
+            <p className="text-xs text-warn-900 bg-warn-50 rounded-lg px-3 py-2">
+              {t('Shown once — it isn\'t saved anywhere. Copy it now if you need to log in as this patient.')}
+            </p>
           </div>
-          <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
-            <button
-              onClick={() => onCreated(created.id)}
-              className="px-4 py-1.5 text-xs font-medium rounded-lg bg-brand-500 text-white"
-            >
+
+          <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+            <button onClick={onClose} className="text-sm font-medium text-gray-600 border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50">
+              {t('Close')}
+            </button>
+            <button onClick={() => onCreated(created.id)} className="text-sm font-medium bg-brand-500 text-white rounded-lg px-4 py-2 hover:bg-brand-700">
               {t('Go to patient')}
             </button>
           </div>
@@ -276,7 +285,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
 
             <div>
               <label className={labelCls}>{t('Email')}</label>
-              <input className={inputCls} type="email" value={form.email} onChange={set('email')} />
+              <input className={inputCls} type="email" name="new-patient-email" autoComplete="off" value={form.email} onChange={set('email')} />
             </div>
 
             <div>
@@ -285,6 +294,11 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                 <input
                   className={`${inputCls} font-mono`}
                   type="text"
+                  // A plain text field after an email one looks like a login form: stop the browser and password managers filling the admin's own email into it.
+                  name="new-patient-password"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   placeholder={t('Leave blank to auto-generate')}
                   value={form.password}
                   onChange={set('password')}

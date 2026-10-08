@@ -64,6 +64,9 @@ export class ConsultationModel {
   @Field(() => RiskTag, { description: 'Triage of the answers: RED = disqualifying flag, ORANGE = needs a closer look, GREEN = standard' })
   riskTag: RiskTag;
 
+  @Field(() => String, { nullable: true, description: 'Why a clinician can’t decide this yet (onboarding unfinished, identity not approved); null when they can, and for patients' })
+  decisionBlockedReason?: string | null;
+
   @Field(() => PrescriptionModel, { nullable: true })
   prescription?: PrescriptionModel;
 

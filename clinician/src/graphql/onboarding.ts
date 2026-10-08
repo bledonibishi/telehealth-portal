@@ -72,12 +72,3 @@ export const GET_ONBOARDING_SUBMISSION = gql`
   }
   ${ONBOARDING_FIELDS}
 `;
-
-export const REVIEW_ONBOARDING_STEP = gql`
-  mutation ReviewOnboardingStep($input: ReviewOnboardingStepInput!) {
-    reviewOnboardingStep(input: $input) {
-      ...ClinicianOnboardingFields
-    }
-  }
-  ${ONBOARDING_FIELDS}
-`;

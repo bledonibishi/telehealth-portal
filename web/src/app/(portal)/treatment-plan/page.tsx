@@ -50,7 +50,7 @@ export default function TreatmentPlanPage() {
           : <EmptyState icon="plan" what="Your treatment plan" whenTreating={{ text: 'Your plan is being set up.' }} />
       ) : (
         <div className="space-y-5">
-          <PlanHero plan={plan} />
+          <PlanHero plan={plan} detailsHref="#plan-details" />
 
           <div className="grid lg:grid-cols-3 gap-5 items-start">
             <Card labelledBy="supply-title" className="lg:col-span-2">
@@ -90,16 +90,19 @@ export default function TreatmentPlanPage() {
             </Card>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-5 items-start">
-            <TreatmentTimeline plan={plan} journey={jData?.myWeightJourney} />
-            <div className="space-y-5">
+          <div className="grid lg:grid-cols-3 gap-5 items-start">
+            <div className="lg:col-span-2 min-w-0">
+              <TreatmentTimeline plan={plan} journey={jData?.myWeightJourney} />
+            </div>
+            <div className="space-y-5 min-w-0">
               <WeeklySideEffectCard />
               <SideEffectHistory onReport={() => setReporting(true)} />
             </div>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-5 items-start">
-            <Card labelledBy="facts-title" className="lg:col-span-2">
+            <div id="plan-details" className="lg:col-span-2 scroll-mt-4">
+            <Card labelledBy="facts-title">
               <CardHeader id="facts-title" title="Plan details" href="/prescription" action="Prescription →" />
               <dl>
                 <Fact label="Programme" value={plan.programme} />
@@ -114,6 +117,7 @@ export default function TreatmentPlanPage() {
                 <Fact label="Prescribed by" value={plan.prescriberName} />
               </dl>
             </Card>
+            </div>
 
             <Card>
               <h2 className="text-base font-semibold text-ink-900">Not feeling right?</h2>

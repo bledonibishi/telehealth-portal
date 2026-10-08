@@ -71,8 +71,10 @@ export class CheckoutService {
     shipping?: ShippingInput;
   }) {
     this.assertConfigured();
-    // With a lead, the email comes from the lead itself, never from the request.
-    const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
+    // With a lead, the email comes from the lead itself, never from the request. A request that names only an
+    // email is held to the same checks when that email has a lead: the payment would be matched to it by email.
+    const leadId = input.leadId ?? (input.email ? (await this.prisma.lead.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } }))?.id : undefined);
+    const lead = leadId ? await this.loadOpenLead(leadId) : null;
     const lines = await this.priceFor(input, lead);
     const email = lead?.email ?? input.email;
     const currency = lead && input.applyReward ? (await this.stripe.prices.retrieve(lines[0].price)).currency : undefined;
@@ -299,7 +301,7 @@ export class CheckoutService {
     if (!leadId) throw new BadRequestException('Missing leadId.');
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, email: true, convertedAt: true, productKind: true, quizAnswers: true, checkoutDetails: true },
+      select: { id: true, email: true, convertedAt: true, productKind: true, quizAnswers: true, checkoutDetails: true, intakeSavedAt: true },
     });
     if (!lead) throw new BadRequestException('Unknown lead.');
     if (lead.convertedAt) throw new BadRequestException('This order has already been paid.');
@@ -307,6 +309,8 @@ export class CheckoutService {
     if (Array.isArray(lead.quizAnswers) && triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]).riskTag === RiskTag.RED) {
       throw new BadRequestException('Based on your answers, we can’t offer this treatment online.');
     }
+    // The medical questionnaire comes before payment; the website sends people to it, and this is the same check here.
+    if (!lead.intakeSavedAt) throw new BadRequestException('Please answer the health questions before paying.');
     const patient = await this.prisma.patient.findFirst({
       where: { email: { equals: lead.email, mode: 'insensitive' } },
       select: { id: true },
@@ -320,13 +324,16 @@ export class CheckoutService {
     if (!raw || typeof raw !== 'object') return undefined;
     const clip = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
     const country = clip(raw.country, 2)?.toUpperCase();
-    return {
+    const shipping = {
       name: clip(raw.name, 100),
       line1: clip(raw.line1, 200),
       city: clip(raw.city, 100),
       postalCode: clip(raw.postalCode, 20),
       country: country && country.length === 2 ? country : undefined,
     };
+    // No address at all (for instance the lead's saved choices, before the delivery form is filled in) is not a
+    // delivery address: Stripe refuses a shipping block with an empty address ("Missing required param: shipping[address]").
+    return shipping.line1 || shipping.city || shipping.postalCode || shipping.country ? shipping : undefined;
   }
 
   /**
