@@ -12,6 +12,8 @@ import { ConsentsService } from '../consents/consents.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { WeightJourneyService } from '../weight-journey/weight-journey.service';
 import { PatientTreatmentStatus } from './models/patient-list-item.model';
+import { intakeNumber } from './patient-profile.service';
+import { bmiOf } from './bmi';
 import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import {
@@ -107,6 +109,14 @@ export class PatientsService {
       .map((r) => r.id);
     const journeys = await this.weightJourney.summariesFor(glp1Ids);
 
+    // Height is on the profile when the patient set it; until then it is the intake answer, which is read only for those who need it.
+    const withoutHeight = rows.filter((r) => r.heightCm == null).map((r) => r.id);
+    const intake = withoutHeight.length
+      ? await this.prisma.consultation.findMany({ where: { patientId: { in: withoutHeight } }, select: { patientId: true, quizAnswers: true } })
+      : [];
+    const intakeHeight = new Map<string, number | null>();
+    for (const id of withoutHeight) intakeHeight.set(id, intakeNumber(intake.filter((c) => c.patientId === id), 'height_cm'));
+
     return rows.map(({ lead, consultations, prescriptions, checkIns, messages: preConsultation = [], ...patient }) => {
       const journey = journeys.get(patient.id);
       const prescription = prescriptions[0];
@@ -138,6 +148,8 @@ export class PatientsService {
         targetWeightKg: journey?.targetWeightKg ?? null,
         weightLostKg: journey?.weightLostKg ?? null,
         progressPercentage: journey?.progressPercentage ?? null,
+        heightCm: patient.heightCm ?? intakeHeight.get(patient.id) ?? null,
+        bmi: bmiOf(journey?.currentWeightKg, patient.heightCm ?? intakeHeight.get(patient.id)),
         lastWeighedAt: journey?.latestMeasurementAt ?? null,
         awaitingReply: newest?.senderRole === UserRole.PATIENT,
         lastMessageAt: lastFromPatient?.sentAt ?? null,

@@ -59,6 +59,12 @@ export class PatientListItemModel extends PatientModel {
   @Field(() => Float, { nullable: true, description: 'Null until a target weight is set' })
   weightLostKg?: number;
 
+  @Field(() => Float, { nullable: true, description: 'From their profile, or the intake answer until they set it' })
+  heightCm?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'Current weight over height squared. Null without a believable height and weight.' })
+  bmi?: number | null;
+
   @Field(() => Float, { nullable: true, description: '0–100; null until a target weight is set' })
   progressPercentage?: number;
 
