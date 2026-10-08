@@ -71,12 +71,21 @@ export default function HealthAlertsPanel() {
               <span aria-hidden>{LEVEL[a.level].dot}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-[color:var(--t-strong)]">{title}</p>
-                <p className="text-xs text-[color:var(--t-muted)] truncate">{detail}</p>
+                {a.kind === 'PRESCRIPTIONS_EXPIRING' ? (
+                  // Each name opens that patient's record: there is no page that lists prescriptions by when they end.
+                  <p className="text-xs text-[color:var(--t-muted)]">
+                    {a.patients.map((p, i) => (
+                      <span key={p.id}>{i > 0 && ', '}<Link href={`/patients?patient=${p.id}`} className="text-sky-400 hover:underline">{p.name}</Link></span>
+                    ))}
+                    {a.count > a.patients.length && ` +${a.count - a.patients.length}`}
+                  </p>
+                ) : (
+                  <p className="text-xs text-[color:var(--t-muted)] truncate">{detail}</p>
+                )}
               </div>
               {single && a.patients[0] && <Link href={`/patients?patient=${a.patients[0].id}`} className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Open record')}</Link>}
               {a.kind === 'PENDING_REVIEWS' && <Link href="/queue" className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Go to the review queue')}</Link>}
               {a.kind === 'OVERDUE_CHECK_INS' && <Link href="/check-ins" className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Open check-ins')}</Link>}
-              {a.kind === 'PRESCRIPTIONS_EXPIRING' && <Link href="/shipments" className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Open next shipments')}</Link>}
             </li>
           );
         })}

@@ -19,7 +19,8 @@ describe('HealthAlertsService', () => {
         ]),
       },
       sideEffectReport: { findMany: jest.fn().mockResolvedValue([{ effects: ['vomiting'], patient: person('g1', 'Ana') }]) },
-      consultation: { findMany: jest.fn().mockResolvedValue([{ submittedAt: new Date(NOW.getTime() - 3 * DAY), patient: person('c1', 'Cleo') }]) },
+      consultation: { findMany: jest.fn().mockResolvedValue([{ id: 'con-1', submittedAt: new Date(NOW.getTime() - 3 * DAY), patient: person('c1', 'Cleo') }]) },
+      auditLogEntry: { findMany: jest.fn().mockResolvedValue([]) },
       checkIn: { findMany: jest.fn().mockResolvedValue([{ patient: person('g2', 'Ben') }]) },
       prescription: { findMany: jest.fn().mockResolvedValue([{ validUntil: new Date(NOW.getTime() + 3 * DAY), patient: person('g1', 'Ana') }]) },
     };
@@ -34,7 +35,7 @@ describe('HealthAlertsService', () => {
 
   it('gathers the alerts, most urgent first', async () => {
     const alerts = await service.alerts(NOW);
-    expect(alerts.map((a) => a.id)).toEqual(['WEIGHT_GAIN:g1', 'SEVERE_SIDE_EFFECT:g1', 'PENDING_REVIEWS', 'OVERDUE_CHECK_INS', 'PRESCRIPTIONS_EXPIRING']);
+    expect(alerts.map((a) => a.id)).toEqual(['SEVERE_SIDE_EFFECT:g1', 'WEIGHT_GAIN:g1', 'PENDING_REVIEWS', 'OVERDUE_CHECK_INS', 'PRESCRIPTIONS_EXPIRING']);
     expect(alerts[0]).toMatchObject({ level: 'RED', value: 4.5, patients: [{ id: 'g1', name: 'Ana Test' }] });
   });
 
@@ -47,6 +48,17 @@ describe('HealthAlertsService', () => {
     await service.alerts(NOW);
     expect(prisma.sideEffectReport.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ severity: 'SEVERE', acknowledgedAt: null }) }));
     expect(prisma.patient.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { activatedAt: { not: null }, subscriptionEndedAt: null } }));
+  });
+
+  it('counts a reply to a doctor’s question from the reply, not from the first submission days earlier', async () => {
+    expect((await service.alerts(NOW)).map((a) => a.kind)).toContain('PENDING_REVIEWS'); // 3 days, never sent back
+    prisma.auditLogEntry.findMany.mockResolvedValue([
+      { resourceId: 'con-1', timestamp: new Date(NOW.getTime() - 2 * DAY) },
+      { resourceId: 'con-1', timestamp: new Date(NOW.getTime() - 2 * 3_600_000) }, // replied again two hours ago
+    ]);
+    const fresh = await new HealthAlertsService(prisma, weights as any).alerts(NOW);
+    expect(fresh.map((a) => a.kind)).not.toContain('PENDING_REVIEWS');
+    expect(prisma.auditLogEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { action: 'CONSULTATION_RESUBMITTED', resourceType: 'Consultation', resourceId: { in: ['con-1'] } } }));
   });
 
   it('reads the database once for requests that arrive close together', async () => {

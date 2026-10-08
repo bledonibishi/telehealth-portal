@@ -33,7 +33,8 @@ export interface HealthAlert {
 export interface AlertInput {
   weightTrends: { patient: AlertPatient; level: string; changePct28Days: number | null; latestKg: number | null; previousKg: number | null }[];
   severeReports: { patient: AlertPatient; effects: string[] }[];
-  pendingReviews: { patient: AlertPatient; submittedAt: Date }[];
+  /** `waitingSince`: when it last joined the queue, which for a reply to a doctor's question is the reply, not the first submission. */
+  pendingReviews: { patient: AlertPatient; waitingSince: Date }[];
   overdueCheckIns: { patient: AlertPatient }[];
   expiringPrescriptions: { patient: AlertPatient; validUntil: Date }[];
 }
@@ -51,6 +52,8 @@ const DAY = 86_400_000;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const unique = (ps: AlertPatient[]) => [...new Map(ps.map((p) => [p.id, p])).values()];
 const LEVEL_RANK: Record<AlertLevel, number> = { RED: 0, YELLOW: 1, ORANGE: 2 };
+// Within a colour: a reaction to the medicine before a number on the scale, a queue before a list.
+const KIND_RANK: Record<AlertKind, number> = { SEVERE_SIDE_EFFECT: 0, WEIGHT_GAIN: 1, PENDING_REVIEWS: 2, OVERDUE_CHECK_INS: 3, PRESCRIPTIONS_EXPIRING: 4, WEIGHT_ENTRY_CHECK: 5 };
 
 export function buildHealthAlerts(input: AlertInput, now: Date = new Date()): HealthAlert[] {
   const alerts: HealthAlert[] = [];
@@ -70,9 +73,9 @@ export function buildHealthAlerts(input: AlertInput, now: Date = new Date()): He
   for (const { patient, effects } of severe.values()) alerts.push(make({ id: `SEVERE_SIDE_EFFECT:${patient.id}`, level: 'RED', kind: 'SEVERE_SIDE_EFFECT', patients: [patient], effects: [...effects] }));
 
   // One alert for a queue: the number matters more than any one name.
-  const waiting = input.pendingReviews.filter((r) => now.getTime() - r.submittedAt.getTime() >= PENDING_REVIEW_AFTER_HOURS * 3_600_000);
+  const waiting = input.pendingReviews.filter((r) => now.getTime() - r.waitingSince.getTime() >= PENDING_REVIEW_AFTER_HOURS * 3_600_000);
   if (waiting.length) {
-    const avgDays = waiting.reduce((sum, r) => sum + (now.getTime() - r.submittedAt.getTime()) / DAY, 0) / waiting.length;
+    const avgDays = waiting.reduce((sum, r) => sum + (now.getTime() - r.waitingSince.getTime()) / DAY, 0) / waiting.length;
     alerts.push(make({ id: 'PENDING_REVIEWS', level: 'YELLOW', kind: 'PENDING_REVIEWS', count: waiting.length, patients: unique(waiting.map((r) => r.patient)).slice(0, NAMES_PER_GROUP), value: round1(avgDays) }));
   }
   const overdue = unique(input.overdueCheckIns.map((c) => c.patient));
@@ -84,6 +87,13 @@ export function buildHealthAlerts(input: AlertInput, now: Date = new Date()): He
   const expiringPatients = unique(expiring.map((p) => p.patient));
   if (expiringPatients.length) alerts.push(make({ id: 'PRESCRIPTIONS_EXPIRING', level: 'ORANGE', kind: 'PRESCRIPTIONS_EXPIRING', count: expiringPatients.length, patients: expiringPatients.slice(0, NAMES_PER_GROUP) }));
 
-  // Red first; within a colour the biggest weight rise first, then by name so the order does not jump about between refreshes.
-  return alerts.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level] || (b.value ?? 0) - (a.value ?? 0) || a.id.localeCompare(b.id));
+  // Red first; within a colour by what it is (`value` means something different for each kind, so it is only compared
+  // between two weight rises: the bigger first); then by id so the order does not jump about between refreshes.
+  return alerts.sort(
+    (a, b) =>
+      LEVEL_RANK[a.level] - LEVEL_RANK[b.level] ||
+      KIND_RANK[a.kind] - KIND_RANK[b.kind] ||
+      (a.kind === 'WEIGHT_GAIN' ? (b.value ?? 0) - (a.value ?? 0) : 0) ||
+      a.id.localeCompare(b.id),
+  );
 }

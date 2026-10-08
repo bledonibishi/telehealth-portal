@@ -35,7 +35,7 @@ export class HealthAlertsService {
       }),
       this.prisma.consultation.findMany({
         where: { status: { in: [ConsultationStatus.SUBMITTED, ConsultationStatus.IN_REVIEW] } },
-        select: { submittedAt: true, patient: { select: { id: true, firstName: true, lastName: true } } },
+        select: { id: true, submittedAt: true, patient: { select: { id: true, firstName: true, lastName: true } } },
       }),
       this.prisma.checkIn.findMany({
         where: { status: { in: [CheckInStatus.SCHEDULED, CheckInStatus.SENT] }, dueAt: { lt: new Date(now.getTime() - CHECK_IN_OVERDUE_AFTER_DAYS * DAY) }, patient: live },
@@ -46,6 +46,21 @@ export class HealthAlertsService {
         select: { validUntil: true, patient: { select: { id: true, firstName: true, lastName: true } } },
       }),
     ]);
+
+    // A consultation sent back for more information keeps its first submittedAt when the patient replies, so a reply
+    // from this morning would look days overdue. The wait is counted from the reply, which the audit log dates.
+    const replies = pending.length
+      ? await this.prisma.auditLogEntry.findMany({
+          where: { action: 'CONSULTATION_RESUBMITTED', resourceType: 'Consultation', resourceId: { in: pending.map((c) => c.id) } },
+          orderBy: { timestamp: 'asc' },
+          select: { resourceId: true, timestamp: true },
+        })
+      : [];
+    const repliedAt = new Map(replies.map((r) => [r.resourceId, r.timestamp])); // ascending, so the last one wins
+    const waitingSince = (c: { id: string; submittedAt: Date }) => {
+      const reply = repliedAt.get(c.id);
+      return reply && reply > c.submittedAt ? reply : c.submittedAt;
+    };
 
     // Weight trends are only worked out for patients on the weight programme.
     const glp1 = patients.filter((p) => (p.lead?.productKind ?? p.consultations[0]?.kind) === ConsultationKind.GLP1);
@@ -58,7 +73,7 @@ export class HealthAlertsService {
           return { patient: nameOf(p), level: t.level, changePct28Days: t.changePct28Days ?? null, latestKg: t.latestKg ?? null, previousKg: t.previousKg ?? null };
         }),
         severeReports: severe.map((r) => ({ patient: nameOf(r.patient), effects: r.effects })),
-        pendingReviews: pending.map((c) => ({ patient: nameOf(c.patient), submittedAt: c.submittedAt })),
+        pendingReviews: pending.map((c) => ({ patient: nameOf(c.patient), waitingSince: waitingSince(c) })),
         overdueCheckIns: overdue.map((c) => ({ patient: nameOf(c.patient) })),
         expiringPrescriptions: expiring.map((p) => ({ patient: nameOf(p.patient), validUntil: p.validUntil! })),
       },

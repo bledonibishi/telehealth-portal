@@ -32,7 +32,7 @@ describe('buildHealthAlerts', () => {
   });
 
   it('counts consultations waiting a full day or more, with how long on average, and ignores newer ones', () => {
-    const alerts = buildHealthAlerts(input({ pendingReviews: [{ patient: P('a'), submittedAt: hoursAgo(72) }, { patient: P('b'), submittedAt: hoursAgo(24) }, { patient: P('c'), submittedAt: hoursAgo(5) }] }), NOW);
+    const alerts = buildHealthAlerts(input({ pendingReviews: [{ patient: P('a'), waitingSince: hoursAgo(72) }, { patient: P('b'), waitingSince: hoursAgo(24) }, { patient: P('c'), waitingSince: hoursAgo(5) }] }), NOW);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({ level: 'YELLOW', kind: 'PENDING_REVIEWS', count: 2, value: 2 });
   });
@@ -64,6 +64,20 @@ describe('buildHealthAlerts', () => {
     expect(alert.patients).toHaveLength(NAMES_PER_GROUP);
   });
 
+  it('never lets a weight rise push a severe side effect down the list, and does not rank a typo by how heavy the patient is', () => {
+    const alerts = buildHealthAlerts(input({
+      weightTrends: [
+        { patient: P('a'), level: 'GAIN', changePct28Days: 9, latestKg: null, previousKg: null },
+        { patient: P('b'), level: 'GAIN', changePct28Days: 6, latestKg: null, previousKg: null },
+        { patient: P('heavy'), level: 'CHECK_ENTRY', changePct28Days: null, latestKg: 250, previousKg: 120 },
+        { patient: P('light'), level: 'CHECK_ENTRY', changePct28Days: null, latestKg: 60, previousKg: 90 },
+      ],
+      severeReports: [{ patient: P('z'), effects: ['allergic_reaction'] }],
+      expiringPrescriptions: [{ patient: P('e'), validUntil: daysAhead(2) }],
+    }), NOW);
+    expect(alerts.map((a) => a.id)).toEqual(['SEVERE_SIDE_EFFECT:z', 'WEIGHT_GAIN:a', 'WEIGHT_GAIN:b', 'PRESCRIPTIONS_EXPIRING', 'WEIGHT_ENTRY_CHECK:heavy', 'WEIGHT_ENTRY_CHECK:light']);
+  });
+
   it('puts red first, then yellow, then orange, and the biggest weight rise first among the reds', () => {
     const alerts = buildHealthAlerts(input({
       weightTrends: [
@@ -71,7 +85,7 @@ describe('buildHealthAlerts', () => {
         { patient: P('big'), level: 'GAIN', changePct28Days: 8, latestKg: null, previousKg: null },
         { patient: P('typo'), level: 'CHECK_ENTRY', changePct28Days: null, latestKg: 200, previousKg: 100 },
       ],
-      pendingReviews: [{ patient: P('q'), submittedAt: hoursAgo(48) }],
+      pendingReviews: [{ patient: P('q'), waitingSince: hoursAgo(48) }],
     }), NOW);
     expect(alerts.map((a) => a.id)).toEqual(['WEIGHT_GAIN:big', 'WEIGHT_GAIN:small', 'PENDING_REVIEWS', 'WEIGHT_ENTRY_CHECK:typo']);
   });
