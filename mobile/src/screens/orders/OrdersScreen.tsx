@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, 
 import { useQuery } from '@apollo/client';
 import { MY_ORDERS } from '../../graphql/operations';
 import { ORDER_POLL_MS, ORDER_STATUS, STAGES, STAGE_OF, STAGE_TIME, TRACKING_LABEL, TRACKING_PROBLEMS, expectedDelivery, shortDate, shortDateTime } from '../../lib/delivery';
+import { useRefill } from '../../lib/refill';
 import { colors } from '../../theme';
 
 function Tracker({ order }: { order: any }) {
@@ -85,11 +86,30 @@ function OrderCard({ order }: { order: any }) {
   );
 }
 
+/** Asks the doctor for the next supply in one tap. The doctor still approves it; the hint says why it can't be used yet. */
+function OrderEarly({ refill }: { refill: ReturnType<typeof useRefill> }) {
+  if (!refill.status) return null;
+  return (
+    <View style={styles.early}>
+      {refill.requested ? (
+        <Text style={styles.earlyDone}>Refill requested</Text>
+      ) : (
+        <TouchableOpacity style={[styles.earlyButton, !refill.canRequest && styles.earlyOff]} onPress={refill.request} disabled={!refill.canRequest || refill.loading} accessibilityRole="button">
+          <Text style={styles.earlyText}>{refill.loading ? 'Sending…' : 'Order next dose early'}</Text>
+        </TouchableOpacity>
+      )}
+      {refill.hint ? <Text style={styles.earlyHint}>{refill.hint}</Text> : null}
+      {refill.error ? <Text style={styles.earlyError} accessibilityRole="alert">{refill.error.message}</Text> : null}
+    </View>
+  );
+}
+
 /** Every supply the patient has had, newest first, each with where it is. */
 export function OrdersScreen({ navigation }: any) {
   const { data, loading, error, refetch } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network', pollInterval: ORDER_POLL_MS });
+  const refill = useRefill();
   const [refreshing, setRefreshing] = React.useState(false);
-  React.useEffect(() => navigation.addListener('focus', () => { refetch(); }), [navigation, refetch]);
+  React.useEffect(() => navigation.addListener('focus', () => { refetch(); refill.refetch(); }), [navigation, refetch, refill.refetch]);
 
   if (loading && !data) return <ActivityIndicator style={styles.center} />;
   if (error && !data) return <Text style={styles.error}>{error.message}</Text>;
@@ -100,6 +120,7 @@ export function OrdersScreen({ navigation }: any) {
       <Text style={styles.title}>Orders</Text>
       <FlatList
         data={orders}
+        ListHeaderComponent={<OrderEarly refill={refill} />}
         keyExtractor={(o) => o.id}
         renderItem={({ item }) => <OrderCard order={item} />}
         contentContainerStyle={{ paddingBottom: 32 }}
@@ -114,6 +135,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.page, paddingHorizontal: 16, paddingTop: 56 },
   center: { flex: 1 },
   error: { padding: 24, color: colors.red700 },
+  early: { marginBottom: 14 },
+  earlyButton: { alignSelf: 'flex-start', backgroundColor: colors.brand700, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, minHeight: 42, justifyContent: 'center' },
+  earlyOff: { opacity: 0.45 },
+  earlyText: { color: colors.white, fontSize: 13, fontWeight: '700' },
+  earlyDone: { alignSelf: 'flex-start', backgroundColor: '#ecfdf5', color: '#065f46', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, fontSize: 13, fontWeight: '700', overflow: 'hidden' },
+  earlyHint: { marginTop: 6, fontSize: 12, color: colors.slate500, lineHeight: 17 },
+  earlyError: { marginTop: 6, fontSize: 12, color: colors.red700 },
   title: { fontSize: 22, fontWeight: '700', color: colors.slate900, marginBottom: 16 },
   empty: { marginTop: 24, textAlign: 'center', color: colors.slate500, lineHeight: 20 },
   card: { backgroundColor: colors.white, borderRadius: 14, borderWidth: 1, borderColor: colors.slate200, padding: 16, marginBottom: 14 },

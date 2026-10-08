@@ -315,6 +315,23 @@ model Lead {
   @@map("leads")
 }
 
+// A phone a patient is signed in on, so we can tell it when an order moves. One row per Expo push token; a token
+// that belongs to a different patient later (a shared phone) is moved to them, never kept on both.
+model PushDevice {
+  id         String   @id @default(cuid())
+  patientId  String   @map("patient_id")
+  token      String   @unique
+  // ios or android.
+  platform   String
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("push_devices")
+}
+
 // A patient's one-tap ask for their money back. It refunds nothing by itself: an admin sees whether the medicine has
 // already left the pharmacy and decides (see stripe/refund-requests.service.ts). No reason is asked for.
 model RefundRequest {
@@ -400,6 +417,7 @@ model Patient {
 
   @@map("patients")
   refundRequests RefundRequest[]
+  pushDevices    PushDevice[]
 }
 
 model Consultation {

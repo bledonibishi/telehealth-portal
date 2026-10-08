@@ -7,12 +7,13 @@ import { BillingPortalResolver } from './billing-portal.resolver';
 import { DevPaymentSimulatorController } from './dev-payment-simulator.controller';
 import { RefundRequestsService } from './refund-requests.service';
 import { RefundRequestsResolver } from './refund-requests.resolver';
+import { PushModule } from '../push/push.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, ReferralsModule],
+  imports: [PrismaModule, EmailModule, ReferralsModule, PushModule],
   controllers: [StripeWebhookController, DevPaymentSimulatorController],
   providers: [StripeWebhookService, BillingService, BillingPortalResolver, DosePricingService, RefundRequestsService, RefundRequestsResolver],
   exports: [BillingService, DosePricingService],

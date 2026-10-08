@@ -19,6 +19,7 @@ import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { StripeModule } from './stripe/stripe.module';
+import { PushModule } from './push/push.module';
 import { CouriersModule } from './couriers/couriers.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { EmailModule } from './email/email.module';
@@ -79,6 +80,7 @@ import { InsightsModule } from './insights/insights.module';
     LeadsModule,
     ReferralsModule,
     StripeModule,
+    PushModule,
     CouriersModule,
     CheckoutModule,
     EmailModule,

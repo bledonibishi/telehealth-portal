@@ -7,6 +7,7 @@ import { BillingService } from '../stripe/billing.service';
 import { describeEstimate } from './delivery-estimate';
 import type { TrackingEventInput } from '../couriers/courier-adapter';
 import { orderStatusFor, rankOf, type TrackingStatus } from '../couriers/tracking-status';
+import { PushService } from '../push/push.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrtMonitoringService } from '../labs/trt-monitoring.service';
@@ -27,6 +28,14 @@ export interface ShippingDetails {
 
 /** How long a finished order stays in the default list; older ones are found by searching. */
 const RECENT_DAYS = 60;
+
+/** What a locked screen shows. Always general: no medicine, no name, no address. The app has the details. */
+const PUSH_TEXT: Record<'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED', (orderId: string) => { title: string; body: string; data: Record<string, string> }> = {
+  SHIPPED: (id) => ({ title: 'Your order is on its way', body: 'The courier has collected it. Open the app to follow it.', data: { type: 'order', orderId: id } }),
+  OUT_FOR_DELIVERY: (id) => ({ title: 'Out for delivery today', body: 'Your order is with the courier and will reach you today.', data: { type: 'order', orderId: id } }),
+  DELIVERED: (id) => ({ title: 'Your order has arrived', body: 'Open the app for your next steps.', data: { type: 'order', orderId: id } }),
+  DELIVERY_FAILED: (id) => ({ title: 'We couldn’t deliver your order', body: 'The courier will usually try again. Open the app for details.', data: { type: 'order', orderId: id } }),
+};
 
 const clip = (v: string | null | undefined, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 
@@ -80,6 +89,7 @@ export class OrdersService {
     private config?: ConfigService,
     private email?: EmailService,
     private billing?: BillingService,
+    private push?: PushService,
   ) {}
 
   /**
@@ -367,9 +377,11 @@ export class OrdersService {
 
   /** Emails the patient about their order. Never fails the step itself: the order has moved whether or not the email went. */
   private async tellPatient(
-    order: { patient: { email: string; firstName: string }; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; estimatedDeliveryFrom: Date | null; estimatedDeliveryTo: Date | null },
+    order: { id: string; patientId: string; patient: { email: string; firstName: string }; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; estimatedDeliveryFrom: Date | null; estimatedDeliveryTo: Date | null },
     kind: 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED',
   ) {
+    // The phone is told even when email isn't set up, and the two never hold each other up.
+    void this.push?.sendToPatient(order.patientId, PUSH_TEXT[kind](order.id));
     if (!this.email) return;
     try {
       const portal = this.config?.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
@@ -385,11 +397,6 @@ export class OrdersService {
     }
   }
 
-  /**
-   * Stops an order that has not shipped. The patient has already paid, so an admin can also say what happens to their
-   * money: refund the latest payment, end the subscription, or both (which is what a declined consultation does).
-   * The order is cancelled first; a billing problem is written down for fixing by hand and never undoes the cancel.
-   */
   /** Everything the pharmacy handed over in a month (not cancelled), for checking what we owe it. */
   async statementOrders(year: number, month: number) {
     const from = new Date(Date.UTC(year, month - 1, 1));
@@ -406,6 +413,11 @@ export class OrdersService {
     }));
   }
 
+  /**
+   * Stops an order that has not shipped. The patient has already paid, so an admin can also say what happens to their
+   * money: refund the latest payment, end the subscription, or both (which is what a declined consultation does).
+   * The order is cancelled first; a billing problem is written down for fixing by hand and never undoes the cancel.
+   */
   async cancel(actorId: string, id: string, reason: string, money: { refund?: boolean; endSubscription?: boolean } = {}) {
     if (!reason.trim()) throw new BadRequestException('A reason is required to cancel an order');
     await this.transition(id, OrderStatus.PENDING, {

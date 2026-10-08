@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '../common/enums';
+import { PushService } from '../push/push.service';
 import { BillingService } from './billing.service';
 
 const BILLING_PATIENT = { id: true, email: true, stripeCustomerId: true, stripeSubscriptionId: true } as const;
@@ -16,6 +17,7 @@ export class RefundRequestsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private billing: BillingService,
+    private push?: PushService,
   ) {}
 
   /** The patient's open request, if any. */
@@ -81,6 +83,9 @@ export class RefundRequestsService {
     }
     const decided = await this.prisma.refundRequest.update({ where: { id }, data: { outcome } });
     await this.audit.log({ actorId: adminId, actorRole: UserRole.CLINICIAN, action: approve ? 'REFUND_APPROVED' : 'REFUND_DECLINED', resourceType: 'RefundRequest', resourceId: id, patientId: request.patientId });
+    void this.push?.sendToPatient(request.patientId, approve
+      ? { title: 'Your refund was approved', body: 'It can take a few days to reach your account.', data: { type: 'refund' } }
+      : { title: 'About your refund request', body: 'The clinic has looked at it and isn’t able to refund this one. Message us if you have questions.', data: { type: 'refund' } });
     return decided;
   }
 }

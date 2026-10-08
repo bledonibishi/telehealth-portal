@@ -121,6 +121,17 @@ describe('OrdersService', () => {
       await withEmail.markDelivered('prov-1', 'o-1');
       expect(email.sendOrderUpdateEmail).toHaveBeenCalledWith('p@example.com', 'Emma', 'DELIVERED', expect.anything());
     });
+
+    it('also tells the patient’s phone, in general words, even when email is not set up', async () => {
+      const push = { sendToPatient: jest.fn().mockResolvedValue(undefined) };
+      const phoneOnly = new OrdersService(prisma, audit as any, trtMonitoring as any, partner as any, { get: () => undefined } as any, undefined, undefined, push as any);
+      prisma.order.findUnique.mockResolvedValue(patientOrder({ status: 'DELIVERED' }));
+      await phoneOnly.markDelivered('prov-1', 'o-1');
+      expect(push.sendToPatient).toHaveBeenCalledTimes(1);
+      const [, message] = push.sendToPatient.mock.calls[0];
+      expect(message.title).toMatch(/arrived/i);
+      expect(JSON.stringify(message)).not.toMatch(/Emma|p@example|street/i);
+    });
   });
 
   describe('applyTracking (courier and tracking-service updates)', () => {

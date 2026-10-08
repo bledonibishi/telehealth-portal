@@ -15,6 +15,7 @@ import { PrescriptionProofScreen } from '../screens/onboarding/PrescriptionProof
 import { OnboardingChatScreen } from '../screens/onboarding/OnboardingChatScreen';
 import { OrdersScreen } from '../screens/orders/OrdersScreen';
 import { AccountScreen } from '../screens/account/AccountScreen';
+import { listenForNoticeTaps, registerForPush } from '../lib/push';
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -22,6 +23,11 @@ const OnboardingStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function PatientTabs() {
+  // Once the patient is in the app: ask to send notices, and open the right tab when one is tapped.
+  React.useEffect(() => {
+    registerForPush();
+    return listenForNoticeTaps();
+  }, []);
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }}>
       <Tab.Screen name="Status" component={ConsultationStatusScreen} />
