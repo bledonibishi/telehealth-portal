@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CURRENT_CONSENTS } from '../consents/consent-texts';
 import { LeadsService } from './leads.service';
 
@@ -39,40 +39,47 @@ describe('LeadsService.upsert', () => {
   });
 });
 
-describe('LeadsService.saveIntake', () => {
-  const lead = { id: 'lead-1', email: 'a@b.com', productKind: 'GLP1', convertedAt: null };
+describe('LeadsService.upsert with the health answers', () => {
   const consent = CURRENT_CONSENTS.TELEHEALTH.version;
   const answers = Object.entries({
     height_cm: '170', weight_kg: '95', bp_known: 'yes', bp_systolic: '120', bp_diastolic: '80', smoking: 'never',
     current_medications: 'None', allergies: 'None', glp1_prior_use: 'no',
     diabetes_medicines: 'none', eating_disorder: 'no', gallbladder: 'no', kidney_disease: 'no', bariatric_surgery: 'no',
   }).map(([questionId, v]) => ({ questionId, answer: v, value: v }));
-  const input = { leadId: 'lead-1', email: 'A@b.com', answers, telehealthConsentVersion: consent } as any;
+  const withIntake = { ...input, intakeAnswers: answers, telehealthConsentVersion: consent } as any;
 
-  it('keeps the answers and the consent on the lead', async () => {
-    const { svc, prisma } = build({ lead });
-    await svc.saveIntake(input, { ip: '1.2.3.4', userAgent: 'UA' });
-    expect(prisma.lead.update).toHaveBeenCalledWith({
-      where: { id: 'lead-1' },
-      data: expect.objectContaining({ intakeConsentVersion: consent, intakeConsentIp: '1.2.3.4', intakeConsentUserAgent: 'UA', intakeSavedAt: expect.any(Date) }),
-    });
+  it('keeps the health answers and the consent on the lead, in the same save as the quiz', async () => {
+    const { svc, prisma } = build();
+    await svc.upsert(withIntake, { ip: '1.2.3.4', userAgent: 'UA' });
+    const { create, update } = prisma.lead.upsert.mock.calls[0][0];
+    for (const data of [create, update]) {
+      expect(data).toMatchObject({ intakeConsentVersion: consent, intakeConsentIp: '1.2.3.4', intakeConsentUserAgent: 'UA', intakeSavedAt: expect.any(Date) });
+      expect(data.intakeAnswers).toHaveLength(answers.length);
+    }
   });
 
-  it('gives the same answer for an unknown lead and a wrong email', async () => {
-    await expect(build({ lead }).svc.saveIntake({ ...input, email: 'other@b.com' })).rejects.toThrow(NotFoundException);
-    await expect(build().svc.saveIntake(input)).rejects.toThrow(NotFoundException);
+  it('refuses incomplete health answers, and an out-of-date consent, before saving anything', async () => {
+    const { svc, prisma } = build();
+    await expect(svc.upsert({ ...withIntake, intakeAnswers: answers.slice(1) })).rejects.toThrow(BadRequestException);
+    await expect(svc.upsert({ ...withIntake, telehealthConsentVersion: 'old' })).rejects.toThrow(/consent/);
+    expect(prisma.lead.upsert).not.toHaveBeenCalled();
   });
 
-  it('refuses a lead that has already paid', async () => {
-    const { svc, prisma } = build({ lead: { ...lead, convertedAt: new Date() } });
-    await expect(svc.saveIntake(input)).rejects.toThrow(ConflictException);
-    expect(prisma.lead.update).not.toHaveBeenCalled();
+  it('saves a quiz that came without health answers as before', async () => {
+    const { svc, prisma } = build();
+    await svc.upsert(input);
+    const { create } = prisma.lead.upsert.mock.calls[0][0];
+    expect(create).not.toHaveProperty('intakeAnswers');
   });
 
-  it('refuses incomplete answers and an out-of-date consent', async () => {
-    const { svc, prisma } = build({ lead });
-    await expect(svc.saveIntake({ ...input, answers: answers.slice(1) })).rejects.toThrow(BadRequestException);
-    await expect(svc.saveIntake({ ...input, telehealthConsentVersion: 'old' })).rejects.toThrow(/consent/);
-    expect(prisma.lead.update).not.toHaveBeenCalled();
+  it('drops another treatment’s earlier health answers when the quiz comes without new ones', async () => {
+    const { svc, prisma } = build({ lead: { id: 'l-1', convertedAt: null, productKind: 'HRT' } });
+    await svc.upsert(input); // input is GLP1
+    expect(prisma.lead.upsert.mock.calls[0][0].update).toHaveProperty('intakeSavedAt', null);
+  });
+
+  it('still refuses an email that already has an account', async () => {
+    const { svc } = build({ patient: { id: 'p-1' } });
+    await expect(svc.upsert(withIntake)).rejects.toThrow(ConflictException);
   });
 });

@@ -12,11 +12,13 @@ export interface QuizProgress {
   idx: number;
   answers: Record<string, SavedAnswer>;
   bmiBand: string | null;
-  view: 'q' | 'calc' | 'details';
+  view: 'q' | 'calc' | 'intake' | 'details';
+  /** Answers to the medical questions that follow the eligibility ones, by question id. */
+  health: Record<string, string[]>;
 }
 
 const key = (product: ProductKind) => `th_quiz_progress_${product}`;
-const VERSION = 1;
+const VERSION = 2;
 export const PROGRESS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -89,8 +91,17 @@ export function loadProgress(
   const visible = questions.filter((q) => !q.showIf || q.showIf({ bmiBand }));
   const unanswered = visible.findIndex((q) => !answers[q.id]);
   const allAnswered = unanswered === -1;
+  // The medical answers: only lists of text, kept as they are (the questions come from the server, and are checked there).
+  const health: Record<string, string[]> = {};
+  if (allAnswered && raw.health && typeof raw.health === 'object') {
+    for (const [id, v] of Object.entries(raw.health as Record<string, unknown>)) {
+      if (Array.isArray(v) && v.every((x) => typeof x === 'string')) health[id] = v as string[];
+    }
+  }
   // Back to the question they were on — but never past one they haven't answered.
   const savedIdx = Number.isInteger(raw.idx) ? raw.idx : 0;
-  const idx = Math.max(0, Math.min(savedIdx, allAnswered ? visible.length - 1 : unanswered));
-  return { idx, answers, bmiBand, view: allAnswered && raw.view === 'details' ? 'details' : 'q' };
+  const view: QuizProgress['view'] = allAnswered && (raw.view === 'details' || raw.view === 'intake') ? raw.view : 'q';
+  // In the medical questions the position is among those, which aren't known here: the quiz keeps it in range.
+  const idx = view === 'intake' ? Math.max(0, savedIdx) : Math.max(0, Math.min(savedIdx, allAnswered ? visible.length - 1 : unanswered));
+  return { idx, answers, bmiBand, view, health };
 }

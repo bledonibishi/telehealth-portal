@@ -1,6 +1,6 @@
 import { CONFIG, type ProductKind } from './config';
 
-// The medical questionnaire asked after a treatment is chosen and before paying. The questions, their
+// The medical questionnaire asked in the same quiz, after the eligibility questions. The questions, their
 // wording and what each answer means clinically all live on the server (the same questionnaire the
 // patient used to fill in after paying); this only fetches them and sends the answers back.
 
@@ -49,13 +49,6 @@ export async function fetchIntake(kind: ProductKind) {
   return { questions: data.questionnaire.questions, consent: data.consentText };
 }
 
-export async function saveIntake(input: { leadId: string; email: string; answers: IntakeAnswer[]; telehealthConsentVersion: string }) {
-  await gql(
-    `mutation SaveLeadIntake($input: SaveLeadIntakeInput!) { saveLeadIntake(input: $input) }`,
-    { input },
-  );
-}
-
 export const isVisible = (q: IntakeQuestion, values: IntakeValues) =>
   !q.showIf || (values[q.showIf.questionId] ?? []).some((v) => q.showIf!.anyOf.includes(v));
 
@@ -76,35 +69,11 @@ export function toAnswer(q: IntakeQuestion, selected: string[]): IntakeAnswer {
   return { questionId: q.id, answer: selected[0] ?? '', value: selected[0] ?? '' };
 }
 
-// ── Answers kept on this device while the visitor works through the questions ──
-// Health answers: this device only, expire after a while, removed once they are sent. Keyed by the lead,
-// so one person's answers are never shown to the next person on a shared browser.
-
-const draftKey = (leadId: string) => `th_intake_draft_${leadId}`;
-const DRAFT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-
-export function loadDraft(leadId: string): IntakeValues {
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(draftKey(leadId)) ?? 'null');
-    if (!raw || typeof raw.savedAt !== 'number' || Date.now() - raw.savedAt > DRAFT_TTL_MS || typeof raw.values !== 'object') return {};
-    return raw.values;
-  } catch {
-    return {};
-  }
-}
-
-export function saveDraft(leadId: string, values: IntakeValues) {
-  try {
-    window.localStorage.setItem(draftKey(leadId), JSON.stringify({ savedAt: Date.now(), values }));
-  } catch {
-    /* storage blocked: the questions still work, they just aren't kept */
-  }
-}
-
-export function clearDraft(leadId: string) {
-  try {
-    window.localStorage.removeItem(draftKey(leadId));
-  } catch {
-    /* nothing to clear */
-  }
+/**
+ * Height and weight, when the BMI calculator already worked them out: they are not asked twice. Read from the
+ * calculator's own answer text ("BMI 34.2 (calculated from 168 cm, 92 kg)").
+ */
+export function prefillFromBmi(bmiAnswer: string | undefined): IntakeValues {
+  const m = bmiAnswer ? /calculated from (\d+(?:\.\d+)?) cm, (\d+(?:\.\d+)?) kg/.exec(bmiAnswer) : null;
+  return m ? { height_cm: [m[1]], weight_kg: [m[2]] } : {};
 }

@@ -109,8 +109,7 @@ function ReviewInner() {
   const handleContinue = () => {
     if (!available) return;
     mergeAssessment({ plan: planKey, applyReward: !!reward && rewardApplied });
-    // Answers already saved for this lead (they came back from checkout to change the dose) aren't asked again.
-    router.push(session?.intakeDone ? '/checkout?plan=' + encodeURIComponent(planKey) : '/health-questions');
+    router.push('/checkout?plan=' + encodeURIComponent(planKey));
   };
 
   const eligUrl = product.kind === 'HRT' ? '/hrt-eligibility' : product.kind === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility';
@@ -192,7 +191,7 @@ function ReviewInner() {
                 disabled={!available}
                 style={available ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}
               >
-                {available ? (session?.intakeDone ? 'Continue to checkout →' : 'Continue to health questions →') : 'Unavailable'}
+                {available ? 'Continue to checkout →' : 'Unavailable'}
               </button>
             </div>
 

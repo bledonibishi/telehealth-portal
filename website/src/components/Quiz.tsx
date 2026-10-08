@@ -8,7 +8,9 @@ import { CONFIG, type ProductKind } from '@/lib/config';
 import { loadReferralCode } from '@/lib/referral';
 import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
 import { track } from '@/lib/analytics';
+import { fetchIntake, hasAnswer, isVisible, prefillFromBmi, toAnswer, type IntakeQuestion, type IntakeValues } from '@/lib/intake';
 import ProductPicker from './ProductPicker';
+import IntakeQuestionView from './IntakeQuestionView';
 
 /* ── Types ── */
 interface Answer { question: string; sel: string[] }
@@ -16,11 +18,13 @@ interface QuizState {
   idx: number;
   answers: Record<string, Answer>;
   bmiBand: string | null;
-  view: 'q' | 'calc' | 'details';
+  view: 'q' | 'calc' | 'intake' | 'details';
+  /** Answers to the medical questions after the eligibility ones, by question id. */
+  health: IntakeValues;
 }
 
 type Screen = 'quiz' | 'plans' | 'ineligible';
-const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q' };
+const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q', health: {} };
 
 /* ── GraphQL mutation ── */
 const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id riskTag riskReasons } }`;
@@ -33,7 +37,8 @@ async function createLead(
   visibleQs: QuizQuestion[],
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
-): Promise<LeadResult | 'EMAIL_TAKEN' | null> {
+  health: { answers: ReturnType<typeof toAnswer>[]; consentVersion: string },
+): Promise<LeadResult | 'EMAIL_TAKEN' | { error: string } | null> {
   const apiBase = CONFIG.API_BASE;
   if (!apiBase) return null;
 
@@ -65,6 +70,8 @@ async function createLead(
             lastName: data.lastName,
             productKind: product,
             quizAnswers,
+            intakeAnswers: health.answers,
+            telehealthConsentVersion: health.consentVersion,
             referralCode: loadReferralCode(),
           },
         },
@@ -73,6 +80,8 @@ async function createLead(
     const json = await res.json();
     // The server refuses an email that already has an account (HTTP 409 inside the GraphQL error).
     if ((json.errors?.[0]?.extensions?.originalError?.statusCode ?? json.errors?.[0]?.extensions?.status) === 409) return 'EMAIL_TAKEN';
+    // The server checked the health answers or the consent and found something to put right: say what.
+    if ((json.errors?.[0]?.extensions?.originalError?.statusCode ?? json.errors?.[0]?.extensions?.status) === 400 && json.errors[0].message) return { error: json.errors[0].message };
     if (json.errors?.length) throw new Error(json.errors[0].message);
     const lead = json.data?.createLead;
     if (!lead?.id) throw new Error('No lead ID in response');
@@ -150,6 +159,21 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [detailsErr, setDetailsErr] = useState('');
   const [emailTaken, setEmailTaken] = useState(false);
   const [saving, setSaving] = useState(false);
+  // The medical questions and the consent wording come from the server (the same ones the doctor's review rests on).
+  const [intake, setIntake] = useState<{ questions: IntakeQuestion[]; consent: { version: string; text: string } } | null>(null);
+  const [intakeFailed, setIntakeFailed] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+
+  const loadIntake = useCallback(() => {
+    setIntakeFailed(false);
+    fetchIntake(product).then(setIntake).catch(() => setIntakeFailed(true));
+  }, [product]);
+  useEffect(() => { loadIntake(); }, [loadIntake]);
+
+  // Height and weight the BMI calculator already worked out are not asked again.
+  const prefilled = prefillFromBmi(st.answers.bmi?.sel[0]);
+  const health: IntakeValues = { ...st.health, ...prefilled };
+  const healthQs = (intake?.questions ?? []).filter((x) => isVisible(x, health) && !(x.id in prefilled));
 
   // On arrival, pick up where this visitor left off (a refresh, or coming back later).
   useEffect(() => {
@@ -260,11 +284,12 @@ export default function Quiz({ product }: { product: ProductKind }) {
           return;
         }
       }
-      const next: QuizState =
+      // Health answers already given are kept if the visitor went back to change an earlier answer.
+      const next: Omit<QuizState, 'health'> =
         pos < vq.length - 1
           ? { idx: pos + 1, view: 'q', answers, bmiBand }
-          : { idx: pos, view: 'details', answers, bmiBand };
-      setSt(next);
+          : { idx: 0, view: 'intake', answers, bmiBand };
+      setSt((s) => ({ ...s, ...next }));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -309,7 +334,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const back = () => {
     if (depth.current > 0) { window.history.back(); return; }
     setSt((s) => {
-      if (s.view === 'details') return { ...s, view: 'q', idx: visible().length - 1 };
+      if (s.view === 'details') return healthQs.length ? { ...s, view: 'intake', idx: healthQs.length - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
+      if (s.view === 'intake') return s.idx > 0 ? { ...s, idx: s.idx - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
       if (s.view === 'calc') return { ...s, view: 'q' };
       if (s.idx > 0) return { ...s, idx: s.idx - 1 };
       return s;
@@ -345,8 +371,17 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* ── Details form submit — block on failed lead creation ── */
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
+    if (!intake) { setDetailsErr('The health questions haven’t loaded yet. Please try again in a moment.'); return; }
     setSaving(true);
-    const lead = await createLead(product, visible(), st.answers, { firstName, lastName, email });
+    const lead = await createLead(
+      product, visible(), st.answers, { firstName, lastName, email },
+      { answers: healthQs.concat((intake.questions).filter((x) => x.id in prefilled)).filter((x) => hasAnswer(x, health)).map((x) => toAnswer(x, health[x.id])), consentVersion: intake.consent.version },
+    );
+    if (lead && typeof lead === 'object' && 'error' in lead) {
+      setDetailsErr(lead.error);
+      setSaving(false);
+      return;
+    }
     if (lead === 'EMAIL_TAKEN') {
       setEmailTaken(true);
       setDetailsErr('');
@@ -369,7 +404,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
     }
     clearProgress(product);
     const id = lead.id;
-    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null, intakeDone: false });
+    // The health answers went with the quiz, so checkout has everything it needs.
+    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null, intakeDone: true });
     setScreen('plans');
     setSaving(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -415,6 +451,50 @@ export default function Quiz({ product }: { product: ProductKind }) {
     );
   }
 
+  /* ── The medical questions ── */
+  if (st.view === 'intake') {
+    const total = n + healthQs.length;
+    const hq = healthQs[st.idx];
+    // Past the last one (or none showing): on to name and email.
+    if (intake && !hq) {
+      return (
+        <div className="thq-in">
+          <button className="thq-next" onClick={() => setSt((s) => ({ ...s, view: 'details' }))}>Continue</button>
+        </div>
+      );
+    }
+    return (
+      <div className="thq-in">
+        <div className="thq-top">
+          <button className="thq-arrow" onClick={back} aria-label="Back">←</button>
+          <div className="thq-progress"><div className="thq-bar" style={{ width: `${Math.max(5, Math.round((n + st.idx) / (total + 1) * 100))}%` }} /></div>
+          <div className="thq-count">{hq ? `Question ${n + st.idx + 1} / ${total}` : ' '}</div>
+        </div>
+        {intakeFailed && (
+          <div className="th-co-nosession" style={{ marginTop: 24 }}>
+            <h2>We couldn’t load the next questions</h2>
+            <p>Please check your connection and try again.</p>
+            <button type="button" className="btn-primary" onClick={loadIntake}>Try again</button>
+          </div>
+        )}
+        {!intake && !intakeFailed && <p className="thq-help" style={{ textAlign: 'center' }}>Loading…</p>}
+        {hq && (
+          <IntakeQuestionView
+            key={hq.id}
+            q={hq}
+            values={health}
+            onChange={(id, value) => setSt((s) => ({ ...s, health: { ...s.health, [id]: value } }))}
+            onNext={(next) => {
+              const visibleNow = (intake?.questions ?? []).filter((x) => isVisible(x, next) && !(x.id in prefilled));
+              setSt((s) => ({ ...s, health: { ...s.health, ...next }, ...(st.idx < visibleNow.length - 1 ? { idx: st.idx + 1 } : { view: 'details' as const, idx: 0 }) }));
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   /* ── Details form ── */
   if (st.view === 'details') {
     return (
@@ -426,7 +506,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
         </div>
         <div className="thq-time">◷ Takes less than 2 minutes</div>
         <h2 className="thq-q">Where should we send your results?</h2>
-        <p className="thq-help">Your doctor uses these details to review your assessment.</p>
+        <p className="thq-help">Your doctor uses these details to review your answers.</p>
         <form
           noValidate
           onSubmit={async (e) => {
@@ -435,10 +515,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
             const firstName = (fd.get('firstName') as string).trim();
             const lastName = (fd.get('lastName') as string).trim();
             const email = (fd.get('email') as string).trim();
-            const consent = fd.get('consent');
             if (!firstName || !lastName) { setDetailsErr('Please enter your first and last name.'); return; }
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setDetailsErr('Please enter a valid email address.'); return; }
-            if (!consent) { setDetailsErr('Please tick the box to confirm and continue.'); return; }
+            if (!agreed) { setDetailsErr('Please read the statement above and tick the box to continue.'); return; }
             setDetailsErr('');
             setEmailTaken(false);
             await submitDetails(firstName, lastName, email);
@@ -458,9 +537,14 @@ export default function Quiz({ product }: { product: ProductKind }) {
               <input id="thq-em" name="email" type="email" autoComplete="email" />
             </div>
           </div>
+          {intake && (
+            <ul className="thq-consent-list" style={{ marginTop: 18 }}>
+              {intake.consent.text.split('\n').filter(Boolean).map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          )}
           <label className="thq-consent">
-            <input type="checkbox" name="consent" />
-            <span>I confirm my answers are accurate, and I consent to my health information being used to assess my eligibility.</span>
+            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+            <span>I understand and agree.</span>
           </label>
           {emailTaken && (
             <div className="thq-error" role="alert">
@@ -471,7 +555,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
           )}
           {detailsErr && <div className="thq-error">{detailsErr}</div>}
           <button type="submit" className="thq-next" disabled={saving}>
-            {saving ? 'Saving…' : 'See my plans'}
+            {saving ? 'Saving…' : 'See my treatments'}
           </button>
         </form>
       </div>

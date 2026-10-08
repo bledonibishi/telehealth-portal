@@ -88,7 +88,6 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "DosingCronController.triggerDoseReminders",
   "IdentityVerificationController.handleWebhook",
   "LeadsResolver.createLead",
-  "LeadsResolver.saveLeadIntake",
   "PartnerOrdersCronController.sweep",
   "QuestionnairesResolver.questionnaire",
   "StripeWebhookController.handleWebhook",

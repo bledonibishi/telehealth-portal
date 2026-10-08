@@ -1,11 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
 import { ReferralsService } from '../referrals/referrals.service';
-import { SaveLeadIntakeInput } from './dto/save-lead-intake.input';
 import { findQuestionnaire } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { CURRENT_CONSENTS } from '../consents/consent-texts';
@@ -33,7 +32,7 @@ export class LeadsService {
     return this.prisma.lead.findUniqueOrThrow({ where: { id } });
   }
 
-  async upsert(input: CreateLeadInput) {
+  async upsert(input: CreateLeadInput, meta: RequestMeta = {}) {
     // Someone who already has an account (or has paid and is waiting for it) signs in instead of starting again.
     const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } });
     if (taken) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
@@ -43,6 +42,7 @@ export class LeadsService {
       select: { id: true, convertedAt: true, productKind: true },
     });
     if (existingLead?.convertedAt) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
+    const intake = this.checkedIntake(input, meta);
     const lead = await this.prisma.lead.upsert({
       where: { email: input.email },
       create: {
@@ -52,12 +52,13 @@ export class LeadsService {
         productKind: input.productKind,
         quizAnswers: input.quizAnswers as any,
         stripeSessionId: input.stripeSessionId,
+        ...intake,
       },
       update: {
         productKind: input.productKind,
         quizAnswers: input.quizAnswers as any,
-        // Answers to another treatment's medical questionnaire don't carry over.
-        ...(existingLead && existingLead.productKind !== input.productKind && { intakeAnswers: Prisma.DbNull, intakeConsentVersion: null, intakeSavedAt: null }),
+        // The health answers come with the quiz. Without them, another treatment's earlier answers don't carry over.
+        ...(intake ?? (existingLead && existingLead.productKind !== input.productKind && { intakeAnswers: Prisma.DbNull, intakeConsentVersion: null, intakeSavedAt: null })),
         stripeSessionId: input.stripeSessionId ?? undefined,
       },
     });
@@ -97,34 +98,23 @@ export class LeadsService {
   }
 
   /**
-   * The medical questionnaire, answered on the website after the visitor has chosen a treatment and before they
-   * pay. Checked here exactly as it will be when it becomes their consultation, so a payment is never taken for
-   * answers that would then be refused. Answers that raise clinical flags are kept as they are: the doctor
-   * decides, as they do for the portal questionnaire.
+   * The health answers that came with the quiz, checked exactly as they will be when they become the visitor's
+   * consultation, so a payment is never taken for answers that would then be refused. Answers that raise clinical
+   * flags are kept as they are: the doctor decides, as for the portal questionnaire. Null when the quiz sent none.
    */
-  async saveIntake(input: SaveLeadIntakeInput, meta: RequestMeta = {}) {
-    const lead = await this.prisma.lead.findUnique({ where: { id: input.leadId } });
-    // The same reply for an unknown id and a wrong email, so ids can't be probed.
-    if (!lead || lead.email.toLowerCase() !== input.email.trim().toLowerCase()) throw new NotFoundException('We couldn’t find your assessment — please start again.');
-    if (lead.convertedAt) throw new ConflictException('This order has already been paid.');
-
-    const evaluation = evaluateAnswers(findQuestionnaire(lead.productKind as ConsultationKind, 'INTAKE'), input.answers, true);
+  private checkedIntake(input: CreateLeadInput, meta: RequestMeta) {
+    if (!input.intakeAnswers) return null;
+    const evaluation = evaluateAnswers(findQuestionnaire(input.productKind as ConsultationKind, 'INTAKE'), input.intakeAnswers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
     if (input.telehealthConsentVersion !== CURRENT_CONSENTS[ConsentType.TELEHEALTH].version) {
       throw new BadRequestException('The consent statement has been updated — please reload the page and review it again');
     }
-
-    await this.prisma.lead.update({
-      where: { id: lead.id },
-      data: {
-        intakeAnswers: input.answers.map(({ questionId, answer, value }) => ({ questionId, answer, value: value ?? null })) as any,
-        intakeConsentVersion: input.telehealthConsentVersion,
-        intakeConsentIp: meta.ip ?? null,
-        intakeConsentUserAgent: meta.userAgent ?? null,
-        intakeSavedAt: new Date(),
-      },
-    });
-    this.posthog.capture(lead.id, 'lead_intake_saved', { product_kind: lead.productKind });
-    return true;
+    return {
+      intakeAnswers: input.intakeAnswers.map(({ questionId, answer, value }) => ({ questionId, answer, value: value ?? null })) as any,
+      intakeConsentVersion: input.telehealthConsentVersion,
+      intakeConsentIp: meta.ip ?? null,
+      intakeConsentUserAgent: meta.userAgent ?? null,
+      intakeSavedAt: new Date(),
+    };
   }
 }

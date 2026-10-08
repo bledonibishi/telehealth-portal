@@ -402,11 +402,12 @@ function CheckoutInner() {
     mergeAssessment({ method: m });
   };
 
-  // The health questions come before payment; the server refuses a payment without them too.
+  // The health questions are part of the quiz, and the server refuses a payment without them. Someone whose quiz
+  // pre-dates them (or whose answers were never saved) takes the quiz again.
   const needsIntake = ready && eligible && !session?.intakeDone;
   useEffect(() => {
-    if (needsIntake) router.replace('/health-questions');
-  }, [needsIntake, router]);
+    if (needsIntake) router.replace(session?.product === 'HRT' ? '/hrt-eligibility' : session?.product === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility');
+  }, [needsIntake, router, session?.product]);
 
   if (!ready || needsIntake) return null;
 
