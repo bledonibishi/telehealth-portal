@@ -76,7 +76,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
   // The questionnaire creates the consultation a doctor reviews.
-  const consultations: { status: string }[] = consultData?.myConsultations ?? [];
+  const consultations: { status: string; refundStatus?: string | null }[] = consultData?.myConsultations ?? [];
   const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
   const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
     ? 'A clinician has asked for more information — please review your answers'
@@ -128,10 +128,37 @@ export function OnboardingChecklistScreen({ navigation }: any) {
     },
   ];
 
-  const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
+  // The medical questionnaire is answered on the website before paying, so it only appears here when it
+  // still needs doing (an older account) or the clinician has asked for changes.
+  const steps = baseSteps
+    .map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }))
+    .filter((s) => !(s.key === 'MedicalQuestionnaire' && s.done && !s.needsChanges));
 
   const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
+
+  // Declined: nothing is waiting for review any more, so say so rather than "Under review".
+  if (o.status === 'DECLINED') {
+    const refunded = consultations.some((c) => c.refundStatus === 'REFUNDED');
+    return (
+      <ScrollView contentContainerStyle={styles.pendingWrap} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+        <View style={styles.pendingIcon}>
+          <Text style={{ fontSize: 24 }}>✕</Text>
+        </View>
+        <Text style={styles.pendingTitle}>We can&rsquo;t offer this treatment</Text>
+        <Text style={styles.pendingBody}>
+          Your clinician has reviewed your application and decided it isn&rsquo;t safe to prescribe online. They&rsquo;ve sent you a message explaining why.
+        </Text>
+        {refunded && <Text style={styles.pendingMeta}>Your subscription has been cancelled and your payment refunded.</Text>}
+        <TouchableOpacity style={styles.signOut} onPress={() => navigation.navigate('Chat')}>
+          <Text style={styles.signOutText}>Read your clinician&rsquo;s message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.signOut} onPress={signOut}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
 
   if (o.status === 'PENDING_REVIEW') {
     return (

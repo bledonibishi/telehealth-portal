@@ -46,6 +46,7 @@ export const MY_CONSULTATIONS = gql`
       id
       kind
       status
+      refundStatus
       submittedAt
       updatedAt
       prescription {

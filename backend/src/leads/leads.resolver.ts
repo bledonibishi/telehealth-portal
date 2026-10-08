@@ -1,7 +1,8 @@
-import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent, Context } from '@nestjs/graphql';
 import { LeadsService } from './leads.service';
 import { LeadModel } from './models/lead.model';
 import { CreateLeadInput } from './dto/create-lead.input';
+import { SaveLeadIntakeInput } from './dto/save-lead-intake.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { SALES } from '../auth/access-roles';
 import { RiskTag } from '../common/enums';
@@ -38,5 +39,11 @@ export class LeadsResolver {
   @Mutation(() => LeadModel)
   createLead(@Args('input') input: CreateLeadInput) {
     return this.leadsService.upsert(input);
+  }
+
+  // Public — called from /website after a treatment is chosen, before payment.
+  @Mutation(() => Boolean, { description: 'Save the medical questionnaire answered on the website; it becomes the consultation once the first payment succeeds' })
+  saveLeadIntake(@Args('input') input: SaveLeadIntakeInput, @Context() ctx: any) {
+    return this.leadsService.saveIntake(input, { ip: ctx.req?.ip, userAgent: ctx.req?.headers?.['user-agent'] });
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import Stripe from 'stripe';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -9,6 +10,7 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { newActivationToken } from '../auth/activation-token';
+import { ConsultationsService } from '../consultations/consultations.service';
 
 @Injectable()
 export class StripeWebhookService {
@@ -21,6 +23,8 @@ export class StripeWebhookService {
     private config: ConfigService,
     private referrals: ReferralsService,
     private audit: AuditService,
+    // Looked up when needed: ConsultationsModule already imports this module, so it can't be injected directly.
+    private moduleRef: ModuleRef,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3001';
   }
@@ -170,6 +174,14 @@ export class StripeWebhookService {
     });
 
     this.logger.log(`Patient created/updated for ${email} — patient ${patient.id}`);
+
+    // The medical questionnaire answered on the website becomes the consultation now, so onboarding doesn't
+    // ask for it again. If it can't (nothing answered, or it needs redoing) the portal asks as before.
+    try {
+      await this.moduleRef.get(ConsultationsService, { strict: false }).submitFromLead(patient.id);
+    } catch (err: any) {
+      this.logger.error(`Creating the consultation for patient ${patient.id} failed: ${err?.message}`);
+    }
 
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding

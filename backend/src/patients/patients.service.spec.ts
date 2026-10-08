@@ -6,7 +6,7 @@ import { PatientsService } from './patients.service';
 // are only exercised by createByStaff, below.
 const noJourneys = () => ({ summariesFor: jest.fn().mockResolvedValue(new Map()) });
 const noopDeps = (journey: any = noJourneys()) =>
-  [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any, journey] as const;
+  [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any, journey, {} as any] as const;
 
 describe('PatientsService.findAll', () => {
   const row = (over: Partial<any> = {}) => ({
@@ -38,6 +38,20 @@ describe('PatientsService.findAll', () => {
     expect(result).not.toHaveProperty('consultations');
     expect(result).not.toHaveProperty('prescriptions');
     expect(result).not.toHaveProperty('checkIns');
+  });
+
+  it('marks a patient whose every consultation was declined as Declined, not Inactive', async () => {
+    const statusOf = async (over: Partial<any>) => {
+      const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
+      const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+      return result.treatmentStatus;
+    };
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }] })).toBe('DECLINED');
+    // Still Inactive when something else is open, or there is no consultation yet.
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }, { status: 'SUBMITTED', kind: 'GLP1', messages: [] }] })).toBe('INACTIVE');
+    expect(await statusOf({ consultations: [] })).toBe('INACTIVE');
+    // A declined second request doesn't mark someone who is on treatment.
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }], prescriptions: [{ id: 'rx', medication: 'x', dosage: 'y', items: [] }] })).toBe('ACTIVE');
   });
 
   it('only counts active prescriptions', async () => {
@@ -292,9 +306,31 @@ describe('PatientsService.createByStaff', () => {
       record: jest.fn().mockResolvedValue({}),
     };
     const prescribing = { issue: jest.fn().mockResolvedValue({ id: 'rx-1' }) };
-    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any, {} as any);
-    return { svc, prisma, tx, audit, posthog, consents, prescribing };
+    const submitIntakeQuiz = jest.fn().mockResolvedValue({ id: 'c-2' });
+    const moduleRef = { get: jest.fn().mockReturnValue({ submitIntakeQuiz }) };
+    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any, {} as any, moduleRef as any);
+    return { svc, prisma, tx, audit, posthog, consents, prescribing, submitIntakeQuiz };
   }
+
+  it('turns medical answers entered with onboarding left to the patient into their consultation, so onboarding doesn’t ask again', async () => {
+    const { svc, tx, submitIntakeQuiz, audit } = build();
+    await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false } as any);
+    expect(tx.onboardingSubmission.create).not.toHaveBeenCalled();
+    expect(submitIntakeQuiz).toHaveBeenCalledWith('p-new', expect.objectContaining({ kind: 'GLP1', answers: GLP1_ANSWERS, telehealthConsentVersion: 'v1' }), {});
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: true }) }));
+  });
+
+  it('leaves the questionnaire to the patient when none was entered', async () => {
+    const { svc, submitIntakeQuiz } = build();
+    await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false, quizAnswers: [] } as any);
+    expect(submitIntakeQuiz).not.toHaveBeenCalled();
+  });
+
+  it('refuses incomplete medical answers before creating anything', async () => {
+    const { svc, tx } = build();
+    await expect(svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false, quizAnswers: GLP1_ANSWERS.slice(2) } as any)).rejects.toThrow(/height|weight/i);
+    expect(tx.patient.create).not.toHaveBeenCalled();
+  });
 
   it('rejects an email already used by an existing patient or lead', async () => {
     const { svc, prisma } = build();

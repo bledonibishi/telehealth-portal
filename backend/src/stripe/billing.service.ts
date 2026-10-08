@@ -159,8 +159,11 @@ export class BillingService {
         await this.stripe.subscriptions.cancel(subscriptionId);
       }
 
-      const refundId = await this.refundLatestPaidInvoice(subscriptionId, opts.paidBefore);
+      const { paid, refundId } = await this.refundLatestPaidInvoice(subscriptionId, opts.paidBefore);
       this.logger.log(`Cancelled ${subscriptionId}, refund ${refundId ?? 'none needed'}`);
+      // Only reported as refunded when money was charged: a subscription that never took a payment (or a
+      // 100%-discounted one) is cancelled with nothing to give back, and must not read as a refund.
+      if (!paid) return { status: 'NOT_REQUIRED', reason: 'The subscription was cancelled; no payment had been taken, so there is nothing to refund' };
       return { status: 'REFUNDED', subscriptionId, refundId };
     } catch (err: any) {
       this.logger.error(`Refund for ${patient.email} failed: ${err.message}`);
@@ -252,7 +255,7 @@ export class BillingService {
    */
   async refundLatestPaymentResult(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<BillingResult> {
     return this.withSubscriptionResult(patient, async (sub) => {
-      const refundId = await this.refundLatestPaidInvoice(sub.id, opts.paidBefore);
+      const { refundId } = await this.refundLatestPaidInvoice(sub.id, opts.paidBefore);
       return refundId
         ? { ok: true, note: `Refunded the latest payment (${refundId})` }
         : { ok: false, note: 'Nothing to refund: there is no paid payment, or it was already refunded' };
@@ -318,23 +321,25 @@ export class BillingService {
     }
   }
 
-  private async refundLatestPaidInvoice(subscriptionId: string, paidBefore?: Date): Promise<string | null> {
+  /** `paid`: a payment had been taken. `refundId`: the refund made now; null when it was already refunded or nothing was paid. */
+  private async refundLatestPaidInvoice(subscriptionId: string, paidBefore?: Date): Promise<{ paid: boolean; refundId: string | null }> {
     // Cast: the SDK's types target a newer API version than the '2023-10-16'
     // this app pins, where these invoice fields have moved.
     const { data } = await this.stripe.invoices.list({ subscription: subscriptionId, status: 'paid', limit: paidBefore ? 20 : 1 });
     const paidAt = (i: any) => (i.status_transitions?.paid_at ?? i.created ?? 0) * 1000;
     const invoice = (paidBefore ? (data as any[]).find((i) => paidAt(i) <= paidBefore.getTime()) : data[0]) as any;
-    if (!invoice || !invoice.amount_paid) return null;
+    if (!invoice || !invoice.amount_paid) return { paid: false, refundId: null };
 
+    // Money was taken but there is no payment to refund against: never report that as done.
     const target = this.paymentOf(invoice);
-    if (!target) return null;
+    if (!target) throw new Error(`Invoice ${invoice.id} was paid but has no payment to refund — refund it in Stripe`);
 
     try {
       const refund = await this.stripe.refunds.create(target, { idempotencyKey: `decline-refund-${invoice.id}` });
-      return refund.id;
+      return { paid: true, refundId: refund.id };
     } catch (err: any) {
       // Retried declines (or a manual refund in the dashboard) hit this — already done.
-      if (err?.code === 'charge_already_refunded') return null;
+      if (err?.code === 'charge_already_refunded') return { paid: true, refundId: null };
       throw err;
     }
   }

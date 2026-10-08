@@ -22,8 +22,10 @@ function build(leadOver: Record<string, unknown> = {}) {
   const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined) };
   const referrals = { handleConversion: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any, audit as any);
-  return { service, prisma, referrals, lead, audit };
+  const submitFromLead = jest.fn().mockResolvedValue({ id: 'c-1' });
+  const moduleRef = { get: jest.fn().mockReturnValue({ submitFromLead }) };
+  const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any, audit as any, moduleRef as any);
+  return { service, prisma, referrals, lead, audit, submitFromLead };
 }
 
 const sessionEvent = (amountDiscount: number) =>
@@ -65,6 +67,21 @@ describe('StripeWebhookService reward detection', () => {
     const { service, prisma } = build();
     await service.handle(sessionEvent(0));
     expect(prisma.patient.upsert.mock.calls[0][0].create).toMatchObject({ addressLine1: '1 Main St', city: 'Pristina', postcode: '10000', country: 'XK' });
+  });
+});
+
+describe('StripeWebhookService website questionnaire', () => {
+  it('turns the questionnaire answered before payment into the consultation for the new patient', async () => {
+    const { service, submitFromLead } = build();
+    await service.handle(sessionEvent(0));
+    expect(submitFromLead).toHaveBeenCalledWith('p-1');
+  });
+
+  it('still activates the patient when creating the consultation fails', async () => {
+    const { service, submitFromLead, referrals } = build();
+    submitFromLead.mockRejectedValue(new Error('boom'));
+    await service.handle(sessionEvent(0));
+    expect(referrals.handleConversion).toHaveBeenCalled();
   });
 });
 

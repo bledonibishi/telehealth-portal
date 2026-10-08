@@ -18,7 +18,7 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
   return service;
 }
 
-const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
+const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null, intakeSavedAt: new Date() };
 
 function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?: any[] } = {}) {
   return {
@@ -74,6 +74,15 @@ describe('CheckoutService per-dose prices', () => {
         priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses to take payment before the health questions are answered', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, intakeSavedAt: null };
+    await expect(
+      build(prismaFor({ lead }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' }),
+    ).rejects.toThrow(/health questions/);
+    expect(session.create).not.toHaveBeenCalled();
   });
 
   it('refuses another treatment’s plan price for a GLP-1 lead whose dose the catalog doesn’t know', async () => {

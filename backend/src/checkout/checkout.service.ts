@@ -299,7 +299,7 @@ export class CheckoutService {
     if (!leadId) throw new BadRequestException('Missing leadId.');
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, email: true, convertedAt: true, productKind: true, quizAnswers: true, checkoutDetails: true },
+      select: { id: true, email: true, convertedAt: true, productKind: true, quizAnswers: true, checkoutDetails: true, intakeSavedAt: true },
     });
     if (!lead) throw new BadRequestException('Unknown lead.');
     if (lead.convertedAt) throw new BadRequestException('This order has already been paid.');
@@ -307,6 +307,8 @@ export class CheckoutService {
     if (Array.isArray(lead.quizAnswers) && triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]).riskTag === RiskTag.RED) {
       throw new BadRequestException('Based on your answers, we can’t offer this treatment online.');
     }
+    // The medical questionnaire comes before payment; the website sends people to it, and this is the same check here.
+    if (!lead.intakeSavedAt) throw new BadRequestException('Please answer the health questions before paying.');
     const patient = await this.prisma.patient.findFirst({
       where: { email: { equals: lead.email, mode: 'insensitive' } },
       select: { id: true },
