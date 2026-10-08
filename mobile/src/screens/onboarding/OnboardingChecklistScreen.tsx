@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, RefreshControl } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '../../graphql/onboarding';
-import { ME_BASIC_INFO, MY_CONSULTATIONS } from '../../graphql/operations';
+import { ME_BASIC_INFO, MY_CONSULTATIONS, MY_TELEHEALTH_CONSENT } from '../../graphql/operations';
 import { signOut } from '../../lib/session';
 import { colors } from '../../theme';
 import { identityHint, SUBMITTED_STATUSES, useIdentityVerification } from '../../lib/useIdentityVerification';
@@ -10,7 +10,7 @@ import { identityHint, SUBMITTED_STATUSES, useIdentityVerification } from '../..
 // While the application is with a doctor, look again this often: the screen moves on by itself once they decide.
 const REVIEW_POLL_MS = 15_000;
 
-type StepKey = 'BasicInformation' | 'MedicalQuestionnaire' | 'IdPhoto' | 'BodyPhoto' | 'PrescriptionProof';
+type StepKey = 'BasicInformation' | 'Consent' | 'MedicalQuestionnaire' | 'IdPhoto' | 'BodyPhoto' | 'PrescriptionProof';
 
 const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   IdPhoto: 'ID_PHOTO',
@@ -28,6 +28,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   });
   const { data: meData, refetch: refetchMe } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
   const { data: consultData, refetch: refetchConsults } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
+  const { data: consentData, loading: consentLoading, refetch: refetchConsent } = useQuery(MY_TELEHEALTH_CONSENT, { fetchPolicy: 'network-only' });
   const { data: idvData, refetch: refetchIdv } = useIdentityVerification();
   const [submitError, setSubmitError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -48,9 +49,9 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   useEffect(() => {
     // Coming back from a step shows where things stand now.
-    const unsubscribe = navigation.addListener('focus', () => { refetch(); refetchMe(); refetchConsults(); refetchIdv(); });
+    const unsubscribe = navigation.addListener('focus', () => { refetch(); refetchMe(); refetchConsults(); refetchConsent(); refetchIdv(); });
     return unsubscribe;
-  }, [navigation, refetch, refetchMe, refetchConsults, refetchIdv]);
+  }, [navigation, refetch, refetchMe, refetchConsults, refetchConsent, refetchIdv]);
 
   useEffect(() => {
     if (o?.status === 'APPROVED') {
@@ -58,7 +59,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
     }
   }, [o?.status, navigation]);
 
-  if (loading && !o) return <ActivityIndicator style={styles.center} />;
+  if ((loading || consentLoading) && !o) return <ActivityIndicator style={styles.center} />;
   if (error) return <Text style={styles.error}>{error.message}</Text>;
   if (!o) return null;
 
@@ -76,7 +77,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   const stepFeedback: { step: string; reason: string }[] = o.stepFeedback ?? [];
   // The questionnaire creates the consultation a doctor reviews.
-  const consultations: { status: string }[] = consultData?.myConsultations ?? [];
+  const consultations: { status: string; refundStatus?: string | null }[] = consultData?.myConsultations ?? [];
   const questionnaireDone = consultations.some((c) => c.status !== 'DECLINED');
   const questionnaireFeedback = consultations.some((c) => c.status === 'MORE_INFO_REQUESTED')
     ? 'A clinician has asked for more information — please review your answers'
@@ -105,6 +106,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
 
   const baseSteps: { key: StepKey; label: string; hint: string; done: boolean; attention?: boolean }[] = [
     { key: 'BasicInformation', label: 'Basic information', hint: 'Your details and where we send your treatment', done: basicDone },
+    { key: 'Consent', label: 'Consent', hint: 'How your online consultation works', done: consentLoading || !!consentData?.myTelehealthConsent },
     { key: 'MedicalQuestionnaire', label: 'Medical questionnaire', hint: 'Your health, medicines and measurements', done: questionnaireDone },
     {
       key: 'IdPhoto',
@@ -128,10 +130,41 @@ export function OnboardingChecklistScreen({ navigation }: any) {
     },
   ];
 
-  const steps = baseSteps.map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }));
+  // The medical questionnaire is answered on the website before paying, so it only appears here when it
+  // still needs doing (an older account) or the clinician has asked for changes.
+  const steps = baseSteps
+    .map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }))
+    .filter((s) => !(s.key === 'MedicalQuestionnaire' && s.done && !s.needsChanges))
+    // Proof of a previous prescription only matters for someone who has used the medicine: not shown otherwise.
+    .filter((s) => !(s.key === 'PrescriptionProof' && o.priorMedicationUse === false))
+    // Normally accepted on the website or in the questionnaire; it only appears for a patient an admin set up.
+    .filter((s) => !(s.key === 'Consent' && s.done));
 
   const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;
+
+  // Declined: nothing is waiting for review any more, so say so rather than "Under review".
+  if (o.status === 'DECLINED') {
+    const refunded = consultations.some((c) => c.refundStatus === 'REFUNDED');
+    return (
+      <ScrollView contentContainerStyle={styles.pendingWrap} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+        <View style={styles.pendingIcon}>
+          <Text style={{ fontSize: 24 }}>✕</Text>
+        </View>
+        <Text style={styles.pendingTitle}>We can&rsquo;t offer this treatment</Text>
+        <Text style={styles.pendingBody}>
+          Your clinician has reviewed your application and decided it isn&rsquo;t safe to prescribe online. They&rsquo;ve sent you a message explaining why.
+        </Text>
+        {refunded && <Text style={styles.pendingMeta}>Your subscription has been cancelled and your payment refunded.</Text>}
+        <TouchableOpacity style={styles.signOut} onPress={() => navigation.navigate('Chat')}>
+          <Text style={styles.signOutText}>Read your clinician&rsquo;s message</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.signOut} onPress={signOut}>
+          <Text style={styles.signOutText}>Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
 
   if (o.status === 'PENDING_REVIEW') {
     return (

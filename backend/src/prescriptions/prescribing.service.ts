@@ -4,7 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConsultationKind, OnboardingStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { ConsultationKind, IdentityVerificationStatus, OnboardingStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { requiredReviewSteps } from '../onboarding/required-steps';
+import { lockPatientIdentity } from '../identity-verification/identity-verification.service';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { RuleItem, RuleViolation, checkPrescribingRules } from './prescribing-rules';
 import { OrdersService } from './orders.service';
@@ -28,6 +30,20 @@ export interface IssueInput {
   validityDays?: number;
   refillsAllowed?: number;
   overrideReason?: string;
+}
+
+/** Why a patient's first decision has to wait, or null when it can be made (see notReadyReason). */
+function notReady(
+  onboarding: { status: string; identityViaVerifyService: boolean } | null,
+  identityStatus: string | null,
+): string | null {
+  if (onboarding?.status === OnboardingStatus.APPROVED) return null;
+  if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
+  if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
+  if (onboarding.identityViaVerifyService && identityStatus !== IdentityVerificationStatus.APPROVED) {
+    return 'The identity check hasn’t been approved yet';
+  }
+  return null;
 }
 
 type ResolvedItem = RuleItem & { input: PrescriptionItemInput; product: RuleItem['product'] & { brandName: string | null } };
@@ -63,6 +79,62 @@ export class PrescribingService {
   }
 
 
+
+  /**
+   * Why a patient's first consultation can't be decided yet, or null when it can. The approval is the single
+   * decision on the application, so it needs onboarding finished and sent in (or already approved, for a later
+   * consultation). Where identity is checked by the verification service, that automated result stays a hard
+   * gate: a clinician's approval never stands in for it.
+   */
+  async notReadyReason(patientId: string, db: Db = this.prisma): Promise<string | null> {
+    const onboarding = await db.onboardingSubmission.findUnique({ where: { patientId } });
+    const idv = onboarding?.identityViaVerifyService
+      ? await db.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } })
+      : null;
+    return notReady(onboarding, idv?.status ?? null);
+  }
+
+  /** notReadyReason for many patients at once (the review queue): two queries however many there are. */
+  async notReadyReasons(patientIds: string[]): Promise<Map<string, string | null>> {
+    const ids = [...new Set(patientIds)];
+    const [submissions, identities] = await Promise.all([
+      this.prisma.onboardingSubmission.findMany({ where: { patientId: { in: ids } } }),
+      this.prisma.identityVerification.findMany({ where: { patientId: { in: ids } }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    const onboardingOf = new Map(submissions.map((o) => [o.patientId, o]));
+    const latestIdentity = new Map<string, string>();
+    for (const i of identities) if (!latestIdentity.has(i.patientId)) latestIdentity.set(i.patientId, i.status);
+    return new Map(ids.map((id) => [id, notReady(onboardingOf.get(id) ?? null, latestIdentity.get(id) ?? null)]));
+  }
+
+  async assertReadyForDecision(patientId: string) {
+    const reason = await this.notReadyReason(patientId);
+    if (reason) throw new ForbiddenException(`${reason} — you can decide once they have.`);
+  }
+
+  /**
+   * Approving the consultation approves the onboarding with it, in the same transaction, so there is one
+   * decision and one record of who made it. Re-checked under the identity lock so an identity rejection
+   * landing at the same moment can't be approved over.
+   */
+  async approveOnboarding(tx: Prisma.TransactionClient, patientId: string, clinicianId: string): Promise<boolean> {
+    await lockPatientIdentity(tx, patientId);
+    const reason = await this.notReadyReason(patientId, tx);
+    if (reason) throw new ForbiddenException(`${reason} — you can decide once they have.`);
+    const submission = await tx.onboardingSubmission.findUnique({ where: { patientId } });
+    if (!submission || submission.status === OnboardingStatus.APPROVED) return false;
+    const steps = requiredReviewSteps(submission, submission.identityViaVerifyService);
+    await tx.onboardingSubmission.update({
+      where: { patientId },
+      data: {
+        status: OnboardingStatus.APPROVED,
+        reviewedAt: new Date(),
+        reviewedByClinicianId: clinicianId,
+        stepFeedback: steps.map((step) => ({ step, approved: true })) as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return true;
+  }
 
   /** Dry run: what would stop (or need justifying for) this prescription. */
   async check(input: Pick<IssueInput, 'patientId' | 'kind' | 'answers' | 'items' | 'supersedesId'>, db: Db = this.prisma) {

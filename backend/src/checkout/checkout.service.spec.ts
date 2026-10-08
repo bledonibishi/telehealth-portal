@@ -18,12 +18,14 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
   return service;
 }
 
-const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null };
+const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null, intakeSavedAt: new Date() };
 
 function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?: any[] } = {}) {
   return {
     lead: {
       findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
+      // Looked up by email when a request names only an email.
+      findFirst: jest.fn().mockResolvedValue(('lead' in over ? over.lead : LEAD) ? { id: 'lead-1' } : null),
       update: jest.fn().mockResolvedValue({}),
     },
     patient: { findFirst: jest.fn().mockResolvedValue(over.patient ?? null) },
@@ -74,6 +76,24 @@ describe('CheckoutService per-dose prices', () => {
         priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('holds an email-only request to the same checks, so leaving the lead id out doesn’t skip the health questions', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, intakeSavedAt: null };
+    await expect(
+      build(prismaFor({ lead }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', email: 'buyer@b.com' }),
+    ).rejects.toThrow(/health questions/);
+    expect(session.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to take payment before the health questions are answered', async () => {
+    const session = { create: jest.fn() };
+    const lead = { ...LEAD, intakeSavedAt: null };
+    await expect(
+      build(prismaFor({ lead }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' }),
+    ).rejects.toThrow(/health questions/);
+    expect(session.create).not.toHaveBeenCalled();
   });
 
   it('refuses another treatment’s plan price for a GLP-1 lead whose dose the catalog doesn’t know', async () => {
@@ -247,6 +267,31 @@ describe('CheckoutService.createSubscriptionIntent', () => {
       },
     };
   }
+
+  it('does not send Stripe an empty address when the delivery form has not been filled in yet', async () => {
+    // The lead's saved details hold only the buyer's choices (from an earlier load of the card form).
+    const lead = { ...LEAD, checkoutDetails: { product: 'Ozempic', dose: '0.5 mg' } };
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [] });
+    await build(prismaFor({ lead }), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+
+    const created = stripe.customers.create.mock.calls[0][0];
+    expect(created).toEqual({ email: 'buyer@b.com' });
+    expect(created).not.toHaveProperty('shipping');
+    expect(created).not.toHaveProperty('address');
+  });
+
+  it('still sends the delivery address once it has been entered', async () => {
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [] });
+    await build(prismaFor(), stripe).createSubscriptionIntent({
+      priceId: 'price_1', leadId: 'lead-1', shipping: { name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'xk' },
+    } as any);
+    expect(stripe.customers.create.mock.calls[0][0]).toMatchObject({
+      name: 'Ann Lee',
+      shipping: { name: 'Ann Lee', address: { line1: '1 Main St', city: 'Pristina', postal_code: '10000', country: 'XK' } },
+    });
+  });
 
   it('does not reuse a customer locked to another currency', async () => {
     const stripe = stripeWith([]);

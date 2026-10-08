@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useSubscription } from '@apollo/client';
+import Link from 'next/link';
 import { differenceInYears } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { openAuthedDocument } from '@/lib/documents';
@@ -13,10 +14,9 @@ import { GET_ORDERS, PATIENT_ORDERS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
-import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING_STEP } from '@/graphql/onboarding';
+import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
 import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
-import { ProofReviewCard } from '@/components/onboarding/ProofReviewCard';
-import { PhotoTile } from '@/components/PhotoTile';
+import { OnboardingReview } from '@/components/onboarding/OnboardingReview';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
@@ -26,13 +26,6 @@ import { hasAccess } from '@/lib/role';
 import PatientSnapshot, { currentMedications, treatmentStatusOf } from '@/components/patients/PatientSnapshot';
 import MedicationPill from '@/components/patients/MedicationPill';
 import { TREATMENT_STATUS } from '@/lib/patient-status';
-
-const PROOF_TYPE_LABEL: Record<string, string> = {
-  MEDICINE_BOX_LABEL: 'Medicine box label',
-  PRESCRIPTION_DOCUMENT: 'Prescription document',
-  PHARMACY_RECORD: 'Pharmacy record',
-  ORDER_CONFIRMATION: 'Order confirmation',
-};
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -49,151 +42,11 @@ const KIND_BADGE: Record<string, string> = {
 
 export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
 
-function OnboardingStepSection({
-  title,
-  savedDecision,
-  reviewable = true,
-  inReview,
-  editing,
-  draftReason,
-  saving,
-  error,
-  onApprove,
-  onStartReject,
-  onCancelReject,
-  onDraftReasonChange,
-  onSaveRejection,
-  children,
-}: {
-  title: string;
-  savedDecision?: { approved: boolean; reason?: string };
-  reviewable?: boolean;
-  inReview: boolean;
-  editing: boolean;
-  draftReason: string;
-  saving: boolean;
-  error?: string;
-  onApprove: () => void;
-  onStartReject: () => void;
-  onCancelReject: () => void;
-  onDraftReasonChange: (reason: string) => void;
-  onSaveRejection: () => void;
-  children: React.ReactNode;
-}) {
-  const { t } = useI18n();
-  const actions = inReview && reviewable && !editing;
-  return (
-    <section className="rounded-2xl border border-gray-200 bg-white">
-      {/* Title, decision and actions on one line, so each step reads at a glance. */}
-      <header className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100">
-        <h4 className="text-sm font-semibold text-gray-900">{t(title)}</h4>
-        {savedDecision && !savedDecision.approved && (
-          <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">{t('Changes requested')}</span>
-        )}
-        {savedDecision && savedDecision.approved && (
-          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{t('Approved')}</span>
-        )}
-        {actions && (
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={onStartReject}
-              disabled={saving}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-                savedDecision && !savedDecision.approved
-                  ? 'bg-amber-500 text-white border-amber-500'
-                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {t('Request changes')}
-            </button>
-            <button
-              onClick={onApprove}
-              disabled={saving}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-                savedDecision?.approved
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'border-green-600 text-green-700 hover:bg-green-50'
-              }`}
-            >
-              {saving ? t('Saving…') : savedDecision?.approved ? `✓ ${t('Approved')}` : t('Approve')}
-            </button>
-          </div>
-        )}
-      </header>
-
-      <div className="p-4 space-y-3">
-        {children}
-        {savedDecision && !savedDecision.approved && savedDecision.reason && (
-          <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{savedDecision.reason}</p>
-        )}
-        {inReview && reviewable && editing && (
-          <div className="space-y-2 border-t border-gray-100 pt-3">
-            <textarea
-              rows={2}
-              autoFocus
-              placeholder={t('What does the patient need to fix for {item}?', { item: t(title).toLowerCase() })}
-              value={draftReason}
-              onChange={(e) => onDraftReasonChange(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={onSaveRejection}
-                disabled={!draftReason.trim() || saving}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
-              >
-                {saving ? t('Saving…') : t('Send change request')}
-              </button>
-              <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-500 hover:text-gray-700">
-                {t('Cancel')}
-              </button>
-            </div>
-          </div>
-        )}
-        {error && <p className="text-xs text-red-600">{error}</p>}
-      </div>
-    </section>
-  );
-}
-
 // A patient's messages live in each consultation's thread, so listen to every one of them
 // and reload the patient when anything arrives.
 function MessageWatcher({ consultationId, onMessage }: { consultationId: string; onMessage: () => void }) {
   useSubscription(NEW_MESSAGE_SUBSCRIPTION, { variables: { consultationId }, onData: onMessage });
   return null;
-}
-
-const PHOTO_ISSUE: Record<string, string> = {
-  NO_PERSON: 'No person visible',
-  MULTIPLE_PEOPLE: 'More than one person',
-  FACE_NOT_VISIBLE: 'Face not clearly visible',
-  NOT_FULL_BODY: 'Not full body',
-  TOO_FAR: 'Too far from the camera',
-  BAGGY_CLOTHING: 'Baggy or heavy clothing',
-  WRONG_ANGLE: 'Wrong angle',
-  POOR_QUALITY: 'Too dark or blurry',
-  NOT_A_REAL_PHOTO: 'Photo of a screen or print',
-};
-
-/**
- * What the automatic photo check made of each body photo, as a first pass for the reviewer: it never replaces
- * the review. A photo the patient sent after the check turned it away (FAIL) is flagged, since they asked for a person to look.
- */
-function PhotoCheckNotes({ checks }: { checks: Array<{ view: string; outcome: string; issues: string[] }> }) {
-  const { t } = useI18n();
-  if (!checks.length) return null;
-  return (
-    <ul className="mt-2 space-y-1">
-      {checks.map((c) => (
-        <li key={c.view} className={`text-xs ${c.outcome === 'FAIL' ? 'text-amber-700 font-medium' : 'text-gray-500'}`}>
-          {c.view === 'FRONT' ? t('Front') : t('Side')}:{' '}
-          {c.outcome === 'PASS' && t('automatic check passed')}
-          {c.outcome === 'UNCHECKED' && t('not checked automatically')}
-          {c.outcome === 'FAIL' && `${t('failed the automatic check — sent for your review')}${c.issues.length ? ` (${c.issues.map((i) => t(PHOTO_ISSUE[i] ?? i)).join(', ')})` : ''}`}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 export default function PatientPanel({ patientId, onClose, initialTab = 'overview' }: { patientId: string; onClose: () => void; initialTab?: Tab }) {
@@ -202,10 +55,6 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
-  const [editingSteps, setEditingSteps] = useState<Record<string, boolean>>({});
-  const [draftReasons, setDraftReasons] = useState<Record<string, string>>({});
-  const [savingStep, setSavingStep] = useState<string | null>(null);
-  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
   const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
   const [checkInDate, setCheckInDate] = useState('');
   const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
@@ -243,9 +92,6 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
   const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId }, skip: !hasAccess(['ADMIN', 'DOCTOR']) });
   const { data: symptomsData } = useQuery(PATIENT_SYMPTOM_ASSESSMENTS, { variables: { patientId } });
-  const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
-    refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
-  });
   const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
     refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
   });
@@ -276,35 +122,6 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
-  };
-
-  const savedStepDecision = (step: string) =>
-    onboarding?.stepFeedback?.find((f: { step: string; approved: boolean; reason?: string }) => f.step === step);
-
-  const handleStartReject = (step: string) => {
-    setDraftReasons((prev) => ({ ...prev, [step]: '' }));
-    setEditingSteps((prev) => ({ ...prev, [step]: true }));
-  };
-
-  const handleCancelReject = (step: string) => {
-    setEditingSteps((prev) => ({ ...prev, [step]: false }));
-  };
-
-  const handleSaveStepDecision = async (step: string, approved: boolean) => {
-    const reason = draftReasons[step] ?? '';
-    if (!approved && !reason.trim()) return;
-    setSavingStep(step);
-    setStepErrors((prev) => ({ ...prev, [step]: '' }));
-    try {
-      await reviewOnboardingStep({
-        variables: { input: { patientId, step, approved, reason: approved ? null : reason.trim() } },
-      });
-      setEditingSteps((prev) => ({ ...prev, [step]: false }));
-    } catch (err: any) {
-      setStepErrors((prev) => ({ ...prev, [step]: err.message ?? t('Failed to save') }));
-    } finally {
-      setSavingStep(null);
-    }
   };
 
   const handleRescheduleCheckIn = async (id: string) => {
@@ -503,136 +320,15 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
               </div>
             ) : (
               <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      onboarding.status === 'PENDING_REVIEW'
-                        ? 'bg-amber-50 text-amber-700'
-                        : onboarding.status === 'APPROVED'
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-red-50 text-red-700'
-                    }`}
-                  >
-                    {t(onboarding.status.replace(/_/g, ' '))}
-                  </span>
-                  {onboarding.submittedAt && (
-                    <span className="text-xs text-gray-400">
-                      {t('Submitted {when}', { when: timeAgo(onboarding.submittedAt) })}
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
-                    <p className="text-sm text-gray-800">
-                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Manual review') : t(onboarding.personaStatus.replace(/_/g, ' '))}
-                      {onboarding.identityViaVerifyService && <span className="text-xs text-gray-400"> · {t('verification service')}</span>}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Photo compliance')}</p>
-                    <p className="text-sm text-gray-800">{t(onboarding.photoReviewStatus.replace(/_/g, ' '))}</p>
-                  </div>
-                </div>
-
-                {(() => {
-                  const inReview = canReviewOnboarding && onboarding.status === 'PENDING_REVIEW';
-
-                  const stepProps = (step: string) => ({
-                    savedDecision: savedStepDecision(step),
-                    inReview,
-                    editing: !!editingSteps[step],
-                    draftReason: draftReasons[step] ?? '',
-                    saving: savingStep === step,
-                    error: stepErrors[step],
-                    onApprove: () => handleSaveStepDecision(step, true),
-                    onStartReject: () => handleStartReject(step),
-                    onCancelReject: () => handleCancelReject(step),
-                    onDraftReasonChange: (reason: string) => setDraftReasons((prev) => ({ ...prev, [step]: reason })),
-                    onSaveRejection: () => handleSaveStepDecision(step, false),
-                  });
-
-                  return (
-                    <>
-                      {onboarding.identityViaVerifyService ? (
-                        // The ID photos stay in the verification service and are decided there, so there is
-                        // nothing for a clinician to approve here: approval waits for that result instead.
-                        <div className="bg-gray-50 rounded-xl p-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('ID document & selfie')}</p>
-                          <p className="text-sm text-gray-700">
-                            {onboarding.personaStatus === 'VERIFIED'
-                              ? t('Identity verified by the verification service.')
-                              : onboarding.personaStatus === 'FAILED'
-                                ? t('Identity could not be verified. The patient has been asked to try again.')
-                                : t('Identity is being checked by the verification service. Onboarding is approved automatically once it passes and the steps below are approved.')}
-                          </p>
-                        </div>
-                      ) : (
-                        <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
-                          <div className="grid grid-cols-2 gap-3">
-                            <PhotoTile path={onboarding.idDocumentUrl} caption={t('ID document')} />
-                            <PhotoTile path={onboarding.selfieUrl} caption={t('Selfie')} />
-                          </div>
-                        </OnboardingStepSection>
-                      )}
-
-                      <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-3">
-                          <PhotoTile path={onboarding.bodyPhotoFrontUrl} caption={t('Front-facing')} height="h-64" />
-                          <PhotoTile path={onboarding.bodyPhotoSideUrl} caption={t('Side-facing')} height="h-64" />
-                        </div>
-                        <PhotoCheckNotes checks={onboarding.bodyPhotoChecks ?? []} />
-                      </OnboardingStepSection>
-
-                      <OnboardingStepSection
-                        title="Prior medication use"
-                        reviewable={!!onboarding.priorMedicationUse}
-                        {...stepProps('PRESCRIPTION_PROOF')}
-                      >
-                        {!onboarding.priorMedicationUse ? (
-                          <p className="text-sm text-gray-600">{t('No — first time using this medication.')}</p>
-                        ) : (
-                          <>
-                            {onboarding.prescriptionProofUnavailable && (
-                              <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2.5">
-                                {t('Yes — but the patient has no proof. Start-dose rules apply unless you verify their previous dose another way (e.g. with their previous prescriber).')}
-                              </p>
-                            )}
-                            {onboarding.prescriptionProofUrl ? (
-                              // The document beside what the automatic check made of it. Still shown after
-                              // "I don't have any proof", as the upload that came before it.
-                              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
-                                <PhotoTile
-                                  path={onboarding.prescriptionProofUrl}
-                                  height="h-72"
-                                  caption={
-                                    onboarding.prescriptionProofUnavailable
-                                      ? t('Earlier upload, before they said they have no proof')
-                                      : t(PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType ?? 'Prescription proof')
-                                  }
-                                />
-                                {onboarding.prescriptionProofReview ? (
-                                  <ProofReviewCard review={onboarding.prescriptionProofReview} />
-                                ) : (
-                                  <p className="text-xs text-gray-500">{t('Not checked automatically — review the document yourself.')}</p>
-                                )}
-                              </div>
-                            ) : (
-                              !onboarding.prescriptionProofUnavailable && <p className="text-sm text-gray-500">{t('No proof uploaded yet.')}</p>
-                            )}
-                          </>
-                        )}
-                      </OnboardingStepSection>
-
-                      {inReview && (
+                <OnboardingReview onboarding={onboarding} />
+                <div>
+                  {onboarding.status === 'PENDING_REVIEW' && (
                         <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
-                          {t('Each step saves as soon as you approve it or send a change request. The patient moves to Approved or Rejected automatically once every step has a decision.')}
+                          {t('Onboarding is approved together with the consultation, in the review queue.')}{' '}
+                          <Link href="/queue" className="font-medium text-brand-500 hover:underline">{t('Open the queue →')}</Link>
                         </p>
                       )}
-                    </>
-                  );
-                })()}
+                </div>
               </div>
             )}
           </div>
