@@ -21,10 +21,12 @@ interface QuizState {
   view: 'q' | 'calc' | 'intake' | 'details';
   /** Answers to the medical questions after the eligibility ones, by question id. */
   health: IntakeValues;
+  /** Whether the visitor has agreed to the statement shown before the first question. */
+  agreed: boolean;
 }
 
 type Screen = 'quiz' | 'plans' | 'ineligible';
-const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q', health: {} };
+const INITIAL: QuizState = { idx: 0, answers: {}, bmiBand: null, view: 'q', health: {}, agreed: false };
 
 /* ── GraphQL mutation ── */
 const CREATE_LEAD = `mutation CreateLead($input: CreateLeadInput!) { createLead(input: $input) { id riskTag riskReasons } }`;
@@ -264,6 +266,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const restart = () => {
     clearProgress(product);
     setRestored(false);
+    setAgreed(false);
     saveAssessment({ passed: false, plan: null, leadId: null });
     setSt(INITIAL);
     setScreen('quiz');
@@ -285,7 +288,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
         }
       }
       // Health answers already given are kept if the visitor went back to change an earlier answer.
-      const next: Omit<QuizState, 'health'> =
+      const next: Omit<QuizState, 'health' | 'agreed'> =
         pos < vq.length - 1
           ? { idx: pos + 1, view: 'q', answers, bmiBand }
           : { idx: 0, view: 'intake', answers, bmiBand };
@@ -415,10 +418,46 @@ export default function Quiz({ product }: { product: ProductKind }) {
   if (screen === 'ineligible') return <Ineligible reason={ineligReason} reasons={ineligReasons} onBack={dqIdx >= 0 ? backToDqQuestion : undefined} onRestart={restart} />;
   if (screen === 'plans') return <ProductPicker product={product} onRestart={restart} />;
 
+  /* ── The statement, before the first question ── */
+  if (!st.agreed) {
+    return (
+      <div className="thq-in">
+        <h2 className="thq-q">Before you start</h2>
+        <p className="thq-help">Please read how your online consultation works. A doctor reads every answer before prescribing anything.</p>
+        {intake && (
+          <ul className="thq-consent-list">
+            {intake.consent.text.split('\n').filter(Boolean).map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        )}
+        {!intake && !intakeFailed && <p className="thq-help">Loading…</p>}
+        {intakeFailed && (
+          <div className="thq-error" role="alert">
+            We couldn’t load this just now. <button type="button" onClick={loadIntake} style={{ background: 'none', border: 0, padding: 0, color: 'inherit', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>Try again</button>
+          </div>
+        )}
+        <label className="thq-consent">
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          <span>I understand and agree.</span>
+        </label>
+        <button
+          type="button"
+          className="thq-next"
+          disabled={!agreed || !intake}
+          onClick={() => { setSt((s) => ({ ...s, agreed: true })); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        >
+          Start the assessment
+        </button>
+      </div>
+    );
+  }
+
   /* ── Quiz screens ── */
   const vq = visible();
   const n = vq.length;
   const q = vq[st.idx];
+  // Every question counts, the eligibility ones and the medical ones, from the very first (it can change as answers
+  // reveal or hide follow-up questions).
+  const totalQs = n + healthQs.length;
   const sel = st.answers[q?.id]?.sel ?? [];
 
   /* ── BMI Calculator ── */
@@ -427,10 +466,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
       <div className="thq-in">
         <div className="thq-top">
           <button className="thq-arrow" onClick={back} aria-label="Back">←</button>
-          <div className="thq-progress"><div className="thq-bar" style={{ width: `${Math.max(5, Math.round(st.idx / (n + 1) * 100))}%` }} /></div>
-          <div className="thq-count">Question {st.idx + 1} / {n}</div>
+          <div className="thq-progress"><div className="thq-bar" style={{ width: `${Math.max(5, Math.round(st.idx / (totalQs + 1) * 100))}%` }} /></div>
+          <div className="thq-count">Question {st.idx + 1} / {totalQs}</div>
         </div>
-        <div className="thq-time">◷ Takes less than 2 minutes</div>
+        <div className="thq-time">◷ Takes about 5 minutes</div>
         <h2 className="thq-q">Let's work out your BMI</h2>
         <p className="thq-help">Enter your height and current weight.</p>
         <div className="thq-fields">
@@ -504,7 +543,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
           <div className="thq-progress"><div className="thq-bar" style={{ width: '95%' }} /></div>
           <div className="thq-count">Last step</div>
         </div>
-        <div className="thq-time">◷ Takes less than 2 minutes</div>
+        <div className="thq-time">◷ Takes about 5 minutes</div>
         <h2 className="thq-q">Where should we send your results?</h2>
         <p className="thq-help">Your doctor uses these details to review your answers.</p>
         <form
@@ -517,7 +556,6 @@ export default function Quiz({ product }: { product: ProductKind }) {
             const email = (fd.get('email') as string).trim();
             if (!firstName || !lastName) { setDetailsErr('Please enter your first and last name.'); return; }
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setDetailsErr('Please enter a valid email address.'); return; }
-            if (!agreed) { setDetailsErr('Please read the statement above and tick the box to continue.'); return; }
             setDetailsErr('');
             setEmailTaken(false);
             await submitDetails(firstName, lastName, email);
@@ -537,15 +575,6 @@ export default function Quiz({ product }: { product: ProductKind }) {
               <input id="thq-em" name="email" type="email" autoComplete="email" />
             </div>
           </div>
-          {intake && (
-            <ul className="thq-consent-list" style={{ marginTop: 18 }}>
-              {intake.consent.text.split('\n').filter(Boolean).map((line) => <li key={line}>{line}</li>)}
-            </ul>
-          )}
-          <label className="thq-consent">
-            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-            <span>I understand and agree.</span>
-          </label>
           {emailTaken && (
             <div className="thq-error" role="alert">
               An account already exists for this email.{' '}
@@ -571,9 +600,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
       <div className="thq-top">
         <button className="thq-arrow" onClick={back} disabled={st.idx === 0} aria-label="Back">←</button>
         <div className="thq-progress">
-          <div className="thq-bar" style={{ width: `${Math.max(5, Math.round(st.idx / (n + 1) * 100))}%` }} />
+          <div className="thq-bar" style={{ width: `${Math.max(5, Math.round(st.idx / (totalQs + 1) * 100))}%` }} />
         </div>
-        <div className="thq-count">Question {st.idx + 1} / {n}</div>
+        <div className="thq-count">Question {st.idx + 1} / {totalQs}</div>
       </div>
       {restored && (
         <div className="thq-restored" role="status">
@@ -581,7 +610,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
           <button type="button" onClick={restart}>Start over</button>
         </div>
       )}
-      <div className="thq-time">◷ Takes less than 2 minutes</div>
+      <div className="thq-time">◷ Takes about 5 minutes</div>
       <h2 className="thq-q">{q.q}</h2>
       {q.help ? <p className="thq-help">{q.help}</p> : <div className="thq-spacer" />}
 

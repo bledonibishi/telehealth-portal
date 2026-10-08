@@ -15,10 +15,12 @@ export interface QuizProgress {
   view: 'q' | 'calc' | 'intake' | 'details';
   /** Answers to the medical questions that follow the eligibility ones, by question id. */
   health: Record<string, string[]>;
+  /** Whether the visitor has agreed to the statement shown before the first question. */
+  agreed: boolean;
 }
 
 const key = (product: ProductKind) => `th_quiz_progress_${product}`;
-const VERSION = 2;
+const VERSION = 3;
 export const PROGRESS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -103,5 +105,7 @@ export function loadProgress(
   const view: QuizProgress['view'] = allAnswered && (raw.view === 'details' || raw.view === 'intake') ? raw.view : 'q';
   // In the medical questions the position is among those, which aren't known here: the quiz keeps it in range.
   const idx = view === 'intake' ? Math.max(0, savedIdx) : Math.max(0, Math.min(savedIdx, allAnswered ? visible.length - 1 : unanswered));
-  return { idx, answers, bmiBand, view, health };
+  // Answers are only ever kept after the statement was agreed to; without it, start from the statement.
+  if (raw.agreed !== true) return null;
+  return { idx, answers, bmiBand, view, health, agreed: true };
 }
