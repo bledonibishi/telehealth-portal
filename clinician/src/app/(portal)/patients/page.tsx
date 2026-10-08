@@ -15,6 +15,7 @@ import ProgressRing from '@/components/patients/ProgressRing';
 import { kg } from '@/lib/weight';
 import { TREATMENT_STATUS, STALE_WEIGH_IN_DAYS, type TreatmentStatus } from '@/lib/patient-status';
 import { hasAccess } from '@/lib/role';
+import HealthAlertsPanel from '@/components/patients/HealthAlertsPanel';
 import { bmiBand, inBmiRange, joinedWithin, type BmiRange, type JoinedRange } from '@/lib/bmi';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
@@ -303,6 +304,8 @@ function Patients() {
             )}
           </div>
         </div>
+
+        {isPrescriber && <HealthAlertsPanel />}
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
           <StatCard label="Total patients" value={all.length} hint={t('{n} activated · click to list all', { n: activated })} tone="text-emerald-400" active={!filtersActive && search === ''} onClick={showAll} />

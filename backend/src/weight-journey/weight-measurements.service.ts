@@ -280,6 +280,29 @@ export class WeightMeasurementsService {
 
   // ── trend ─────────────────────────────────────────────────────────────────
 
+  /**
+   * The trend for many patients at once, for the doctors' alert list: three queries however many patients there are,
+   * instead of a timeline each. The same weights the single-patient trend reads (daily entries not voided, and check-ins).
+   */
+  async trendsFor(patientIds: string[], now = new Date()): Promise<Map<string, WeightTrendModel>> {
+    const out = new Map<string, WeightTrendModel>();
+    if (patientIds.length === 0) return out;
+    const from = new Date(now.getTime() - 120 * 86_400_000);
+    const to = new Date(now.getTime() + 60_000);
+    const [entries, checkIns, goals] = await Promise.all([
+      this.prisma.weightEntry.findMany({ where: { patientId: { in: patientIds }, voidedAt: null, measuredAt: { gte: from, lte: to } }, select: { patientId: true, measuredAt: true, weightKg: true } }),
+      this.prisma.checkIn.findMany({ where: { patientId: { in: patientIds }, status: CheckInStatus.COMPLETED, weightKg: { not: null }, completedAt: { gte: from, lte: to } }, select: { patientId: true, completedAt: true, weightKg: true } }),
+      this.prisma.weightGoal.findMany({ where: { patientId: { in: patientIds } }, select: { patientId: true, targetWeightKg: true } }),
+    ]);
+    const byPatient = new Map<string, { measuredAt: Date; weightKg: number }[]>();
+    const add = (id: string, measuredAt: Date, weightKg: number) => byPatient.set(id, [...(byPatient.get(id) ?? []), { measuredAt, weightKg }]);
+    entries.forEach((e) => add(e.patientId, e.measuredAt, num(e.weightKg)));
+    checkIns.forEach((c) => add(c.patientId, c.completedAt!, num(c.weightKg)));
+    const target = new Map(goals.map((g) => [g.patientId, num(g.targetWeightKg)]));
+    for (const id of patientIds) out.set(id, assessWeightTrend(byPatient.get(id) ?? [], { targetKg: target.get(id) ?? null, now }) as WeightTrendModel);
+    return out;
+  }
+
   /** What the recent weights say, for the patient and for their doctor. */
   async trend(patientId: string, now = new Date()): Promise<WeightTrendModel> {
     const from = new Date(now.getTime() - 120 * 86_400_000);

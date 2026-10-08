@@ -14,7 +14,7 @@ export type SideEffectSummaryData = {
 };
 
 // Same wording the patient picks from.
-const EFFECT_LABEL: Record<string, string> = {
+export const EFFECT_LABEL: Record<string, string> = {
   nausea: 'Nausea', vomiting: 'Vomiting', diarrhoea: 'Diarrhoea', constipation: 'Constipation', abdominal_pain: 'Stomach pain', reflux: 'Heartburn or reflux',
   fatigue: 'Tiredness', headache: 'Headache', dizziness: 'Dizziness', injection_site: 'Reaction where they inject', allergic_reaction: 'Rash, itching or swelling', other: 'Something else',
 };
