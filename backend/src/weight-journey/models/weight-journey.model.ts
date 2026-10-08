@@ -111,6 +111,9 @@ export class WeightMeasurementModel {
 
   @Field({ description: 'Whether a progress photo was kept with this weighing. The photo itself is only ever given to the patient and their doctors.' })
   hasPhoto: boolean;
+
+  @Field({ description: 'Whether the patient may change or remove it themselves: their own entries, not a check-in or one their care team corrected.' })
+  patientCanEdit: boolean;
 }
 
 @ObjectType('WeightTimeline')
@@ -150,6 +153,12 @@ export class ProgressPhotoModel {
 
   @Field(() => ID, { description: 'Open it at /uploads/<id>/file with your sign-in token' })
   photoFileId: string;
+
+  @Field({ nullable: true, description: 'What the patient wrote with this weighing' })
+  note?: string;
+
+  @Field({ description: 'Whether the patient may change or remove this entry themselves; not when their care team corrected it.' })
+  patientCanEdit: boolean;
 }
 
 export enum ForecastUnavailableReason {

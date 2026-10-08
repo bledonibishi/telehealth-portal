@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient } from '@apollo/client';
 import { MY_WEIGHT_TIMELINE } from '@/graphql/weight';
 import { mergePoints, Point, yearEnd, yearStart } from './timeseries';
+import { useOnWeightsChanged } from './weights-changed';
 
 export interface TimelineMeta {
   startingWeightKg: number | null;
@@ -22,6 +23,7 @@ const toPoint = (m: any): Point => ({
   note: m.note,
   feeling: m.feeling,
   hasPhoto: m.hasPhoto,
+  patientCanEdit: m.patientCanEdit,
 });
 const ms = (v: string | null | undefined) => (v ? Date.parse(v) : null);
 
@@ -90,6 +92,9 @@ export function useWeightTimeline() {
   const refresh = useCallback(async () => {
     await Promise.all([...requested.current].map((y) => fetchYear(y, true)));
   }, [fetchYear]);
+
+  // A weighing added, changed or removed anywhere on the page: the chart follows.
+  useOnWeightsChanged(() => { void refresh(); });
 
   const retry = useCallback(() => {
     setError(null);

@@ -10,6 +10,7 @@ export interface Point {
   note?: string | null;
   feeling?: string | null;
   hasPhoto?: boolean;
+  patientCanEdit?: boolean;
 }
 
 export type View = [number, number];
@@ -194,3 +195,39 @@ export const monthKey = (t: number) => { const d = new Date(t); return d.getFull
 export const fromMonthKey = (k: number) => ({ year: Math.floor(k / 12), month: k % 12 });
 export const yearStart = (y: number) => new Date(y, 0, 1).getTime();
 export const yearEnd = (y: number) => new Date(y + 1, 0, 1).getTime() - 1;
+
+// ── drawing ─────────────────────────────────────────────────────────────────
+
+/**
+ * An SVG path through the points as a smooth curve that never rises above or dips below what was
+ * measured between two neighbours (monotone cubic, Fritsch–Carlson). A plain spline would bulge
+ * past the points and draw weights nobody weighed.
+ */
+export function smoothPath(pts: Array<{ x: number; y: number }>): string {
+  const n = pts.length;
+  if (n === 0) return '';
+  const f = (v: number) => v.toFixed(1);
+  if (n < 3) return pts.map((p, i) => `${i ? 'L' : 'M'}${f(p.x)},${f(p.y)}`).join('');
+
+  const dx: number[] = [], slope: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1].x - pts[i].x);
+    slope.push(dx[i] === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx[i]);
+  }
+  const m: number[] = [slope[0]];
+  for (let i = 1; i < n - 1; i++) m.push(slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2);
+  m.push(slope[n - 2]);
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / slope[i], b = m[i + 1] / slope[i];
+    const h = Math.hypot(a, b);
+    if (h > 3) { m[i] = (3 * a * slope[i]) / h; m[i + 1] = (3 * b * slope[i]) / h; }
+  }
+
+  let d = `M${f(pts[0].x)},${f(pts[0].y)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const third = dx[i] / 3;
+    d += `C${f(pts[i].x + third)},${f(pts[i].y + m[i] * third)} ${f(pts[i + 1].x - third)},${f(pts[i + 1].y - m[i + 1] * third)} ${f(pts[i + 1].x)},${f(pts[i + 1].y)}`;
+  }
+  return d;
+}

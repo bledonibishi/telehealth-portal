@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
-  clampView, decimate, nearestByTime, panBy, Point, timeTicks, View, visiblePoints, weightAxis, weightDomain, zoomAt,
+  clampView, decimate, nearestByTime, panBy, Point, smoothPath, timeTicks, View, visiblePoints, weightAxis, weightDomain, zoomAt,
 } from '@/lib/timeseries';
 import { feelingOf, kg, kgChange } from '@/lib/weight';
 
@@ -41,6 +41,9 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
   const [width, setWidth] = useState(640);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // The line draws itself once, when the chart first appears; after that it must follow a pan at once.
+  const [intro, setIntro] = useState(true);
+  useEffect(() => { const timer = setTimeout(() => setIntro(false), 1200); return () => clearTimeout(timer); }, []);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<Gesture | null>(null);
 
@@ -80,7 +83,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
 
   const xTicks = useMemo(() => timeTicks(view, Math.max(Math.floor(pw / 90), 3)), [view, pw]);
   const drawn = useMemo(() => decimate(near, view, Math.max(Math.floor(pw), 50)), [near, view, pw]);
-  const path = useMemo(() => drawn.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.w).toFixed(1)}`).join(''), [drawn, x, y]);
+  const path = useMemo(() => smoothPath(drawn.map((p) => ({ x: x(p.t), y: y(p.w) }))), [drawn, x, y]);
   const forecastPath = useMemo(
     () => (forecast ? [forecast.from, ...forecast.points].map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.w).toFixed(1)}`).join('') : ''),
     [forecast, x, y],
@@ -220,13 +223,13 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
 
         {axis.ticks.map((tv) => (
           <g key={tv}>
-            <line x1={M.l} x2={M.l + pw} y1={y(tv)} y2={y(tv)} className="stroke-slate-100" />
+            <line x1={M.l} x2={M.l + pw} y1={y(tv)} y2={y(tv)} className="stroke-slate-300" strokeOpacity="0.3" />
             <text x={M.l - 8} y={y(tv) + 4} textAnchor="end" className="fill-slate-400 text-[11px]">{Number(tv.toFixed(1))}</text>
           </g>
         ))}
         {xTicks.map((tk) => (
           <g key={tk.t}>
-            <line x1={x(tk.t)} x2={x(tk.t)} y1={M.t} y2={M.t + ph} className={tk.major ? 'stroke-slate-200' : 'stroke-slate-100'} />
+            <line x1={x(tk.t)} x2={x(tk.t)} y1={M.t} y2={M.t + ph} className="stroke-slate-300" strokeOpacity={tk.major ? 0.45 : 0.3} />
             <text x={x(tk.t)} y={height - 8} textAnchor="middle" className="fill-slate-400 text-[11px]">{tk.label}</text>
           </g>
         ))}
@@ -245,7 +248,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
               <text x={x(p.t) + (x(p.t) > M.l + pw - 90 ? -8 : 0)} y={y(p.w) - 10} textAnchor={x(p.t) > M.l + pw - 90 ? 'end' : 'middle'} className="fill-slate-600 text-[11px] font-medium">{p.m} mo · {Number(p.w.toFixed(1))} kg</text>
             </g>
           ))}
-          {path && <path d={path} fill="none" strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" className="stroke-brand-600" />}
+          {path && <path d={path} fill="none" strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" pathLength={intro ? 1 : undefined} className={`stroke-brand-600 ${intro ? 'wj-draw' : ''}`} />}
           {startInView && (
             <g>
               <circle cx={x(startInView.t)} cy={y(startInView.w)} r="4.5" className="fill-white stroke-slate-400" strokeWidth="2" />
@@ -259,9 +262,9 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
           )}
           {inView.map((p) =>
             p.kind === 'CHECK_IN' ? (
-              <rect key={p.id} x={x(p.t) - 4.5} y={y(p.w) - 4.5} width="9" height="9" transform={`rotate(45 ${x(p.t)} ${y(p.w)})`} className="fill-brand-700 stroke-white" strokeWidth="1.5" />
+              <rect key={p.id} x={x(p.t) - 5.5} y={y(p.w) - 5.5} width="11" height="11" rx="1" transform={`rotate(45 ${x(p.t)} ${y(p.w)})`} className="fill-brand-700 stroke-white" strokeWidth="2" />
             ) : showDots ? (
-              <circle key={p.id} cx={x(p.t)} cy={y(p.w)} r="3.5" className="fill-white stroke-brand-600" strokeWidth="2" />
+              <circle key={p.id} cx={x(p.t)} cy={y(p.w)} r="3" className="fill-white stroke-brand-600" strokeWidth="2" />
             ) : null,
           )}
           {active && (
@@ -307,7 +310,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
           role="status"
           className="absolute z-10 pointer-events-none bg-slate-900 text-white rounded-xl shadow-lg px-3 py-2 text-xs leading-snug min-w-[9.5rem] max-w-[14rem]"
           style={{
-            top: Math.max(y(active.w) - 96, 4),
+            top: Math.max(y(active.w) - 112, 4),
             ...(flip ? { right: width - x(active.t) + 14 } : { left: x(active.t) + 14 }),
           }}
         >
@@ -315,8 +318,10 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
           <p className="text-slate-300">{format(active.t, 'HH:mm')}</p>
           <p className="text-base font-semibold mt-0.5">{active.w.toFixed(1)} kg</p>
           {active.changeKg !== null && active.changeKg !== undefined && <p className="text-slate-400 mt-0.5">{kgChange(active.changeKg)} since previous</p>}
-          {active.kind === 'CHECK_IN' && (
-            <p className="text-brand-100 mt-1">Check-in{feeling ? ` · ${feeling.emoji} ${feeling.label}` : ''}</p>
+          {active.kind === 'CHECK_IN' ? (
+            <p className="text-brand-100 mt-1 flex items-center gap-1.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-100" />Check-in{feeling ? ` · ${feeling.emoji} ${feeling.label}` : ''}</p>
+          ) : (
+            <p className="text-slate-300 mt-1 flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full border-2 border-slate-300" />Weigh-in{active.hasPhoto ? ' · with photo' : ''}</p>
           )}
           {active.note && <p className="text-slate-300 italic mt-1 break-words">“{active.note}”</p>}
         </div>
@@ -324,6 +329,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1 px-1">
         <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-brand-600" /> Your weight</span>
+        <span className="inline-flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full border-2 border-brand-600" /> Weigh-in</span>
         <span className="inline-flex items-center gap-1.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700" /> Check-in</span>
         {typeof target === 'number' && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-400" /> Target</span>}
         {forecast && <span className="inline-flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-brand-600/60" /> If you keep the same pace</span>}

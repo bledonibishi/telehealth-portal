@@ -46,6 +46,27 @@ export class AddWeightInput {
 }
 
 @InputType()
+export class EditMyWeightInput {
+  @Field(() => ID)
+  entryId: string;
+
+  @Field(() => Float, { nullable: true, description: 'Leave out to keep the weight' })
+  weightKg?: number;
+
+  @Field({ nullable: true, description: 'Leave out to keep the date. Can be in the past, never the future.' })
+  measuredAt?: Date;
+
+  @Field({ nullable: true, description: 'Leave out to keep the note; an empty string removes it' })
+  note?: string;
+
+  @Field(() => ID, { nullable: true, description: 'A progress photo already uploaded, to replace the one kept with this weighing' })
+  photoFileId?: string;
+
+  @Field({ nullable: true, description: 'Take the photo off this weighing. The picture itself is then erased.' })
+  removePhoto?: boolean;
+}
+
+@InputType()
 export class CorrectWeightEntryInput {
   @Field(() => ID)
   entryId: string;

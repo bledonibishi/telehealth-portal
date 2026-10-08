@@ -64,6 +64,7 @@ export const MY_WEIGHT_TIMELINE = gql`
         note
         feeling
         hasPhoto
+        patientCanEdit
       }
     }
   }
@@ -94,6 +95,17 @@ export const MY_PROGRESS_PHOTOS = gql`
       measuredAt
       weightKg
       photoFileId
+      note
+      patientCanEdit
+    }
+  }
+`;
+
+export const EDIT_MY_WEIGHT = gql`
+  ${WEIGHT_JOURNEY_FIELDS}
+  mutation EditMyWeight($input: EditMyWeightInput!) {
+    editMyWeight(input: $input) {
+      ...WeightJourneyFields
     }
   }
 `;
@@ -168,3 +180,6 @@ export const MY_WEIGHT_TREND = gql`
     }
   }
 `;
+
+/** What to reload after a weighing is added, changed or removed. The chart reloads itself (see lib/weights-changed). */
+export const WEIGHT_REFETCH = [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }, { query: MY_WEIGHT_FORECAST }, { query: MY_WEIGHT_TREND }];

@@ -32,3 +32,11 @@ export function cmChange(n: number) {
   if (n === 0) return 'no change';
   return `${n < 0 ? '−' : '+'}${Number(Math.abs(n).toFixed(1))} cm`;
 }
+
+/** One colour per measure, the same on the small trend lines and on the measurements chart. */
+export const MEASURE_COLORS: Record<MeasureKey, string> = { waistCm: '#1f4fb8', hipsCm: '#10b981', armCm: '#f97316' };
+
+/** One measure over time, oldest first, skipping the days it wasn't taken. `list` is newest first. */
+export function seriesOf(list: BodyMeasurement[], key: MeasureKey): Array<{ t: number; cm: number }> {
+  return list.filter((m) => m[key] !== null).map((m) => ({ t: Date.parse(m.measuredAt), cm: m[key]! })).reverse();
+}

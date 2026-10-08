@@ -1,7 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { WeightMeasurementsService } from './weight-measurements.service';
 import { ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightTimelineModel, WeightTrendModel } from './models/weight-journey.model';
-import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
+import { AddWeightInput, CorrectWeightEntryInput, EditMyWeightInput } from './dto/weight-journey.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS } from '../auth/access-roles';
@@ -67,6 +67,12 @@ export class WeightMeasurementsResolver {
   @Mutation(() => WeightJourneyModel, { description: 'Remove one of your own mistaken entries (kept on record as voided)' })
   voidMyWeight(@CurrentUser() user: AuthUser, @Args('entryId', { type: () => ID }) entryId: string) {
     return this.measurements.voidOwn(user.id, entryId);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => WeightJourneyModel, { description: 'Change the weight, date, note or photo of one of your own entries. The original is kept as voided and a replacement is added.' })
+  editMyWeight(@CurrentUser() user: AuthUser, @Args('input') input: EditMyWeightInput) {
+    return this.measurements.editOwn(user.id, input);
   }
 
   // Weight history is clinical: doctors only, not support or fulfilment staff.

@@ -33,6 +33,16 @@ const PATHS: Record<string, string> = {
   logout: 'M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l-4 4 4 4m-4-4h10',
   heart: 'M12 20s-7.5-4.6-7.5-10A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 7.5 3c0 5.4-7.5 10-7.5 10z',
   syringe: 'm14 4 6 6m-3-3-9.5 9.5L5 19l2.5-2.5M10 8l6 6m-8-2 2 2m1-5 2 2',
+  zoom: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zm4.6-1.9L20 20M10.5 8v5M8 10.5h5',
+  more: 'M12 5.5h.01M12 12h.01M12 18.5h.01',
+  download: 'M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 20h14',
+  trash: 'M4 7h16M9 7V4h6v3m-8.5 0 .8 12a1 1 0 0 0 1 1h5.4a1 1 0 0 0 1-1l.8-12M10 11v5m4-5v5',
+  grid: 'M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z',
+  list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  left: 'm15 6-6 6 6 6',
+  right: 'm9 6 6 6-6 6',
+  note: 'M5 4h14a1 1 0 0 1 1 1v9l-6 6H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm9 16v-5a1 1 0 0 1 1-1h5M8 9h8m-8 4h4',
+  compare: 'M12 3v18M8 8l-4 4 4 4m8-8 4 4-4 4',
 };
 
 export type IconName = keyof typeof PATHS;

@@ -3,7 +3,8 @@
 import { useRef, useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { format } from 'date-fns';
-import { ADD_MY_WEIGHT, MY_PROGRESS_PHOTOS, MY_WEIGHT_JOURNEY, MY_WEIGHT_TREND } from '@/graphql/weight';
+import { ADD_MY_WEIGHT, WEIGHT_REFETCH } from '@/graphql/weight';
+import { announceWeightsChanged } from '@/lib/weights-changed';
 import { uploadFile } from '@/lib/upload';
 import { prepareProgressPhoto } from '@/lib/image';
 
@@ -17,9 +18,10 @@ const newRequestId = () => (typeof crypto !== 'undefined' && 'randomUUID' in cry
 /**
  * Record a weight now or at any past date and time. Every save is a new entry — earlier ones are
  * never touched. The request id stays the same across retries of one submission, so a double tap
- * or a flaky connection can't record the same weighing twice.
+ * or a flaky connection can't record the same weighing twice. `withPhoto={false}` is the quick
+ * form: just the weight.
  */
-export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?: (measuredAt: number) => void; onCancel?: () => void; compact?: boolean }) {
+export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = true }: { onSaved?: (measuredAt: number) => void; onCancel?: () => void; compact?: boolean; withPhoto?: boolean }) {
   const [weight, setWeight] = useState('');
   const [when, setWhen] = useState(nowLocal);
   const [note, setNote] = useState('');
@@ -33,7 +35,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
   const uploaded = useRef<{ file: File; id: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
-  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }, { query: MY_PROGRESS_PHOTOS }, { query: MY_WEIGHT_TREND }], awaitRefetchQueries: true });
+  const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: WEIGHT_REFETCH, awaitRefetchQueries: true });
 
   const choosePhoto = (file: File | undefined) => {
     if (!file) return;
@@ -80,6 +82,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
       setSaved(`Saved ${kgValue.toFixed(1)} kg · ${format(at, 'MMM d, HH:mm')}`);
       setWeight(''); setNote(''); setShowNote(false); setWhen(nowLocal()); clearPhoto();
       requestId.current = newRequestId(); // the next weighing is a new one
+      announceWeightsChanged();
       onSaved?.(at.getTime());
     } catch (err: any) {
       setProblem(err?.message ?? 'Couldn’t save that. Please try again.');
@@ -109,7 +112,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
         <button type="button" onClick={() => setShowNote(true)} className="text-xs font-medium text-brand-600 hover:text-brand-700">+ Add a note</button>
       )}
 
-      <div>
+      {withPhoto && <div>
         <input ref={photoInput} id="log-photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="sr-only" onChange={(e) => choosePhoto(e.target.files?.[0])} />
         {photoPreview ? (
           <div className="flex items-center gap-3">
@@ -127,7 +130,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false }: { onSaved?
             <p className="text-xs text-slate-400 mt-0.5">Seeing the change side by side keeps you motivated. Only you and your doctor can see your photos.</p>
           </>
         )}
-      </div>
+      </div>}
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">
