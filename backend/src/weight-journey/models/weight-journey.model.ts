@@ -150,6 +150,9 @@ export class ProgressPhotoModel {
 
   @Field(() => ID, { description: 'Open it at /uploads/<id>/file with your sign-in token' })
   photoFileId: string;
+
+  @Field({ nullable: true, description: 'What the patient wrote with this weighing' })
+  note?: string;
 }
 
 export enum ForecastUnavailableReason {

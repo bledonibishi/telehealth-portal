@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
 import { ADD_MY_BODY_MEASUREMENT, MY_BODY_MEASUREMENTS, VOID_MY_BODY_MEASUREMENT } from '@/graphql/weight';
-import { cmChange, MEASURES, summariseMeasurements, type BodyMeasurement } from '@/lib/body-measurements';
+import { cmChange, MEASURE_COLORS, MEASURES, seriesOf, summariseMeasurements, type BodyMeasurement } from '@/lib/body-measurements';
 import { Card, CardHeader } from '@/components/portal/Card';
 import { Dialog } from '@/components/common/Dialog';
 
@@ -62,6 +62,23 @@ function MeasurementForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** The trend of one measure as a small line under its number: the shape only, no axes. */
+function Sparkline({ values, color, label }: { values: number[]; color: string; label: string }) {
+  if (values.length < 2) return <p className="text-[11px] text-slate-300 mt-1.5 h-7">Trend after 2 entries</p>;
+  const W = 120, H = 28, PAD = 3;
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const x = (i: number) => PAD + (i / (values.length - 1)) * (W - 2 * PAD);
+  const y = (v: number) => (hi === lo ? H / 2 : PAD + ((hi - v) / (hi - lo)) * (H - 2 * PAD));
+  const line = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[9rem] h-7 mt-1.5" role="img" aria-label={`${label} trend: from ${values[0]} to ${values[values.length - 1]} cm over ${values.length} entries`}>
+      <path d={`${line}L${x(values.length - 1).toFixed(1)},${H}L${x(0).toFixed(1)},${H}Z`} fill={color} opacity="0.08" />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" pathLength={1} className="wj-draw" />
+      <circle cx={x(values.length - 1)} cy={y(values[values.length - 1])} r="2.5" fill={color} />
+    </svg>
+  );
+}
+
 /** Waist, hips and arm over time: fat loss the scale alone doesn't show. */
 export function BodyMeasurementsCard() {
   const { data, loading, error } = useQuery(MY_BODY_MEASUREMENTS, { fetchPolicy: 'cache-and-network' });
@@ -95,9 +112,10 @@ export function BodyMeasurementsCard() {
               const s = summary.find((x) => x.key === m.key);
               return (
                 <div key={m.key} className="min-w-0">
-                  <p className="text-[11px] text-slate-400">{m.label}</p>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full" style={{ background: MEASURE_COLORS[m.key] }} aria-hidden />{m.label}</p>
                   <p className="text-lg font-semibold text-slate-900">{s ? `${s.latestCm} cm` : '—'}</p>
                   {s && s.changeCm !== null && <p className={`text-xs font-medium ${s.changeCm < 0 ? 'text-emerald-700' : 'text-slate-500'}`}>{cmChange(s.changeCm)} since you started</p>}
+                  {s && <Sparkline values={seriesOf(list, m.key).map((p) => p.cm)} color={MEASURE_COLORS[m.key]} label={m.label} />}
                 </div>
               );
             })}

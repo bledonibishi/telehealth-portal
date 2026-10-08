@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
-import { MY_WEIGHT_FORECAST, MY_WEIGHT_JOURNEY, VOID_MY_WEIGHT } from '@/graphql/weight';
+import { MY_WEIGHT_FORECAST, MY_WEIGHT_JOURNEY, VOID_MY_WEIGHT, WEIGHT_REFETCH } from '@/graphql/weight';
+import { announceWeightsChanged } from '@/lib/weights-changed';
 import { useWeightTimeline } from '@/lib/useWeightTimeline';
 import { fromMonthKey, lowerBound, monthEnd, monthKey, monthStart, panBy, Point, View } from '@/lib/timeseries';
 import { feelingOf, kg, kgChange } from '@/lib/weight';
@@ -52,7 +53,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [voidError, setVoidError] = useState<string | null>(null);
-  const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: [{ query: MY_WEIGHT_JOURNEY }] });
+  const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: WEIGHT_REFETCH });
 
   const { data: forecastData } = useQuery(MY_WEIGHT_FORECAST, { fetchPolicy: 'cache-and-network' });
   const fc = forecastData?.myWeightForecast;
@@ -126,7 +127,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const onSaved = useCallback(async (at: number) => {
     setLogging(false);
     setShowForecast(false);
-    await tl.refresh();
+    await tl.refresh(); // awaited here, so the chart can move to the new entry's month once it is loaded
     const k = clampKey(monthKey(at));
     const m = mode === 'custom' ? '3M' : mode;
     setKey(k); setMode(m); setView(viewFor(m, k)); setSelectedId(null);
@@ -138,7 +139,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   };
   const remove = async (id: string) => {
     setVoidError(null);
-    try { await voidWeight({ variables: { entryId: id } }); setConfirmId(null); setSelectedId(null); await tl.refresh(); }
+    try { await voidWeight({ variables: { entryId: id } }); setConfirmId(null); setSelectedId(null); announceWeightsChanged(); }
     catch (e: any) { setVoidError(e?.message ?? 'Couldn’t remove that entry.'); }
   };
 

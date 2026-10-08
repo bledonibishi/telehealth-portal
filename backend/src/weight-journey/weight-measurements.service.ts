@@ -4,7 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { CheckInStatus, UserRole } from '../common/enums';
 import { UploadKind } from '@prisma/client';
 import { CheckInFeeling } from '../common/enums';
-import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
+import { AddWeightInput, CorrectWeightEntryInput, EditMyWeightInput } from './dto/weight-journey.input';
 import {
   ForecastConfidence, ForecastUnavailableReason, ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightMeasurementKind, WeightTimelineModel,
 } from './models/weight-journey.model';
@@ -43,15 +43,8 @@ export class WeightMeasurementsService {
     assertValidWeight(weightKg, 'Weight');
 
     const now = Date.now();
-    const measuredAt = input.measuredAt ? new Date(input.measuredAt) : new Date(now);
-    if (Number.isNaN(measuredAt.getTime())) throw new BadRequestException('Please enter a valid date and time');
-    if (measuredAt.getTime() > now + FUTURE_SLACK_MS) throw new BadRequestException('The date and time can’t be in the future');
-    if (measuredAt.getTime() < now - MAX_BACKDATE_YEARS * 365 * 86_400_000) {
-      throw new BadRequestException(`The date can’t be more than ${MAX_BACKDATE_YEARS} years ago`);
-    }
-
-    const note = input.note?.trim() || null;
-    if (note && note.length > MAX_NOTE_LENGTH) throw new BadRequestException(`Notes can be up to ${MAX_NOTE_LENGTH} characters`);
+    const measuredAt = this.validMeasuredAt(input.measuredAt, now);
+    const note = this.cleanNote(input.note);
     const clientRequestId = input.clientRequestId?.trim() || null;
     if (clientRequestId && clientRequestId.length > 100) throw new BadRequestException('Invalid request id');
 
@@ -80,6 +73,22 @@ export class WeightMeasurementsService {
     return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
   }
 
+  private validMeasuredAt(value: Date | undefined | null, now: number): Date {
+    const measuredAt = value ? new Date(value) : new Date(now);
+    if (Number.isNaN(measuredAt.getTime())) throw new BadRequestException('Please enter a valid date and time');
+    if (measuredAt.getTime() > now + FUTURE_SLACK_MS) throw new BadRequestException('The date and time can’t be in the future');
+    if (measuredAt.getTime() < now - MAX_BACKDATE_YEARS * 365 * 86_400_000) {
+      throw new BadRequestException(`The date can’t be more than ${MAX_BACKDATE_YEARS} years ago`);
+    }
+    return measuredAt;
+  }
+
+  private cleanNote(value: string | undefined | null): string | null {
+    const note = value?.trim() || null;
+    if (note && note.length > MAX_NOTE_LENGTH) throw new BadRequestException(`Notes can be up to ${MAX_NOTE_LENGTH} characters`);
+    return note;
+  }
+
   /** The photo must be the patient's own progress photo, not yet attached to anything. */
   private async assertPhotoIsTheirs(patientId: string, fileId: string) {
     const file = await this.prisma.uploadedFile.findFirst({
@@ -90,7 +99,11 @@ export class WeightMeasurementsService {
     if (file.weightEntry) throw new BadRequestException('That photo is already attached to another weighing');
   }
 
-  /** A patient removes their own mistaken entry. It's voided, not deleted, and the change is audited. */
+  /**
+   * A patient removes their own mistaken entry. It's voided, not deleted, and the change is audited.
+   * Its photo is let go of, so the clean-up of unattached photos erases the picture itself: a body
+   * photo the patient removed is not kept.
+   */
   async voidOwn(patientId: string, entryId: string, reason?: string): Promise<WeightJourneyModel> {
     const entry = await this.prisma.weightEntry.findFirst({ where: { id: entryId, patientId } });
     if (!entry || entry.voidedAt) throw new NotFoundException('That weight entry wasn’t found');
@@ -100,7 +113,7 @@ export class WeightMeasurementsService {
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.weightEntry.updateMany({
         where: { id: entryId, patientId, voidedAt: null },
-        data: { voidedAt: new Date(), voidedById: patientId, voidReason: reason?.trim() || null },
+        data: { voidedAt: new Date(), voidedById: patientId, voidReason: reason?.trim() || null, photoFileId: null },
       });
       if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
       await this.audit.log(
@@ -111,11 +124,83 @@ export class WeightMeasurementsService {
           resourceType: 'WeightEntry',
           resourceId: entryId,
           patientId: patientId,
-          metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null },
+          metadata: { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, reason: reason?.trim() || null, photoFileId: entry.photoFileId ?? null },
         },
         tx,
       );
     });
+    return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
+  }
+
+  /**
+   * A patient changes one of their own entries: its weight, date, note or photo. The table is
+   * append-only (the database refuses any update but a void), so nothing is ever overwritten: the
+   * entry is voided and kept, and a replacement pointing back at it is added, as a staff correction
+   * does. The before and after go in the audit log, which also says whether the measurement itself
+   * changed or only what goes with it.
+   */
+  async editOwn(patientId: string, input: EditMyWeightInput): Promise<WeightJourneyModel> {
+    await this.journey.requireGlp1(patientId);
+    const entry = await this.prisma.weightEntry.findFirst({ where: { id: input.entryId, patientId } });
+    if (!entry || entry.voidedAt) throw new NotFoundException('That weight entry wasn’t found');
+    if (entry.source === 'STAFF') throw new BadRequestException('This entry was corrected by your care team and can’t be changed here');
+
+    const before = { weightKg: num(entry.weightKg), measuredAt: entry.measuredAt, note: entry.note ?? null, photoFileId: entry.photoFileId ?? null };
+    const after = { ...before };
+    if (input.weightKg !== undefined && input.weightKg !== null) {
+      after.weightKg = round1(input.weightKg);
+      assertValidWeight(after.weightKg, 'Weight');
+    }
+    if (input.measuredAt) after.measuredAt = this.validMeasuredAt(input.measuredAt, Date.now());
+    if (input.note !== undefined && input.note !== null) after.note = this.cleanNote(input.note);
+
+    const newPhoto = input.photoFileId?.trim() || null;
+    if (newPhoto && newPhoto !== before.photoFileId) {
+      await this.assertPhotoIsTheirs(patientId, newPhoto);
+      after.photoFileId = newPhoto;
+    } else if (input.removePhoto && !newPhoto) {
+      after.photoFileId = null;
+    }
+
+    const measurementChanged = after.weightKg !== before.weightKg || after.measuredAt.getTime() !== before.measuredAt.getTime();
+    if (!measurementChanged && after.note === before.note && after.photoFileId === before.photoFileId) {
+      return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
+    }
+    // Every change adds a row, so the same guard as for new entries applies.
+    const recent = await this.prisma.weightEntry.count({ where: { patientId, recordedAt: { gte: new Date(Date.now() - 86_400_000) } } });
+    if (recent >= MAX_ENTRIES_PER_DAY) throw new BadRequestException('You’ve changed a lot of weights today — please try again tomorrow');
+
+    try {
+      // Void, replacement and audit row commit together, or not at all.
+      await this.prisma.$transaction(async (tx) => {
+        // The original lets go of its photo as it is voided: a photo belongs to one entry at a time.
+        const { count } = await tx.weightEntry.updateMany({
+          where: { id: entry.id, patientId, voidedAt: null },
+          data: { voidedAt: new Date(), voidedById: patientId, voidReason: 'Changed by the patient', photoFileId: null },
+        });
+        if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
+        const replacement = await tx.weightEntry.create({
+          data: { patientId, weightKg: after.weightKg, measuredAt: after.measuredAt, note: after.note, photoFileId: after.photoFileId, correctsId: entry.id },
+        });
+        await this.audit.log(
+          {
+            actorId: patientId,
+            actorRole: UserRole.PATIENT,
+            action: measurementChanged ? 'WEIGHT_ENTRY_CORRECTED' : 'WEIGHT_ENTRY_EDITED',
+            resourceType: 'WeightEntry',
+            resourceId: entry.id,
+            patientId,
+            metadata: { before, after, replacementId: replacement.id },
+          },
+          tx,
+        );
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002' && String(e.meta?.target).includes('photo_file_id')) {
+        throw new BadRequestException('That photo is already attached to another weighing');
+      }
+      throw e;
+    }
     return this.journey.forPatient(patientId) as Promise<WeightJourneyModel>;
   }
 
@@ -137,11 +222,12 @@ export class WeightMeasurementsService {
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.weightEntry.updateMany({
         where: { id: entry.id, voidedAt: null },
-        data: { voidedAt: new Date(), voidedById: staffId, voidReason: reason },
+        // The photo moves to the replacement, so the patient's picture doesn't vanish with the wrong number.
+        data: { voidedAt: new Date(), voidedById: staffId, voidReason: reason, photoFileId: null },
       });
       if (count === 0) throw new BadRequestException('That entry has already been voided or corrected');
       const replacement = await tx.weightEntry.create({
-        data: { patientId: entry.patientId, weightKg, measuredAt: entry.measuredAt, note: entry.note, source: 'STAFF', correctsId: entry.id },
+        data: { patientId: entry.patientId, weightKg, measuredAt: entry.measuredAt, note: entry.note, source: 'STAFF', correctsId: entry.id, photoFileId: entry.photoFileId ?? null },
       });
       await this.audit.log(
         {
@@ -271,10 +357,10 @@ export class WeightMeasurementsService {
     const rows = await this.prisma.weightEntry.findMany({
       where: { patientId, voidedAt: null, photoFileId: { not: null } },
       orderBy: { measuredAt: 'asc' },
-      select: { id: true, measuredAt: true, weightKg: true, photoFileId: true },
+      select: { id: true, measuredAt: true, weightKg: true, photoFileId: true, note: true },
       take: 500,
     });
-    return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId! }));
+    return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId!, note: r.note ?? undefined }));
   }
 
   // ── forecast ──────────────────────────────────────────────────────────────

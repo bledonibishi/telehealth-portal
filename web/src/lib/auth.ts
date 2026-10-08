@@ -1,3 +1,5 @@
+import { forgetPhotos } from './photo-cache';
+
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('patient_token');
@@ -18,6 +20,7 @@ export function clearToken() {
   localStorage.removeItem('patient_refresh_token');
   // Answers kept on this device while the patient filled in their application must not outlive their session.
   for (const key of Object.keys(localStorage)) if (key.startsWith('onboarding.draft.')) localStorage.removeItem(key);
+  forgetPhotos();
 }
 
 export function isAuthenticated(): boolean {

@@ -143,6 +143,13 @@ describe('WeightMeasurementsService', () => {
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_VOIDED', actorRole: 'PATIENT', resourceId: 'w-1' }), prisma); // prisma doubles as `tx` here
     });
 
+    it('lets go of the photo, so the picture itself is erased by the clean-up, and notes which one it was', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue({ ...entry, photoFileId: 'f-1' });
+      await service.voidOwn('p-1', 'w-1');
+      expect(prisma.weightEntry.updateMany.mock.calls[0][0].data).toMatchObject({ photoFileId: null });
+      expect(audit.log.mock.calls[0][0].metadata).toMatchObject({ photoFileId: 'f-1' });
+    });
+
     it('looks the entry up scoped to the patient, so another patient’s id is simply not found', async () => {
       prisma.weightEntry.findFirst.mockResolvedValue(null);
       await expect(service.voidOwn('p-2', 'w-1')).rejects.toThrow(NotFoundException);
@@ -165,6 +172,111 @@ describe('WeightMeasurementsService', () => {
     });
   });
 
+  describe('editOwn', () => {
+    const at = new Date(Date.now() - 3 * DAY);
+    const entry = { id: 'w-1', patientId: 'p-1', source: 'PATIENT', voidedAt: null, weightKg: '109.0', measuredAt: at, note: 'old', photoFileId: 'f-1' };
+    beforeEach(() => prisma.weightEntry.findFirst.mockResolvedValue(entry));
+
+    it('replaces the entry when the weight changes: the original is voided and kept, the photo and note move over', async () => {
+      prisma.weightEntry.create.mockResolvedValue({ id: 'w-2' });
+      await service.editOwn('p-1', { entryId: 'w-1', weightKg: 108.44 });
+      expect(prisma.weightEntry.updateMany).toHaveBeenCalledWith({
+        where: { id: 'w-1', patientId: 'p-1', voidedAt: null },
+        data: { voidedAt: expect.any(Date), voidedById: 'p-1', voidReason: 'Changed by the patient', photoFileId: null },
+      });
+      expect(prisma.weightEntry.create).toHaveBeenCalledWith({
+        data: { patientId: 'p-1', weightKg: 108.4, measuredAt: at, note: 'old', photoFileId: 'f-1', correctsId: 'w-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'WEIGHT_ENTRY_CORRECTED', actorRole: 'PATIENT', resourceId: 'w-1',
+          metadata: expect.objectContaining({ before: expect.objectContaining({ weightKg: 109 }), after: expect.objectContaining({ weightKg: 108.4 }), replacementId: 'w-2' }),
+        }),
+        prisma,
+      );
+    });
+
+    it('replaces the entry when only the date changes', async () => {
+      const moved = new Date(Date.now() - 5 * DAY);
+      await service.editOwn('p-1', { entryId: 'w-1', measuredAt: moved });
+      expect(prisma.weightEntry.create.mock.calls[0][0].data).toMatchObject({ weightKg: 109, measuredAt: moved, correctsId: 'w-1' });
+    });
+
+    // The database refuses any update to this table except a void, so even a note is a replacement.
+    it('replaces the entry for a note too, with the same weight, instant and photo, and says the measurement did not change', async () => {
+      await service.editOwn('p-1', { entryId: 'w-1', note: '  after holiday ' });
+      expect(prisma.weightEntry.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.weightEntry.updateMany.mock.calls[0][0].data).toMatchObject({ voidedById: 'p-1', voidedAt: expect.any(Date), photoFileId: null });
+      expect(prisma.weightEntry.create).toHaveBeenCalledWith({
+        data: { patientId: 'p-1', weightKg: 109, measuredAt: at, note: 'after holiday', photoFileId: 'f-1', correctsId: 'w-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'WEIGHT_ENTRY_EDITED' }), prisma);
+    });
+
+    it('never updates anything but the void columns and the photo link, which is all the database allows', async () => {
+      for (const input of [{ weightKg: 100 }, { note: 'x' }, { removePhoto: true }, { measuredAt: new Date(Date.now() - 9 * DAY) }]) {
+        prisma.weightEntry.updateMany.mockClear();
+        await service.editOwn('p-1', { entryId: 'w-1', ...input });
+        expect(Object.keys(prisma.weightEntry.updateMany.mock.calls[0][0].data).sort()).toEqual(['photoFileId', 'voidReason', 'voidedAt', 'voidedById']);
+      }
+    });
+
+    it('removes the note with an empty string, and the photo when asked, keeping the other', async () => {
+      await service.editOwn('p-1', { entryId: 'w-1', note: '' });
+      expect(prisma.weightEntry.create.mock.calls[0][0].data).toMatchObject({ note: null, photoFileId: 'f-1' });
+      await service.editOwn('p-1', { entryId: 'w-1', removePhoto: true });
+      expect(prisma.weightEntry.create.mock.calls[1][0].data).toMatchObject({ note: 'old', photoFileId: null });
+    });
+
+    it('swaps in a new photo only when it is the patient’s own and unattached', async () => {
+      await service.editOwn('p-1', { entryId: 'w-1', photoFileId: 'f-2' });
+      expect(prisma.uploadedFile.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'f-2', patientId: 'p-1', kind: 'PROGRESS_PHOTO' } }));
+      expect(prisma.weightEntry.create.mock.calls[0][0].data).toMatchObject({ photoFileId: 'f-2', weightKg: 109 });
+
+      prisma.uploadedFile.findFirst.mockResolvedValue(null);
+      await expect(service.editOwn('p-1', { entryId: 'w-1', photoFileId: 'f-3' })).rejects.toThrow(/couldn’t find that photo/);
+    });
+
+    it('does nothing, and writes no audit row, when nothing is different', async () => {
+      await service.editOwn('p-1', { entryId: 'w-1', weightKg: 109, measuredAt: at, note: 'old', photoFileId: 'f-1' });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('applies the same limits as a new entry', async () => {
+      await expect(service.editOwn('p-1', { entryId: 'w-1', weightKg: 500 })).rejects.toThrow(/between/);
+      await expect(service.editOwn('p-1', { entryId: 'w-1', measuredAt: new Date(Date.now() + HOUR) })).rejects.toThrow(/future/);
+      await expect(service.editOwn('p-1', { entryId: 'w-1', note: 'x'.repeat(501) })).rejects.toThrow(/500/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('stops a runaway number of changes in a day, as for new entries', async () => {
+      prisma.weightEntry.count.mockResolvedValue(200);
+      await expect(service.editOwn('p-1', { entryId: 'w-1', note: 'again' })).rejects.toThrow(/lot of weights/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('is refused for another patient’s entry, a voided one and one corrected by staff', async () => {
+      prisma.weightEntry.findFirst.mockResolvedValue(null);
+      await expect(service.editOwn('p-2', { entryId: 'w-1', weightKg: 100 })).rejects.toThrow(NotFoundException);
+      expect(prisma.weightEntry.findFirst).toHaveBeenCalledWith({ where: { id: 'w-1', patientId: 'p-2' } });
+      prisma.weightEntry.findFirst.mockResolvedValue({ ...entry, voidedAt: new Date() });
+      await expect(service.editOwn('p-1', { entryId: 'w-1', weightKg: 100 })).rejects.toThrow(NotFoundException);
+      prisma.weightEntry.findFirst.mockResolvedValue({ ...entry, source: 'STAFF' });
+      await expect(service.editOwn('p-1', { entryId: 'w-1', weightKg: 100 })).rejects.toThrow(/care team/);
+    });
+
+    it('adds no replacement when the void loses a race, and rolls back when the audit write fails', async () => {
+      prisma.weightEntry.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.editOwn('p-1', { entryId: 'w-1', weightKg: 100 })).rejects.toThrow(NotFoundException);
+      expect(prisma.weightEntry.create).not.toHaveBeenCalled();
+
+      prisma.weightEntry.updateMany.mockResolvedValue({ count: 1 });
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(service.editOwn('p-1', { entryId: 'w-1', weightKg: 100 })).rejects.toThrow('Audit log write failed');
+    });
+  });
+
   describe('staff correction', () => {
     const entry = { id: 'w-1', patientId: 'p-1', voidedAt: null, weightKg: 190, measuredAt: new Date('2026-09-29T07:51:00Z'), note: 'n' };
 
@@ -174,12 +286,19 @@ describe('WeightMeasurementsService', () => {
       await service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'typo' });
       expect(prisma.$transaction).toHaveBeenCalled();
       expect(prisma.weightEntry.create).toHaveBeenCalledWith({
-        data: { patientId: 'p-1', weightKg: 109, measuredAt: entry.measuredAt, note: 'n', source: 'STAFF', correctsId: 'w-1' },
+        data: { patientId: 'p-1', weightKg: 109, measuredAt: entry.measuredAt, note: 'n', source: 'STAFF', correctsId: 'w-1', photoFileId: null },
       });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'WEIGHT_ENTRY_CORRECTED', metadata: expect.objectContaining({ before: 190, after: 109, reason: 'typo', replacementId: 'w-2' }) }),
         prisma, // the audit row is written inside the same transaction as the void + replacement
       );
+    });
+
+    it('moves the photo to the replacement, so the patient still sees it', async () => {
+      prisma.weightEntry.findUnique.mockResolvedValue({ ...entry, photoFileId: 'f-1' });
+      await service.correct('doc-1', { entryId: 'w-1', weightKg: 109, reason: 'typo' });
+      expect(prisma.weightEntry.updateMany.mock.calls[0][0].data).toMatchObject({ photoFileId: null });
+      expect(prisma.weightEntry.create.mock.calls[0][0].data).toMatchObject({ photoFileId: 'f-1', correctsId: 'w-1' });
     });
 
     it('needs a reason and a valid weight, and cannot correct twice', async () => {
@@ -306,7 +425,7 @@ describe('WeightMeasurementsService', () => {
         where: { patientId: 'p-1', voidedAt: null, photoFileId: { not: null } },
         orderBy: { measuredAt: 'asc' },
       }));
-      expect(photos).toEqual([{ entryId: 'w-1', measuredAt: new Date('2026-06-01'), weightKg: 120, photoFileId: 'f-1' }]);
+      expect(photos).toEqual([{ entryId: 'w-1', measuredAt: new Date('2026-06-01'), weightKg: 120, photoFileId: 'f-1', note: undefined }]);
     });
   });
 
