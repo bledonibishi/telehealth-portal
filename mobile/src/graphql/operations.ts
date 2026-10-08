@@ -146,6 +146,18 @@ export const MY_PRODUCT_KIND = gql`
   }
 `;
 
+export const MY_TELEHEALTH_CONSENT = gql`
+  query MyTelehealthConsent {
+    myTelehealthConsent
+  }
+`;
+
+export const ACCEPT_TELEHEALTH_CONSENT = gql`
+  mutation AcceptTelehealthConsent($version: String!) {
+    acceptTelehealthConsent(version: $version)
+  }
+`;
+
 export const CONSENT_TEXT = gql`
   query ConsentText($type: ConsentType!) {
     consentText(type: $type) {

@@ -8,8 +8,9 @@ import { MY_ONBOARDING, SUBMIT_ONBOARDING } from '@/graphql/onboarding';
 import { useIdentityVerification } from '@/lib/useIdentityVerification';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
+import { MY_TELEHEALTH_CONSENT } from '@/graphql/intake';
 
-type StepKey = 'basic-information' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
+type StepKey = 'basic-information' | 'consent' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
 
 const STEP_REJECTION_KEY: Partial<Record<StepKey, string>> = {
   'id-photo': 'ID_PHOTO',
@@ -26,6 +27,7 @@ export default function OnboardingLandingPage() {
   const { data, loading } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const { data: consultationsData, loading: consultationsLoading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
   const { data: meData, loading: meLoading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
+  const { data: consentData, loading: consentLoading } = useQuery(MY_TELEHEALTH_CONSENT, { fetchPolicy: 'network-only' });
   const { data: idvData, loading: idvLoading } = useIdentityVerification();
   const [submitOnboarding, { loading: submitting }] = useMutation(SUBMIT_ONBOARDING, {
     refetchQueries: [{ query: MY_ONBOARDING }],
@@ -38,7 +40,7 @@ export default function OnboardingLandingPage() {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
   }, [o?.status, router]);
 
-  if (loading || consultationsLoading || meLoading || idvLoading || !o) {
+  if (loading || consultationsLoading || meLoading || consentLoading || idvLoading || !o) {
     return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
   }
 
@@ -101,6 +103,12 @@ export default function OnboardingLandingPage() {
       done: !!(meData?.me?.addressLine1 && meData?.me?.city && meData?.me?.postcode && meData?.me?.phone),
     },
     {
+      key: 'consent',
+      label: 'Consent',
+      hint: 'How your online consultation works',
+      done: !!consentData?.myTelehealthConsent,
+    },
+    {
       key: 'medical-questionnaire',
       label: 'Medical questionnaire',
       hint: 'Your health, medicines and measurements',
@@ -134,7 +142,9 @@ export default function OnboardingLandingPage() {
   // still needs doing (an older account) or the clinician has asked for changes.
   const steps = baseSteps
     .map((s) => ({ ...s, rejectionReason: feedbackFor(s.key), needsChanges: !!feedbackFor(s.key) }))
-    .filter((s) => !(s.key === 'medical-questionnaire' && s.done && !s.needsChanges));
+    .filter((s) => !(s.key === 'medical-questionnaire' && s.done && !s.needsChanges))
+    // The consent is normally accepted on the website or in the questionnaire; it only appears for a patient an admin set up.
+    .filter((s) => !(s.key === 'consent' && s.done));
 
   const firstIncomplete = steps.find((s) => !s.done || s.needsChanges);
   const allDone = !firstIncomplete;

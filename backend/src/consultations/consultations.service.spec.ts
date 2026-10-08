@@ -422,6 +422,25 @@ describe('ConsultationsService', () => {
     });
   });
 
+  describe('submitIntakeQuiz consent', () => {
+    const answers = Object.entries({
+      height_cm: '170', weight_kg: '95', bp_known: 'yes', bp_systolic: '120', bp_diastolic: '80', smoking: 'never',
+      current_medications: 'None', allergies: 'None', glp1_prior_use: 'no',
+      diabetes_medicines: 'none', eating_disorder: 'no', gallbladder: 'no', kidney_disease: 'no', bariatric_surgery: 'no',
+    }).map(([questionId, v]) => ({ questionId, answer: v, value: v }));
+
+    it('records the consent the patient accepted with their answers', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers, telehealthConsentVersion: 'v1' });
+      expect(consents.record).toHaveBeenCalledWith('patient-1', 'TELEHEALTH', 'v1', {});
+    });
+
+    it('records none when it was entered by staff for the patient', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers }, {}, { consentRecordedElsewhere: true });
+      expect(consents.record).not.toHaveBeenCalled();
+      expect(prisma.consultation.create).toHaveBeenCalled();
+    });
+  });
+
   describe('submitFromLead', () => {
     const answers = Object.entries({
       height_cm: '170', weight_kg: '95', bp_known: 'yes', bp_systolic: '120', bp_diastolic: '80', smoking: 'never',

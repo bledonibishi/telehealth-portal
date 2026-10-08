@@ -364,8 +364,10 @@ export class PatientsService {
       try {
         await this.moduleRef.get(ConsultationsService, { strict: false }).submitIntakeQuiz(
           patient.id,
-          { kind: input.plan, answers: input.quizAnswers!, telehealthConsentVersion: this.consents.current(ConsentType.TELEHEALTH).version },
+          { kind: input.plan, answers: input.quizAnswers! },
           {},
+          // The patient hasn't been shown the consent: it is not recorded for them, they accept it in onboarding.
+          { consentRecordedElsewhere: true },
         );
         intakeSubmitted = true;
       } catch (err: any) {

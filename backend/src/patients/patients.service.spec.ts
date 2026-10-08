@@ -316,7 +316,9 @@ describe('PatientsService.createByStaff', () => {
     const { svc, tx, submitIntakeQuiz, audit } = build();
     await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false } as any);
     expect(tx.onboardingSubmission.create).not.toHaveBeenCalled();
-    expect(submitIntakeQuiz).toHaveBeenCalledWith('p-new', expect.objectContaining({ kind: 'GLP1', answers: GLP1_ANSWERS, telehealthConsentVersion: 'v1' }), {});
+    expect(submitIntakeQuiz).toHaveBeenCalledWith('p-new', expect.objectContaining({ kind: 'GLP1', answers: GLP1_ANSWERS }), {}, { consentRecordedElsewhere: true });
+    // The patient hasn't been shown the consent, so none is recorded for them.
+    expect(submitIntakeQuiz.mock.calls[0][1]).not.toHaveProperty('telehealthConsentVersion');
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: true }) }));
   });
 

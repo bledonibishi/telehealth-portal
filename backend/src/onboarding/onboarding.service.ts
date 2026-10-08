@@ -10,7 +10,7 @@ import { DoseClarification } from './prior-dose-assessment';
 import { PhotoCheckService } from './photo-check.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { SaveBodyPhotoInput } from './dto/body-photo.input';
-import { IdentityVerificationStatus, OnboardingStatus, OnboardingStepKey } from '../common/enums';
+import { ConsentType, IdentityVerificationStatus, OnboardingStatus, OnboardingStepKey } from '../common/enums';
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
@@ -319,6 +319,12 @@ export class OnboardingService {
     if (!submission) throw new NotFoundException('Onboarding not started');
     if (submission.status !== OnboardingStatus.IN_PROGRESS && submission.status !== OnboardingStatus.REJECTED) {
       throw new BadRequestException('Onboarding has already been submitted');
+    }
+
+    // The telehealth consent is on the record before an application goes to a clinician: given on the website,
+    // in the questionnaire, or in onboarding (for a patient an admin set up).
+    if ((await this.prisma.consent.count({ where: { patientId, type: ConsentType.TELEHEALTH } })) === 0) {
+      throw new BadRequestException('Please read and accept the consent statement before sending your application.');
     }
 
     // A step the clinician sent back has to actually be replaced: the same files again is not a redo.

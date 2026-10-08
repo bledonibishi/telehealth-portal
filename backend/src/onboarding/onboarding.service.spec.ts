@@ -17,6 +17,8 @@ const SUBMISSION = {
 
 function setup(submission: Record<string, unknown>, reassessed: unknown) {
   const prisma: any = {
+    // The telehealth consent is on the record unless a test says otherwise.
+    consent: { count: jest.fn().mockResolvedValue(1) },
     onboardingSubmission: {
       findUnique: jest.fn().mockResolvedValue({ ...SUBMISSION, ...submission }),
       update: jest.fn().mockResolvedValue({ ...SUBMISSION, ...submission, status: 'PENDING_REVIEW', stepFeedback: [] }),
@@ -72,6 +74,8 @@ const submission = (over: Record<string, unknown> = {}) => ({
 
 function build(row = submission()) {
   const prisma: any = {
+    // The telehealth consent is on the record unless a test says otherwise.
+    consent: { count: jest.fn().mockResolvedValue(1) },
     onboardingSubmission: {
       findUnique: jest.fn().mockResolvedValue(row),
       create: jest.fn(),
@@ -107,6 +111,13 @@ describe('OnboardingService redo requests', () => {
   it('does not take the same files again as a redo when the patient sends the application in', async () => {
     const { service, prisma } = setup({ status: 'REJECTED', stepFeedback: [sentBack] }, null);
     await expect(service.submit('p1')).rejects.toThrow(/replace your body photos/);
+    expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+  });
+
+  it('does not take the application until the consent is on the record (for a patient an admin set up)', async () => {
+    const { service, prisma } = setup({ status: 'IN_PROGRESS' }, null);
+    prisma.consent.count.mockResolvedValue(0);
+    await expect(service.submit('p1')).rejects.toThrow(/accept the consent/);
     expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
   });
 
@@ -278,6 +289,7 @@ describe('OnboardingService identity handling', () => {
 
   beforeEach(() => {
     prisma = {
+      consent: { count: jest.fn().mockResolvedValue(1) },
       onboardingSubmission: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}), create: jest.fn() },
       $transaction: jest.fn((fn: any) => fn(prisma)),
       $queryRaw: jest.fn().mockResolvedValue([{ locked: 1 }]),

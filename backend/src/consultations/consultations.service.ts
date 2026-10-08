@@ -232,7 +232,7 @@ export class ConsultationsService {
   // consultation the doctor reviews. Answers that rule the patient out don't
   // block submission — they have already paid, so the consultation goes to the
   // top of the queue as a critical red flag and a decline refunds them.
-  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}) {
+  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}, opts: { consentRecordedElsewhere?: boolean } = {}) {
     const intake = findQuestionnaire(input.kind, 'INTAKE');
     const evaluation = evaluateAnswers(intake, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
@@ -258,7 +258,8 @@ export class ConsultationsService {
       }
     }
 
-    await this.consents.record(patientId, ConsentType.TELEHEALTH, input.telehealthConsentVersion, meta);
+    // Entered by staff for the patient: no consent is recorded on their behalf, they accept it themselves in onboarding.
+    if (!opts.consentRecordedElsewhere) await this.consents.record(patientId, ConsentType.TELEHEALTH, input.telehealthConsentVersion, meta);
 
     const data = {
       quizAnswers: answers as any,
