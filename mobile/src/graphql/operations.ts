@@ -275,3 +275,34 @@ export const CANCEL_MY_SUBSCRIPTION = gql`
     cancelMySubscription
   }
 `;
+
+export const MY_ORDERS = gql`
+  query MyOrders {
+    myOrders {
+      id
+      reference
+      sequence
+      status
+      createdAt
+      dispatchedAt
+      outForDeliveryAt
+      deliveredAt
+      carrier
+      trackingNumber
+      trackingUrl
+      estimatedDeliveryFrom
+      estimatedDeliveryTo
+      trackingEvents {
+        id
+        status
+        occurredAt
+        location
+      }
+      prescription {
+        id
+        medication
+        dosage
+      }
+    }
+  }
+`;
