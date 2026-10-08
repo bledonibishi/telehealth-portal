@@ -151,3 +151,20 @@ export const VOID_MY_BODY_MEASUREMENT = gql`
     }
   }
 `;
+
+export const MY_WEIGHT_TREND = gql`
+  query MyWeightTrend {
+    myWeightTrend {
+      level
+      kgPerWeek
+      changePct28Days
+      basedOnPoints
+      unusuallyFast
+      kgIn3Months
+      notifyDoctor
+      latestKg
+      previousKg
+      jumpPct
+    }
+  }
+`;

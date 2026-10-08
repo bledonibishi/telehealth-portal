@@ -1002,4 +1002,8 @@ export const sq: Record<string, string> = {
   "Obesity I": "Obezitet I",
   "Obesity II": "Obezitet II",
   "Obesity III": "Obezitet III",
+  "Weight is trending up": "Pesha po rritet",
+  "About +{pct}% over the last 4 weeks ({rate} kg a week). If it continues: about +{kg} kg in 3 months.": "Rreth +{pct}% në 4 javët e fundit ({rate} kg në javë). Nëse vazhdon: rreth +{kg} kg në 3 muaj.",
+  "The latest weight may be a typing mistake": "Pesha e fundit mund të jetë gabim shkrimi",
+  "{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient has been asked to check it.": "{latest} kg është {pct}% larg peshës para saj ({previous} kg). Pacientit i është kërkuar ta kontrollojë.",
 };

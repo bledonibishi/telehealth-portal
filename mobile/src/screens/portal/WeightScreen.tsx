@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@apollo/client';
-import { MY_WEIGHT_JOURNEY, MY_WEIGHT_TIMELINE } from '../../graphql/portal';
+import { MY_WEIGHT_JOURNEY, MY_WEIGHT_TIMELINE, MY_WEIGHT_TREND } from '../../graphql/portal';
+import { MY_CONSULTATIONS } from '../../graphql/operations';
+import { trendMessage } from '../../lib/weightTrend';
 import { BottomSheet } from '../../components/BottomSheet';
 import { BodyMeasurementsCard } from '../../components/portal/BodyMeasurements';
 import { LogWeightForm } from '../../components/portal/LogWeight';
 import { TargetWeightForm } from '../../components/portal/TargetWeight';
-import { Button, Card, CardTitle, Columns, Empty, ErrorText, ProgressBar, Screen, Stat } from '../../components/ui';
+import { Button, Card, CardTitle, Columns, Empty, ErrorText, Notice, ProgressBar, Screen, Stat } from '../../components/ui';
 import { checkInLine } from '../../lib/weight';
 import { fmtDate, kg } from '../../lib/format';
 import { openLink } from '../../lib/config';
@@ -36,13 +38,17 @@ function Sparkline({ points }: { points: { weightKg: number; measuredAt: string 
   );
 }
 
-export function WeightScreen() {
+export function WeightScreen({ navigation }: any) {
   const { data, loading, error, refetch } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
   // The window follows the calendar: fixed within a day (so the query is not re-sent on every render) and moved on the next, so a weight logged days after the app opened is still inside it.
   const today = new Date().toDateString();
   const range = useMemo(() => ({ from: new Date(Date.now() - 90 * DAY).toISOString(), to: new Date(Date.now() + DAY).toISOString() }), [today]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: tl } = useQuery(MY_WEIGHT_TIMELINE, { variables: { ...range, limit: 200 }, fetchPolicy: 'cache-and-network' });
+  const { data: trendData } = useQuery(MY_WEIGHT_TREND, { fetchPolicy: 'cache-and-network' });
+  const { data: consultations } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'cache-first' });
   const [sheet, setSheet] = useState<'log' | 'target' | null>(null);
+  const message = trendData?.myWeightTrend ? trendMessage(trendData.myWeightTrend) : null;
+  const messageDoctor = () => navigation.navigate('Messages', consultations?.myConsultations?.[0]?.id ? { consultationId: consultations.myConsultations[0].id } : undefined);
 
   const journey = data?.myWeightJourney;
   const points: { weightKg: number; measuredAt: string }[] = tl?.myWeightTimeline?.measurements ?? [];
@@ -57,6 +63,12 @@ export function WeightScreen() {
 
       {journey && (
         <View style={{ gap: 14 }}>
+          {message && (
+            <Notice tone={message.tone === 'red' ? 'danger' : message.tone === 'orange' ? 'warn' : message.tone === 'green' ? 'good' : 'info'} title={`${message.icon} ${message.title}`}
+              action={message.action === 'MESSAGE_DOCTOR' ? <Button small variant="soft" label="Message my doctor" onPress={messageDoctor} style={{ alignSelf: 'flex-start', marginTop: 10 }} /> : undefined}>
+              {message.text}
+            </Notice>
+          )}
           <Columns>
             <Card>
               <CardTitle title="Weight journey" right={journey.startingWeightKg ? <Button small variant="soft" label="+ Log weight" onPress={() => setSheet('log')} /> : undefined} />
