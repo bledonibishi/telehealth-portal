@@ -279,8 +279,9 @@ model Clinician {
   // An admin turned the account off: it cannot sign in, and its open sessions stop working. Nothing it did is touched.
   deactivatedAt        DateTime?     @map("deactivated_at")
   // When the person chose their own password. Null for someone invited who has not accepted yet (their stored hash is
-  // an unguessable placeholder). Only such an account can be deleted outright: it has never been used.
-  passwordSetAt        DateTime?     @map("password_set_at")
+  // an unguessable placeholder). Only such an account can be deleted outright: it has never been used. Defaults to now,
+  // so an account made any other way (a seed, a script) with a password counts as set; an invitation says null on purpose.
+  passwordSetAt        DateTime?     @default(now()) @map("password_set_at")
   // A single-use link to set a password: for an invitation, or sent again to a member who lost theirs.
   inviteToken          String?       @unique @map("invite_token")
   inviteTokenExpiresAt DateTime?     @map("invite_token_expires_at")

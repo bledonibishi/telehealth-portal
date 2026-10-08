@@ -43,6 +43,7 @@ describe('CliniciansService team management', () => {
       const data = prisma.clinician.create.mock.calls[0][0].data;
       expect(data).toMatchObject({ firstName: 'Nia', lastName: 'Doe', email: 'new@clinic.dev', role: 'DOCTOR' });
       expect(data.passwordHash).toMatch(/^\$2[aby]\$/); // a real hash of a random value, never anything the admin typed
+      expect(data.passwordSetAt).toBeNull(); // an invitation says so on purpose: the column defaults to now for every other way of creating an account
       expect(data.inviteToken).toHaveLength(64);
       expect(data.inviteTokenExpiresAt.getTime()).toBeGreaterThan(Date.now() + 6 * 86_400_000);
       expect(email.sendClinicianInviteEmail).toHaveBeenCalledWith('new@clinic.dev', 'Nia', `https://clinic.example.com/accept-invite?token=${data.inviteToken}`, true);

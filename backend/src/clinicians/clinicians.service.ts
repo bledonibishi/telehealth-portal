@@ -84,7 +84,7 @@ export class CliniciansService {
     let created;
     try {
       created = await this.prisma.$transaction(async (tx) => {
-        const row = await tx.clinician.create({ data: { firstName, lastName, email, role: input.role, passwordHash, inviteToken: invite.activationToken, inviteTokenExpiresAt: invite.activationTokenExpiresAt } });
+        const row = await tx.clinician.create({ data: { firstName, lastName, email, role: input.role, passwordHash, passwordSetAt: null, inviteToken: invite.activationToken, inviteTokenExpiresAt: invite.activationTokenExpiresAt } });
         await this.audit.log({ actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_CREATED', resourceType: 'Clinician', resourceId: row.id, metadata: { email, role: input.role } }, tx);
         return row;
       });
