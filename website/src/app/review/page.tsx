@@ -109,7 +109,7 @@ function ReviewInner() {
   const handleContinue = () => {
     if (!available) return;
     mergeAssessment({ plan: planKey, applyReward: !!reward && rewardApplied });
-    router.push('/checkout?plan=' + encodeURIComponent(planKey));
+    router.push('/health-questions');
   };
 
   const eligUrl = product.kind === 'HRT' ? '/hrt-eligibility' : product.kind === 'TRT' ? '/trt-eligibility' : '/glp1-eligibility';
@@ -191,7 +191,7 @@ function ReviewInner() {
                 disabled={!available}
                 style={available ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}
               >
-                {available ? 'Continue to checkout →' : 'Unavailable'}
+                {available ? 'Continue to health questions →' : 'Unavailable'}
               </button>
             </div>
 

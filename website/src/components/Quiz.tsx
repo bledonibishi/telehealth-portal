@@ -166,6 +166,39 @@ export default function Quiz({ product }: { product: ProductKind }) {
     if (hydrated && screen === 'quiz' && Object.keys(st.answers).length) saveProgress(product, st);
   }, [st, hydrated, screen, product]);
 
+  // The browser's Back/Forward buttons step through the questions instead of leaving the quiz: each
+  // new position is pushed as a history entry, and going back to an entry puts that position back.
+  // `depth` counts the entries this quiz has pushed, so the on-screen arrow knows when to use history.
+  const depth = useRef(0);
+  useEffect(() => {
+    if (!hydrated || screen === 'plans') return;
+    const key = screen === 'quiz' ? `quiz:${st.view}:${st.idx}` : screen;
+    if (window.history.state?.thq?.key === key) return;
+    const first = window.history.state?.thq === undefined;
+    if (!first) depth.current += 1;
+    const entry = { ...window.history.state, thq: { key, screen, view: st.view, idx: st.idx, depth: depth.current } };
+    if (first) window.history.replaceState(entry, '');
+    else window.history.pushState(entry, '');
+  }, [hydrated, screen, st.view, st.idx]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const t = e.state?.thq;
+      if (!t) return;
+      depth.current = t.depth;
+      if (t.screen === 'quiz') {
+        setSt((s) => ({ ...s, view: t.view, idx: t.idx }));
+        setScreen('quiz');
+      } else {
+        setScreen(t.screen);
+      }
+      setCalcErr('');
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   /* Refs for BMI calc inputs — avoids losing values on error re-render */
   const hInputRef = useRef<HTMLInputElement>(null);
   const wInputRef = useRef<HTMLInputElement>(null);
@@ -274,6 +307,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
 
   /* ── Back ── */
   const back = () => {
+    if (depth.current > 0) { window.history.back(); return; }
     setSt((s) => {
       if (s.view === 'details') return { ...s, view: 'q', idx: visible().length - 1 };
       if (s.view === 'calc') return { ...s, view: 'q' };
@@ -335,7 +369,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
     }
     clearProgress(product);
     const id = lead.id;
-    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null });
+    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null, intakeDone: false });
     setScreen('plans');
     setSaving(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
