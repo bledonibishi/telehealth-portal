@@ -33,7 +33,7 @@ export function TreatmentTimeline({ plan, journey }: { plan?: Plan | null; journ
     { key: 'rx', title: 'Prescription approved', detail: plan ? `${plan.productName}${plan.strength ? ` ${plan.strength}` : ''} · ${on(plan.startedAt)}` : undefined, done: !!plan },
     { key: 'start', title: 'Treatment started', detail: delivered ? `First supply delivered ${on(delivered.deliveredAt)}` : started ? 'First injection logged' : 'When your first supply arrives', done: started },
     { key: 'doses', title: 'Injections', detail: plan ? (total ? `${plan.dosesTaken} of ${total} taken` : `${plan.dosesTaken} taken so far`) : undefined, done: allTaken },
-    { key: 'checkin', title: 'Review with your doctor', detail: journey?.checkInState === 'READY' ? 'Your monthly check-in is ready' : journey?.nextCheckInDueAt ? `Next check-in ${on(journey.nextCheckInDueAt)}` : 'A monthly check-in before each new supply', done: false },
+    { key: 'checkin', title: 'Review with your doctor', detail: journey?.checkInState === 'READY' ? 'Your check-in is ready' : journey?.nextCheckInDueAt ? `Next check-in ${on(journey.nextCheckInDueAt)}` : 'A check-in every 4 weeks, before each new supply', done: false },
     { key: 'renewal', title: 'Renewal', detail: plan?.validUntil ? `Prescription runs until ${on(plan.validUntil)}` : 'Your doctor renews your prescription when it runs out', done: false },
   ];
   // The first thing not yet done is where the patient is now.

@@ -96,7 +96,7 @@ export function MessagingScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
+  container: { flex: 1, backgroundColor: '#f9fafb', width: '100%', alignSelf: 'center', maxWidth: 760 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { color: '#9ca3af', fontSize: 14 },
   bubble: { margin: 8, maxWidth: '75%', borderRadius: 12, padding: 10 },

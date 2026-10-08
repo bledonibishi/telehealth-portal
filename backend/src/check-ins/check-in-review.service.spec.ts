@@ -13,6 +13,7 @@ describe('CheckInReviewService.review', () => {
   let prescribing: Record<string, jest.Mock>;
   let prescriptions: { cancel: jest.Mock };
   let config: { get: jest.Mock };
+  let sideEffects: { summaryFor: jest.Mock };
   let service: CheckInReviewService;
 
   beforeEach(() => {
@@ -41,6 +42,7 @@ describe('CheckInReviewService.review', () => {
       issue: jest.fn().mockResolvedValue({ id: 'rx-2' }),
     };
     prescriptions = { cancel: jest.fn() };
+    sideEffects = { summaryFor: jest.fn().mockResolvedValue({ needsAttention: false, reasons: [] }) };
     config = { get: jest.fn((key: string) => (key === 'STRIPE_PRICE_GLP1_ADVANCED' ? 'price_adv' : undefined)) };
     service = new CheckInReviewService(
       prisma,
@@ -55,6 +57,7 @@ describe('CheckInReviewService.review', () => {
       { trySend: jest.fn() } as any,
       // The real pricing rules over the mocked config: no per-dose prices here, so tier prices apply.
       new DosePricingService(config as any, prisma as any),
+      sideEffects as any,
     );
   });
 
@@ -65,6 +68,49 @@ describe('CheckInReviewService.review', () => {
     expect(orders.createRepeat).toHaveBeenCalledWith('doc-1', 'rx-1');
     expect(billing.resume).toHaveBeenCalledWith(PATIENT);
     expect(saved()).toMatchObject({ outcome: 'REPEAT', reviewedById: 'doc-1', resultOrderId: 'o-2', billingNote: 'Billing active' });
+  });
+
+  it('keeps the note for the patient apart from the internal clinical note, so only one is ever printed on their report', async () => {
+    await service.review('doc-1', { checkInId: 'ci-1', outcome: 'REPEAT' as any, note: '  internal: watch tolerance ', messageToPatient: ' Great progress ' });
+    expect(prisma.checkIn.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ reviewNote: 'internal: watch tolerance', patientNote: 'Great progress' }) }));
+  });
+
+  describe('side effects before approving', () => {
+    const flagged = { needsAttention: true, reasons: ['Nausea 8/10 at the last check'] };
+
+    it('refuses a repeat when the summary flags something and the doctor has not said they read it', async () => {
+      sideEffects.summaryFor.mockResolvedValue(flagged);
+      await expect(service.review('doc-1', { checkInId: 'ci-1', outcome: 'REPEAT' as any })).rejects.toThrow(/Read the patient’s side effects.*Nausea 8\/10/);
+      expect(orders.createRepeat).not.toHaveBeenCalled();
+      expect(prisma.checkIn.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new prescription in the same way', async () => {
+      sideEffects.summaryFor.mockResolvedValue(flagged);
+      await expect(service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items: [{ productId: 'p', strengthId: 's', quantity: 1, directions: 'x' }] as any })).rejects.toThrow(/side effects/);
+      expect(prescribing.issue).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead once the doctor has read it, and records what was flagged in the audit log', async () => {
+      sideEffects.summaryFor.mockResolvedValue(flagged);
+      const audit = { log: jest.fn() };
+      (service as any).audit = audit;
+      await service.review('doc-1', { checkInId: 'ci-1', outcome: 'REPEAT' as any, sideEffectsReviewed: true });
+      expect(orders.createRepeat).toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ sideEffectsFlagged: flagged.reasons, sideEffectsReviewed: true }) }), prisma);
+    });
+
+    it('does not ask when nothing is flagged', async () => {
+      await service.review('doc-1', { checkInId: 'ci-1', outcome: 'REPEAT' as any });
+      expect(orders.createRepeat).toHaveBeenCalled();
+    });
+
+    it('does not hold back a hold or a stop: stopping medicine is never the risky direction', async () => {
+      sideEffects.summaryFor.mockResolvedValue(flagged);
+      await service.review('doc-1', { checkInId: 'ci-1', outcome: 'HOLD' as any });
+      expect(billing.pause).toHaveBeenCalled();
+      expect(sideEffects.summaryFor).not.toHaveBeenCalled();
+    });
   });
 
   it('NEW_PRESCRIPTION supersedes the current prescription and moves to the matching plan', async () => {
@@ -117,7 +163,7 @@ describe('CheckInReviewService.queue', () => {
         ]),
       },
     };
-    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
+    const service = new CheckInReviewService(prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any);
 
     const queue = await service.queue();
 

@@ -15,6 +15,8 @@ import ProgressRing from '@/components/patients/ProgressRing';
 import { kg } from '@/lib/weight';
 import { TREATMENT_STATUS, STALE_WEIGH_IN_DAYS, type TreatmentStatus } from '@/lib/patient-status';
 import { hasAccess } from '@/lib/role';
+import ExportCsvButton from '@/components/ExportCsvButton';
+import type { CsvColumn } from '@/lib/csv';
 
 const KIND_LABEL: Record<string, string> = { HRT: 'HRT', GLP1: 'GLP-1', TRT: 'TRT' };
 
@@ -49,6 +51,26 @@ type SortKey = 'name' | 'status' | 'medication' | 'lost' | 'target' | 'progress'
 type Sort = { key: SortKey; dir: 'asc' | 'desc' };
 
 const selectCls = 'border border-[color:var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[color:var(--t-body)] bg-[color:var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-sky-500';
+
+const PATIENT_COLUMNS: CsvColumn<any>[] = [
+  { header: 'First name', value: (p) => p.firstName },
+  { header: 'Last name', value: (p) => p.lastName },
+  { header: 'Email', value: (p) => p.email },
+  { header: 'Date of birth', value: (p) => p.dateOfBirth?.slice(0, 10) },
+  { header: 'Programme', value: (p) => KIND_LABEL[p.productKind] ?? p.productKind },
+  { header: 'Treatment status', value: (p) => p.treatmentStatus },
+  { header: 'Medication', value: (p) => p.medications.map((m: any) => `${m.label} ${m.dose}`.trim()).join('; ') },
+  { header: 'Starting weight (kg)', value: (p) => p.startingWeightKg },
+  { header: 'Current weight (kg)', value: (p) => p.currentWeightKg },
+  { header: 'Target weight (kg)', value: (p) => p.targetWeightKg },
+  { header: 'Weight lost (kg)', value: (p) => p.weightLostKg },
+  { header: 'Progress (%)', value: (p) => p.progressPercentage },
+  { header: 'Last weighed', value: (p) => p.lastWeighedAt },
+  { header: 'Latest consultation', value: (p) => p.latestConsultationStatus },
+  { header: 'Active prescription', value: (p) => p.hasActivePrescription },
+  { header: 'Activated', value: (p) => p.activatedAt },
+  { header: 'Created', value: (p) => p.createdAt },
+];
 
 const targetReached = (p: any) => p.progressPercentage !== null && p.progressPercentage >= 100;
 const needsReview = (p: any) => NEEDS_REVIEW.includes(p.latestConsultationStatus);
@@ -248,14 +270,17 @@ function Patients() {
             <h1 className="text-2xl font-bold tracking-wide text-[color:var(--t-strong)] uppercase">{t('Doctor’s patient dashboard')}</h1>
             <p className="text-xs text-[color:var(--t-dim)] mt-0.5">{chatMode ? t('Click a patient to chat with them') : t('Hover a patient to preview their profile · click to open it in full')}</p>
           </div>
-          {canCreate && (
-            <button
-              onClick={() => setCreating(true)}
-              className="px-3.5 py-2 text-sm font-medium rounded-lg bg-sky-500 text-white hover:bg-sky-400"
-            >
-              {t('+ New patient')}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <ExportCsvButton resource="patients" rows={patients} columns={PATIENT_COLUMNS} className="py-2" />
+            {canCreate && (
+              <button
+                onClick={() => setCreating(true)}
+                className="px-3.5 py-2 text-sm font-medium rounded-lg bg-sky-500 text-white hover:bg-sky-400"
+              >
+                {t('+ New patient')}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">

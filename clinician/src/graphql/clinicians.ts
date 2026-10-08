@@ -13,7 +13,21 @@ export const GET_CLINICIANS = gql`
       isVerified
       verifiedAt
       mfaEnabled
+      specialty
+      bio
+      languages
       createdAt
+    }
+  }
+`;
+
+export const UPDATE_CLINICIAN_PROFILE = gql`
+  mutation UpdateClinicianProfile($input: UpdateClinicianProfileInput!) {
+    updateClinicianProfile(input: $input) {
+      id
+      specialty
+      bio
+      languages
     }
   }
 `;

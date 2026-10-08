@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import Link from 'next/link';
-import { CHECK_IN_REVIEW_QUEUE, PATIENT_TRENDS, REVIEW_CHECK_IN } from '@/graphql/checkins';
+import { CHECK_IN_REVIEW_QUEUE, PATIENT_TRENDS, REVIEW_CHECK_IN, SIDE_EFFECT_SUMMARY } from '@/graphql/checkins';
 import { PATIENT_HISTORY } from '@/graphql/consultations';
 import { GET_ORDERS } from '@/graphql/orders';
 import { PrescriptionForm, PrescriptionSubmission, Row } from '@/components/consultation/PrescriptionForm';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
 import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
+import SideEffectSummary from '@/components/checkins/SideEffectSummary';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
@@ -63,6 +64,13 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const rx = checkIn.prescription;
+  // Fresh every time, so a score logged a minute ago is never missed. Approving waits on this.
+  const { data: seData, loading: seLoading, error: seError } = useQuery(SIDE_EFFECT_SUMMARY, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
+  const sideEffects = seData?.sideEffectSummary;
+  const [seReviewed, setSeReviewed] = useState(false);
+  const approving = outcome === 'REPEAT' || outcome === 'NEW_PRESCRIPTION';
+  // A failed load must not strand the doctor, so only a loaded summary that flags something (or a load still under way) holds approval back.
+  const holdForSideEffects = approving && !seError && (seLoading || (!!sideEffects?.needsAttention && !seReviewed));
 
   const { data: history } = useQuery(PATIENT_HISTORY, { variables: { patientId: checkIn.patient.id } });
   // The prescribing rules run against the patient's consultation for this programme.
@@ -83,6 +91,8 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
           outcome,
           note: note.trim() || undefined,
           messageToPatient: message.trim() || undefined,
+          // The server refuses an approval without this when the summary flags something.
+          sideEffectsReviewed: seReviewed || undefined,
           ...extra,
         },
       },
@@ -98,6 +108,9 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const repeatAvailable = rx?.status === 'ACTIVE' && (rx?.repeatsRemaining ?? 0) > 0;
 
   return (
+    <div className="space-y-4">
+    {sideEffects && <SideEffectSummary summary={sideEffects} />}
+    {seError && <p className="text-xs text-warn-900 bg-warn-50 rounded px-3 py-2">{t('Could not load the side-effect summary. Check the patient’s record before approving.')}</p>}
     <div className="border border-gray-200 rounded-lg p-4 space-y-4 bg-white">
       <h3 className="text-sm font-semibold text-gray-900">{t('Decision')}</h3>
 
@@ -133,7 +146,20 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
 
       {error && <p className="text-sm text-danger-500">{error}</p>}
 
-      {outcome === 'NEW_PRESCRIPTION' && (
+      {holdForSideEffects && (
+        <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3">
+          {seLoading ? (
+            <p className="text-sm text-gray-500">{t('Loading the side-effect summary…')}</p>
+          ) : (
+            <label className="flex items-start gap-2 text-sm text-gray-900 cursor-pointer">
+              <input type="checkbox" checked={seReviewed} onChange={(e) => setSeReviewed(e.target.checked)} className="mt-0.5" />
+              <span>{t('I have read the side effects above and they do not stop me approving.')}</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {outcome === 'NEW_PRESCRIPTION' && !holdForSideEffects && (
         consultationId ? (
           <PrescriptionForm
             consultationId={consultationId}
@@ -150,7 +176,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
         )
       )}
 
-      {outcome && outcome !== 'NEW_PRESCRIPTION' && (
+      {outcome && outcome !== 'NEW_PRESCRIPTION' && !holdForSideEffects && (
         <div className="flex gap-2">
           <button onClick={() => submit()} disabled={loading} className="bg-gray-900 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
             {loading ? 'Saving…' : `Confirm: ${OUTCOMES.find((o) => o.key === outcome)!.label.toLowerCase()}`}
@@ -158,6 +184,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
           <button onClick={() => setOutcome(null)} className="text-sm text-gray-500 px-4 py-2">{t('Cancel')}</button>
         </div>
       )}
+    </div>
     </div>
   );
 }
@@ -170,8 +197,8 @@ export default function CheckInsPage() {
   const selected = queue.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className={`${selected ? 'hidden md:flex' : 'flex'} w-full md:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
+    <div className="flex h-screen overflow-hidden">
+      <div className={`${selected ? 'hidden lg:flex' : 'flex'} w-full lg:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
         <div className="px-5 py-4 border-b border-gray-200">
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: queue.length })}</p>
@@ -207,13 +234,13 @@ export default function CheckInsPage() {
         </div>
       </div>
 
-      <div className={`${selected ? 'block' : 'hidden md:block'} flex-1 min-w-0 overflow-y-auto bg-gray-50`}>
+      <div className={`${selected ? 'block' : 'hidden lg:block'} flex-1 min-w-0 overflow-y-auto bg-gray-50`}>
         {!selected ? (
           <div className="h-full flex items-center justify-center text-sm text-gray-400">{t('Select a check-in')}</div>
         ) : (
           <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-            <button type="button" onClick={() => setSelectedId(null)} className="md:hidden text-xs text-gray-500 hover:text-gray-800">{t('← Check-ins')}</button>
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <button type="button" onClick={() => setSelectedId(null)} className="lg:hidden text-sm font-medium text-brand-500">← {t('Check-ins')}</button>
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">{selected.patient.firstName} {selected.patient.lastName}</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -239,8 +266,8 @@ export default function CheckInsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <div className="col-span-2 space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="xl:col-span-2 space-y-6 min-w-0">
                 <section className="bg-white rounded-lg border border-gray-200">
                   <div className="px-4 py-3 border-b border-gray-200">
                     <h3 className="text-sm font-semibold text-gray-900">{t('Answers')}</h3>

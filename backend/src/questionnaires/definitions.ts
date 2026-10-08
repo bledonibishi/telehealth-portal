@@ -574,8 +574,8 @@ const TRT_INTAKE: Questionnaire = {
   ],
 };
 
-// ── Monthly check-in ────────────────────────────────────────────────────────
-// Answered each month before the next supply; a doctor reviews it and decides
+// ── Check-in ───────────────────────────────────────────────────────────
+// Answered every 4 weeks before the next supply; a doctor reviews it and decides
 // whether to repeat, change the dose, hold or stop.
 
 const URGENT = 'If this is severe or getting worse, don’t wait for us — call 112 or go to your nearest emergency department.';
@@ -595,7 +595,7 @@ const GLP1_CHECKIN: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     { id: 'weight_kg', text: 'What is your weight today?', type: 'number', unit: 'kg', min: 30, max: 300 },
     {
@@ -661,7 +661,7 @@ const HRT_CHECKIN: Questionnaire = {
   kind: ConsultationKind.HRT,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     {
       id: 'symptom_control',
@@ -724,7 +724,7 @@ const TRT_CHECKIN: Questionnaire = {
   kind: ConsultationKind.TRT,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     {
       id: 'symptom_control',

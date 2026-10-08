@@ -276,36 +276,6 @@ export const CANCEL_MY_SUBSCRIPTION = gql`
   }
 `;
 
-export const MY_ORDERS = gql`
-  query MyOrders {
-    myOrders {
-      id
-      reference
-      sequence
-      status
-      createdAt
-      dispatchedAt
-      outForDeliveryAt
-      deliveredAt
-      carrier
-      trackingNumber
-      trackingUrl
-      estimatedDeliveryFrom
-      estimatedDeliveryTo
-      trackingEvents {
-        id
-        status
-        occurredAt
-        location
-      }
-      prescription {
-        id
-        medication
-        dosage
-      }
-    }
-  }
-`;
 
 export const REGISTER_PUSH_TOKEN = gql`
   mutation RegisterPushToken($token: String!, $platform: String!) {
@@ -319,34 +289,5 @@ export const UNREGISTER_PUSH_TOKEN = gql`
   }
 `;
 
-export const SUPPLY_STATUS_FIELDS = gql`
-  fragment SupplyStatusFields on SupplyStatus {
-    subscriptionActive
-    medication
-    nextSupplyAt
-    daysUntilNextSupply
-    repeatsLeft
-    supplyBeingPrepared
-    refillState
-    refillOpensInDays
-    refillRequestedAt
-  }
-`;
 
-export const MY_SUPPLY_STATUS = gql`
-  ${SUPPLY_STATUS_FIELDS}
-  query MySupplyStatus {
-    mySupplyStatus {
-      ...SupplyStatusFields
-    }
-  }
-`;
 
-export const REQUEST_REFILL = gql`
-  ${SUPPLY_STATUS_FIELDS}
-  mutation RequestRefill {
-    requestRefill {
-      ...SupplyStatusFields
-    }
-  }
-`;

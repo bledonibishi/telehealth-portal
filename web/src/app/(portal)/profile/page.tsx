@@ -215,7 +215,7 @@ export default function ProfilePage() {
       {editing === 'body' && <Dialog title="Body & contact" onClose={() => setEditing(null)}><BodyForm p={p} onDone={() => setEditing(null)} /></Dialog>}
       {editing === 'address' && <Dialog title="Delivery address" onClose={() => setEditing(null)}><AddressForm p={p} onDone={() => setEditing(null)} /></Dialog>}
       {editing === 'medical' && <Dialog title="Medical & emergency" onClose={() => setEditing(null)}><MedicalForm p={p} onDone={() => setEditing(null)} /></Dialog>}
-      {editing === 'target' && <Dialog title="Target weight" onClose={() => setEditing(null)}><TargetWeightForm current={j?.targetWeightKg} onDone={() => setEditing(null)} /></Dialog>}
+      {editing === 'target' && <Dialog title="Target weight" onClose={() => setEditing(null)}><TargetWeightForm current={j?.targetWeightKg} currentKg={j?.currentWeightKg} startKg={j?.startingWeightKg} onDone={() => setEditing(null)} /></Dialog>}
     </div>
   );
 }

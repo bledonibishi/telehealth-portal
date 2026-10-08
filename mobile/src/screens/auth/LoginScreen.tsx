@@ -64,7 +64,7 @@ export function LoginScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', padding: 24 },
+  container: { flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', padding: 24, width: '100%', alignSelf: 'center', maxWidth: 480 },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 24, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   title: { fontSize: 22, fontWeight: '600', color: '#111827', marginBottom: 20 },
   input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12, fontSize: 15 },

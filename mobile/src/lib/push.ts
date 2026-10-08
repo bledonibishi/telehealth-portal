@@ -55,8 +55,8 @@ export async function unregisterPush(): Promise<void> {
 /** Where a tapped notice leads. */
 function openFor(data: Record<string, unknown> | undefined) {
   if (!navigationRef.isReady()) return;
-  if (data?.type === 'order') (navigationRef as any).navigate('Main', { screen: 'Orders' });
-  else if (data?.type === 'refund') (navigationRef as any).navigate('Main', { screen: 'Account' });
+  if (data?.type === 'order') (navigationRef as any).navigate('Main', { screen: 'More', params: { screen: 'Orders' } });
+  else if (data?.type === 'refund') (navigationRef as any).navigate('Main', { screen: 'More', params: { screen: 'Account' } });
 }
 
 /** Listens for taps on notices, including the one that opened the app. Returns a function that stops listening. */

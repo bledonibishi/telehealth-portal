@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { DosingService } from './dosing.service';
-import { DoseEventModel } from './models/dose-event.model';
+import { DoseEventModel, InjectionSite } from './models/dose-event.model';
+import { CheckInFeeling } from '../common/enums';
 import { ProductModel, ProductStrengthModel } from '../catalog/models/product.model';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuditRead } from '../audit/audit-read.interceptor';
@@ -56,8 +57,22 @@ export class DosingResolver {
 
   @Authorized('PATIENT')
   @Mutation(() => DoseEventModel)
-  markDoseTaken(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
-    return this.dosing.markTaken(user.id, id);
+  markDoseTaken(
+    @CurrentUser() user: AuthUser,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('injectionSite', { type: () => InjectionSite, nullable: true }) injectionSite?: InjectionSite,
+  ) {
+    return this.dosing.markTaken(user.id, id, injectionSite ?? undefined);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => DoseEventModel, { description: 'How you felt after a dose you took. The doctor reads this when deciding on your next dose.' })
+  logDoseFeeling(
+    @CurrentUser() user: AuthUser,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('feeling', { type: () => CheckInFeeling }) feeling: CheckInFeeling,
+  ) {
+    return this.dosing.logFeeling(user.id, id, feeling);
   }
 
   @Authorized('PATIENT')

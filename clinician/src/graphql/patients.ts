@@ -42,6 +42,20 @@ export const PATIENT_ADHERENCE = gql`
   }
 `;
 
+export const PATIENT_RECENT_DOSES = gql`
+  query PatientRecentDoses($patientId: ID!) {
+    patientDoseCalendar(patientId: $patientId, fromDays: 60, toDays: 0) {
+      id
+      scheduledFor
+      status
+      takenAt
+      injectionSite
+      feelingAfter
+      strength { label }
+    }
+  }
+`;
+
 export const GET_PATIENT = gql`
   query GetPatient($id: ID!) {
     patient(id: $id) {
@@ -77,6 +91,7 @@ export const GET_PATIENT = gql`
         tokenExpiresAt
         completedAt
         wantsToReorder
+        reportUrl
         answers { questionId question answer }
         checkInUrl
       }

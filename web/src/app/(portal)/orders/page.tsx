@@ -10,6 +10,8 @@ import { Card } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
 import { EmptyState } from '@/components/portal/EmptyState';
+import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
+import { PaymentsCard } from '@/components/billing/PaymentsCard';
 
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {
@@ -51,6 +53,7 @@ export default function OrdersPage() {
               {o.status !== 'DELIVERED' && o.trackingEvents?.[0] && TRACKING_PROBLEMS.includes(o.trackingEvents[0].status) && (
                 <p role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{TRACKING_LABEL[o.trackingEvents[0].status]}</p>
               )}
+              {o.status !== 'CANCELLED' && <div className="mt-4"><DeliveryAddress order={o} /></div>}
               {(o.carrier || o.trackingNumber || o.trackingUrl) && (
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                   {o.carrier && <span>{o.carrier}</span>}
@@ -75,6 +78,8 @@ export default function OrdersPage() {
           </li>
         ))}
       </ul>
+
+      <PaymentsCard />
     </div>
   );
 }

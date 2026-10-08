@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 
@@ -19,6 +19,14 @@ export function BottomSheet({
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  // Lifted above the keyboard, so a field in the sheet is never hidden by it.
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKeyboard(e.endCoordinates.height));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboard(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const progress = useRef(new Animated.Value(0)).current;
   // Stays mounted while sliding down, so the closing animation is seen.
   const [mounted, setMounted] = useState(visible);
@@ -45,13 +53,16 @@ export function BottomSheet({
       <Animated.View
         style={[
           styles.sheet,
-          { paddingBottom: Math.max(insets.bottom, 16) + 8 },
+          { paddingBottom: Math.max(keyboard ? 0 : insets.bottom, 16) + 8, bottom: keyboard },
           { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [420, 0] }) }] },
         ]}
       >
         <View style={styles.handle} />
         {!!title && <Text style={styles.title}>{title}</Text>}
-        {children}
+        {/* Tall content (a long form on a small or landscape screen) scrolls inside the sheet instead of running off it. */}
+        <ScrollView style={{ maxHeight: height * 0.78 - keyboard }} contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {children}
+        </ScrollView>
       </Animated.View>
     </Modal>
   );
@@ -90,11 +101,13 @@ export function SheetOption({
 
 const styles = StyleSheet.create({
   backdrop: { backgroundColor: 'rgba(15, 23, 42, 0.45)' },
+  // Full width on a phone; on a tablet a centred panel, not a bar stretched across the screen.
   sheet: {
     position: 'absolute',
-    left: 0,
-    right: 0,
     bottom: 0,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 640,
     backgroundColor: colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

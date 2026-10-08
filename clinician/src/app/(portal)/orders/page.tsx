@@ -6,6 +6,8 @@ import { useApolloClient, useQuery } from '@apollo/client';
 import { GET_ORDERS, NEXT_SHIPMENT_ALERTS, PHARMACY_STATEMENT } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { RefundRequests } from '@/components/orders/RefundRequests';
+import ExportCsvButton from '@/components/ExportCsvButton';
+import type { CsvColumn } from '@/lib/csv';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import { openProblem, overdueSince } from '@/lib/tracking';
@@ -24,6 +26,22 @@ const FILTERS = [
   { key: 'cancelled', label: 'Cancelled', match: (o: Order) => o.status === 'CANCELLED' },
   { key: 'all', label: 'All orders', match: () => true },
 ] as const;
+
+const ORDER_COLUMNS: CsvColumn<any>[] = [
+  { header: 'Order', value: (o) => `#${o.sequence}` },
+  { header: 'Status', value: (o) => o.status },
+  { header: 'Patient', value: (o) => `${o.patient.firstName} ${o.patient.lastName}` },
+  { header: 'Email', value: (o) => o.patient.email },
+  { header: 'Medication', value: (o) => o.prescription.medication },
+  { header: 'Dose', value: (o) => o.prescription.dosage },
+  { header: 'Placed', value: (o) => o.createdAt },
+  { header: 'Dispatched', value: (o) => o.dispatchedAt },
+  { header: 'Delivered', value: (o) => o.deliveredAt },
+  { header: 'Carrier', value: (o) => o.carrier },
+  { header: 'Tracking number', value: (o) => o.trackingNumber },
+  { header: 'Pharmacy reference', value: (o) => o.pharmacyRef },
+  { header: 'Ship to', value: (o) => [o.shippingAddress?.addressLine1, o.shippingAddress?.addressLine2, o.shippingAddress?.city, o.shippingAddress?.postcode, o.shippingAddress?.country].filter(Boolean).join(', ') },
+];
 
 type FilterKey = (typeof FILTERS)[number]['key'];
 
@@ -114,6 +132,7 @@ export default function OrdersPage() {
           {isAdmin && (
             <div className="flex flex-col items-start sm:items-end gap-1">
               <div className="flex flex-wrap items-center gap-2">
+                <ExportCsvButton resource="orders" rows={allOrders} columns={ORDER_COLUMNS} />
                 <input type="month" value={statementMonth} onChange={(e) => setStatementMonth(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700" aria-label={t('Month')} />
                 <button type="button" onClick={downloadStatement} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50">{t('Pharmacy statement (CSV)')}</button>
               </div>

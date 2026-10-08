@@ -15,7 +15,7 @@ const URGENCY: Record<string, { label: string; cls: string }> = {
 
 const BLOCKER: Record<string, { text: string; cls: string }> = {
   NONE: { text: 'Ready — nothing is holding it up', cls: 'text-green-700' },
-  AWAITING_CHECKIN: { text: 'Waiting for the patient’s monthly check-in', cls: 'text-amber-700' },
+  AWAITING_CHECKIN: { text: 'Waiting for the patient’s check-in', cls: 'text-amber-700' },
   AWAITING_REVIEW: { text: 'Check-in done — waiting for a doctor’s review', cls: 'text-amber-700' },
   NO_REPEATS_LEFT: { text: 'No repeats left — needs a new prescription', cls: 'text-red-700' },
 };

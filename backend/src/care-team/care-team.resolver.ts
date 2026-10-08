@@ -28,6 +28,15 @@ export class CareTeamMemberModel {
 
   @Field()
   since: Date;
+
+  @Field({ nullable: true, description: 'e.g. "Endocrinologist"' })
+  specialty?: string | null;
+
+  @Field({ nullable: true })
+  bio?: string | null;
+
+  @Field(() => [String])
+  languages: string[];
 }
 
 const INVOLVEMENT = { PRESCRIBER: 'Prescribed your current treatment', CONSULTATION: 'Reviewed your consultation', APPOINTMENT: 'Your appointments' } as const;
@@ -55,7 +64,7 @@ export class CareTeamResolver {
     if (!team.length) return [];
     const clinicians = await this.prisma.clinician.findMany({
       where: { id: { in: team.map((t) => t.clinicianId) } },
-      select: { id: true, firstName: true, lastName: true, role: true, licensingBody: true, isVerified: true },
+      select: { id: true, firstName: true, lastName: true, role: true, licensingBody: true, isVerified: true, specialty: true, bio: true, languages: true },
     });
     const byId = new Map(clinicians.map((c) => [c.id, c]));
     return team.flatMap((t) => {
@@ -69,6 +78,9 @@ export class CareTeamResolver {
         primary: t.primary,
         involvement: INVOLVEMENT[t.via],
         since: t.since,
+        specialty: c.specialty,
+        bio: c.bio,
+        languages: c.languages,
       }];
     });
   }

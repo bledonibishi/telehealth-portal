@@ -33,6 +33,15 @@ export class ClinicianModel {
   @Field()
   mfaEnabled: boolean;
 
+  @Field({ nullable: true, description: 'Shown to patients, e.g. "Endocrinologist"' })
+  specialty?: string;
+
+  @Field({ nullable: true, description: 'A line or two about their experience, shown to patients' })
+  bio?: string;
+
+  @Field(() => [String], { description: 'Languages they speak with patients' })
+  languages: string[];
+
   @Field()
   createdAt: Date;
 }

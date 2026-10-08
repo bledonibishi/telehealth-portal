@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
 import { DosePricingService } from '../stripe/dose-pricing.service';
+import { SideEffectsService } from '../side-effects/side-effects.service';
 import { planFor, planPriceEnvVars } from '../stripe/plan-pricing';
 import { EmailService } from '../email/email.service';
 import { MessagingService } from '../messaging/messaging.service';
@@ -42,6 +43,7 @@ export class CheckInReviewService {
     private config: ConfigService,
     private partner: PartnerOrdersService,
     private dosePricing: DosePricingService,
+    private sideEffects: SideEffectsService,
   ) {}
 
   async queue() {
@@ -74,6 +76,14 @@ export class CheckInReviewService {
     const checkIn = await this.findById(input.checkInId);
     if (checkIn.status !== CheckInStatus.COMPLETED) throw new BadRequestException('The patient hasn’t completed this check-in yet');
     if (checkIn.reviewedAt) throw new ConflictException('This check-in has already been reviewed');
+
+    // Sending more medicine is the decision the side-effect summary exists for. When it flags anything, the doctor
+    // must say they have read it: the screen asks, and this refuses a request that skipped the screen.
+    const approving = input.outcome === CheckInOutcome.REPEAT || input.outcome === CheckInOutcome.NEW_PRESCRIPTION;
+    const sideEffectSummary = approving ? await this.sideEffects.summaryFor(checkIn.patientId) : null;
+    if (sideEffectSummary?.needsAttention && !input.sideEffectsReviewed) {
+      throw new BadRequestException(`Read the patient’s side effects before approving: ${sideEffectSummary.reasons.join('; ')}`);
+    }
 
     const rx = checkIn.prescription;
     const patient = checkIn.patient;
@@ -151,6 +161,7 @@ export class CheckInReviewService {
           reviewedById: clinicianId,
           outcome: input.outcome,
           reviewNote: input.note?.trim() || null,
+          patientNote: input.messageToPatient?.trim() || null,
           billingNote,
           resultOrderId,
           resultPrescriptionId,
@@ -165,7 +176,13 @@ export class CheckInReviewService {
           resourceType: 'CheckIn',
           resourceId: checkIn.id,
           patientId: patient.id,
-          metadata: { outcome: input.outcome, resultOrderId, resultPrescriptionId, billingNote },
+          metadata: {
+            outcome: input.outcome,
+            resultOrderId,
+            resultPrescriptionId,
+            billingNote,
+            ...(sideEffectSummary?.needsAttention ? { sideEffectsFlagged: sideEffectSummary.reasons, sideEffectsReviewed: true } : {}),
+          },
         },
         tx,
       );

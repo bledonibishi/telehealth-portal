@@ -5,9 +5,11 @@ import { ClinicianRole } from '../common/enums';
 import { RevenueService } from './revenue.service';
 import { FunnelService } from './funnel.service';
 import { ClinicianPerformanceService } from './clinician-performance.service';
-import { ClinicianPerformanceModel, RevenueOverviewModel, SalesFunnelModel } from './models/insights.model';
+import { MonthlyReportService } from './monthly-report.service';
+import { ClinicianPerformanceModel, MonthlyReportModel, RevenueOverviewModel, SalesFunnelModel } from './models/insights.model';
 
 const ALLOWED_PERIODS = [7, 30, 90];
+const ALLOWED_MONTHS = [3, 6, 12];
 
 function period(days?: number | null) {
   const d = days ?? 30;
@@ -22,6 +24,7 @@ export class InsightsResolver {
     private revenue: RevenueService,
     private funnel: FunnelService,
     private performance: ClinicianPerformanceService,
+    private monthly: MonthlyReportService,
   ) {}
 
   @Authorized(ClinicianRole.ADMIN)
@@ -34,6 +37,14 @@ export class InsightsResolver {
   @Query(() => SalesFunnelModel, { description: 'From completing the eligibility quiz to the first shipment' })
   salesFunnel(@Args('days', { type: () => Int, nullable: true }) days?: number) {
     return this.funnel.funnel(period(days)) as Promise<SalesFunnelModel>;
+  }
+
+  @Authorized(ClinicianRole.ADMIN)
+  @Query(() => MonthlyReportModel, { description: 'The clinic month by month: new patients, revenue, check-in decisions and how much weight patients have lost' })
+  monthlyReport(@Args('months', { type: () => Int, nullable: true }) months?: number) {
+    const n = months ?? 6;
+    if (!ALLOWED_MONTHS.includes(n)) throw new BadRequestException(`months must be one of ${ALLOWED_MONTHS.join(', ')}`);
+    return this.monthly.report(n) as Promise<MonthlyReportModel>;
   }
 
   @Authorized(ClinicianRole.ADMIN)

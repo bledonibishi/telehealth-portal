@@ -40,6 +40,8 @@ const NAV: NavItem[] = [
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
   { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'shipmentsDue' },
   { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
+  { href: '/reports',  label: 'Monthly report', icon: '📈', roles: ['ADMIN'] },
+  { href: '/audit',    label: 'Audit log',      icon: '🔎', roles: ['ADMIN'] },
 ];
 
 const ROLE_BADGE: Record<ClinicianRole, { label: string; cls: string }> = {
@@ -57,7 +59,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   // Hold back the pages until the browser confirms a token, so their queries never run
   // during server rendering or before the redirect to /login.
   const [authChecked, setAuthChecked] = useState(false);
-  // On a phone the menu is a drawer that opens from the header; from `md` up it is the fixed sidebar.
+  // Below lg the menu is a drawer over the page, opened from the header.
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => setMenuOpen(false), [pathname]);
 
@@ -87,8 +89,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   return (
     <div style={ready ? undefined : { visibility: 'hidden' }} className="dark-surface flex h-screen bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
-      {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 overflow-y-auto transition-transform md:static md:z-auto md:w-56 md:translate-x-0 md:overflow-visible shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)] ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-56 shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)] transition-transform duration-200 lg:static lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
         <div className="px-4 py-5 border-b border-[color:var(--border-subtle)] flex flex-col items-start gap-2">
           <span className="text-sm font-semibold text-[color:var(--t-strong)]">{t('Telehealth Portal')}</span>
           {badge && (
@@ -98,7 +102,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           )}
         </div>
 
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
           {visibleNav.map((item) => {
             const active =
               item.href === '/'
@@ -128,13 +132,18 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </nav>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <header className="h-12 border-b flex items-center justify-between px-3 sm:px-6 shrink-0 bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)]">
-          <button type="button" onClick={() => setMenuOpen(true)} aria-label={t('Menu')} aria-expanded={menuOpen} className="md:hidden -ml-1 p-2 rounded-md text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <header className="h-12 border-b flex items-center justify-between px-6 shrink-0 bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)]">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label={t('Open menu')}
+            className="lg:hidden w-9 h-9 rounded-lg border border-[color:var(--border)] text-[color:var(--t-strong)] flex items-center justify-center"
+          >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" /></svg>
           </button>
-          <div className="hidden md:block" />
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden lg:block" /> {/* spacer */}
+          <div className="flex items-center gap-3">
             <LanguageSwitcher />
             <ThemeToggle />
             <NotificationBell />

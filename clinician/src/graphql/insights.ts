@@ -52,3 +52,28 @@ export const CLINICIAN_PERFORMANCE = gql`
     }
   }
 `;
+
+export const MONTHLY_REPORT = gql`
+  query MonthlyReport($months: Int) {
+    monthlyReport(months: $months) {
+      revenueConfigured
+      revenueError
+      revenueTruncated
+      months {
+        month
+        newLeads
+        newPatients
+        subscriptionsEnded
+        ordersDispatched
+        checkInsReviewed
+        continued
+        held
+        stopped
+        revenue { currency amountCents }
+        weighedPatients
+        avgLossPct
+        successRatePct
+      }
+    }
+  }
+`;

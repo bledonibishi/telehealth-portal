@@ -2,6 +2,7 @@ import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
 import { CliniciansService } from './clinicians.service';
 import { ClinicianModel } from './models/clinician.model';
 import { VerifyClinicianInput } from './dto/verify-clinician.input';
+import { UpdateClinicianProfileInput } from './dto/update-clinician-profile.input';
 import { ClinicianRole } from '../common/enums';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -31,6 +32,12 @@ export class CliniciansResolver {
   @Mutation(() => ClinicianModel, { description: 'Record a checked medical licence; required before the clinician can prescribe' })
   verifyClinician(@CurrentUser() user: AuthUser, @Args('input') input: VerifyClinicianInput) {
     return this.cliniciansService.verify(user.id, input);
+  }
+
+  @Authorized(ClinicianRole.ADMIN)
+  @Mutation(() => ClinicianModel, { description: 'What patients see about a clinician on My Doctor' })
+  updateClinicianProfile(@CurrentUser() user: AuthUser, @Args('input') input: UpdateClinicianProfileInput) {
+    return this.cliniciansService.updateProfile(user.id, input);
   }
 
   @Authorized(ClinicianRole.ADMIN)

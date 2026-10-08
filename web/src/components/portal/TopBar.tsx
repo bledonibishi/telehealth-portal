@@ -64,7 +64,7 @@ function useNotes(): Note[] {
   if (next && Date.parse(next) < now + DAY) {
     notes.push({ key: 'dose', title: Date.parse(next) < now - DAY ? 'An injection is overdue' : 'Injection due today', detail: dose.myDoseSummary.current, href: '/doses' });
   }
-  if (journey?.myWeightJourney?.checkInState === 'READY') notes.push({ key: 'checkin', title: 'Monthly check-in is ready', detail: 'Your doctor reviews it before your next supply', href: journey.myWeightJourney.checkInUrl ?? '/dashboard' });
+  if (journey?.myWeightJourney?.checkInState === 'READY') notes.push({ key: 'checkin', title: 'Your check-in is ready', detail: 'Your doctor reviews it before your next supply', href: journey.myWeightJourney.checkInUrl ?? '/dashboard' });
 
   // A supply sent in the last few days and not yet delivered.
   const order = ((orders?.myOrders ?? []) as any[]).find((o) => (o.status === 'DISPATCHED' || o.status === 'OUT_FOR_DELIVERY') && o.dispatchedAt && now - Date.parse(o.dispatchedAt) < 7 * DAY);

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@apollo/client';
 import { format } from 'date-fns';
-import { MY_LAB_RESULTS, MY_PRESCRIPTION_HISTORY } from '@/graphql/portal';
+import { MY_CHECK_IN_REPORTS, MY_LAB_RESULTS, MY_PRESCRIPTION_HISTORY } from '@/graphql/portal';
 import { openAuthedFile } from '@/lib/upload';
 import { useCareStage } from '@/lib/useCareStage';
 import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
@@ -23,17 +23,19 @@ const RX_STATUS: Record<string, { label: string; cls: string }> = {
 export default function DocumentsPage() {
   const { data: rxData, loading } = useQuery(MY_PRESCRIPTION_HISTORY, { fetchPolicy: 'cache-and-network' });
   const { data: labData } = useQuery(MY_LAB_RESULTS, { fetchPolicy: 'cache-and-network' });
+  const { data: reportData } = useQuery(MY_CHECK_IN_REPORTS, { fetchPolicy: 'cache-and-network' });
   const next = useCareStage();
   const [opening, setOpening] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const prescriptions: any[] = rxData?.myPrescriptions ?? [];
   const labs: any[] = labData?.myLabResults ?? [];
+  const reports: any[] = reportData?.myCheckInReports ?? [];
 
-  const open = async (rx: any) => {
+  const open = async (rx: { id: string; documentUrl?: string; reportUrl?: string }) => {
     setProblem(null);
     setOpening(rx.id);
     try {
-      await openAuthedFile(rx.documentUrl);
+      await openAuthedFile((rx.documentUrl ?? rx.reportUrl)!);
     } catch (err: any) {
       setProblem(err?.message ?? 'Couldn’t open that document.');
     } finally {
@@ -44,6 +46,26 @@ export default function DocumentsPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl space-y-5">
       <PageHeader title="Documents" subtitle="Your prescriptions, results and invoices." />
+
+      {reports.length > 0 && (
+        <Card>
+          <CardHeader title="Check-in reports" subtitle="After each check-in with your doctor: your weight, your dose and their note." />
+          <ul className="divide-y divide-slate-100">
+            {reports.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="w-10 h-10 rounded-xl bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="heart" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink-900">{r.weekLabel} check-in</p>
+                  <p className="text-xs text-slate-500">Reviewed {format(new Date(r.reviewedAt), 'd MMM yyyy')}</p>
+                </div>
+                <button type="button" onClick={() => open(r)} disabled={opening === r.id} className="text-xs font-semibold text-ink-600 hover:text-ink-800 border border-slate-200 rounded-lg px-3 py-1.5 disabled:opacity-50">
+                  {opening === r.id ? 'Opening…' : 'Open PDF'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card>
         <CardHeader title="Prescriptions" subtitle="Every prescription you’ve had, newest first." href="/prescription" action="Current prescription →" />

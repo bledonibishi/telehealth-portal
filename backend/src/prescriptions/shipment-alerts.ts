@@ -1,7 +1,8 @@
 const DAY_MS = 86_400_000;
 
 /** How long a supply is meant to last, and how early to start warning. Overridable per deployment. */
-export const DEFAULT_SUPPLY_CYCLE_DAYS = 30;
+// A supply is four weeks, in step with the 4-weekly check-in (see CHECK_IN_INTERVAL_DAYS).
+export const DEFAULT_SUPPLY_CYCLE_DAYS = 28;
 export const DEFAULT_ALERT_LEAD_DAYS = 5;
 /** Past this many days late, a due shipment is OVERDUE rather than just DUE. */
 export const OVERDUE_AFTER_DAYS = 3;

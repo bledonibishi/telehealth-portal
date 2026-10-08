@@ -33,3 +33,19 @@ export const CANCEL_MY_SUBSCRIPTION = gql`
     cancelMySubscription
   }
 `;
+export const MY_INVOICES = gql`
+  query MyInvoices {
+    myInvoices {
+      id
+      createdAt
+      amountCents
+      currency
+      status
+      description
+      cardBrand
+      cardLast4
+      viewUrl
+      pdfUrl
+    }
+  }
+`;
