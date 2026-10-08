@@ -55,7 +55,7 @@ const STEPS = [
   {
     num: '1',
     title: 'Complete the eligibility quiz',
-    desc: 'Answer a few simple questions about your health. Takes about 2 minutes. No account needed.',
+    desc: 'Answer a few simple questions about your health. Takes about 5 minutes. No account needed.',
   },
   {
     num: '2',
@@ -111,7 +111,7 @@ export default function HomePage() {
               </h1>
               <p className="pv-hero-sub">
                 Licensed clinicians. Prescription treatment, only if your doctor decides it is right for you.
-                Free delivery to your door. Check your eligibility in 2 minutes.
+                Free delivery to your door. Check your eligibility in about 5 minutes.
               </p>
               <div className="pv-hero-ctas">
                 <Link href="/hrt-eligibility" className="btn-primary">

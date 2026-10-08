@@ -52,6 +52,7 @@ const CONSULTATION_FRAGMENT = gql`
     declineReason
     refundStatus
     riskTag
+    decisionBlockedReason
     patient {
       id
       firstName
@@ -148,6 +149,15 @@ export const REQUEST_MORE_INFO = gql`
   ${CONSULTATION_FRAGMENT}
   mutation RequestMoreInfo($consultationId: ID!, $message: String) {
     requestMoreInfo(consultationId: $consultationId, message: $message) {
+      ...ConsultationFields
+    }
+  }
+`;
+
+export const REQUEST_ONBOARDING_REDO = gql`
+  ${CONSULTATION_FRAGMENT}
+  mutation RequestOnboardingRedo($consultationId: ID!, $step: OnboardingStepKey!, $reason: String!) {
+    requestOnboardingRedo(consultationId: $consultationId, step: $step, reason: $reason) {
       ...ConsultationFields
     }
   }

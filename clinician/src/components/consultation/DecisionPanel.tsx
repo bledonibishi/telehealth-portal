@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
 import { useRouter } from 'next/navigation';
 import {
   APPROVE_CONSULTATION,
@@ -9,13 +9,23 @@ import {
   DECLINE_CONSULTATION,
   RELEASE_CONSULTATION,
   REQUEST_MORE_INFO,
+  REQUEST_ONBOARDING_REDO,
+  GET_CONSULTATION,
 } from '@/graphql/consultations';
+import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
 import { hasAccess } from '@/lib/role';
 import { PrescriptionForm, PrescriptionSubmission } from './PrescriptionForm';
 import { Modal } from './Modal';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
-type Action = 'approve' | 'decline' | 'more_info' | null;
+type Action = 'approve' | 'decline' | 'more_info' | 'redo' | null;
+
+// The onboarding steps a clinician can send back, by the key the server uses.
+const REDO_STEPS: { key: string; label: string }[] = [
+  { key: 'ID_PHOTO', label: 'ID document & selfie' },
+  { key: 'BODY_PHOTO', label: 'Full body photos' },
+  { key: 'PRESCRIPTION_PROOF', label: 'Proof of previous prescription' },
+];
 
 const REFUND_LABEL: Record<string, { text: string; cls: string }> = {
   REFUNDED: { text: 'Subscription cancelled and payment refunded', cls: 'text-green-700' },
@@ -54,7 +64,7 @@ const DECLINE_TEMPLATES = [
 const cls = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 export function DecisionPanel({
-  consultationId, kind, status, declineReason, refundStatus, clinician, currentUserId,
+  consultationId, kind, status, declineReason, refundStatus, clinician, currentUserId, patientId, blockedReason,
 }: {
   consultationId: string;
   kind: 'HRT' | 'GLP1' | 'TRT';
@@ -63,6 +73,9 @@ export function DecisionPanel({
   refundStatus?: string | null;
   clinician?: { id: string; firstName: string; lastName: string } | null;
   currentUserId: string | null;
+  patientId: string;
+  /** Why this can't be decided yet (onboarding unfinished, identity not approved); the server enforces it too. */
+  blockedReason?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -71,6 +84,8 @@ export function DecisionPanel({
   const [template, setTemplate] = useState(DECLINE_TEMPLATES[0].key);
   const [patientMessage, setPatientMessage] = useState(DECLINE_TEMPLATES[0].message);
   const [infoMessage, setInfoMessage] = useState('');
+  const [redoStep, setRedoStep] = useState('');
+  const [redoReason, setRedoReason] = useState('');
   const [error, setError] = useState('');
 
   const reviewable = ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'].includes(status);
@@ -94,6 +109,19 @@ export function DecisionPanel({
   });
   const [decline, { loading: declining }] = useMutation(DECLINE_CONSULTATION, toQueue);
   const [requestInfo, { loading: requesting }] = useMutation(REQUEST_MORE_INFO, toQueue);
+  // The consultation page keeps open after this: the patient now has the step to redo, and approval waits for them.
+  const [requestRedo, { loading: redoing }] = useMutation(REQUEST_ONBOARDING_REDO, {
+    refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }, { query: GET_CONSULTATION, variables: { id: consultationId } }],
+    onCompleted() { setAction(null); setRedoReason(''); setError(''); },
+    onError(e: Error) { setError(e.message); },
+  });
+  const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
+  const onboarding = onboardingData?.onboardingSubmission;
+  // Which steps are part of this patient's review: ID photos only when identity isn't checked by the verification service.
+  const redoable = REDO_STEPS.filter((s) =>
+    s.key === 'ID_PHOTO' ? !onboarding?.identityViaVerifyService : s.key === 'PRESCRIPTION_PROOF' ? !!onboarding?.priorMedicationUse : true,
+  );
+  const canRedo = ['PENDING_REVIEW', 'REJECTED'].includes(onboarding?.status ?? '');
   const [claim, { loading: claiming }] = useMutation(CLAIM_CONSULTATION, { onError: (e) => setError(e.message) });
   const [release, { loading: releasing }] = useMutation(RELEASE_CONSULTATION, { onError: (e) => setError(e.message) });
 
@@ -144,6 +172,8 @@ export function DecisionPanel({
       decline({ variables: { input: { consultationId, reason, messageToPatient: patientMessage } } });
     } else if (action === 'more_info') {
       requestInfo({ variables: { consultationId, message: infoMessage } });
+    } else if (action === 'redo') {
+      requestRedo({ variables: { consultationId, step: redoStep, reason: redoReason.trim() } });
     }
   };
 
@@ -162,6 +192,7 @@ export function DecisionPanel({
           <p className="text-warn-900">{t('Waiting for the patient to reply or update their answers.')}</p>
         )}
         {status === 'SUBMITTED' && <p className="text-gray-500">{t('Not yet claimed — claim it so colleagues know you’re on it.')}</p>}
+        {blockedReason && <p className="text-warn-900">{t(blockedReason)}</p>}
         {!action && error && <p className="text-danger-500 text-sm">{error}</p>}
       </div>
 
@@ -186,6 +217,11 @@ export function DecisionPanel({
         )}
         {!blocked && (
           <>
+            {canRedo && status !== 'MORE_INFO_REQUESTED' && (
+              <button onClick={() => { setRedoStep(redoable[0]?.key ?? ''); setAction('redo'); }} className="text-sm font-medium border border-gray-300 text-gray-700 bg-white rounded-lg px-3.5 py-1.5 hover:bg-gray-50">
+                {t('Ask to redo a step')}
+              </button>
+            )}
             {status !== 'MORE_INFO_REQUESTED' && (
               <button onClick={() => setAction('more_info')} className="text-sm font-medium border border-warn-500 text-warn-900 bg-white rounded-lg px-3.5 py-1.5 hover:bg-warn-50">
                 {t('Request info')}
@@ -194,7 +230,12 @@ export function DecisionPanel({
             <button onClick={() => setAction('decline')} className="text-sm font-medium border border-danger-500 text-danger-500 bg-white rounded-lg px-3.5 py-1.5 hover:bg-danger-50">
               {t('Decline')}
             </button>
-            <button onClick={() => setAction('approve')} className="text-sm font-medium bg-green-600 text-white rounded-lg px-4 py-1.5 hover:bg-green-700 shadow-sm">
+            <button
+              onClick={() => setAction('approve')}
+              disabled={!!blockedReason}
+              title={blockedReason ? t(blockedReason) : undefined}
+              className="text-sm font-medium bg-green-600 text-white rounded-lg px-4 py-1.5 hover:bg-green-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-green-600"
+            >
               {t('Approve')}
             </button>
           </>
@@ -239,6 +280,34 @@ export function DecisionPanel({
             <div className="flex gap-2">
               <button type="submit" disabled={declining} className="bg-danger-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
                 {declining ? t('Declining…') : t('Confirm decline')}
+              </button>
+              <button type="button" onClick={close} className="text-sm text-gray-500 px-4 py-2">{t('Cancel')}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {action === 'redo' && (
+        <Modal title={t('Ask the patient to redo a step')} onClose={close}>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <fieldset className="space-y-1.5">
+              <legend className="block text-xs font-medium text-gray-700 mb-1">{t('Which step?')}</legend>
+              {redoable.map((s) => (
+                <label key={s.key} className="flex items-center gap-2 text-sm text-gray-800">
+                  <input type="radio" name="redo-step" checked={redoStep === s.key} onChange={() => setRedoStep(s.key)} />
+                  {t(s.label)}
+                </label>
+              ))}
+            </fieldset>
+            <label className="block">
+              <span className="block text-xs font-medium text-gray-700 mb-1">{t('What does the patient need to fix?')}</span>
+              <textarea rows={3} required value={redoReason} onChange={(e) => setRedoReason(e.target.value)} placeholder={t('e.g. The side photo is blurred — please retake it in good light.')} className={cls} />
+            </label>
+            <p className="text-xs text-gray-500">{t('Sent as a message. The patient sends that step in again, and you can approve once they have. You can ask about another step before they answer.')}</p>
+            <div className="flex gap-2">
+              <button type="submit" disabled={redoing || !redoStep || !redoReason.trim()} className="bg-warn-500 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
+                {redoing ? t('Sending…') : t('Send request')}
               </button>
               <button type="button" onClick={close} className="text-sm text-gray-500 px-4 py-2">{t('Cancel')}</button>
             </div>

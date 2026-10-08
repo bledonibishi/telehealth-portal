@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG } from '@/lib/config';
 import { loadAssessment } from '@/lib/storage';
+import { clearReferralCode } from '@/lib/referral';
 
 interface SuccessInfo {
   ready: boolean;
@@ -28,6 +29,11 @@ function SuccessInner() {
   const [storedEmail, setStoredEmail] = useState<string | undefined>();
 
   useEffect(() => setStoredEmail(loadAssessment()?.email), []);
+
+  // The friend's link did its job with this order; it must not attach to the next quiz started in this browser.
+  useEffect(() => {
+    if (!failed && (sessionId || paymentIntent)) clearReferralCode();
+  }, [failed, sessionId, paymentIntent]);
 
   useEffect(() => {
     if (failed || (!sessionId && !paymentIntent)) return;

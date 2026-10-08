@@ -45,6 +45,25 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Activate your account', html });
   }
 
+  /** The six-digit code that proves someone owns the address they typed into the quiz. */
+  async sendVerificationCodeEmail(to: string, code: string) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">Your verification code</h2>
+        <p style="color:#475569">Enter this code to continue your assessment:</p>
+        <p style="font-size:34px;font-weight:700;letter-spacing:8px;color:#1e293b;margin:20px 0">${code}</p>
+        <p style="color:#94a3b8;font-size:13px">It expires in 10 minutes. If you didn't ask for it, you can ignore this email.</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Verification code for ${to}: ${code}`);
+      return;
+    }
+
+    await this.resend.emails.send({ from: this.from, to, subject: `${code} is your verification code`, html });
+  }
+
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
