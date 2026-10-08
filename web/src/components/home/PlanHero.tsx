@@ -40,7 +40,8 @@ export function DoseDots({ taken, total }: { taken: number; total: number }) {
 }
 
 /** The top card: which programme the patient is on, since when and for how long, and how far through it they are. */
-export function PlanHero({ plan }: { plan: Plan }) {
+/** `detailsHref` is where "View Plan Details" goes; the My Treatment page points it at its own details card. */
+export function PlanHero({ plan, detailsHref = '/treatment-plan' }: { plan: Plan; detailsHref?: string }) {
   const total = plan.dosesPlanned ?? plan.supplyDosesTotal ?? plan.dosesTaken;
   const dotsTotal = plan.supplyDosesTotal ?? total;
   const dotsTaken = plan.supplyDosesTotal != null ? plan.supplyDosesTaken ?? 0 : plan.dosesTaken;
@@ -57,7 +58,7 @@ export function PlanHero({ plan }: { plan: Plan }) {
               <div className="flex items-center gap-2.5 text-slate-600"><Icon name="calendar" className="w-4 h-4 text-ink-800 flex-shrink-0" /><dt className="whitespace-nowrap">Started on:</dt><dd className="font-semibold text-ink-900 whitespace-nowrap">{format(new Date(plan.startedAt), 'd MMM yyyy')}</dd></div>
               {plan.durationWeeks && <div className="flex items-center gap-2.5 text-slate-600"><Icon name="clock" className="w-4 h-4 text-ink-800" /><dt>Duration:</dt><dd className="font-semibold text-ink-900">{plan.durationWeeks} weeks</dd></div>}
             </dl>
-            <Link href="/treatment-plan" className={`${btnPrimary} mt-5 whitespace-nowrap`}>View Plan Details <Icon name="arrow" className="w-4 h-4" /></Link>
+            <Link href={detailsHref} className={`${btnPrimary} mt-5 whitespace-nowrap`}>View Plan Details <Icon name="arrow" className="w-4 h-4" /></Link>
           </div>
           <div className="hidden sm:flex items-center justify-center rounded-2xl bg-white/70 border border-white h-36">
             <PenIllustration label={plan.productName} className="w-28 h-28" />

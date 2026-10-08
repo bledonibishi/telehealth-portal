@@ -9,7 +9,6 @@ import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_TREATMENT_PLAN } from '@/graphql/portal';
 import { SubscriptionStatus } from '@/components/dashboard/SubscriptionStatus';
 import { ReportSideEffectDialog } from '@/components/doses/ReportSideEffectDialog';
-import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
 import { PlanHero } from '@/components/home/PlanHero';
 import { ProgressOverview } from '@/components/home/ProgressOverview';
 import { WeightProgressCard } from '@/components/home/WeightProgressCard';
@@ -62,7 +61,6 @@ export default function DashboardPage() {
           <button type="button" onClick={() => setReporting(true)} className="text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-1.5">
             Report a side effect
           </button>
-          <ManageSubscriptionButton />
         </div>
       </div>
 

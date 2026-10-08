@@ -8,7 +8,6 @@ import { PrescriptionProofReviewService } from './prescription-proof-review.serv
 import { SaveIdentityStepInput } from './dto/save-identity-step.input';
 import { SaveBodyPhotosStepInput } from './dto/save-body-photos-step.input';
 import { SavePrescriptionProofStepInput } from './dto/save-prescription-proof-step.input';
-import { ReviewOnboardingStepInput } from './dto/review-onboarding-step.input';
 import { BodyPhotoCheckResultModel, BodyPhotoCheckSummaryModel, BodyPhotoView, PhotoFrameResultModel, SaveBodyPhotoInput } from './dto/body-photo.input';
 import { PhotoCheckService } from './photo-check.service';
 import { Authorized } from '../auth/decorators/authorized.decorator';
@@ -141,11 +140,5 @@ export class OnboardingResolver {
   @Mutation(() => OnboardingSubmissionModel)
   submitOnboarding(@CurrentUser() user: AuthUser) {
     return this.onboardingService.submit(user.id);
-  }
-
-  @Authorized(...CLINICAL_STAFF)
-  @Mutation(() => OnboardingSubmissionModel)
-  reviewOnboardingStep(@CurrentUser() user: AuthUser, @Args('input') input: ReviewOnboardingStepInput) {
-    return this.onboardingService.reviewOnboardingStep(user.id, input);
   }
 }

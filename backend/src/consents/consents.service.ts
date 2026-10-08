@@ -17,6 +17,17 @@ export class ConsentsService {
     return { type, ...CURRENT_CONSENTS[type] };
   }
 
+  /** Like record, but not again for a version they have already accepted. */
+  async recordOnce(patientId: string, type: ConsentType, version: string | undefined, meta: RequestMeta) {
+    if (version && (await this.prisma.consent.count({ where: { patientId, type, version } })) > 0) return;
+    await this.record(patientId, type, version, meta);
+  }
+
+  /** Whether the patient has accepted this consent (any version): the wording they agreed to is on the record. */
+  async hasAccepted(patientId: string, type: ConsentType): Promise<boolean> {
+    return (await this.prisma.consent.count({ where: { patientId, type } })) > 0;
+  }
+
   /** Records acceptance, refusing anything but the current wording. */
   async record(
     patientId: string,

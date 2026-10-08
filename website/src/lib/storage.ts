@@ -19,6 +19,8 @@ export interface Assessment {
   addProgesterone?: boolean;
   // Whether the buyer chose to use their referral reward (set on the review step); unset means not chosen yet.
   applyReward?: boolean;
+  // Whether the quiz's health answers were saved with this lead (they go with the quiz now; older sessions lack them).
+  intakeDone?: boolean;
 }
 
 export function loadAssessment(): Assessment | null {

@@ -46,6 +46,7 @@ export const MY_CONSULTATIONS = gql`
       id
       kind
       status
+      refundStatus
       submittedAt
       updatedAt
       prescription {
@@ -142,6 +143,18 @@ export const QUESTIONNAIRE = gql`
 export const MY_PRODUCT_KIND = gql`
   query MyProductKind {
     myProductKind
+  }
+`;
+
+export const MY_TELEHEALTH_CONSENT = gql`
+  query MyTelehealthConsent {
+    myTelehealthConsent
+  }
+`;
+
+export const ACCEPT_TELEHEALTH_CONSENT = gql`
+  mutation AcceptTelehealthConsent($version: String!) {
+    acceptTelehealthConsent(version: $version)
   }
 `;
 

@@ -45,6 +45,18 @@ export const CONSENT_TEXT = gql`
   }
 `;
 
+export const MY_TELEHEALTH_CONSENT = gql`
+  query MyTelehealthConsent {
+    myTelehealthConsent
+  }
+`;
+
+export const ACCEPT_TELEHEALTH_CONSENT = gql`
+  mutation AcceptTelehealthConsent($version: String!) {
+    acceptTelehealthConsent(version: $version)
+  }
+`;
+
 export const SUBMIT_INTAKE = gql`
   mutation SubmitIntake($input: SubmitIntakeQuizInput!) {
     submitIntakeQuiz(input: $input) {

@@ -23,17 +23,12 @@ const NAV: NavItem[] = [
   { href: '/orders', label: 'Orders', icon: 'cart' },
   { href: '/prescription', label: 'Prescriptions', icon: 'rx' },
   { href: '/documents', label: 'Documents', icon: 'folder' },
-  { href: '/profile', label: 'Profile', icon: 'user' },
-  { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
 // Only weight-management patients have a journey (the API returns null otherwise).
 const WEIGHT_HREF = '/weight-journey';
 // Only hormone-programme patients have a symptom scale (null otherwise).
 const SYMPTOMS_NAV: NavItem = { href: '/symptoms', label: 'Symptoms', icon: 'chart' };
-
-// Patients can still reach support while onboarding is incomplete.
-const ONBOARDING_EXEMPT_PATHS = ['/messages'];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -89,12 +84,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (!onboardingStatus) return;
-    if (onboardingStatus !== 'APPROVED' && !ONBOARDING_EXEMPT_PATHS.includes(pathname)) {
+    // Until onboarding is approved nothing in the portal opens, Messages included: support is the chat
+    // inside onboarding. Declined patients are held there too.
+    if (onboardingStatus !== 'APPROVED') {
       router.replace('/onboarding');
     }
   }, [onboardingStatus, pathname, router]);
 
-  const gated = !ONBOARDING_EXEMPT_PATHS.includes(pathname) && onboardingStatus !== 'APPROVED';
+  const gated = onboardingStatus !== 'APPROVED';
   if (gated) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
