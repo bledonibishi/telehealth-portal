@@ -4,9 +4,8 @@ import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { PatientProfileModel, UpdateMyProfileInput } from './models/patient-profile.model';
 
-// Same bounds as the `height_cm` question in the questionnaires.
-export const MIN_HEIGHT_CM = 120;
-export const MAX_HEIGHT_CM = 230;
+import { MAX_HEIGHT_CM, MIN_HEIGHT_CM } from './bmi';
+
 const MAX_TEXT = 500;
 const PHONE = /^[+0-9 ()-]{6,20}$/;
 

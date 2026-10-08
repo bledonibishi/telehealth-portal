@@ -42,7 +42,7 @@ describe('PatientsService.findAll', () => {
 
   it('marks a patient whose every consultation was declined as Declined, not Inactive', async () => {
     const statusOf = async (over: Partial<any>) => {
-      const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
       const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
       return result.treatmentStatus;
     };
@@ -174,6 +174,21 @@ describe('PatientsService.findAll', () => {
     it('falls back to the height they gave at intake until they set one', async () => {
       const { result } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), [{ patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', answer: '170', value: '170' }] }], 100);
       expect(result).toMatchObject({ heightCm: 170, bmi: 34.6 });
+    });
+
+    it('takes the newest intake height when there are several, and asks for them newest first', async () => {
+      const intake = [
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '172' }] }, // newest, as the query returns it
+        { patientId: 'p-other', quizAnswers: [{ questionId: 'height_cm', value: '150' }] },
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '160' }] },
+      ];
+      const { result, prisma } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), intake, 100);
+      expect(result.heightCm).toBe(172);
+      expect(prisma.consultation.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { submittedAt: 'desc' } }));
+    });
+
+    it('shows neither a height nor a BMI for a height that cannot be real', async () => {
+      expect((await run(row({ lead: { productKind: 'GLP1' }, heightCm: 17 }))).result).toMatchObject({ heightCm: null, bmi: null });
     });
 
     it('has no BMI without a height, or for a programme without a weight journey', async () => {

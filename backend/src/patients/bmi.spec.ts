@@ -1,4 +1,5 @@
-import { bmiOf } from './bmi';
+import { bmiOf, plausibleHeightCm } from './bmi';
+import * as profile from './patient-profile.service';
 
 describe('bmiOf', () => {
   it('is weight over height squared, to one decimal', () => {
@@ -17,7 +18,18 @@ describe('bmiOf', () => {
     expect(bmiOf(80, 18)).toBeNull(); // 18 cm: probably metres or feet typed as cm
     expect(bmiOf(80, 1.8)).toBeNull();
     expect(bmiOf(80, 300)).toBeNull();
+    expect(bmiOf(80, 110)).toBeNull(); // below what the questionnaire and the profile accept
+    expect(bmiOf(80, 240)).toBeNull();
+    expect(bmiOf(80, 120)).not.toBeNull();
+    expect(bmiOf(80, 230)).not.toBeNull();
     expect(bmiOf(0, 180)).toBeNull();
     expect(bmiOf(-5, 180)).toBeNull();
+  });
+
+  it('uses one height range everywhere: the profile has no limits of its own', () => {
+    expect(profile).not.toHaveProperty('MIN_HEIGHT_CM');
+    expect(plausibleHeightCm(119)).toBeNull();
+    expect(plausibleHeightCm(170)).toBe(170);
+    expect(plausibleHeightCm(null)).toBeNull();
   });
 });

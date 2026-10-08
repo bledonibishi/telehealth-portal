@@ -51,8 +51,8 @@ const BMI_OPTIONS: { value: BmiRange; label: string }[] = [
 ];
 const JOINED_OPTIONS: { value: JoinedRange; label: string }[] = [
   { value: 'ALL', label: 'Any time joined' },
-  { value: 'WEEK', label: 'Joined this week' },
-  { value: 'MONTH', label: 'Joined this month' },
+  { value: 'WEEK', label: 'Joined in the last 7 days' },
+  { value: 'MONTH', label: 'Joined in the last 30 days' },
   { value: 'QUARTER', label: 'Joined in the last 3 months' },
 ];
 const STATUS_OPTIONS = [
@@ -77,6 +77,8 @@ const PATIENT_COLUMNS: CsvColumn<any>[] = [
   { header: 'Starting weight (kg)', value: (p) => p.startingWeightKg },
   { header: 'Current weight (kg)', value: (p) => p.currentWeightKg },
   { header: 'Target weight (kg)', value: (p) => p.targetWeightKg },
+  { header: 'Height (cm)', value: (p) => p.heightCm },
+  { header: 'BMI', value: (p) => p.bmi },
   { header: 'Weight lost (kg)', value: (p) => p.weightLostKg },
   { header: 'Progress (%)', value: (p) => p.progressPercentage },
   { header: 'Last weighed', value: (p) => p.lastWeighedAt },
