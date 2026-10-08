@@ -324,13 +324,16 @@ export class CheckoutService {
     if (!raw || typeof raw !== 'object') return undefined;
     const clip = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
     const country = clip(raw.country, 2)?.toUpperCase();
-    return {
+    const shipping = {
       name: clip(raw.name, 100),
       line1: clip(raw.line1, 200),
       city: clip(raw.city, 100),
       postalCode: clip(raw.postalCode, 20),
       country: country && country.length === 2 ? country : undefined,
     };
+    // No address at all (for instance the lead's saved choices, before the delivery form is filled in) is not a
+    // delivery address: Stripe refuses a shipping block with an empty address ("Missing required param: shipping[address]").
+    return shipping.line1 || shipping.city || shipping.postalCode || shipping.country ? shipping : undefined;
   }
 
   /**

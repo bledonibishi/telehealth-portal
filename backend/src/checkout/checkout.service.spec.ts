@@ -268,6 +268,31 @@ describe('CheckoutService.createSubscriptionIntent', () => {
     };
   }
 
+  it('does not send Stripe an empty address when the delivery form has not been filled in yet', async () => {
+    // The lead's saved details hold only the buyer's choices (from an earlier load of the card form).
+    const lead = { ...LEAD, checkoutDetails: { product: 'Ozempic', dose: '0.5 mg' } };
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [] });
+    await build(prismaFor({ lead }), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+
+    const created = stripe.customers.create.mock.calls[0][0];
+    expect(created).toEqual({ email: 'buyer@b.com' });
+    expect(created).not.toHaveProperty('shipping');
+    expect(created).not.toHaveProperty('address');
+  });
+
+  it('still sends the delivery address once it has been entered', async () => {
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [] });
+    await build(prismaFor(), stripe).createSubscriptionIntent({
+      priceId: 'price_1', leadId: 'lead-1', shipping: { name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'xk' },
+    } as any);
+    expect(stripe.customers.create.mock.calls[0][0]).toMatchObject({
+      name: 'Ann Lee',
+      shipping: { name: 'Ann Lee', address: { line1: '1 Main St', city: 'Pristina', postal_code: '10000', country: 'XK' } },
+    });
+  });
+
   it('does not reuse a customer locked to another currency', async () => {
     const stripe = stripeWith([]);
     stripe.customers.list.mockResolvedValue({ data: [{ id: 'cus_usd', currency: 'usd' }] });
