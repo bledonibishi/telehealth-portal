@@ -11,6 +11,8 @@ export interface RawMeasurement {
   note?: string;
   feeling?: string;
   hasPhoto?: boolean;
+  /** Whether the patient may change or remove it themselves: their own entries, not a check-in or one their care team corrected. */
+  patientCanEdit?: boolean;
 }
 
 export interface Measurement extends RawMeasurement {

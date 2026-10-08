@@ -64,6 +64,7 @@ export const MY_WEIGHT_TIMELINE = gql`
         note
         feeling
         hasPhoto
+        patientCanEdit
       }
     }
   }
@@ -95,6 +96,7 @@ export const MY_PROGRESS_PHOTOS = gql`
       weightKg
       photoFileId
       note
+      patientCanEdit
     }
   }
 `;

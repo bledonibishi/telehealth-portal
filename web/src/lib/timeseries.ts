@@ -10,6 +10,7 @@ export interface Point {
   note?: string | null;
   feeling?: string | null;
   hasPhoto?: boolean;
+  patientCanEdit?: boolean;
 }
 
 export type View = [number, number];

@@ -23,6 +23,7 @@ const toPoint = (m: any): Point => ({
   note: m.note,
   feeling: m.feeling,
   hasPhoto: m.hasPhoto,
+  patientCanEdit: m.patientCanEdit,
 });
 const ms = (v: string | null | undefined) => (v ? Date.parse(v) : null);
 

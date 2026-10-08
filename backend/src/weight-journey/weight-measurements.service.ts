@@ -180,7 +180,12 @@ export class WeightMeasurementsService {
         });
         if (count === 0) throw new NotFoundException('That weight entry wasn’t found');
         const replacement = await tx.weightEntry.create({
-          data: { patientId, weightKg: after.weightKg, measuredAt: after.measuredAt, note: after.note, photoFileId: after.photoFileId, correctsId: entry.id },
+          data: {
+            patientId, weightKg: after.weightKg, measuredAt: after.measuredAt, note: after.note, photoFileId: after.photoFileId, correctsId: entry.id,
+            // A reading from a scale or health app stays one when only its note or photo changed. A weight or date the
+            // patient typed over it is theirs. The device's own id for the reading stays on the original, which is unique per device.
+            ...(measurementChanged ? {} : { source: entry.source, deviceConnectionId: entry.deviceConnectionId }),
+          },
         });
         await this.audit.log(
           {
@@ -190,7 +195,7 @@ export class WeightMeasurementsService {
             resourceType: 'WeightEntry',
             resourceId: entry.id,
             patientId,
-            metadata: { before, after, replacementId: replacement.id },
+            metadata: { before, after, replacementId: replacement.id, source: entry.source },
           },
           tx,
         );
@@ -315,7 +320,7 @@ export class WeightMeasurementsService {
     ]);
 
     const raw: RawMeasurement[] = [
-      ...entries.map((e) => ({ id: e.id, measuredAt: e.measuredAt, weightKg: num(e.weightKg), kind: 'DAILY' as const, note: e.note ?? undefined, hasPhoto: e.photoFileId !== null })),
+      ...entries.map((e) => ({ id: e.id, measuredAt: e.measuredAt, weightKg: num(e.weightKg), kind: 'DAILY' as const, note: e.note ?? undefined, hasPhoto: e.photoFileId !== null, patientCanEdit: e.source !== 'STAFF' })),
       ...checkIns.map((c) => ({
         id: c.id,
         measuredAt: c.completedAt!,
@@ -340,7 +345,7 @@ export class WeightMeasurementsService {
     const latest = [entryBounds._max.measuredAt, checkInBounds._max.completedAt].filter(Boolean) as Date[];
 
     return {
-      measurements: withChanges(kept, before).map((m) => ({ ...m, hasPhoto: m.hasPhoto ?? false, kind: m.kind as WeightMeasurementKind, feeling: m.feeling as CheckInFeeling | undefined })),
+      measurements: withChanges(kept, before).map((m) => ({ ...m, hasPhoto: m.hasPhoto ?? false, patientCanEdit: m.patientCanEdit ?? false, kind: m.kind as WeightMeasurementKind, feeling: m.feeling as CheckInFeeling | undefined })),
       startingWeightKg: start?.kg,
       startingAt: start?.at,
       targetWeightKg: patient.weightGoal ? num(patient.weightGoal.targetWeightKg) : undefined,
@@ -357,10 +362,10 @@ export class WeightMeasurementsService {
     const rows = await this.prisma.weightEntry.findMany({
       where: { patientId, voidedAt: null, photoFileId: { not: null } },
       orderBy: { measuredAt: 'asc' },
-      select: { id: true, measuredAt: true, weightKg: true, photoFileId: true, note: true },
+      select: { id: true, measuredAt: true, weightKg: true, photoFileId: true, note: true, source: true },
       take: 500,
     });
-    return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId!, note: r.note ?? undefined }));
+    return rows.map((r) => ({ entryId: r.id, measuredAt: r.measuredAt, weightKg: num(r.weightKg), photoFileId: r.photoFileId!, note: r.note ?? undefined, patientCanEdit: r.source !== 'STAFF' }));
   }
 
   // ── forecast ──────────────────────────────────────────────────────────────

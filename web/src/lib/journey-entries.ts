@@ -16,13 +16,13 @@ export interface JourneyEntry {
   label: string;
   category: EntryCategory;
   note: string | null;
-  /** Only the patient's own weigh-ins: not the sign-up photo or a check-in, which their doctor has reviewed. */
+  /** Only the patient's own weigh-ins: not the sign-up photo, a check-in, or an entry their care team corrected. */
   editable: boolean;
 }
 
 export interface StartPhoto { fileId: string; at: string; weightKg: number | null }
-export interface PhotoRow { entryId: string; measuredAt: string; weightKg: number; photoFileId: string; note?: string | null }
-export interface RecentWeighing { id: string; measuredAt: string; weightKg: number; kind: 'DAILY' | 'CHECK_IN'; note?: string | null; hasPhoto?: boolean }
+export interface PhotoRow { entryId: string; measuredAt: string; weightKg: number; photoFileId: string; note?: string | null; patientCanEdit?: boolean }
+export interface RecentWeighing { id: string; measuredAt: string; weightKg: number; kind: 'DAILY' | 'CHECK_IN'; note?: string | null; hasPhoto?: boolean; patientCanEdit?: boolean }
 
 const MIN_CARDS = 3;
 const day = (iso: string) => new Date(iso).toISOString().slice(0, 10);
@@ -54,7 +54,8 @@ export function buildJourneyEntries({ start, photos, recent, targetKg }: { start
       label: first ? 'Before' : week <= 0 ? 'Start' : `Week ${week}`,
       category: first ? 'before' : reached(p.weightKg) ? 'after' : 'weekly',
       note: p.note ?? null,
-      editable: true,
+      // Not an entry their care team corrected: the server refuses those, so the card does not offer it.
+      editable: p.patientCanEdit !== false,
     });
   }
 
@@ -75,7 +76,7 @@ export function buildJourneyEntries({ start, photos, recent, targetKg }: { start
         label: w.kind === 'CHECK_IN' ? 'Check-in' : week > 0 ? `Week ${week}` : 'Weigh-in',
         category: reached(w.weightKg) ? 'after' : 'weekly',
         note: w.note ?? null,
-        editable: w.kind === 'DAILY',
+        editable: w.kind === 'DAILY' && w.patientCanEdit !== false,
       });
     }
     out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));

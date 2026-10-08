@@ -292,7 +292,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
                     <p className="text-xs text-slate-500 mt-0.5"><span className="inline-block w-2 h-2 rotate-45 bg-brand-700 mr-1.5" />Check-in{fe ? ` · ${fe.emoji} ${fe.label}` : ''}</p>
                   )}
                   {p.note && <p className="text-sm text-slate-500 italic mt-1">“{p.note}”</p>}
-                  {p.kind === 'DAILY' && (
+                  {p.kind === 'DAILY' && p.patientCanEdit !== false && (
                     confirmId === p.id ? (
                       <div className="flex items-center gap-3 mt-2 text-xs">
                         <span className="text-slate-500">Remove this entry?</span>

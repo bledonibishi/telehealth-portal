@@ -134,7 +134,7 @@ export function PhotoLightbox({ photos, index, onIndex, onClose, onEdit, onDelet
               <button type="button" onClick={() => onDelete(photo)} className={`${action} border-danger-100 text-danger-500 hover:bg-danger-50 sm:ml-auto`}><Icon name="trash" className="w-4 h-4" /> Delete</button>
             </>
           )}
-          {!photo.editable && <p className="text-[11px] text-slate-400">This is the photo from your sign-up, so it can’t be changed here.</p>}
+          {!photo.editable && <p className="text-[11px] text-slate-400">{photo.kind === 'START' ? 'This is the photo from your sign-up, so it can’t be changed here.' : 'Your care team corrected this entry, so it can’t be changed here.'}</p>}
         </div>
       </div>
     </div>
