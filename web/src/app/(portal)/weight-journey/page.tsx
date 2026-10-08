@@ -10,6 +10,7 @@ import { WeightPhotoJourney } from '@/components/home/WeightPhotoJourney';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Milestones } from '@/components/weight/Milestones';
 import { BodyMeasurementsCard } from '@/components/weight/BodyMeasurementsCard';
+import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
@@ -30,6 +31,7 @@ export default function WeightJourneyPage() {
       {journey && (
         <div className="space-y-4">
           <WeightJourneyCard journey={journey} showLink={false} allowLog={false} />
+          <WeightTrendNotice />
           <Milestones journey={journey} />
           <WeightPhotoJourney journey={journey} />
           <BodyMeasurementsCard />

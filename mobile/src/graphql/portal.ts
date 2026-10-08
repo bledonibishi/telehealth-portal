@@ -412,3 +412,18 @@ export const MY_CHECK_IN_REPORTS = gql`
     }
   }
 `;
+
+export const MY_WEIGHT_TREND = gql`
+  query MyWeightTrend {
+    myWeightTrend {
+      level
+      kgPerWeek
+      changePct28Days
+      unusuallyFast
+      kgIn3Months
+      latestKg
+      previousKg
+      jumpPct
+    }
+  }
+`;

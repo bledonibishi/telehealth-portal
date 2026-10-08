@@ -984,4 +984,8 @@ export const es: Record<string, string> = {
   "Months are calendar months in UTC.": "Los meses son meses naturales en UTC.",
   "Only admins can see the monthly report.": "Solo los administradores pueden ver el informe mensual.",
   "The CSV has only the {n} entries loaded. Load more first for the rest.": "El CSV solo tiene las {n} entradas cargadas. Cargue más primero para el resto.",
+  "Weight is trending up": "El peso va en aumento",
+  "About +{pct}% over the last 4 weeks ({rate} kg a week). If it continues: about +{kg} kg in 3 months.": "Alrededor de +{pct} % en las últimas 4 semanas ({rate} kg por semana). Si continúa: unos +{kg} kg en 3 meses.",
+  "The latest weight may be a typing mistake": "El último peso puede ser un error de escritura",
+  "{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient has been asked to check it.": "{latest} kg está un {pct} % lejos del peso anterior ({previous} kg). Se ha pedido al paciente que lo revise.",
 };

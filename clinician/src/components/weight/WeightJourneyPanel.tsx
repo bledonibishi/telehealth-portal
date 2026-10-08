@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import {
-  CORRECT_CHECK_IN_WEIGHT, CORRECT_WEIGHT_ENTRY, CORRECT_WEIGHT_GOAL, GET_WEIGHT_JOURNEY, GET_WEIGHT_TIMELINE, VOID_WEIGHT_ENTRY,
+  CORRECT_CHECK_IN_WEIGHT, CORRECT_WEIGHT_ENTRY, CORRECT_WEIGHT_GOAL, GET_WEIGHT_JOURNEY, GET_WEIGHT_TIMELINE, VOID_WEIGHT_ENTRY, WEIGHT_TREND_FOR_PATIENT,
 } from '@/graphql/weight';
 import { FEELINGS, kg, kgChange as rawKgChange } from '@/lib/weight';
 import { useI18n } from '@/lib/i18n/I18nProvider';
@@ -18,6 +18,38 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-sm font-semibold text-gray-900 mt-0.5">{value}</p>
     </div>
   );
+}
+
+/**
+ * What the recent weights say, for the doctor: a sustained rise in red, a last weight that looks like a typo in amber.
+ * Nothing for any other pattern, so it only appears when something needs a look.
+ */
+function WeightTrendFlag({ patientId }: { patientId: string }) {
+  const { t } = useI18n();
+  const { data } = useQuery(WEIGHT_TREND_FOR_PATIENT, { variables: { patientId }, fetchPolicy: 'cache-and-network' });
+  const trend = data?.weightTrendForPatient;
+  if (!trend) return null;
+  if (trend.level === 'GAIN') {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
+        <p className="text-sm font-semibold text-red-700">{t('Weight is trending up')}</p>
+        <p className="text-xs text-red-700/90 mt-0.5">
+          {t('About +{pct}% over the last 4 weeks ({rate} kg a week). If it continues: about +{kg} kg in 3 months.', { pct: trend.changePct28Days, rate: trend.kgPerWeek, kg: trend.kgIn3Months })}
+        </p>
+      </div>
+    );
+  }
+  if (trend.level === 'CHECK_ENTRY') {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
+        <p className="text-sm font-semibold text-amber-800">{t('The latest weight may be a typing mistake')}</p>
+        <p className="text-xs text-amber-800/90 mt-0.5">
+          {t('{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient has been asked to check it.', { latest: trend.latestKg, pct: Math.round(trend.jumpPct), previous: trend.previousKg })}
+        </p>
+      </div>
+    );
+  }
+  return null;
 }
 
 /** A small "new value + reason" form used for both goal and check-in corrections. */
@@ -91,6 +123,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
 
   return (
     <div className="p-5 space-y-5">
+      <WeightTrendFlag patientId={patientId} />
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <Stat label="Starting" value={kg(journey.startingWeightKg)} />
         <Stat label="Current" value={kg(journey.currentWeightKg)} />
