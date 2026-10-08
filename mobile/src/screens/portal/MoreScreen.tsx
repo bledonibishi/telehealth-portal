@@ -29,6 +29,7 @@ export function MoreScreen({ navigation }: any) {
         <Card style={{ padding: 6 }}>
           <Row icon="🩺" label="My Doctor" hint="Your care team, hours and recent appointments" onPress={() => navigation.navigate('Doctor')} />
           <Row icon="📦" label="Orders & payments" hint="Deliveries, tracking, invoices" onPress={() => navigation.navigate('Orders')} />
+          <Row icon="💳" label="Stop or refund" hint="Stop future payments or ask for your money back" onPress={() => navigation.navigate('Account')} />
           <Row icon="🤒" label="Side effects" hint={glp1 ? 'Your weekly check and what you’ve reported' : 'What you’ve reported to your doctor'} onPress={() => navigation.navigate('SideEffects')} />
           {glp1 && <Row icon="📄" label="Check-in reports" hint="A PDF after each check-in" onPress={() => navigation.navigate('Reports')} />}
         </Card>

@@ -2,8 +2,9 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { CREATE_BILLING_PORTAL_SESSION, ME_BASIC_INFO, MY_INVOICES, MY_ORDERS, MY_SUPPLY_STATUS, REQUEST_REFILL } from '../../graphql/portal';
-import { Button, Card, CardTitle, Columns, Empty, ErrorText, Pill, Screen } from '../../components/ui';
+import { Button, Card, CardTitle, Columns, Empty, ErrorText, Notice, Pill, Screen } from '../../components/ui';
 import { fmtDate, money } from '../../lib/format';
+import { ORDER_POLL_MS, TRACKING_LABEL, TRACKING_PROBLEMS, expectedDelivery, shortDateTime } from '../../lib/delivery';
 import { openLink, PORTAL_URL } from '../../lib/config';
 import { colors } from '../../theme';
 
@@ -37,7 +38,7 @@ const oneLine = (a: any) => [a.addressLine1, a.addressLine2, [a.postcode, a.city
 
 /** The next supply, each delivery with where it is and where it goes, and what the patient has paid. */
 export function OrdersScreen({ navigation }: any) {
-  const { data, loading, error, refetch } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network' });
+  const { data, loading, error, refetch } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network', pollInterval: ORDER_POLL_MS });
   const { data: profile } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'cache-first' });
   const { data: supplyData } = useQuery(MY_SUPPLY_STATUS, { fetchPolicy: 'cache-and-network' });
   const { data: invoiceData, error: invoiceError } = useQuery(MY_INVOICES, { fetchPolicy: 'cache-and-network' });
@@ -46,6 +47,7 @@ export function OrdersScreen({ navigation }: any) {
   });
   const [openPortal, { loading: opening, error: portalError }] = useMutation(CREATE_BILLING_PORTAL_SESSION);
 
+  const [openActivity, setOpenActivity] = React.useState<string | null>(null);
   const orders: any[] = data?.myOrders ?? [];
   const invoices: any[] = invoiceData?.myInvoices ?? [];
   const supply = supplyData?.mySupplyStatus;
@@ -98,7 +100,7 @@ export function OrdersScreen({ navigation }: any) {
                 <View style={styles.orderHead}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.orderName}>{o.prescription?.medication} {o.prescription?.dosage}</Text>
-                    <Text style={styles.muted}>Order #{o.id.slice(-6).toUpperCase()} · {o.sequence === 1 ? 'First supply' : `Repeat ${o.sequence - 1}`} · placed {fmtDate(o.createdAt)}</Text>
+                    <Text style={styles.muted}>Order {o.reference} · {o.sequence === 1 ? 'First supply' : `Repeat ${o.sequence - 1}`} · placed {fmtDate(o.createdAt)}</Text>
                   </View>
                   <Pill label={st.label} tone={st.tone} />
                 </View>
@@ -109,8 +111,25 @@ export function OrdersScreen({ navigation }: any) {
                     {!sent && o.status === 'PENDING' && <Text style={styles.link} onPress={() => openLink(`${PORTAL_URL}/profile`)}>  Change address</Text>}
                   </Text>
                 )}
+                {(o.status === 'DISPATCHED' || o.status === 'OUT_FOR_DELIVERY') && expectedDelivery(o) && (
+                  <Text style={styles.address}>{o.status === 'OUT_FOR_DELIVERY' ? 'Out for delivery today · ' : ''}Expected <Text style={styles.bold}>{expectedDelivery(o)}</Text></Text>
+                )}
+                {o.status !== 'DELIVERED' && o.trackingEvents?.[0] && TRACKING_PROBLEMS.includes(o.trackingEvents[0].status) && (
+                  <View style={{ marginTop: 10 }}><Notice tone="warn">{TRACKING_LABEL[o.trackingEvents[0].status]}</Notice></View>
+                )}
                 {(o.carrier || o.trackingNumber) && <Text style={styles.muted}>{[o.carrier, o.trackingNumber && `Tracking: ${o.trackingNumber}`].filter(Boolean).join(' · ')}</Text>}
                 {!!o.trackingUrl && <Button small variant="soft" label="🚚 Track order" onPress={() => openLink(o.trackingUrl)} style={{ alignSelf: 'flex-start', marginTop: 10 }} />}
+                {o.trackingEvents?.length > 0 && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={styles.link} onPress={() => setOpenActivity((id) => (id === o.id ? null : o.id))}>{openActivity === o.id ? 'Hide order activity' : 'Order activity'}</Text>
+                    {openActivity === o.id && o.trackingEvents.map((e: any) => (
+                      <View key={e.id} style={{ marginTop: 8 }}>
+                        <Text style={styles.bold}>{TRACKING_LABEL[e.status] ?? e.status}</Text>
+                        <Text style={styles.muted}>{shortDateTime(e.occurredAt)}{e.location ? ` · ${e.location}` : ''}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </Card>
             );
           })}

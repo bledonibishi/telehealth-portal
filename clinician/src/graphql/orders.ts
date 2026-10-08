@@ -3,6 +3,7 @@ import { gql } from '@apollo/client';
 export const ORDER_FIELDS = gql`
   fragment OrderFields on Order {
     id
+    reference
     sequence
     status
     createdAt
@@ -11,10 +12,22 @@ export const ORDER_FIELDS = gql`
     carrier
     trackingNumber
     trackingUrl
+    estimatedDeliveryFrom
+    estimatedDeliveryTo
+    readyForPickupAt
+    trackingEvents {
+      id
+      status
+      occurredAt
+      location
+      note
+      source
+    }
     outForDeliveryAt
     deliveredAt
     cancelledAt
     cancelReason
+    cancelBillingNote
     partnerTransmission {
       status
       event
@@ -73,8 +86,8 @@ export const ORDER_FIELDS = gql`
 
 export const GET_ORDERS = gql`
   ${ORDER_FIELDS}
-  query GetOrders($status: OrderStatus) {
-    orders(status: $status) {
+  query GetOrders($status: OrderStatus, $search: String) {
+    orders(status: $status, search: $search) {
       ...OrderFields
     }
   }
@@ -91,8 +104,17 @@ export const PATIENT_ORDERS = gql`
 
 export const DISPATCH_ORDER = gql`
   ${ORDER_FIELDS}
-  mutation DispatchOrder($id: ID!, $pharmacyRef: String!) {
-    dispatchOrder(id: $id, pharmacyRef: $pharmacyRef) {
+  mutation DispatchOrder($id: ID!, $pharmacyRef: String, $carrier: String, $trackingNumber: String, $trackingUrl: String, $estimatedDeliveryFrom: DateTime, $estimatedDeliveryTo: DateTime) {
+    dispatchOrder(id: $id, pharmacyRef: $pharmacyRef, carrier: $carrier, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl, estimatedDeliveryFrom: $estimatedDeliveryFrom, estimatedDeliveryTo: $estimatedDeliveryTo) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const UPDATE_ORDER_SHIPPING = gql`
+  ${ORDER_FIELDS}
+  mutation UpdateOrderShipping($id: ID!, $carrier: String, $trackingNumber: String, $trackingUrl: String, $estimatedDeliveryFrom: DateTime, $estimatedDeliveryTo: DateTime) {
+    updateOrderShipping(id: $id, carrier: $carrier, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl, estimatedDeliveryFrom: $estimatedDeliveryFrom, estimatedDeliveryTo: $estimatedDeliveryTo) {
       ...OrderFields
     }
   }
@@ -118,8 +140,8 @@ export const MARK_ORDER_DELIVERED = gql`
 
 export const CANCEL_ORDER = gql`
   ${ORDER_FIELDS}
-  mutation CancelOrder($id: ID!, $reason: String!) {
-    cancelOrder(id: $id, reason: $reason) {
+  mutation CancelOrder($id: ID!, $reason: String!, $refund: Boolean, $endSubscription: Boolean) {
+    cancelOrder(id: $id, reason: $reason, refund: $refund, endSubscription: $endSubscription) {
       ...OrderFields
     }
   }
@@ -174,6 +196,62 @@ export const NEXT_SHIPMENT_ALERTS = gql`
       blocker
       repeatsLeft
       refillRequestedAt
+    }
+  }
+`;
+
+export const MARK_ORDER_READY_FOR_PICKUP = gql`
+  ${ORDER_FIELDS}
+  mutation MarkOrderReadyForPickup($id: ID!) {
+    markOrderReadyForPickup(id: $id) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const REPORT_ORDER_CANNOT_FULFIL = gql`
+  ${ORDER_FIELDS}
+  mutation ReportOrderCannotFulfil($id: ID!, $reason: String!) {
+    reportOrderCannotFulfil(id: $id, reason: $reason) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const MARK_ORDER_HANDED_OVER = gql`
+  ${ORDER_FIELDS}
+  mutation MarkOrderHandedOver($id: ID!) {
+    markOrderHandedOver(id: $id) {
+      ...OrderFields
+    }
+  }
+`;
+
+export const PHARMACY_STATEMENT = gql`
+  query PharmacyStatement($year: Int!, $month: Int!) {
+    pharmacyStatement(year: $year, month: $month)
+  }
+`;
+
+export const REFUND_REQUESTS = gql`
+  query RefundRequests {
+    refundRequests {
+      id
+      requestedAt
+      patientName
+      patientEmail
+      latestOrderStatus
+      latestOrderSequence
+    }
+  }
+`;
+
+export const DECIDE_REFUND_REQUEST = gql`
+  mutation DecideRefundRequest($id: ID!, $approve: Boolean!, $endSubscription: Boolean) {
+    decideRefundRequest(id: $id, approve: $approve, endSubscription: $endSubscription) {
+      id
+      status
+      outcome
     }
   }
 `;

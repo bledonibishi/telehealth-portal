@@ -299,10 +299,9 @@ describe('PartnerOrdersService', () => {
     it('is sent by email with an unmissable subject', async () => {
       const { service, email } = await cancelled({ PARTNER_ORDER_EMAIL: 'ph@x.com' }, { ...delivered, channels: ['EMAIL'] });
       await service.send(ORDER.id);
-      const [, subject, , json, filename] = email.sendPartnerOrderEmail.mock.calls[0];
+      const [, subject, , attachment] = email.sendPartnerOrderEmail.mock.calls[0];
       expect(subject).toMatch(/CANCELLED.*do not dispatch/i);
-      expect(JSON.parse(json).event).toBe('order.cancelled');
-      expect(filename).toMatch(/cancelled\.json$/);
+      expect(attachment).toBeUndefined();
     });
 
     it('is retried like an order when the partner is down, and audited', async () => {

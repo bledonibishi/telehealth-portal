@@ -33,7 +33,7 @@ async function createLead(
   visibleQs: QuizQuestion[],
   answers: Record<string, Answer>,
   data: { firstName: string; lastName: string; email: string },
-): Promise<LeadResult | null> {
+): Promise<LeadResult | 'EMAIL_TAKEN' | null> {
   const apiBase = CONFIG.API_BASE;
   if (!apiBase) return null;
 
@@ -71,6 +71,8 @@ async function createLead(
       }),
     });
     const json = await res.json();
+    // The server refuses an email that already has an account (HTTP 409 inside the GraphQL error).
+    if ((json.errors?.[0]?.extensions?.originalError?.statusCode ?? json.errors?.[0]?.extensions?.status) === 409) return 'EMAIL_TAKEN';
     if (json.errors?.length) throw new Error(json.errors[0].message);
     const lead = json.data?.createLead;
     if (!lead?.id) throw new Error('No lead ID in response');
@@ -146,6 +148,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [hydrated, setHydrated] = useState(false);
   const [calcErr, setCalcErr] = useState('');
   const [detailsErr, setDetailsErr] = useState('');
+  const [emailTaken, setEmailTaken] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // On arrival, pick up where this visitor left off (a refresh, or coming back later).
@@ -310,6 +313,12 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const submitDetails = async (firstName: string, lastName: string, email: string) => {
     setSaving(true);
     const lead = await createLead(product, visible(), st.answers, { firstName, lastName, email });
+    if (lead === 'EMAIL_TAKEN') {
+      setEmailTaken(true);
+      setDetailsErr('');
+      setSaving(false);
+      return;
+    }
     if (!lead) {
       // Without a saved lead the payment webhook can't create the patient's
       // account, so never let someone continue to pay from here.
@@ -397,6 +406,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setDetailsErr('Please enter a valid email address.'); return; }
             if (!consent) { setDetailsErr('Please tick the box to confirm and continue.'); return; }
             setDetailsErr('');
+            setEmailTaken(false);
             await submitDetails(firstName, lastName, email);
           }}
         >
@@ -418,6 +428,13 @@ export default function Quiz({ product }: { product: ProductKind }) {
             <input type="checkbox" name="consent" />
             <span>I confirm my answers are accurate, and I consent to my health information being used to assess my eligibility.</span>
           </label>
+          {emailTaken && (
+            <div className="thq-error" role="alert">
+              An account already exists for this email.{' '}
+              <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
+              {' '}instead, or use a different email address.
+            </div>
+          )}
           {detailsErr && <div className="thq-error">{detailsErr}</div>}
           <button type="submit" className="thq-next" disabled={saving}>
             {saving ? 'Saving…' : 'See my plans'}

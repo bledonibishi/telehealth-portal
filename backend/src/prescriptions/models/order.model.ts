@@ -12,20 +12,41 @@ export class DeliveryAddressModel {
   @Field({ nullable: true })
   phone?: string;
 
-  @Field()
-  addressLine1: string;
+  @Field({ nullable: true })
+  addressLine1?: string;
 
   @Field({ nullable: true })
   addressLine2?: string;
 
-  @Field()
-  city: string;
+  @Field({ nullable: true })
+  city?: string;
+
+  @Field({ nullable: true })
+  postcode?: string;
+
+  @Field({ nullable: true })
+  country?: string;
+}
+
+@ObjectType('TrackingEvent', { description: 'One step in an order’s journey, newest first on the order' })
+export class TrackingEventModel {
+  @Field(() => ID)
+  id: string;
+
+  @Field({ description: 'READY_FOR_PICKUP, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RETURNED or EXCEPTION' })
+  status: string;
 
   @Field()
-  postcode: string;
+  occurredAt: Date;
 
-  @Field()
-  country: string;
+  @Field({ nullable: true })
+  location?: string;
+
+  @Field({ nullable: true })
+  note?: string;
+
+  @Field({ description: 'MANUAL (staff pressed a button), WEBHOOK (the courier told us) or POLL (we asked the courier)' })
+  source: string;
 }
 
 @ObjectType('Order')
@@ -38,6 +59,9 @@ export class OrderModel {
 
   @Field(() => Int, { description: '1 = first supply; each repeat increments' })
   sequence: number;
+
+  @Field({ description: 'Short code that identifies the parcel: on the packing slip, quoted by the courier and shown to the patient' })
+  reference: string;
 
   @Field(() => OrderStatus)
   status: OrderStatus;
@@ -60,6 +84,18 @@ export class OrderModel {
   @Field({ nullable: true })
   trackingUrl?: string;
 
+  @Field({ nullable: true, description: 'When the pharmacy packed it and began waiting for the courier' })
+  readyForPickupAt?: Date;
+
+  @Field(() => [TrackingEventModel], { description: 'The journey so far, newest first' })
+  trackingEvents: TrackingEventModel[];
+
+  @Field({ nullable: true, description: 'Start of the courier’s expected delivery window' })
+  estimatedDeliveryFrom?: Date;
+
+  @Field({ nullable: true, description: 'End of the courier’s expected delivery window' })
+  estimatedDeliveryTo?: Date;
+
   @Field({ nullable: true })
   outForDeliveryAt?: Date;
 
@@ -71,6 +107,9 @@ export class OrderModel {
 
   @Field({ nullable: true })
   cancelReason?: string;
+
+  @Field({ nullable: true, description: 'What happened to the patient’s money when it was cancelled: refunded, subscription ended, or nothing' })
+  cancelBillingNote?: string;
 
   @Field()
   createdAt: Date;

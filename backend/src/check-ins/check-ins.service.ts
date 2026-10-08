@@ -1,10 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
+import { CheckInStatus, ConsultationKind, DoseStatus, OrderStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
@@ -19,6 +19,7 @@ const TOKEN_EXPIRY_DAYS = 14;
 export class CheckInsService {
   private readonly logger = new Logger(CheckInsService.name);
   private readonly appUrl: string;
+  private readonly isProduction: boolean;
 
   constructor(
     private prisma: PrismaService,
@@ -26,13 +27,16 @@ export class CheckInsService {
     config: ConfigService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+    this.isProduction = config.get<string>('NODE_ENV') === 'production';
   }
 
   /**
    * Keeps every patient on treatment (an active prescription) with exactly one
-   * open (not-yet-completed) check-in scheduled, spaced CHECK_IN_INTERVAL_DAYS
-   * apart from their first prescription. Runs frequently so new prescriptions
-   * and freshly-completed check-ins get their next one queued promptly.
+   * open (not-yet-completed) check-in scheduled, CHECK_IN_INTERVAL_DAYS after
+   * their first order went out (or after their last completed check-in). Nothing
+   * is scheduled until that first order has been dispatched. Runs frequently so
+   * newly-dispatched orders and freshly-completed check-ins get their next one
+   * queued promptly.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async ensureScheduled() {
@@ -40,7 +44,11 @@ export class CheckInsService {
       where: { activatedAt: { not: null }, prescriptions: { some: { status: PrescriptionStatus.ACTIVE } } },
       include: {
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
-        prescriptions: { orderBy: { issuedAt: 'asc' }, take: 1 },
+        orders: {
+          where: { dispatchedAt: { not: null }, status: { not: OrderStatus.CANCELLED } },
+          orderBy: { dispatchedAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
@@ -48,7 +56,8 @@ export class CheckInsService {
       const latest = patient.checkIns[0];
       if (latest && latest.status !== CheckInStatus.COMPLETED) continue;
 
-      const baseDate = latest?.completedAt ?? patient.prescriptions[0].issuedAt;
+      const baseDate = latest?.completedAt ?? patient.orders[0]?.dispatchedAt;
+      if (!baseDate) continue;
       const dueAt = new Date(baseDate.getTime() + CHECK_IN_INTERVAL_DAYS * 86_400_000);
 
       await this.prisma.checkIn.create({ data: { patientId: patient.id, dueAt } });
@@ -79,14 +88,18 @@ export class CheckInsService {
     }
   }
 
+  /** Dev/testing only: move a check-in's due date. A sent one is put back to scheduled so it can be sent again. */
   async reschedule(id: string, dueAt: Date) {
+    if (this.isProduction) throw new ForbiddenException('Check-ins can only be rescheduled in development');
+    if (Number.isNaN(dueAt.getTime())) throw new BadRequestException('Invalid due date');
     const checkIn = await this.prisma.checkIn.findUnique({ where: { id } });
     if (!checkIn) throw new NotFoundException('Check-in not found');
-    if (checkIn.status !== CheckInStatus.SCHEDULED) {
-      throw new BadRequestException('Only a not-yet-sent check-in can be rescheduled');
-    }
+    if (checkIn.status === CheckInStatus.COMPLETED) throw new BadRequestException('A completed check-in can’t be rescheduled');
 
-    const updated = await this.prisma.checkIn.update({ where: { id }, data: { dueAt } });
+    const updated = await this.prisma.checkIn.update({
+      where: { id },
+      data: { dueAt, status: CheckInStatus.SCHEDULED, token: null, tokenExpiresAt: null, sentAt: null },
+    });
     return this.toModel(updated);
   }
 

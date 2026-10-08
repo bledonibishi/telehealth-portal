@@ -32,13 +32,13 @@ type NotifCounts = {
 const NAV: NavItem[] = [
   { href: '/',         label: 'Dashboard',     icon: '📊', roles: ['ADMIN'] },
   { href: '/leads',    label: 'Leads',         icon: '🎯', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
-  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM', 'PROVIDER'],         badgeKey: 'patientMessages' },
+  { href: '/patients', label: 'Patients',       icon: '👥', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'],                     badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: '📋', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
   { href: '/check-ins', label: 'Check-ins',     icon: '🩺', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/appointments', label: 'Appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR'],                            badgeKey: 'urgentAppointments' },
   { href: '/labs',     label: 'Labs',           icon: '🧪', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: '📦', roles: ['ADMIN', 'PROVIDER'],                              badgeKey: 'pendingOrders' },
-  { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR', 'PROVIDER'],                    badgeKey: 'shipmentsDue' },
+  { href: '/shipments', label: 'Next shipments', icon: '🚚', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'shipmentsDue' },
   { href: '/team',     label: 'Team & Roles',   icon: '🛡️', roles: ['ADMIN'] },
   { href: '/reports',  label: 'Monthly report', icon: '📈', roles: ['ADMIN'] },
   { href: '/audit',    label: 'Audit log',      icon: '🔎', roles: ['ADMIN'] },
@@ -64,15 +64,23 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   useEffect(() => setMenuOpen(false), [pathname]);
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
-  const counts: NotifCounts = data?.notificationCounts ?? {
+  const raw: NotifCounts & { orderProblems?: number; refundRequests?: number } = data?.notificationCounts ?? {
     newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0,
   };
+  // Orders needing attention (admin only) add to the Orders badge.
+  const counts: NotifCounts = { ...raw, pendingOrders: raw.pendingOrders + (raw.orderProblems ?? 0) + (raw.refundRequests ?? 0) };
 
   useEffect(() => {
     if (!isAuthenticated()) { router.replace('/login'); return; }
     setRole(getCurrentRole());
     setAuthChecked(true);
   }, [router]);
+
+  // The pharmacy partner has one page. If it lands on another (a bookmark, a typed address), send it back:
+  // the server refuses it patient data anyway, this just spares it an error screen.
+  useEffect(() => {
+    if (role === 'PROVIDER' && !pathname.startsWith('/orders')) router.replace('/orders');
+  }, [role, pathname, router]);
 
   const handleLogout = () => { clearToken(); router.replace('/login'); };
 
@@ -142,12 +150,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             <div className="w-px h-5 bg-[color:var(--border)]" />
             <button
               onClick={handleLogout}
+              aria-label={t('Sign out')}
               className="text-sm flex items-center gap-1.5 text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M18 12H9m0 0l3-3m-3 3l3 3" />
               </svg>
-              {t('Sign out')}
+              <span className="hidden sm:inline">{t('Sign out')}</span>
             </button>
           </div>
         </header>

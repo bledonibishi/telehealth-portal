@@ -33,6 +33,7 @@ function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?:
 }
 
 describe('CheckoutService per-dose prices', () => {
+  const GLP1_LEAD = { ...LEAD, productKind: 'GLP1' };
   const MOUNJARO = {
     id: 'p1', slug: 'tirzepatide-mounjaro', name: 'Tirzepatide', brandName: 'Mounjaro', category: 'GLP1',
     strengths: [
@@ -44,7 +45,7 @@ describe('CheckoutService per-dose prices', () => {
 
   it('charges the chosen dose’s own price, whatever price the page sent', async () => {
     const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
-    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+    await build(prismaFor({ lead: GLP1_LEAD, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
       priceId: 'price_cheapest', leadId: 'lead-1', product: 'Mounjaro', dose: '7.5 mg',
     });
     expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_m75', quantity: 1 }]);
@@ -52,7 +53,7 @@ describe('CheckoutService per-dose prices', () => {
 
   it('uses the page’s plan price for a dose not priced individually', async () => {
     const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
-    await build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+    await build(prismaFor({ lead: GLP1_LEAD, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
       priceId: 'price_tier', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
     });
     expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_tier', quantity: 1 }]);
@@ -69,7 +70,7 @@ describe('CheckoutService per-dose prices', () => {
   it('refuses another treatment’s plan price for a GLP-1 dose', async () => {
     const session = { create: jest.fn() };
     await expect(
-      build(prismaFor({ products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
+      build(prismaFor({ lead: GLP1_LEAD, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({
         priceId: 'price_1', leadId: 'lead-1', product: 'Mounjaro', dose: '12.5 mg',
       }),
     ).rejects.toThrow(BadRequestException);
@@ -91,6 +92,60 @@ describe('CheckoutService per-dose prices', () => {
     const lead = { ...LEAD, productKind: 'GLP1', quizAnswers: [{ questionId: 'preferred_treatment', answer: 'Mounjaro 7.5 mg' }] };
     await build(prismaFor({ lead, products: [MOUNJARO] }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' });
     expect(session.create.mock.calls[0][0].line_items).toEqual([{ price: 'price_m75', quantity: 1 }]);
+  });
+});
+
+describe('CheckoutService HRT and TRT dose prices', () => {
+  const HRT_PRODUCTS = [
+    { id: 'e1', slug: 'estradiol-patch-evorel', name: 'Estradiol patch', brandName: 'Evorel', category: 'ESTROGEN', strengths: [{ id: 'e1s', label: '50 micrograms/24 h', titrationStep: null, stripePriceId: 'price_evorel' }] },
+    { id: 'e2', slug: 'estradiol-gel-oestrogel', name: 'Estradiol gel 0.06%', brandName: 'Oestrogel', category: 'ESTROGEN', strengths: [{ id: 'e2s', label: '0.75 mg per pump', titrationStep: null, stripePriceId: null }] },
+    { id: 't1', slug: 'testosterone-gel-tostran', name: 'Testosterone gel 2%', brandName: 'Tostran', category: 'TESTOSTERONE', strengths: [{ id: 't1s', label: '20 mg (2 pumps)', titrationStep: null, stripePriceId: 'price_tostran' }] },
+  ];
+  const withProgesterone = (prisma: any, price: string | null = 'price_utro') => {
+    prisma.product.findFirst = jest.fn().mockResolvedValue(price ? { strengths: [{ stripePriceId: price }] } : null);
+    return prisma;
+  };
+  const lines = async (prisma: any, input: any) => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'u' }) };
+    await build(prisma, { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', ...input });
+    return session.create.mock.calls[0][0].line_items;
+  };
+
+  it('charges an HRT dose at its own price', async () => {
+    expect(await lines(prismaFor({ products: HRT_PRODUCTS }), { product: 'Evorel', dose: '50 micrograms/24 h' })).toEqual([{ price: 'price_evorel', quantity: 1 }]);
+  });
+
+  it('adds the progesterone price as a second line when it is ticked', async () => {
+    const prisma = withProgesterone(prismaFor({ products: HRT_PRODUCTS }));
+    expect(await lines(prisma, { product: 'Evorel', dose: '50 micrograms/24 h', addProgesterone: true })).toEqual([
+      { price: 'price_evorel', quantity: 1 },
+      { price: 'price_utro', quantity: 1 },
+    ]);
+  });
+
+  it('falls back to the plan price when the progesterone has no price of its own', async () => {
+    const prisma = withProgesterone(prismaFor({ products: HRT_PRODUCTS }), null);
+    expect(await lines(prisma, { product: 'Evorel', dose: '50 micrograms/24 h', addProgesterone: true })).toEqual([{ price: 'price_1', quantity: 1 }]);
+  });
+
+  it('falls back to the plan price for an HRT dose with no price of its own', async () => {
+    expect(await lines(prismaFor({ products: HRT_PRODUCTS }), { product: 'Oestrogel', dose: '0.75 mg per pump' })).toEqual([{ price: 'price_1', quantity: 1 }]);
+  });
+
+  it('charges a TRT dose at its own price', async () => {
+    const lead = { ...LEAD, productKind: 'TRT' };
+    expect(await lines(prismaFor({ lead, products: HRT_PRODUCTS }), { product: 'Tostran', dose: '20 mg (2 pumps)' })).toEqual([{ price: 'price_tostran', quantity: 1 }]);
+  });
+
+  it('does not let one programme’s cheap dose pay for another’s', async () => {
+    const lead = { ...LEAD, productKind: 'TRT' };
+    const session = { create: jest.fn() };
+    await expect(
+      build(prismaFor({ lead, products: HRT_PRODUCTS }), { checkout: { sessions: session } }).createHostedSession({
+        priceId: 'price_1', leadId: 'lead-1', product: 'Evorel', dose: '50 micrograms/24 h',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(session.create).not.toHaveBeenCalled();
   });
 });
 
@@ -130,7 +185,12 @@ describe('CheckoutService.createHostedSession', () => {
   });
 
   it('attaches the referral coupon (and drops promo codes) when the reward is applied', async () => {
-    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', applyReward: true });
+    const withCoupon = {
+      ...stripe,
+      prices: { retrieve: jest.fn().mockResolvedValue({ currency: 'eur' }) },
+      coupons: { retrieve: jest.fn().mockResolvedValue({ amount_off: 2000, currency: 'eur' }) },
+    };
+    await build(prismaFor({ referral: { status: 'PENDING' } }), withCoupon).createHostedSession({ priceId: 'price_1', leadId: 'lead-1', applyReward: true });
 
     const args = session.create.mock.calls[0][0];
     expect(args.discounts).toEqual([{ coupon: 'coupon_ref' }]);
@@ -178,7 +238,8 @@ describe('CheckoutService.createSubscriptionIntent', () => {
   const invoice = { amount_due: 14900, currency: 'gbp', total_discount_amounts: [], payment_intent: { client_secret: 'pi_secret' } };
   function stripeWith(incomplete: any[]) {
     return {
-      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn().mockResolvedValue({}) },
+      prices: { retrieve: jest.fn().mockResolvedValue({ currency: 'gbp' }) },
+      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn().mockResolvedValue({}), create: jest.fn().mockResolvedValue({ id: 'cus_new' }) },
       subscriptions: {
         list: jest.fn().mockResolvedValue({ data: incomplete }),
         cancel: jest.fn().mockResolvedValue({}),
@@ -186,6 +247,24 @@ describe('CheckoutService.createSubscriptionIntent', () => {
       },
     };
   }
+
+  it('does not reuse a customer locked to another currency', async () => {
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [{ id: 'cus_usd', currency: 'usd' }] });
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+
+    expect(stripe.customers.create).toHaveBeenCalledWith(expect.objectContaining({ email: 'buyer@b.com' }));
+    expect(stripe.subscriptions.create).toHaveBeenCalledWith(expect.objectContaining({ customer: 'cus_new' }));
+  });
+
+  it('reuses a customer in the same currency', async () => {
+    const stripe = stripeWith([]);
+    stripe.customers.list.mockResolvedValue({ data: [{ id: 'cus_usd', currency: 'usd' }, { id: 'cus_gbp', currency: 'gbp' }] });
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+
+    expect(stripe.customers.create).not.toHaveBeenCalled();
+    expect(stripe.subscriptions.create).toHaveBeenCalledWith(expect.objectContaining({ customer: 'cus_gbp' }));
+  });
 
   it("acts on the lead's email and cancels only this lead's own unpaid subscriptions", async () => {
     const stripe = stripeWith([
@@ -195,7 +274,7 @@ describe('CheckoutService.createSubscriptionIntent', () => {
     ]);
     await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', email: 'victim@x.com' } as any);
 
-    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 1 });
+    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 10 });
     expect(stripe.subscriptions.cancel).toHaveBeenCalledTimes(1);
     expect(stripe.subscriptions.cancel).toHaveBeenCalledWith('sub_mine');
     expect(stripe.subscriptions.create.mock.calls[0][0].metadata.leadId).toBe('lead-1');
@@ -219,7 +298,7 @@ describe('CheckoutService.saveShipping', () => {
     });
 
     expect(prisma.lead.update.mock.calls[0][0].data.checkoutDetails).toEqual({ name: 'Ann Lee', line1: '1 Main St', city: 'Pristina', postalCode: '10000', country: 'XK' });
-    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 1 });
+    expect(stripe.customers.list).toHaveBeenCalledWith({ email: 'buyer@b.com', limit: 10 });
     expect(stripe.customers.update).toHaveBeenCalledWith('cus_1', expect.objectContaining({ name: 'Ann Lee' }));
   });
 
@@ -283,5 +362,72 @@ describe('CheckoutService.successInfo', () => {
 
   it('requires an id', async () => {
     await expect(build(prismaWith(null), {}).successInfo({})).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('CheckoutService referral coupon currency', () => {
+  const invoice = { amount_due: 4500, currency: 'eur', total_discount_amounts: [{ amount: 2000 }], payment_intent: { client_secret: 'pi_secret' } };
+  function stripeWith(coupon: any) {
+    return {
+      prices: { retrieve: jest.fn().mockResolvedValue({ currency: 'eur' }) },
+      coupons: { retrieve: jest.fn().mockResolvedValue(coupon) },
+      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn(), create: jest.fn() },
+      subscriptions: { list: jest.fn().mockResolvedValue({ data: [] }), cancel: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'sub_1', latest_invoice: invoice }) },
+    };
+  }
+  const run = (stripe: any) =>
+    build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', applyReward: true } as any);
+
+  it('refuses a fixed-amount coupon in another currency, with a clear message', async () => {
+    const stripe = stripeWith({ amount_off: 2000, currency: 'usd' });
+    await expect(run(stripe)).rejects.toThrow(/referral reward can’t be applied/);
+    expect(stripe.subscriptions.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts a coupon that lists the order currency', async () => {
+    await run(stripeWith({ amount_off: 2000, currency: 'usd', currency_options: { eur: { amount_off: 1800 } } }));
+  });
+
+  it('accepts a percentage coupon in any currency', async () => {
+    await run(stripeWith({ amount_off: null, percent_off: 20, currency: null }));
+  });
+});
+
+describe('CheckoutService referral coupon per currency', () => {
+  const invoice = { amount_due: 4500, currency: 'eur', total_discount_amounts: [{ amount: 2000 }], payment_intent: { client_secret: 'pi_secret' } };
+  function stripeWith() {
+    return {
+      prices: { retrieve: jest.fn().mockResolvedValue({ currency: 'eur' }) },
+      coupons: { retrieve: jest.fn().mockResolvedValue({ amount_off: 2000, currency: 'eur' }) },
+      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn(), create: jest.fn() },
+      subscriptions: { list: jest.fn().mockResolvedValue({ data: [] }), cancel: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'sub_1', latest_invoice: invoice }) },
+    };
+  }
+  const withSettings = (extra: Record<string, string>) => {
+    const original = config.get.getMockImplementation()!;
+    config.get.mockImplementation((key: string, def?: any) => extra[key] ?? original(key, def));
+    return () => config.get.mockImplementation(original);
+  };
+
+  it('uses the coupon for the order’s currency when one is set', async () => {
+    const restore = withSettings({ STRIPE_REFERRAL_FRIEND_COUPON_ID_EUR: 'coupon_eur' });
+    const stripe = stripeWith();
+    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', applyReward: true } as any);
+    restore();
+    expect(stripe.subscriptions.create).toHaveBeenCalledWith(expect.objectContaining({ discounts: [{ coupon: 'coupon_eur' }] }));
+  });
+
+  it('falls back to the single coupon id when there is none for that currency', async () => {
+    const stripe = stripeWith();
+    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', applyReward: true } as any);
+    expect(stripe.subscriptions.create).toHaveBeenCalledWith(expect.objectContaining({ discounts: [{ coupon: 'coupon_ref' }] }));
+  });
+
+  it('describes the offer from the euro coupon', async () => {
+    const restore = withSettings({ STRIPE_REFERRAL_FRIEND_COUPON_ID_EUR: 'coupon_eur' });
+    const stripe = stripeWith();
+    await build(prismaFor({ referral: { status: 'PENDING' } }), stripe).rewardsFor('lead-1');
+    restore();
+    expect(stripe.coupons.retrieve).toHaveBeenCalledWith('coupon_eur');
   });
 });

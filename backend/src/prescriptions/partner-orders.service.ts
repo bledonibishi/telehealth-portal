@@ -10,7 +10,7 @@ import {
   buildCancelPayload,
   buildPartnerPayload,
   partnerCancelEmailSummary,
-  partnerEmailSummary,
+  partnerPingSummary,
   signPartnerBody,
   type PartnerCancelPayload,
   type PartnerMessage,
@@ -414,10 +414,12 @@ export class PartnerOrdersService {
   }
 
   private async sendEmail(message: PartnerMessage) {
+    // Email carries a ping only (no patient details, no attachment); the webhook is the channel for the full order.
     const { subject, html } =
-      message.event === CANCELLED ? partnerCancelEmailSummary(message) : partnerEmailSummary(message);
-    const filename = message.event === CANCELLED ? `${message.reference}-cancelled.json` : `${message.reference}.json`;
-    const delivered = await this.email.sendPartnerOrderEmail(this.emailRecipients, subject, html, JSON.stringify(message, null, 2), filename);
+      message.event === CANCELLED
+        ? partnerCancelEmailSummary(message)
+        : partnerPingSummary({ reference: message.reference, requiresColdChain: message.prescription.requiresColdChain }, this.config.get<string>('CLINICIAN_APP_URL')?.trim());
+    const delivered = await this.email.sendPartnerOrderEmail(this.emailRecipients, subject, html);
     if (!delivered) throw new Error('Email provider is not configured');
   }
 }

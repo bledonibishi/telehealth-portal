@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { useQuery } from '@apollo/client';
 import { MY_ORDERS } from '@/graphql/orders';
+import { ORDER_POLL_MS, expectedDelivery } from '@/lib/delivery';
 import { Card, CardHeader, btnPrimary, btnOutline } from '@/components/portal/Card';
 import { Icon } from '@/components/portal/Icon';
 import { useRefill } from '@/lib/useRefill';
@@ -10,7 +11,7 @@ import { OrderTracker, ORDER_STATUS } from './OrderTracker';
 
 /** The latest order with its tracker, and when the next one should be placed. */
 export function RecentOrders() {
-  const { data } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network' });
+  const { data } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network', pollInterval: ORDER_POLL_MS });
   const refill = useRefill();
   const supply = refill.status;
   const order = (data?.myOrders ?? []).find((o: any) => o.status !== 'CANCELLED');
@@ -29,13 +30,16 @@ export function RecentOrders() {
             </div>
             <span className={`flex-shrink-0 text-xs font-semibold rounded-full px-2.5 py-1 ${ORDER_STATUS[order.status]?.cls}`}>{ORDER_STATUS[order.status]?.label}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-3">Order #{order.id.slice(-6).toUpperCase()}</p>
+          <p className="text-xs text-slate-500 mt-3">Order {order.reference}</p>
           <p className="text-xs text-slate-500">Placed: {format(new Date(order.createdAt), 'd MMM yyyy')}</p>
           <div className="mt-4"><OrderTracker order={order} /></div>
+          {(order.status === 'DISPATCHED' || order.status === 'OUT_FOR_DELIVERY') && expectedDelivery(order) && (
+            <p className="text-xs text-ink-900 mt-3">Expected <b>{expectedDelivery(order)}</b></p>
+          )}
           {order.trackingUrl ? (
             <a href={order.trackingUrl} target="_blank" rel="noreferrer" className={`${btnPrimary} w-full mt-4`}><Icon name="truck" className="w-4 h-4" /> Track Order</a>
           ) : (
-            <p className="text-[11px] text-slate-400 mt-4 text-center">A tracking link appears here once the courier has it.</p>
+            <p className="text-[11px] text-slate-400 mt-4 text-center">The pharmacy adds the tracking link once your order has shipped.</p>
           )}
         </div>
       ) : (

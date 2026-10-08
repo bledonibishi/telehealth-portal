@@ -24,6 +24,8 @@ import { SideEffectsScreen } from '../screens/portal/SideEffectsScreen';
 import { ReportsScreen } from '../screens/portal/ReportsScreen';
 import { MY_PRODUCT_KIND } from '../graphql/portal';
 import { colors } from '../theme';
+import { AccountScreen } from '../screens/account/AccountScreen';
+import { listenForNoticeTaps, registerForPush } from '../lib/push';
 import { navigationRef } from './navigationRef';
 
 const Stack = createNativeStackNavigator();
@@ -39,6 +41,7 @@ function MoreFlow() {
       <MoreStack.Screen name="MoreHome" component={MoreScreen} options={{ headerShown: false }} />
       <MoreStack.Screen name="Doctor" component={DoctorScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Orders" component={OrdersScreen} options={{ title: '' }} />
+      <MoreStack.Screen name="Account" component={AccountScreen} options={{ title: '' }} />
       <MoreStack.Screen name="SideEffects" component={SideEffectsScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: '' }} />
       <MoreStack.Screen name="NewConsultation" component={IntakeQuizScreen} options={{ title: 'New consultation' }} />
@@ -51,6 +54,11 @@ const icon = (glyph: string) => ({ focused }: { focused: boolean }) => <Text sty
 // The weight journey is for the weight programme and the injection calendar is for injected medicines,
 // so each tab appears only for the patient it belongs to.
 function PatientTabs() {
+  // Once the patient is in the app: ask to send notices, and open the right screen when one is tapped.
+  React.useEffect(() => {
+    registerForPush();
+    return listenForNoticeTaps();
+  }, []);
   const { data } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-and-network' });
   const kind: string | null | undefined = data?.myProductKind;
   return (

@@ -7,7 +7,7 @@ import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { ReviewCheckInInput } from './dto/review-check-in.input';
 import { CheckInReviewService } from './check-in-review.service';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @Resolver(() => CheckInModel)
@@ -31,7 +31,7 @@ export class CheckInsResolver {
     return this.review.queue();
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('CheckIn')
   @Query(() => CheckInModel)
   checkIn(@Args('id', { type: () => ID }) id: string) {
@@ -57,8 +57,8 @@ export class CheckInsResolver {
     return this.checkInsService.submit(token, input);
   }
 
-  @Authorized(...STAFF)
-  @Mutation(() => CheckInModel, { description: 'Clinician-only: move a not-yet-sent check-in’s due date, mainly for testing.' })
+  @Authorized(...CLINICAL_STAFF)
+  @Mutation(() => CheckInModel, { description: 'Clinician-only, development only: move a check-in’s due date (a sent one is reset to scheduled) for testing.' })
   rescheduleCheckIn(
     @Args('id', { type: () => ID }) id: string,
     @Args('dueAt') dueAt: Date,

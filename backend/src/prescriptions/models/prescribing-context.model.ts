@@ -7,6 +7,18 @@ export class PrescribingContextModel {
   @Field({ nullable: true, description: 'The treatment chosen and paid for at checkout, e.g. "Mounjaro 7.5 mg"' })
   orderedTreatment?: string;
 
+  @Field({ nullable: true, description: 'The catalog product the paid-for treatment matches, to pre-select it' })
+  orderedProductId?: string;
+
+  @Field({ nullable: true, description: 'The catalog strength the paid-for treatment matches, to pre-select it' })
+  orderedStrengthId?: string;
+
+  @Field({ nullable: true, description: 'HRT: the progesterone product to add alongside, when the order included it' })
+  orderedProgesteroneProductId?: string;
+
+  @Field({ nullable: true, description: 'HRT: the progesterone strength to add alongside, when the order included it' })
+  orderedProgesteroneStrengthId?: string;
+
   @Field({ nullable: true, description: 'Whether the patient says they have used the medicine before' })
   priorMedicationUse?: boolean;
 

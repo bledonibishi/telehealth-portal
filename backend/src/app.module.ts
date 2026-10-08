@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
+import { providerFieldGuard } from './auth/provider-field-guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
@@ -18,6 +19,8 @@ import { MessagingModule } from './messaging/messaging.module';
 import { LeadsModule } from './leads/leads.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { StripeModule } from './stripe/stripe.module';
+import { PushModule } from './push/push.module';
+import { CouriersModule } from './couriers/couriers.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -52,6 +55,8 @@ import { InsightsModule } from './insights/insights.module';
       // in-memory only, which is all a running deployment needs.
       autoSchemaFile: process.env.VERCEL ? true : join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
+      // Narrows what the pharmacy partner can read through the records an order links to (see the guard).
+      buildSchemaOptions: { fieldMiddleware: [providerFieldGuard] },
       // graphql-ws needs a persistent connection a serverless function
       // can't hold open. Subscriptions are local-dev only until this runs
       // somewhere with a long-lived process.
@@ -75,6 +80,8 @@ import { InsightsModule } from './insights/insights.module';
     LeadsModule,
     ReferralsModule,
     StripeModule,
+    PushModule,
+    CouriersModule,
     CheckoutModule,
     EmailModule,
     NotificationsModule,

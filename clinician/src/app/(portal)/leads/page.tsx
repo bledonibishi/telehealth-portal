@@ -69,7 +69,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Search */}
-      <div className="px-6 py-3 bg-white border-b border-gray-100">
+      <div className="px-4 sm:px-6 py-3 bg-white border-b border-gray-100">
         <input
           type="text"
           placeholder={t('Search by name or email…')}
@@ -86,28 +86,28 @@ export default function LeadsPage() {
       <table className="w-full text-sm min-w-[640px]">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">
-            <th className="px-6 py-3">{t('Name')}</th>
-            <th className="px-6 py-3">{t('Email')}</th>
-            <th className="px-6 py-3">{t('Product')}</th>
-            <th className="px-6 py-3">{t('Status')}</th>
-            <th className="px-6 py-3">{t('Submitted')}</th>
-            <th className="px-6 py-3"></th>
+            <th className="px-4 sm:px-6 py-3">{t('Name')}</th>
+            <th className="px-4 sm:px-6 py-3">{t('Email')}</th>
+            <th className="px-4 sm:px-6 py-3">{t('Product')}</th>
+            <th className="px-4 sm:px-6 py-3">{t('Status')}</th>
+            <th className="px-4 sm:px-6 py-3">{t('Submitted')}</th>
+            <th className="px-4 sm:px-6 py-3"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {leads.map((lead: any) => (
             <>
               <tr key={lead.id} className="hover:bg-gray-50">
-                <td className="px-6 py-3 font-medium text-gray-900">
+                <td className="px-4 sm:px-6 py-3 font-medium text-gray-900">
                   {lead.firstName} {lead.lastName}
                 </td>
-                <td className="px-6 py-3 text-gray-500">{lead.email}</td>
-                <td className="px-6 py-3">
+                <td className="px-4 sm:px-6 py-3 text-gray-500">{lead.email}</td>
+                <td className="px-4 sm:px-6 py-3">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${KIND_BADGE[lead.productKind] ?? 'bg-gray-100 text-gray-600'}`}>
                     {lead.productKind}
                   </span>
                 </td>
-                <td className="px-6 py-3">
+                <td className="px-4 sm:px-6 py-3">
                   {lead.convertedAt ? (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">
                       ✓ {t('Patient')}
@@ -118,10 +118,10 @@ export default function LeadsPage() {
                     </span>
                   )}
                 </td>
-                <td className="px-6 py-3 text-gray-400 text-xs whitespace-nowrap">
+                <td className="px-4 sm:px-6 py-3 text-gray-400 text-xs whitespace-nowrap">
                   {timeAgo(lead.createdAt)}
                 </td>
-                <td className="px-6 py-3 text-right">
+                <td className="px-4 sm:px-6 py-3 text-right">
                   <button
                     onClick={() => setExpanded(expanded === lead.id ? null : lead.id)}
                     className="text-xs text-brand-500 hover:text-brand-900"
@@ -134,7 +134,7 @@ export default function LeadsPage() {
               {/* Expandable quiz summary */}
               {expanded === lead.id && (
                 <tr key={`${lead.id}-quiz`}>
-                  <td colSpan={6} className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+                  <td colSpan={6} className="px-4 sm:px-6 py-4 bg-gray-50 border-b border-gray-100">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                       {t('Quiz summary')} — {lead.productKind}
                     </p>

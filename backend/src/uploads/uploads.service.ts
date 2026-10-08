@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'crypt
 import { basename } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadKind } from '@prisma/client';
-import { accessRoleOf, AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { accessRoleOf, AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
 import { FILE_STORAGE, FileStorage } from './file-storage';
 
 // Encrypted files start with this marker, then the IV and auth tag. Files
@@ -27,7 +27,7 @@ const BODY_PHOTO_KINDS: UploadKind[] = [UploadKind.BODY_PHOTO_FRONT, UploadKind.
 export function staffMayView(kind: UploadKind, user: Pick<AuthUser, 'role' | 'clinicianRole'>): boolean {
   const role = accessRoleOf(user);
   if (!role || role === 'PATIENT') return false;
-  return (BODY_PHOTO_KINDS.includes(kind) ? PRESCRIBERS : STAFF).includes(role);
+  return (BODY_PHOTO_KINDS.includes(kind) ? PRESCRIBERS : CLINICAL_STAFF).includes(role);
 }
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];

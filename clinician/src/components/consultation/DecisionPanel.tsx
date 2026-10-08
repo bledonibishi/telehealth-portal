@@ -122,7 +122,7 @@ export function DecisionPanel({
 
   if (!reviewable) {
     return (
-      <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-200 text-sm text-gray-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 text-sm text-gray-500 flex flex-wrap items-center gap-x-4 gap-y-1">
         <p>{t('This consultation has been {status}.', { status: t(status.replace(/_/g, ' ')).toLowerCase() })}</p>
         {declineReason && <p>{t('Reason:')} <span className="text-gray-700">{declineReason}</span></p>}
         {refundStatus && REFUND_LABEL[refundStatus] && (
@@ -150,7 +150,7 @@ export function DecisionPanel({
   const close = () => { setAction(null); setError(''); };
 
   return (
-    <div className="px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+    <div className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
       <div className="text-xs min-w-0">
         {claimedByMe && <p className="text-gray-500">{t('You’re reviewing this consultation.')}</p>}
         {claimedByOther && (
@@ -203,10 +203,10 @@ export function DecisionPanel({
 
       {action === 'approve' && (
         <Modal title={t('Approve and prescribe')} subtitle={t('Issues the prescription and sends it to the pharmacy queue.')} onClose={close} wide>
-          {error && <p className="text-sm text-danger-500 mb-3">{error}</p>}
           <PrescriptionForm
             consultationId={consultationId}
             kind={kind}
+            error={error}
             showDoseContext
             submitting={approving}
             onCancel={close}

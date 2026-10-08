@@ -15,15 +15,18 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { EmailModule } from '../email/email.module';
+import { StripeModule } from '../stripe/stripe.module';
+import { PushModule } from '../push/push.module';
 import { DosingModule } from '../dosing/dosing.module';
 import { PrescriptionFieldsResolver } from './prescription-fields.resolver';
+import { OrderFieldsResolver } from './order-fields.resolver';
 import { PrescriptionDocumentService } from './prescription-document.service';
 import { PrescriptionDocumentController } from './prescription-document.controller';
 
 @Module({
-  imports: [PrismaModule, AuditModule, MessagingModule, EmailModule, DosingModule, LabsModule],
+  imports: [PrismaModule, AuditModule, MessagingModule, EmailModule, DosingModule, LabsModule, StripeModule, PushModule],
   controllers: [PrescriptionDocumentController, PartnerOrdersCronController],
-  providers: [PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService, RefillService, RefillResolver, TreatmentPlanService],
+  providers: [PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, OrderFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService, RefillService, RefillResolver, TreatmentPlanService],
   exports: [PrescriptionsService, PrescribingService, OrdersService, PartnerOrdersService, ShipmentsService],
 })
 export class PrescriptionsModule {}

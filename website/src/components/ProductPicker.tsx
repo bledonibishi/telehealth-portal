@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { PROGESTERONE_NOTE, planKeyFor, productsFor, type StoreProduct } from '@/lib/catalog';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
-import { useDosePrice } from '@/lib/dose-prices';
+import { useTreatmentPrice } from '@/lib/dose-prices';
 
 function ProductCard({ product, preselected }: { product: StoreProduct; preselected: boolean }) {
   const router = useRouter();
@@ -15,8 +15,9 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
   const dose = product.doses[doseIdx];
   const planKey = planKeyFor(product, dose, progesterone);
   const plan = CONFIG.PLANS[planKey];
-  // A dose priced on its own shows (and is charged) its own price; others use their plan's.
-  const dosePrice = useDosePrice(product.brand, dose.label);
+  // Each dose is charged at its own price, plus the progesterone's when that is ticked; anything
+  // without a price of its own is charged at its plan's.
+  const dosePrice = useTreatmentPrice(product.brand, dose.label, progesterone);
   const price = dosePrice ?? plan.price;
   // A dose with no price of its own, and a plan with no display price or no Stripe price configured, can't be ordered yet.
   const available = !!dosePrice || (/\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE'));
@@ -30,7 +31,7 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
       dose: dose.label,
       addProgesterone: progesterone,
     });
-    router.push('/checkout?plan=' + encodeURIComponent(planKey));
+    router.push('/review?plan=' + encodeURIComponent(planKey));
   };
 
   return (
@@ -88,7 +89,7 @@ function ProductCard({ product, preselected }: { product: StoreProduct; preselec
                 'Coming soon'
               )}
             </div>
-            <div className="th-prod-tier">{dosePrice ? `${product.brand} ${dose.label}` : plan.name}</div>
+            <div className="th-prod-tier">{dosePrice ? `${product.brand} ${dose.label}${progesterone ? ' + progesterone' : ''}` : plan.name}</div>
           </div>
           <button type="button" className="th-prod-cta" onClick={handleContinue} disabled={!available} style={available ? undefined : { opacity: 0.45, cursor: 'not-allowed' }}>
             {available ? 'Continue →' : 'Unavailable'}

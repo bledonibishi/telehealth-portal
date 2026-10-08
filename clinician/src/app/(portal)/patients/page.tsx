@@ -264,7 +264,7 @@ function Patients() {
   return (
     <div ref={rootRef} className="relative h-full overflow-hidden bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
       {/* List */}
-      <div className={`${selectedId ? 'hidden' : 'flex'} h-full flex-col gap-4 p-5`}>
+      <div className={`${selectedId ? 'hidden' : 'flex'} h-full flex-col gap-4 p-3 sm:p-5`}>
         <div className="flex items-center justify-between shrink-0">
           <div>
             <h1 className="text-2xl font-bold tracking-wide text-[color:var(--t-strong)] uppercase">{t('Doctor’s patient dashboard')}</h1>
@@ -297,7 +297,7 @@ function Patients() {
             placeholder={t('Search by name or email…')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-64 border border-[color:var(--border)] rounded-lg px-3 py-1.5 text-sm bg-[color:var(--bg-card)] text-[color:var(--t-strong)] placeholder:text-[color:var(--t-dim)] focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="w-full sm:w-64 border border-[color:var(--border)] rounded-lg px-3 py-1.5 text-sm bg-[color:var(--bg-card)] text-[color:var(--t-strong)] placeholder:text-[color:var(--t-dim)] focus:outline-none focus:ring-2 focus:ring-sky-500"
           />
           <select value={programme} onChange={(e) => setProgramme(e.target.value)} className={selectCls}>
             {PROGRAMME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}

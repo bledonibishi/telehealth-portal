@@ -8,6 +8,7 @@ import { CHANGE_MY_PASSWORD } from '@/graphql/portal';
 import { clearToken } from '@/lib/auth';
 import { CONTACT, EMERGENCY_NUMBER, telHref } from '@/lib/contact';
 import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
+import { StopOrRefundCard } from '@/components/billing/StopOrRefundCard';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
@@ -74,6 +75,11 @@ export default function SettingsPage() {
       <Card>
         <CardHeader title="Subscription & billing" subtitle="Update your card, see invoices, pause or cancel." />
         <div className="flex"><ManageSubscriptionButton /></div>
+      </Card>
+
+      <Card>
+        <CardHeader title="Stop or refund" subtitle="Stop future payments, or ask the clinic for your money back." />
+        <StopOrRefundCard />
       </Card>
 
       <Card>

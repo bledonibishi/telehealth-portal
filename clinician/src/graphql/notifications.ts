@@ -11,6 +11,8 @@ export const GET_NOTIFICATION_COUNTS = gql`
       shipmentsDue
       sideEffectAlerts
       urgentAppointments
+      orderProblems
+      refundRequests
     }
   }
 `;

@@ -23,3 +23,29 @@ describe('DosePricingService.priceIdFor', () => {
     expect(s.priceIdFor('GLP1', [{ category: 'GLP1', titrationStep: 3, stripePriceId: null }])).toBeNull();
   });
 });
+
+describe('DosePricingService.priceIdsFor', () => {
+  const s = service({ STRIPE_PRICE_OESTROGEN: 'price_o', STRIPE_PRICE_OESTROGEN_PROGESTERONE: 'price_op' });
+
+  it('bills each medicine at its own price, so oestrogen plus progesterone pays for both', () => {
+    expect(
+      s.priceIdsFor('HRT', [
+        { category: 'ESTROGEN', titrationStep: null, stripePriceId: 'price_evorel' },
+        { category: 'PROGESTOGEN', titrationStep: null, stripePriceId: 'price_utro' },
+      ]),
+    ).toEqual(['price_evorel', 'price_utro']);
+  });
+
+  it('falls back to the plan price when any medicine has no price of its own', () => {
+    expect(
+      s.priceIdsFor('HRT', [
+        { category: 'ESTROGEN', titrationStep: null, stripePriceId: 'price_evorel' },
+        { category: 'PROGESTOGEN', titrationStep: null, stripePriceId: null },
+      ]),
+    ).toEqual(['price_op']);
+  });
+
+  it('is null when nothing is priced and no plan is configured', () => {
+    expect(service({}).priceIdsFor('TRT', [{ category: 'TESTOSTERONE', titrationStep: null, stripePriceId: null }])).toBeNull();
+  });
+});

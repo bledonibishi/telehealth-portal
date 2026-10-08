@@ -219,6 +219,10 @@ export const PRESCRIBING_CONTEXT = gql`
   query PrescribingContext($consultationId: ID!) {
     prescribingContext(consultationId: $consultationId) {
       orderedTreatment
+      orderedProductId
+      orderedStrengthId
+      orderedProgesteroneProductId
+      orderedProgesteroneStrengthId
       priorMedicationUse
       noProof
       proofDose

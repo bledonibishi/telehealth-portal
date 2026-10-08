@@ -12,3 +12,12 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   protobufjs: set this to true or false
+# The web apps are on React 18 and the mobile app on React 19. Next 14 does not declare @types/react, so pnpm gave it
+# whichever version it found first (19), and the web type-check broke. Declaring it keeps each app on its own.
+packageExtensions:
+  next@14:
+    peerDependencies:
+      '@types/react': '*'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true

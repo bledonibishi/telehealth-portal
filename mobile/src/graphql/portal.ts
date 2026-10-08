@@ -292,6 +292,7 @@ export const MY_ORDERS = gql`
   query MyOrders {
     myOrders {
       id
+      reference
       sequence
       status
       createdAt
@@ -299,6 +300,14 @@ export const MY_ORDERS = gql`
       carrier
       trackingNumber
       trackingUrl
+      estimatedDeliveryFrom
+      estimatedDeliveryTo
+      trackingEvents {
+        id
+        status
+        occurredAt
+        location
+      }
       outForDeliveryAt
       deliveredAt
       shippingAddress {

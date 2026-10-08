@@ -1,7 +1,8 @@
 import { Controller, ForbiddenException, Get, Param, Req, Res, StreamableFile } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, STAFF, accessRoleOf } from '../auth/access-roles';
+import { ClinicianRole } from '../common/enums';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { PrescriptionDocumentService } from './prescription-document.service';
@@ -22,6 +23,8 @@ export class PrescriptionDocumentController {
   ) {
     const rx = await this.documents.load(id);
     if (req.user.role === UserRole.PATIENT && rx.patientId !== req.user.id) throw new ForbiddenException();
+    // The pharmacy partner opens a prescription only to dispense it, so only when an order is waiting on it.
+    if (accessRoleOf(req.user) === ClinicianRole.PROVIDER && !(await this.documents.hasLiveOrder(id))) throw new ForbiddenException();
 
     await this.audit.log({
       actorId: req.user.id,

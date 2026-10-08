@@ -294,20 +294,21 @@ export class ConsultationsService {
   ): Promise<string | null> {
     try {
       const items = await this.prisma.prescriptionItem.findMany({ where: { prescriptionId }, include: { product: true, strength: true } });
-      const priceId = this.dosePricing.priceIdFor(
+      const priceIds = this.dosePricing.priceIdsFor(
         kind,
         items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId })),
       );
-      if (!priceId) return null;
-      const glp1 = items.find((i) => i.product.category === ProductCategory.GLP1);
-      const doseLabel = glp1 ? `${glp1.product.brandName ?? glp1.product.name} ${glp1.strength.label}` : 'the prescribed plan';
+      if (!priceIds) return null;
+      const doseLabel = items.length
+        ? items.map((i) => `${i.product.brandName ?? i.product.name} ${i.strength.label}`).join(' + ')
+        : 'the prescribed plan';
       // Only the first prescription replaces the dose ordered at checkout. A later one (e.g. a new
       // consultation months in) must not refund a month that was billed correctly.
       const earlier = await this.prisma.prescription.count({ where: { patientId: patient.id, id: { not: prescriptionId } } });
       if (earlier > 0) {
         return `Billing unchanged: not the patient’s first prescription — if ${doseLabel} is priced differently, change the plan in Stripe from the next cycle`;
       }
-      const note = await this.billing.moveToPrescribedPrice(patient, priceId, doseLabel);
+      const note = await this.billing.moveToPrescribedPrice(patient, priceIds, doseLabel);
       await this.audit.log({
         actorId: clinicianId,
         actorRole: UserRole.CLINICIAN,
@@ -315,7 +316,7 @@ export class ConsultationsService {
         resourceType: 'Prescription',
         resourceId: prescriptionId,
         patientId: patient.id,
-        metadata: { priceId, note },
+        metadata: { priceIds, note },
       });
       return note;
     } catch (err: any) {

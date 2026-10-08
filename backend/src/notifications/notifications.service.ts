@@ -8,6 +8,8 @@ import { ShipmentsService } from '../prescriptions/shipments.service';
 // doses are logged or the hourly job runs, so a minute-old count is plenty fresh.
 const MISSED_DOSE_COUNT_TTL_MS = 60_000;
 
+const ORDER_PROBLEM_STATUSES = ['DELIVERY_FAILED', 'RETURNED', 'EXCEPTION', 'CANNOT_FULFIL'];
+
 @Injectable()
 export class NotificationsService {
   private missedDoseCount: { value: number; at: number } | null = null;
@@ -25,10 +27,11 @@ export class NotificationsService {
     includeShipments = false,
     includeSideEffects = false,
     includeAppointments = false,
-  }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean; includeAppointments?: boolean } = {}) {
+    includeOrderProblems = false,
+  }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean; includeAppointments?: boolean; includeOrderProblems?: boolean } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments] =
+    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests] =
       await Promise.all([
         // Leads created in the last 24h
         this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
@@ -73,13 +76,33 @@ export class NotificationsService {
 
         // Urgent appointment requests nobody has answered (they must be within 24 hours)
         includeAppointments ? this.prisma.appointmentRequest.count({ where: { status: 'REQUESTED', urgency: 'URGENT' } }) : 0,
+
+        // Orders that went wrong on the way, or that the pharmacy cannot supply
+        includeOrderProblems ? this.countOrderProblems() : 0,
+
+        // Patients asking for their money back
+        includeOrderProblems ? this.prisma.refundRequest.count({ where: { status: 'REQUESTED' } }) : 0,
       ]);
 
     const patientMessages =
       consultationsWithMessages.filter((c) => c.messages[0]?.senderRole === 'PATIENT').length +
       preConsultationThreads.filter((p) => p.messages[0]?.senderRole === 'PATIENT').length;
 
-    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments };
+    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests };
+  }
+
+  /** Open orders whose latest tracking word is a problem, or whose expected date has passed. */
+  private async countOrderProblems() {
+    const orders = await this.prisma.order.findMany({
+      where: { status: { in: ['PENDING', 'DISPATCHED', 'OUT_FOR_DELIVERY'] } },
+      select: { status: true, estimatedDeliveryTo: true, trackingEvents: { orderBy: { occurredAt: 'desc' }, take: 1, select: { status: true } } },
+    });
+    const now = Date.now();
+    return orders.filter((o) => {
+      const latest = o.trackingEvents[0]?.status;
+      if (latest && ORDER_PROBLEM_STATUSES.includes(latest)) return true;
+      return o.status !== 'PENDING' && !!o.estimatedDeliveryTo && o.estimatedDeliveryTo.getTime() + 12 * 3_600_000 < now;
+    }).length;
   }
 
   private async countMissedDoseAlerts() {

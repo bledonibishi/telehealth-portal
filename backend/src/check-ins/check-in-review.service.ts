@@ -200,10 +200,10 @@ export class CheckInReviewService {
       include: { product: true, strength: true },
     });
     const priced = items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId }));
-    const priceId = this.dosePricing.priceIdFor(kind, priced);
+    const priceIds = this.dosePricing.priceIdsFor(kind, priced);
     const resumed = await this.billing.resume(patient);
-    if (!priceId) return `${resumed}. No price for this dose and no ${planPriceEnvVars(planFor(kind, priced))[0]} configured — check the plan in Stripe`;
-    return `${resumed}. ${await this.billing.changePrice(patient, priceId)}`;
+    if (!priceIds) return `${resumed}. No price for this dose and no ${planPriceEnvVars(planFor(kind, priced))[0]} configured — check the plan in Stripe`;
+    return `${resumed}. ${await this.billing.changePrice(patient, priceIds)}`;
   }
 
   // Messages live on consultation threads; use the patient's latest one.

@@ -17,6 +17,8 @@ export interface Assessment {
   productName?: string | null;
   dose?: string | null;
   addProgesterone?: boolean;
+  // Whether the buyer chose to use their referral reward (set on the review step); unset means not chosen yet.
+  applyReward?: boolean;
 }
 
 export function loadAssessment(): Assessment | null {

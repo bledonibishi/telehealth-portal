@@ -100,7 +100,7 @@ export default function AppointmentRequests() {
       {!loading && !list.length && <div className="p-12 text-center text-gray-400 text-sm">{t('No appointment requests waiting.')}</div>}
       <ul className="divide-y divide-gray-100">
         {list.map((a) => (
-          <li key={a.id} className={`px-6 py-4 bg-white ${a.urgency === 'URGENT' && a.status === 'REQUESTED' ? 'border-l-4 border-red-500' : ''}`}>
+          <li key={a.id} className={`px-4 sm:px-6 py-4 bg-white ${a.urgency === 'URGENT' && a.status === 'REQUESTED' ? 'border-l-4 border-red-500' : ''}`}>
             <div className="flex flex-wrap items-start gap-x-6 gap-y-2">
               <div className="min-w-[240px] flex-1">
                 <div className="flex flex-wrap items-center gap-2">

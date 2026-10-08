@@ -249,3 +249,45 @@ export const UPDATE_MY_BASIC_INFO = gql`
     }
   }
 `;
+
+export const MY_OPEN_REFUND_REQUEST = gql`
+  query MyOpenRefundRequest {
+    myOpenRefundRequest {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const REQUEST_MY_REFUND = gql`
+  mutation RequestMyRefund {
+    requestMyRefund {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const CANCEL_MY_SUBSCRIPTION = gql`
+  mutation CancelMySubscription {
+    cancelMySubscription
+  }
+`;
+
+
+export const REGISTER_PUSH_TOKEN = gql`
+  mutation RegisterPushToken($token: String!, $platform: String!) {
+    registerPushToken(token: $token, platform: $platform)
+  }
+`;
+
+export const UNREGISTER_PUSH_TOKEN = gql`
+  mutation UnregisterPushToken($token: String!) {
+    unregisterPushToken(token: $token)
+  }
+`;
+
+
+

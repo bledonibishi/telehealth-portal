@@ -261,8 +261,14 @@ export class PatientsService {
     const now = new Date();
 
     const patient = await this.prisma.$transaction(async (tx) => {
+      // Staff-created patients count as having paid: record the treatment the way checkout does, so the
+      // prescribing form shows "Paid for" and pre-selects it.
+      const treatment = input.treatment?.trim().slice(0, 120) || (await this.starterTreatmentText(input.plan, tx));
       const lead = await tx.lead.create({
-        data: { email, firstName, lastName, productKind: input.plan, quizAnswers: [], convertedAt: now },
+        data: {
+          email, firstName, lastName, productKind: input.plan, convertedAt: now,
+          quizAnswers: treatment ? [{ questionId: 'preferred_treatment', question: 'Preferred treatment (chosen at checkout)', answer: treatment }] : [],
+        },
       });
 
       const created = await tx.patient.create({
@@ -350,6 +356,15 @@ export class PatientsService {
 
     const record = await this.findById(patient.id);
     return { ...record, temporaryPassword: password };
+  }
+
+  /** The plan's starter medicine as checkout text, e.g. "Wegovy 0.25 mg" (GLP-1 only; the other programmes aren't dose-matched). */
+  private async starterTreatmentText(kind: ConsultationKind, tx: Prisma.TransactionClient): Promise<string | null> {
+    if (kind !== ConsultationKind.GLP1) return null;
+    const [spec] = STARTER_ITEMS[kind];
+    const product = await tx.product.findUnique({ where: { slug: spec.slug } });
+    const name = product?.brandName ?? product?.name;
+    return name ? `${name} ${spec.label}` : null;
   }
 
   private async resolveStarterItems(kind: ConsultationKind, tx: Prisma.TransactionClient) {

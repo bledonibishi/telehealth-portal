@@ -67,3 +67,68 @@ describe('BillingService.moveToPrescribedPrice', () => {
     expect(stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 });
+
+describe('BillingService multi-line plans', () => {
+  function multi(existing: any[], prices: Record<string, number>, amountPaid = 6500) {
+    return {
+      subscriptions: {
+        retrieve: jest.fn().mockResolvedValue({ id: 'sub_1', status: 'active', items: { data: existing } }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      prices: { retrieve: jest.fn((id: string) => Promise.resolve({ id, unit_amount: prices[id], currency: 'eur' })) },
+      invoices: { list: jest.fn().mockResolvedValue({ data: [{ id: 'in_1', amount_paid: amountPaid, currency: 'eur', payment_intent: 'pi_1' }] }) },
+      refunds: { create: jest.fn().mockResolvedValue({ id: 're_1' }) },
+    };
+  }
+  const item = (id: string, price: string, unit_amount: number) => ({ id, price: { id: price, unit_amount, currency: 'eur' } });
+
+  it('drops the progesterone line when the prescription has none, and refunds the difference', async () => {
+    const stripe = multi([item('si_e', 'price_evorel', 1500), item('si_p', 'price_utro', 4000)], { price_evorel: 1500 }, 5500);
+    const note = await billingWith(stripe).moveToPrescribedPrice(PATIENT, ['price_evorel']);
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ id: 'si_p', deleted: true }], proration_behavior: 'none' });
+    expect(stripe.refunds.create.mock.calls[0][0].amount).toBe(4000);
+    expect(note).toMatch(/refunded 40\.00 EUR/);
+  });
+
+  it('swaps a dose in place and keeps the line that already matches', async () => {
+    const stripe = multi([item('si_e', 'price_old', 2600), item('si_p', 'price_utro', 4000)], { price_new: 1700, price_utro: 4000 });
+    await billingWith(stripe).moveToPrescribedPrice(PATIENT, ['price_new', 'price_utro']);
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ id: 'si_e', price: 'price_new' }], proration_behavior: 'none' });
+  });
+
+  it('refuses a dearer total, such as progesterone newly added by the doctor', async () => {
+    const stripe = multi([item('si_e', 'price_evorel', 1500)], { price_evorel: 1500, price_utro: 4000 });
+    const note = await billingWith(stripe).moveToPrescribedPrice(PATIENT, ['price_evorel', 'price_utro'], 'Evorel + Utrogestan');
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(note).toMatch(/costs more than the plan the patient paid for/);
+  });
+
+  it('changePrice adds a missing line', async () => {
+    const stripe = multi([item('si_e', 'price_evorel', 1500)], {});
+    await billingWith(stripe).changePrice(PATIENT, ['price_evorel', 'price_utro']);
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', { items: [{ price: 'price_utro' }], proration_behavior: 'none' });
+  });
+});
+
+describe('BillingService.refundLatestPayment', () => {
+  const stripeFor = (status: string, invoice: object | null) => ({
+    subscriptions: { retrieve: jest.fn().mockResolvedValue({ id: 'sub_1', status, items: { data: [] } }), update: jest.fn() },
+    invoices: { list: jest.fn().mockResolvedValue({ data: invoice ? [invoice] : [] }) },
+    refunds: { create: jest.fn().mockResolvedValue({ id: 're_9' }) },
+  });
+
+  it('refunds the latest paid invoice and leaves the subscription running', async () => {
+    const stripe = stripeFor('active', { id: 'in_1', amount_paid: 6500, payment_intent: 'pi_1' });
+    const note = await billingWith(stripe).refundLatestPayment(PATIENT);
+    expect(stripe.refunds.create).toHaveBeenCalledWith({ payment_intent: 'pi_1' }, { idempotencyKey: 'decline-refund-in_1' });
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(note).toMatch(/Refunded the latest payment \(re_9\)/);
+  });
+
+  it('says so when there is nothing to refund, and never throws', async () => {
+    expect(await billingWith(stripeFor('active', null)).refundLatestPayment(PATIENT)).toMatch(/Nothing to refund/);
+    const broken = stripeFor('active', { id: 'in_1', amount_paid: 100, payment_intent: 'pi_1' });
+    broken.refunds.create.mockRejectedValue(new Error('card network down'));
+    expect(await billingWith(broken).refundLatestPayment(PATIENT)).toMatch(/Billing update failed/);
+  });
+});

@@ -82,8 +82,8 @@ const TRUST = [
     desc: 'Every prescription is authorised by a qualified, registered doctor — not an algorithm.',
   },
   {
-    title: 'Regulated, branded medications',
-    desc: 'Estradiol, progesterone, and semaglutide — all from licensed, recognised manufacturers.',
+    title: 'Regulated medications',
+    desc: 'Prescription medicines from licensed, recognised manufacturers — only if your doctor decides they are right for you.',
   },
   {
     title: 'End-to-end data security',
@@ -110,15 +110,15 @@ export default function HomePage() {
                 <em>from Kosovo doctors</em>
               </h1>
               <p className="pv-hero-sub">
-                Licensed clinicians. Regulated HRT and GLP-1 medications. Free delivery to your door.
-                Start your assessment in 2 minutes.
+                Licensed clinicians. Prescription treatment, only if your doctor decides it is right for you.
+                Free delivery to your door. Check your eligibility in 2 minutes.
               </p>
               <div className="pv-hero-ctas">
                 <Link href="/hrt-eligibility" className="btn-primary">
-                  Start HRT assessment →
+                  Check eligibility →
                 </Link>
                 <Link href="/glp1-eligibility" className="btn-secondary">
-                  Start GLP-1 assessment
+                  Weight management
                 </Link>
               </div>
               <div className="pv-hero-trust">
@@ -178,8 +178,8 @@ export default function HomePage() {
               <div className="th-section-tag">Treatments</div>
               <h2 className="th-section-h2">Three paths to better health</h2>
               <p className="th-section-lead">
-                We specialise in three evidence-based prescription treatments, assessed and prescribed
-                by our licensed clinicians.
+                We specialise in three areas of care. Whether treatment is right for you is always
+                decided by a licensed clinician, after an assessment.
               </p>
             </div>
           </div>
@@ -190,24 +190,17 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['p-hrt-starter']})` }}
               >
-                <div className="th-product-badge">From £49/mo</div>
+                <div className="th-product-badge">Menopause</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">HRT</span>
                 <h3 className="th-product-name">Hormone Replacement Therapy</h3>
                 <p className="th-product-desc">
-                  Personalised HRT for women experiencing menopause symptoms — hot flushes, mood
-                  changes, brain fog, low libido, and more. Estradiol gel and micronised progesterone,
-                  prescribed to your needs.
+                  Care for women experiencing menopause symptoms — hot flushes, mood changes, brain
+                  fog, low libido, and more. Your doctor decides whether treatment is appropriate for
+                  you.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Estradiol gel 0.1%</span>
-                  <span className="th-product-med">Micronised progesterone</span>
-                </div>
                 <div className="th-product-cta">
-                  <div className="th-product-price">
-                    <sup>£</sup>49<small>/mo</small>
-                  </div>
                   <Link href="/hrt-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
                   </Link>
@@ -221,24 +214,16 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['p-wegovy']})` }}
               >
-                <div className="th-product-badge">From £149/mo</div>
+                <div className="th-product-badge">Weight management</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">GLP-1</span>
                 <h3 className="th-product-name">GLP-1 Weight Management</h3>
                 <p className="th-product-desc">
-                  Weekly semaglutide injections for weight management in adults with a BMI of 27 or
-                  above. Clinically proven to reduce body weight and support long-term metabolic health.
+                  Medical weight management for adults with a BMI of 27 or above. Your doctor
+                  decides whether treatment is appropriate for you, after reviewing your health history.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Wegovy</span>
-                  <span className="th-product-med">Mounjaro</span>
-                  <span className="th-product-med">Ozempic</span>
-                </div>
                 <div className="th-product-cta">
-                  <div className="th-product-price">
-                    <sup>£</sup>149<small>/mo</small>
-                  </div>
                   <Link href="/glp1-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
                   </Link>
@@ -252,19 +237,16 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['products']})` }}
               >
-                <div className="th-product-badge">Testosterone</div>
+                <div className="th-product-badge">Men&apos;s health</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">TRT</span>
-                <h3 className="th-product-name">Testosterone Replacement Therapy</h3>
+                <h3 className="th-product-name">Low testosterone care</h3>
                 <p className="th-product-desc">
                   For men with symptoms of low testosterone — low energy, low libido, loss of muscle
-                  and mood changes. Clinician-led assessment, monitored treatment.
+                  and mood changes. Clinician-led assessment, and your doctor decides whether treatment
+                  is appropriate for you.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Tostran gel</span>
-                  <span className="th-product-med">Sustanon 250</span>
-                </div>
                 <div className="th-product-cta">
                   <Link href="/trt-eligibility" className="btn-primary btn-sm">
                     Check eligibility →

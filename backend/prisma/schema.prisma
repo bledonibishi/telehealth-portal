@@ -319,6 +319,43 @@ model Lead {
   @@map("leads")
 }
 
+// A phone a patient is signed in on, so we can tell it when an order moves. One row per Expo push token; a token
+// that belongs to a different patient later (a shared phone) is moved to them, never kept on both.
+model PushDevice {
+  id         String   @id @default(cuid())
+  patientId  String   @map("patient_id")
+  token      String   @unique
+  // ios or android.
+  platform   String
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("push_devices")
+}
+
+// A patient's one-tap ask for their money back. It refunds nothing by itself: an admin sees whether the medicine has
+// already left the pharmacy and decides (see stripe/refund-requests.service.ts). No reason is asked for.
+model RefundRequest {
+  id          String    @id @default(cuid())
+  patientId   String    @map("patient_id")
+  // REQUESTED, APPROVED or DECLINED.
+  status      String    @default("REQUESTED")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  decidedAt   DateTime? @map("decided_at")
+  decidedById String?   @map("decided_by_id")
+  // What happened to the money (the refund and subscription outcome), shown to the admin.
+  outcome     String?
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
+  @@index([patientId])
+  @@map("refund_requests")
+}
+
 model Patient {
   id                       String    @id @default(cuid())
   email                    String    @unique
@@ -385,6 +422,8 @@ model Patient {
   identityVerifications IdentityVerification[]
 
   @@map("patients")
+  refundRequests RefundRequest[]
+  pushDevices    PushDevice[]
 }
 
 model Consultation {
@@ -464,33 +503,71 @@ model Prescription {
 // One supply of a prescription: the first fill, then one per repeat. What the
 // pharmacy dispatches and the patient tracks.
 model Order {
-  id               String      @id @default(cuid())
-  prescriptionId   String      @map("prescription_id")
-  patientId        String      @map("patient_id")
+  id                    String      @id @default(cuid())
+  prescriptionId        String      @map("prescription_id")
+  patientId             String      @map("patient_id")
   // 1 = first supply; each repeat increments.
-  sequence         Int
-  status           OrderStatus @default(PENDING)
+  sequence              Int
+  status                OrderStatus @default(PENDING)
   // Snapshot at dispatch, so later address changes don't rewrite history.
-  shippingAddress  Json?       @map("shipping_address")
-  pharmacyRef      String?     @map("pharmacy_ref")
-  dispatchedAt     DateTime?   @map("dispatched_at")
-  carrier          String?
-  trackingNumber   String?     @map("tracking_number")
-  trackingUrl      String?     @map("tracking_url")
-  outForDeliveryAt DateTime?   @map("out_for_delivery_at")
-  deliveredAt      DateTime?   @map("delivered_at")
-  cancelledAt      DateTime?   @map("cancelled_at")
-  cancelReason     String?     @map("cancel_reason")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  shippingAddress       Json?       @map("shipping_address")
+  pharmacyRef           String?     @map("pharmacy_ref")
+  dispatchedAt          DateTime?   @map("dispatched_at")
+  carrier               String?
+  trackingNumber        String?     @map("tracking_number")
+  trackingUrl           String?     @map("tracking_url")
+  // The courier's expected delivery window, given when the pharmacy ships it; shown to the patient.
+  estimatedDeliveryFrom DateTime?   @map("estimated_delivery_from")
+  estimatedDeliveryTo   DateTime?   @map("estimated_delivery_to")
+  // The pharmacy has packed it and is waiting for the courier to collect it.
+  readyForPickupAt      DateTime?   @map("ready_for_pickup_at")
+  // When we last asked a courier's tracking API about this parcel (see couriers/), so it isn't asked too often.
+  trackingCheckedAt     DateTime?   @map("tracking_checked_at")
+  outForDeliveryAt      DateTime?   @map("out_for_delivery_at")
+  deliveredAt           DateTime?   @map("delivered_at")
+  cancelledAt           DateTime?   @map("cancelled_at")
+  cancelReason          String?     @map("cancel_reason")
+  // What happened to the patient's money when an admin cancelled it (refunded, subscription ended, or nothing).
+  cancelBillingNote     String?     @map("cancel_billing_note")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
 
   prescription        Prescription         @relation(fields: [prescriptionId], references: [id])
   patient             Patient              @relation(fields: [patientId], references: [id])
   partnerTransmission PartnerTransmission?
+  trackingEvents      OrderTrackingEvent[]
 
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
+  // What the pharmacy charged per unit when this order was handed over: [{ product, strength, quantity, unitCost }].
+  // Kept so a later change to a dose's cost never rewrites an earlier month's statement.
+  pharmacyCostSnapshot Json? @map("pharmacy_cost_snapshot")
+}
+
+// One step in an order's journey, from staff pressing a button or from a courier or tracking service
+// calling our webhook. Kept as a history for the patient and staff; the order's own status is moved
+// forward from these, never back.
+model OrderTrackingEvent {
+  id         String   @id @default(cuid())
+  orderId    String   @map("order_id")
+  // READY_FOR_PICKUP, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RETURNED or EXCEPTION
+  // (see couriers/tracking-status.ts). Text, so a new kind needs no migration.
+  status     String
+  occurredAt DateTime @map("occurred_at")
+  location   String?
+  note       String?
+  // MANUAL (staff) or WEBHOOK (courier / tracking service).
+  source     String
+  // The sender's own id for this event, so a resend is recorded only once.
+  externalId String?  @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, externalId])
+  @@index([orderId, occurredAt])
+  @@map("order_tracking_events")
 }
 
 // A patient's one-tap ask for their next supply. It never creates an order: a doctor still places the
@@ -692,6 +769,8 @@ model ProductStrength {
   // The monthly Stripe price for this dose (each dose is priced separately).
   // Null: not sold per dose yet — billing falls back to the plan tier price.
   stripePriceId   String? @map("stripe_price_id")
+  // What the pharmacy partner charges us for one unit of this dose, in the clinic's currency. Null: not known yet.
+  pharmacyUnitCost Decimal? @map("pharmacy_unit_cost") @db.Decimal(10, 2)
 
   product           Product            @relation(fields: [productId], references: [id])
   prescriptionItems PrescriptionItem[]

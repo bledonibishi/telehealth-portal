@@ -6,7 +6,7 @@ import { ProductModel, ProductStrengthModel } from '../catalog/models/product.mo
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
 import { MissedDoseAlertModel, MissedDoseStatusModel } from './models/missed-dose-alert.model';
 import { DoseSummaryModel } from './models/dose-summary.model';
 
@@ -26,7 +26,7 @@ export class DosingResolver {
     return this.dosing.calendarFor(user.id, { fromDays, toDays });
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('Patient', 'patientId')
   @Query(() => [DoseEventModel], { description: "A patient's dose calendar" })
   patientDoseCalendar(

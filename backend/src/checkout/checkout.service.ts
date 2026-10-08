@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReferralsService } from '../referrals/referrals.service';
-import { ConsultationKind, RiskTag } from '../common/enums';
+import { ConsultationKind, ProductCategory, RiskTag } from '../common/enums';
 import { triageEligibility } from '../questionnaires/triage';
-import { findGlp1Dose, orderedTreatmentText } from '../catalog/ordered-dose';
+import { findDose, findProgesteronePriceId, orderedTreatmentText } from '../catalog/ordered-dose';
 import { PlanKey, planPriceEnvVars } from '../stripe/plan-pricing';
 
 // The plans each treatment can be bought on.
@@ -13,6 +13,14 @@ const PLANS_FOR: Record<ConsultationKind, PlanKey[]> = {
   [ConsultationKind.GLP1]: ['GLP1_STARTER', 'GLP1_ADVANCED'],
   [ConsultationKind.HRT]: ['HRT_STARTER', 'HRT_COMPLETE'],
   [ConsultationKind.TRT]: ['TRT_STANDARD'],
+};
+
+// The programme each kind of medicine belongs to: a dose is only charged at its own price when it is
+// for the treatment the lead is buying, so a cheap HRT dose can't pay for a GLP-1 programme.
+const KIND_OF_CATEGORY: Record<string, ConsultationKind> = {
+  [ProductCategory.GLP1]: ConsultationKind.GLP1,
+  [ProductCategory.ESTROGEN]: ConsultationKind.HRT,
+  [ProductCategory.TESTOSTERONE]: ConsultationKind.TRT,
 };
 
 // REST endpoints for the Webflow "Site Scripts" embed (website/webflow/live-site-scripts-embed.html),
@@ -65,14 +73,16 @@ export class CheckoutService {
     this.assertConfigured();
     // With a lead, the email comes from the lead itself, never from the request.
     const lead = input.leadId ? await this.loadOpenLead(input.leadId) : null;
-    const priceId = await this.priceFor(input, lead);
+    const lines = await this.priceFor(input, lead);
     const email = lead?.email ?? input.email;
-    const referralCoupon = await this.referralCouponFor(lead?.id, input.applyReward);
+    const currency = lead && input.applyReward ? (await this.stripe.prices.retrieve(lines[0].price)).currency : undefined;
+    const referralCoupon = await this.referralCouponFor(lead?.id, input.applyReward, currency);
+    if (currency) await this.assertCouponFits(referralCoupon, currency);
     if (lead) await this.saveLeadDetails(lead, input.shipping, input);
 
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: lines,
       success_url: `${this.webflowSiteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.webflowSiteUrl}/checkout/cancel`,
       ...(email ? { customer_email: email } : {}),
@@ -100,19 +110,29 @@ export class CheckoutService {
    * cheaper price (e.g. a GLP-1 dose the catalog doesn't know, at the HRT plan's price).
    */
   private async priceFor(
-    input: { priceId?: string; product?: string; dose?: string },
+    input: { priceId?: string; product?: string; dose?: string; addProgesterone?: boolean },
     lead: { quizAnswers: unknown; productKind?: string | null } | null,
-  ): Promise<string> {
+  ): Promise<Array<{ price: string; quantity: number }>> {
     const ordered = input.product && input.dose ? `${input.product} ${input.dose}` : orderedTreatmentText(lead?.quizAnswers);
-    const chosen = await findGlp1Dose(this.prisma, ordered);
-    if (chosen?.stripePriceId) return chosen.stripePriceId;
+    const found = await findDose(this.prisma, ordered, Object.keys(KIND_OF_CATEGORY) as ProductCategory[]);
+    const leadKind = lead?.productKind as ConsultationKind | undefined;
+    const chosen = found && (!leadKind || KIND_OF_CATEGORY[found.category] === leadKind) ? found : null;
+    if (chosen?.stripePriceId) {
+      // HRT: the progesterone add-on is its own line at its own price.
+      const wantsProgesterone = chosen.category === ProductCategory.ESTROGEN && (input.addProgesterone ?? /progesterone/i.test(ordered ?? ''));
+      const progesterone = wantsProgesterone ? await findProgesteronePriceId(this.prisma) : null;
+      // Without a price for it, fall through to the plan that covers both medicines.
+      if (!wantsProgesterone || progesterone) {
+        return [chosen.stripePriceId, ...(progesterone ? [progesterone] : [])].map((price) => ({ price, quantity: 1 }));
+      }
+    }
 
     if (!input.priceId) throw new BadRequestException('Missing priceId.');
-    const kind = chosen ? ConsultationKind.GLP1 : (lead?.productKind as ConsultationKind | undefined);
+    const kind = chosen ? KIND_OF_CATEGORY[chosen.category] : leadKind;
     const plans = kind && PLANS_FOR[kind] ? PLANS_FOR[kind] : Object.values(PLANS_FOR).flat();
     const allowed = plans.flatMap((p) => planPriceEnvVars(p).map((v) => this.config.get<string>(v))).filter(Boolean);
     if (!allowed.includes(input.priceId)) throw new BadRequestException('That plan isn’t available.');
-    return input.priceId;
+    return [{ price: input.priceId, quantity: 1 }];
   }
 
   async createSubscriptionIntent(input: {
@@ -130,17 +150,21 @@ export class CheckoutService {
     // The lead is the identity of this checkout: its email is the only one we
     // act on, so a request can't name someone else's email to touch their Stripe data.
     const lead = await this.loadOpenLead(input.leadId);
-    const priceId = await this.priceFor(input, lead);
-    const customerId = await this.findOrCreateCustomer(lead.email, this.sanitizeShipping(input.shipping));
+    const lines = await this.priceFor(input, lead);
+    const { currency } = await this.stripe.prices.retrieve(lines[0].price);
+    // The delivery details saved earlier (the details step) cover a customer created just now.
+    const shipping = this.sanitizeShipping(input.shipping) ?? this.sanitizeShipping(lead.checkoutDetails as ShippingInput | undefined);
+    const customerId = await this.findOrCreateCustomer(lead.email, shipping, currency);
     // Toggling the reward on the checkout page starts a new payment, so drop this
     // lead's abandoned unpaid ones instead of letting them pile up.
     await this.cancelIncompleteSubscriptions(customerId, lead.id);
-    const referralCoupon = await this.referralCouponFor(lead.id, input.applyReward);
+    const referralCoupon = await this.referralCouponFor(lead.id, input.applyReward, currency);
+    await this.assertCouponFits(referralCoupon, currency);
     await this.saveLeadDetails(lead, input.shipping, input);
 
     const subscription = await this.stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: priceId }],
+      items: lines,
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription' },
       expand: ['latest_invoice.payment_intent'],
@@ -215,18 +239,41 @@ export class CheckoutService {
   }
 
   // Returns the referral-friend coupon id when this lead arrived via a still-
-  // unconverted referral AND the customer chose to apply the reward.
-  private async referralCouponFor(leadId: string | undefined, applyReward = false): Promise<string | undefined> {
+  // unconverted referral AND the customer chose to apply the reward. A fixed-amount coupon is
+  // tied to one currency, so STRIPE_REFERRAL_FRIEND_COUPON_ID_<CURRENCY> (e.g. _EUR) is used for
+  // an order in that currency; STRIPE_REFERRAL_FRIEND_COUPON_ID is the fallback.
+  private async referralCouponFor(leadId: string | undefined, applyReward = false, currency?: string): Promise<string | undefined> {
     if (!leadId || !applyReward) return undefined;
     const referral = await this.prisma.referral.findUnique({ where: { referredLeadId: leadId }, select: { status: true } });
     if (!referral || referral.status !== 'PENDING') return undefined;
 
-    const couponId = this.config.get<string>('STRIPE_REFERRAL_FRIEND_COUPON_ID');
+    const couponId = this.referralCouponId(currency);
     if (!couponId) {
-      this.logger.warn(`Lead ${leadId} has a pending referral but STRIPE_REFERRAL_FRIEND_COUPON_ID is not set`);
+      this.logger.warn(`Lead ${leadId} has a pending referral but no referral coupon is set (STRIPE_REFERRAL_FRIEND_COUPON_ID${currency ? `_${currency.toUpperCase()}` : ''})`);
       return undefined;
     }
     return couponId;
+  }
+
+  private referralCouponId(currency?: string): string | undefined {
+    const base = 'STRIPE_REFERRAL_FRIEND_COUPON_ID';
+    // Without an order currency (only to describe the offer), the euro one — the shop's currency — comes first.
+    const specific = currency ? this.config.get<string>(`${base}_${currency.toUpperCase()}`) : this.config.get<string>(`${base}_EUR`);
+    return specific?.trim() || this.config.get<string>(base)?.trim() || undefined;
+  }
+
+  /**
+   * A fixed-amount coupon only works in its own currency (or one it lists); Stripe otherwise refuses the
+   * whole subscription. Say so clearly, rather than letting the card form fail without a reason.
+   */
+  private async assertCouponFits(couponId: string | undefined, currency: string) {
+    if (!couponId) return;
+    const coupon = (await this.stripe.coupons.retrieve(couponId)) as Stripe.Coupon & { currency_options?: Record<string, unknown> };
+    if (coupon.amount_off == null) return;
+    const code = currency.toLowerCase();
+    if (coupon.currency?.toLowerCase() === code || coupon.currency_options?.[code]) return;
+    this.logger.error(`Referral coupon ${couponId} is in ${coupon.currency} and has no ${code} amount, so it can't be applied to a ${code} order`);
+    throw new BadRequestException('The referral reward can’t be applied to this order. Remove it to continue.');
   }
 
   /** What the checkout page can offer this lead: today, the referral reward for a referred friend. */
@@ -329,15 +376,21 @@ export class CheckoutService {
     );
   }
 
-  private async findOrCreateCustomer(email: string, shipping?: ShippingInput): Promise<string> {
+  /**
+   * The Stripe customer for this email. A customer is locked to the currency of its first subscription,
+   * so one left over from an earlier checkout in another currency (e.g. a USD test price) can't be reused
+   * for a price in `currency`; a fresh customer is made instead.
+   */
+  private async findOrCreateCustomer(email: string, shipping?: ShippingInput, currency?: string): Promise<string> {
     const address = shipping && { line1: shipping.line1, city: shipping.city, postal_code: shipping.postalCode, country: shipping.country };
     const details: Stripe.CustomerUpdateParams = shipping
       ? { ...(shipping.name ? { name: shipping.name } : {}), address, shipping: { name: shipping.name ?? '', address: address! } }
       : {};
-    const existing = await this.stripe.customers.list({ email, limit: 1 });
-    if (existing.data[0]) {
-      if (shipping) await this.stripe.customers.update(existing.data[0].id, details);
-      return existing.data[0].id;
+    const existing = await this.stripe.customers.list({ email, limit: 10 });
+    const usable = existing.data.find((c) => !currency || !c.currency || c.currency === currency);
+    if (usable) {
+      if (shipping) await this.stripe.customers.update(usable.id, details);
+      return usable.id;
     }
     const created = await this.stripe.customers.create({ email, ...(details as Stripe.CustomerCreateParams) });
     return created.id;

@@ -154,6 +154,45 @@ describe('CheckInsService.submit — what the patient writes in their notes', ()
   });
 });
 
+describe('CheckInsService — scheduling and rescheduling', () => {
+  const build = (env: string, prisma: any) => new CheckInsService(prisma, {} as any, { get: (k: string) => (k === 'NODE_ENV' ? env : undefined) } as any);
+
+  it('schedules the first check-in one interval after the first order was dispatched', async () => {
+    const dispatchedAt = new Date('2026-10-01T10:00:00Z');
+    const prisma = {
+      patient: { findMany: jest.fn().mockResolvedValue([{ id: 'p-1', email: 'p@example.com', checkIns: [], orders: [{ dispatchedAt }] }]) },
+      checkIn: { create: jest.fn() },
+    };
+    await build('development', prisma).ensureScheduled();
+    expect(prisma.checkIn.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', dueAt: new Date(dispatchedAt.getTime() + CHECK_IN_INTERVAL_DAYS * DAY) } });
+  });
+
+  it('schedules nothing until an order has been dispatched', async () => {
+    const prisma = {
+      patient: { findMany: jest.fn().mockResolvedValue([{ id: 'p-1', email: 'p@example.com', checkIns: [], orders: [] }]) },
+      checkIn: { create: jest.fn() },
+    };
+    await build('development', prisma).ensureScheduled();
+    expect(prisma.checkIn.create).not.toHaveBeenCalled();
+  });
+
+  it('reschedules a sent check-in back to scheduled in development', async () => {
+    const prisma = { checkIn: { findUnique: jest.fn().mockResolvedValue({ id: 'ci-1', status: 'SENT' }), update: jest.fn().mockResolvedValue({ id: 'ci-1' }) } };
+    const dueAt = new Date('2026-10-08T00:00:00Z');
+    await build('development', prisma).reschedule('ci-1', dueAt);
+    expect(prisma.checkIn.update).toHaveBeenCalledWith({
+      where: { id: 'ci-1' },
+      data: { dueAt, status: 'SCHEDULED', token: null, tokenExpiresAt: null, sentAt: null },
+    });
+  });
+
+  it('refuses to reschedule in production', async () => {
+    const prisma = { checkIn: { findUnique: jest.fn(), update: jest.fn() } };
+    await expect(build('production', prisma).reschedule('ci-1', new Date())).rejects.toThrow(/development/);
+    expect(prisma.checkIn.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('CheckInsService.ensureScheduled', () => {
   const build = (patient: any) => {
     const prisma: any = { patient: { findMany: jest.fn().mockResolvedValue([patient]) }, checkIn: { create: jest.fn().mockResolvedValue({}) } };
@@ -164,9 +203,9 @@ describe('CheckInsService.ensureScheduled', () => {
     expect(CHECK_IN_INTERVAL_DAYS).toBe(28);
   });
 
-  it('schedules the first check-in 28 days after the first prescription', async () => {
-    const issuedAt = new Date('2026-10-07T09:00:00Z');
-    const { prisma, service } = build({ id: 'p-1', email: 'p@example.com', checkIns: [], prescriptions: [{ issuedAt }] });
+  it('schedules the first check-in 28 days after the first order was dispatched, not after it was prescribed', async () => {
+    const dispatchedAt = new Date('2026-10-07T09:00:00Z');
+    const { prisma, service } = build({ id: 'p-1', email: 'p@example.com', checkIns: [], orders: [{ dispatchedAt }], prescriptions: [{ issuedAt: new Date('2026-10-01T09:00:00Z') }] });
     await service.ensureScheduled();
     expect(prisma.checkIn.create).toHaveBeenCalledWith({ data: { patientId: 'p-1', dueAt: new Date('2026-11-04T09:00:00Z') } });
   });

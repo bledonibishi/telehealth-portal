@@ -8,7 +8,7 @@ import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
 import { ClinicianRole, RiskTag } from '../common/enums';
 import { triage } from '../questionnaires/triage';
 
@@ -30,7 +30,7 @@ export class ConsultationsResolver {
     return this.consultationsService.findQueue();
   }
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Consultation')
   @Query(() => ConsultationModel)
   async consultation(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
@@ -39,7 +39,7 @@ export class ConsultationsResolver {
     return consultation;
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('Patient', 'patientId')
   @Query(() => [ConsultationModel], { description: 'Prior consultations for a patient, newest first' })
   patientHistory(@Args('patientId', { type: () => ID }) patientId: string) {
