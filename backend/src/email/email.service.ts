@@ -61,7 +61,14 @@ export class EmailService {
       return;
     }
 
-    await this.resend.emails.send({ from: this.from, to, subject: `${code} is your verification code`, html });
+    // The mail provider reports a failure (a bad API key, a refused address) as a returned error rather than throwing,
+    // so it has to be looked at: otherwise the visitor would be told a code was sent when none was.
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `${code} is your verification code`, html });
+    if (error) {
+      // While developing, the code goes to the log so the flow can still be tried; never in production.
+      if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`[DEV] The mail provider refused the email (${error.message}). Verification code for ${to}: ${code}`);
+      throw new Error(error.message);
+    }
   }
 
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
