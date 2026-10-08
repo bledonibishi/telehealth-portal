@@ -12,9 +12,7 @@ import { ReportSideEffectDialog } from '@/components/doses/ReportSideEffectDialo
 import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
 import { PlanHero } from '@/components/home/PlanHero';
 import { ProgressOverview } from '@/components/home/ProgressOverview';
-import { WeightProgressCard } from '@/components/home/WeightProgressCard';
 import { ProfileSummaryCard } from '@/components/home/ProfileSummaryCard';
-import { WeightPhotoJourney } from '@/components/home/WeightPhotoJourney';
 import { TreatmentPlanCard } from '@/components/home/TreatmentPlanCard';
 import { AppointmentCard, ChatCard, ContactCard, EmergencyCard } from '@/components/home/SideCards';
 import { RecentUpdates } from '@/components/home/RecentUpdates';
@@ -75,7 +73,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_18.5rem] gap-5 items-start">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-5 min-w-0 [&>*]:min-w-0">
-          <div className={journey ? 'md:col-span-6 2xl:col-span-4' : 'md:col-span-6'}>
+          <div className="md:col-span-6">
             {plan ? (
               <PlanHero plan={plan} />
             ) : (
@@ -87,10 +85,7 @@ export default function DashboardPage() {
               </Card>
             )}
           </div>
-          {journey && <div className="md:col-span-6 2xl:col-span-2"><WeightProgressCard journey={journey} /></div>}
-
-          {journey && <div className={plan ? 'md:col-span-6 2xl:col-span-3' : 'md:col-span-6'}><WeightPhotoJourney journey={journey} /></div>}
-          {plan && <div className={journey ? 'md:col-span-6 2xl:col-span-3' : 'md:col-span-6'}><TreatmentPlanCard plan={plan} /></div>}
+          {plan && <div className="md:col-span-6"><TreatmentPlanCard plan={plan} /></div>}
 
           <div className="md:col-span-3 2xl:col-span-2"><RecentUpdates /></div>
           <div className="md:col-span-3 2xl:col-span-2"><RecentOrders /></div>
