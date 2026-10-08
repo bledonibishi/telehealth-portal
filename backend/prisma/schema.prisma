@@ -143,6 +143,8 @@ enum OnboardingStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+  // The application was declined: nothing is waiting for review and the patient can't send more in.
+  DECLINED
 }
 
 enum PersonaStatus {
@@ -309,6 +311,14 @@ model Lead {
   // Delivery details and whether the referral reward was applied, captured at
   // checkout and copied onto the Patient when the first payment succeeds.
   checkoutDetails Json?            @map("checkout_details")
+  // The medical questionnaire, answered on the website after choosing a treatment and before paying. It becomes the
+  // patient's consultation when the first payment succeeds (see ConsultationsService.submitFromLead). The consent
+  // they accepted with it is kept here until then, with where it was accepted from.
+  intakeAnswers          Json?     @map("intake_answers")
+  intakeConsentVersion   String?   @map("intake_consent_version")
+  intakeConsentIp        String?   @map("intake_consent_ip")
+  intakeConsentUserAgent String?   @map("intake_consent_user_agent")
+  intakeSavedAt          DateTime? @map("intake_saved_at")
   convertedAt     DateTime?        @map("converted_at")
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
@@ -1287,4 +1297,24 @@ model Voucher {
 
   @@index([patientId])
   @@map("vouchers")
+}
+
+// A code emailed to someone starting the quiz, and the short-lived proof that they entered it. The quiz needs the proof
+// to save a lead for that email, so nobody can save or change answers under an email they can't read.
+model EmailVerification {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  codeSalt         String?   @map("code_salt")
+  codeHash         String?   @map("code_hash")
+  codeExpiresAt    DateTime? @map("code_expires_at")
+  attempts         Int       @default(0)
+  lastSentAt       DateTime  @map("last_sent_at")
+  sentCount        Int       @default(1) @map("sent_count")
+  sentWindowStart  DateTime  @map("sent_window_start")
+  tokenHash        String?   @map("token_hash")
+  tokenExpiresAt   DateTime? @map("token_expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("email_verifications")
 }

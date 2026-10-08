@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -11,6 +12,7 @@ import { PostHogService } from '../posthog/posthog.service';
 import { ConsentsService } from '../consents/consents.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { WeightJourneyService } from '../weight-journey/weight-journey.service';
+import { ConsultationsService } from '../consultations/consultations.service';
 import { PatientTreatmentStatus } from './models/patient-list-item.model';
 import { intakeNumber } from './patient-profile.service';
 import { bmiOf } from './bmi';
@@ -60,6 +62,8 @@ function generateTempPassword(length = 12): string {
 
 @Injectable()
 export class PatientsService {
+  private readonly logger = new Logger(PatientsService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -67,6 +71,8 @@ export class PatientsService {
     private consents: ConsentsService,
     private prescribing: PrescribingService,
     private weightJourney: WeightJourneyService,
+    // Looked up when needed: ConsultationsModule is not a dependency of this module.
+    private moduleRef: ModuleRef,
   ) {}
 
   // One query per relation (batched across all patients, not per row) so the
@@ -137,7 +143,9 @@ export class PatientsService {
           ? PatientTreatmentStatus.PENDING
           : prescription
             ? PatientTreatmentStatus.ACTIVE
-            : PatientTreatmentStatus.INACTIVE,
+            : consultations.length > 0 && consultations.every((c) => c.status === ConsultationStatus.DECLINED)
+              ? PatientTreatmentStatus.DECLINED
+              : PatientTreatmentStatus.INACTIVE,
         medications: prescription
           ? prescription.items.length > 0
             ? prescription.items.map((i) => ({ label: i.product.brandName ?? i.product.name, dose: i.strength.label }))
@@ -263,6 +271,14 @@ export class PatientsService {
       quizFlags = evaluation.flags;
       questionnaireVersion = versionTag(intake);
     }
+    // Onboarding left for the patient: any medical answers entered here still become their consultation, as
+    // answers given on the website do, so onboarding doesn't ask for them again. Checked now, before anything
+    // is created. With none entered, the patient answers them in the portal as before.
+    const intakeForPatient = !input.onboardingCompleted && (input.quizAnswers?.length ?? 0) > 0;
+    if (intakeForPatient) {
+      const evaluation = evaluateAnswers(findQuestionnaire(input.plan, 'INTAKE'), input.quizAnswers!, true);
+      if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+    }
 
     // An admin can set the password directly; otherwise generate a readable
     // one (not a 32-char hex blob) since they need to actually type it to log
@@ -353,13 +369,31 @@ export class PatientsService {
       return created;
     });
 
+    let intakeSubmitted = false;
+    if (intakeForPatient) {
+      // The patient already exists: a failure here must not look like the creation failed (a retry would hit the
+      // duplicate email). They answer the questionnaire in the portal instead.
+      try {
+        await this.moduleRef.get(ConsultationsService, { strict: false }).submitIntakeQuiz(
+          patient.id,
+          { kind: input.plan, answers: input.quizAnswers! },
+          {},
+          // The patient hasn't been shown the consent: it is not recorded for them, they accept it in onboarding.
+          { consentRecordedElsewhere: true },
+        );
+        intakeSubmitted = true;
+      } catch (err: any) {
+        this.logger.error(`Creating the consultation for staff-created patient ${patient.id} failed: ${err?.message}`);
+      }
+    }
+
     await this.audit.log({
       actorId,
       actorRole: UserRole.CLINICIAN,
       action: 'PATIENT_CREATED_BY_STAFF',
       resourceType: 'Patient',
       resourceId: patient.id,
-      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted },
+      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted, intakeSubmitted },
     });
     this.posthog.capture(actorId, 'patient_created_by_staff', {
       plan: input.plan,

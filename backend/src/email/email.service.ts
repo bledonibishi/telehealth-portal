@@ -45,6 +45,32 @@ export class EmailService {
     await this.resend.emails.send({ from: this.from, to, subject: 'Activate your account', html });
   }
 
+  /** The six-digit code that proves someone owns the address they typed into the quiz. */
+  async sendVerificationCodeEmail(to: string, code: string) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+        <h2 style="color:#1e293b">Your verification code</h2>
+        <p style="color:#475569">Enter this code to continue your assessment:</p>
+        <p style="font-size:34px;font-weight:700;letter-spacing:8px;color:#1e293b;margin:20px 0">${code}</p>
+        <p style="color:#94a3b8;font-size:13px">It expires in 10 minutes. If you didn't ask for it, you can ignore this email.</p>
+      </div>
+    `;
+
+    if (!this.resend) {
+      this.logger.log(`[DEV] Verification code for ${to}: ${code}`);
+      return;
+    }
+
+    // The mail provider reports a failure (a bad API key, a refused address) as a returned error rather than throwing,
+    // so it has to be looked at: otherwise the visitor would be told a code was sent when none was.
+    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `${code} is your verification code`, html });
+    if (error) {
+      // While developing, the code goes to the log so the flow can still be tried; never in production.
+      if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`[DEV] The mail provider refused the email (${error.message}). Verification code for ${to}: ${code}`);
+      throw new Error(error.message);
+    }
+  }
+
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
     const html = `
       <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
