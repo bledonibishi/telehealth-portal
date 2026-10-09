@@ -24,14 +24,7 @@ function GetStartedForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <span className="font-bold text-2xl text-slate-900 tracking-tight">telehealth</span>
-          <p className="text-sm text-slate-500 mt-1">Patient portal</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+    <>
           {sent ? (
             <>
               <h1 className="text-xl font-semibold text-slate-900 mb-2">Check your inbox</h1>
@@ -43,6 +36,10 @@ function GetStartedForm() {
                 Already set your password?{' '}
                 <Link href="/login" className="text-brand-600 font-medium hover:text-brand-700">
                   Sign in
+                </Link>
+                {' '}or{' '}
+                <Link href="/forgot-password" className="text-brand-600 font-medium hover:text-brand-700">
+                  reset it
                 </Link>
               </p>
               <button
@@ -61,7 +58,15 @@ function GetStartedForm() {
               </p>
 
               {error && (
-                <div className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">{error}</div>
+                <div role="alert" className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">
+                  {error}
+                  {error.includes('password is already set') && (
+                    <span className="mt-2 flex gap-4 font-medium">
+                      <Link href="/login" className="underline">Sign in</Link>
+                      <Link href="/forgot-password" className="underline">Reset password</Link>
+                    </span>
+                  )}
+                </div>
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -93,9 +98,7 @@ function GetStartedForm() {
               </p>
             </>
           )}
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
 

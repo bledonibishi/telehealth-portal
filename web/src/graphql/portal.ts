@@ -151,7 +151,10 @@ export const MY_CARE_TEAM = gql`
 
 export const CHANGE_MY_PASSWORD = gql`
   mutation ChangeMyPassword($currentPassword: String!, $newPassword: String!) {
-    changeMyPassword(currentPassword: $currentPassword, newPassword: $newPassword)
+    changeMyPassword(currentPassword: $currentPassword, newPassword: $newPassword) {
+      accessToken
+      refreshToken
+    }
   }
 `;
 
