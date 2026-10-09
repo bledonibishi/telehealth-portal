@@ -313,7 +313,9 @@ ul,ol{list-style:none}
 .th-success-card{background:#fff;border:1px solid var(--c-border);border-radius:24px;padding:28px;box-shadow:0 8px 48px rgba(14,26,43,.06)}
 .th-success-card h2{font-family:var(--f-head);font-size:20px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px;color:var(--c-dark)}
 .th-success-card p{font-size:15px;line-height:1.55;color:var(--c-secondary);margin:0 0 16px}
+.th-success-card.referral{border:1.5px solid #86D3A3;background:#F6FCF8}
 .th-success-card.highlight{background:var(--c-bg-blue);border-color:#C9D9FB}
+.th-price{color:#15803D;font-weight:700}
 .th-ref-row{display:flex;gap:10px}
 .th-ref-input{flex:1;min-width:0;padding:13px 14px;border:1.5px solid var(--c-border);border-radius:var(--r-input);font:inherit;font-size:14px;color:var(--c-medium);background:#fff}
 .th-store-row{display:flex;flex-wrap:wrap;gap:12px}

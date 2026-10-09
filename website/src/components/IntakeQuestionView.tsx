@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { hasAnswer, numberOk, type IntakeQuestion, type IntakeValues } from '@/lib/intake';
 
 /**
@@ -16,6 +17,9 @@ export default function IntakeQuestionView({
   onNext: (next: IntakeValues) => void;
 }) {
   const sel = values[q.id] ?? [];
+  // A text question with a ready answer shows two choices; the box appears only when the visitor wants to type.
+  const [typing, setTyping] = useState(() => !!q.quickAnswer && hasAnswer(q, values) && sel[0] !== q.quickAnswer);
+  const quick = q.type === 'text' && !!q.quickAnswer;
   const canNext = q.type === 'number' ? numberOk(q, sel[0]) : q.optional || hasAnswer(q, values);
 
   const toggle = (value: string) => {
@@ -91,11 +95,52 @@ export default function IntakeQuestionView({
         </>
       )}
 
-      {q.type === 'text' && (
-        <textarea className="thq-input" rows={3} maxLength={2000} value={sel[0] ?? ''} aria-label={q.text} onChange={(e) => onChange(q.id, [e.target.value])} />
+      {quick && (
+        <div className="thq-opts" role="radiogroup" aria-label={q.text}>
+          <button
+            type="button"
+            className="thq-opt"
+            role="radio"
+            aria-checked={sel[0] === q.quickAnswer}
+            onClick={() => {
+              setTyping(false);
+              onChange(q.id, [q.quickAnswer!]);
+              onNext({ ...values, [q.id]: [q.quickAnswer!] });
+            }}
+          >
+            <span className="thq-dot" />
+            {q.quickAnswer}
+          </button>
+          <button
+            type="button"
+            className="thq-opt"
+            role="radio"
+            aria-checked={typing}
+            onClick={() => {
+              setTyping(true);
+              if (sel[0] === q.quickAnswer) onChange(q.id, ['']);
+            }}
+          >
+            <span className="thq-dot" />
+            Add details
+          </button>
+        </div>
       )}
 
-      {q.type !== 'single' && (
+      {q.type === 'text' && (!quick || typing) && (
+        <textarea
+          className="thq-input"
+          style={quick ? { marginTop: 16 } : undefined}
+          rows={3}
+          maxLength={2000}
+          autoFocus={quick}
+          value={sel[0] ?? ''}
+          aria-label={q.text}
+          onChange={(e) => onChange(q.id, [e.target.value])}
+        />
+      )}
+
+      {q.type !== 'single' && (!quick || typing) && (
         <button type="button" className="thq-next" disabled={!canNext} onClick={() => onNext(values)}>
           {q.optional && !hasAnswer(q, values) ? 'Skip' : 'Next'}
         </button>

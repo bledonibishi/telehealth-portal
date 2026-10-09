@@ -30,6 +30,8 @@ export interface Question {
   min?: number;
   max?: number;
   unit?: string;
+  // A text question with a ready answer the patient can tap instead of typing (e.g. “None”).
+  quickAnswer?: string;
   // Asked only when an earlier single/multi question has one of these values.
   showIf?: { questionId: string; anyOf: string[] };
 }
@@ -280,8 +282,9 @@ const COMMON_INTAKE: Question[] = [
     text: 'Which medicines, supplements or remedies do you take?',
     help: 'Include the dose if you know it. Write “None” if you take nothing.',
     type: 'text',
+    quickAnswer: 'None',
   },
-  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text' },
+  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text', quickAnswer: 'None' },
   { id: 'other_conditions', text: 'Any other medical conditions we should know about?', type: 'text', optional: true },
   {
     id: 'gp_details',

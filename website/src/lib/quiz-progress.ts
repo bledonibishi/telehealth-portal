@@ -12,7 +12,7 @@ export interface QuizProgress {
   idx: number;
   answers: Record<string, SavedAnswer>;
   bmiBand: string | null;
-  view: 'q' | 'calc' | 'intake' | 'details';
+  view: 'q' | 'intake' | 'details';
   /** Answers to the medical questions that follow the eligibility ones, by question id. */
   health: Record<string, string[]>;
   /** Whether the visitor has agreed to the statement shown before the first question. */

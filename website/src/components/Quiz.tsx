@@ -19,7 +19,7 @@ interface QuizState {
   idx: number;
   answers: Record<string, Answer>;
   bmiBand: string | null;
-  view: 'q' | 'calc' | 'intake' | 'details';
+  view: 'q' | 'intake' | 'details';
   /** Answers to the medical questions after the eligibility ones, by question id. */
   health: IntakeValues;
   /** Whether the visitor has agreed to the statement shown before the first question. */
@@ -326,10 +326,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
     setRestored(false);
 
     if (q.type === 'single') {
-      if (o.calc) { setSt((s) => ({ ...s, view: 'calc' })); return; }
       const newAnswers = { ...st.answers, [q.id]: { question: q.q, sel: [o.l] } };
-      const newBmiBand = q.id === 'bmi' ? (o.band ?? null) : st.bmiBand;
-      advance(q, newAnswers, newBmiBand);
+      advance(q, newAnswers, st.bmiBand);
       return;
     }
 
@@ -359,7 +357,6 @@ export default function Quiz({ product }: { product: ProductKind }) {
     setSt((s) => {
       if (s.view === 'details') return healthQs.length ? { ...s, view: 'intake', idx: healthQs.length - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
       if (s.view === 'intake') return s.idx > 0 ? { ...s, idx: s.idx - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
-      if (s.view === 'calc') return { ...s, view: 'q' };
       if (s.idx > 0) return { ...s, idx: s.idx - 1 };
       return s;
     });
@@ -483,31 +480,32 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const totalQs = n + healthQs.length;
   const sel = st.answers[q?.id]?.sel ?? [];
 
-  /* ── BMI Calculator ── */
-  if (st.view === 'calc') {
+  /* ── Height and weight (the BMI is worked out from them) ── */
+  if (st.view === 'q' && q?.type === 'measure') {
+    const known = /calculated from (\d+(?:\.\d+)?) cm, (\d+(?:\.\d+)?) kg/.exec(st.answers[q.id]?.sel[0] ?? '');
     return (
       <div className="thq-in">
         <div className="thq-top">
-          <button className="thq-arrow" onClick={back} aria-label="Back">←</button>
+          <button className="thq-arrow" onClick={back} disabled={st.idx === 0} aria-label="Back">←</button>
           <div className="thq-progress"><div className="thq-bar" style={{ width: `${Math.max(5, Math.round(st.idx / (totalQs + 1) * 100))}%` }} /></div>
           <div className="thq-count">Question {st.idx + 1} / {totalQs}</div>
         </div>
         <div className="thq-time">◷ Takes about 5 minutes</div>
-        <h2 className="thq-q">Let's work out your BMI</h2>
-        <p className="thq-help">Enter your height and current weight.</p>
+        <h2 className="thq-q">{q.q}</h2>
+        {q.help ? <p className="thq-help">{q.help}</p> : <div className="thq-spacer" />}
         <div className="thq-fields">
           <div className="thq-field">
             <label htmlFor="thq-h">Height (cm)</label>
-            <input ref={hInputRef} id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168" />
+            <input ref={hInputRef} id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168" defaultValue={known?.[1]} />
           </div>
           <div className="thq-field">
             <label htmlFor="thq-w">Weight (kg)</label>
-            <input ref={wInputRef} id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92" />
+            <input ref={wInputRef} id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92" defaultValue={known?.[2]} />
           </div>
         </div>
         {calcErr && <div className="thq-error">{calcErr}</div>}
         <button className="thq-next" onClick={doCalc}>
-          Calculate my BMI
+          Continue
         </button>
       </div>
     );
