@@ -103,12 +103,13 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
   const [cancelling, setCancelling] = useState(false);
   const [changingDose, setChangingDose] = useState(false);
   const [reason, setReason] = useState('');
-  const [repeatMessage, setRepeatMessage] = useState<unknown>(null);
+  const [repeatSent, setRepeatSent] = useState(false);
+  const [repeatError, setRepeatError] = useState<unknown>(null);
   const [cancel, { loading, error }] = useMutation(CANCEL_PRESCRIPTION, { onCompleted: () => setCancelling(false) });
   const [orderRepeat, { loading: ordering }] = useMutation(CREATE_REPEAT_ORDER, {
     refetchQueries: [{ query: GET_ORDERS }],
-    onCompleted: () => setRepeatMessage(t('Repeat sent to the pharmacy queue')),
-    onError: (e) => setRepeatMessage(e),
+    onCompleted: () => { setRepeatError(null); setRepeatSent(true); },
+    onError: (e) => { setRepeatSent(false); setRepeatError(e); },
   });
   const style = STATUS_STYLE[rx.status] ?? STATUS_STYLE.ACTIVE;
   const isPrescriber = hasAccess(['ADMIN', 'DOCTOR']);
@@ -166,16 +167,17 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
       )}
       {rx.cancelReason && <p className="text-xs text-danger-500">{t('Cancelled:')} {rx.cancelReason}</p>}
       {expired && rx.status === 'ACTIVE' && <p className="text-xs text-danger-500">{t('Expired — a new prescription is needed.')}</p>}
-      <InlineError error={repeatMessage} size="xs" />
+      {repeatSent && <p className="text-xs text-gray-600" role="status">{t('Repeat sent to the pharmacy queue')}</p>}
+      <InlineError error={repeatError} size="xs" />
 
       {!changingDose && (
         <div className="flex gap-3">
-          <button onClick={() => openAuthedDocument(rx.documentUrl)} className="text-xs font-medium text-brand-500 hover:underline">
+          <button onClick={() => openAuthedDocument(rx.documentUrl, t)} className="text-xs font-medium text-brand-500 hover:underline">
             {t('View PDF')}
           </button>
           {canRepeat && (
             <button
-              onClick={() => { setRepeatMessage(''); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
+              onClick={() => { setRepeatSent(false); setRepeatError(null); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
               disabled={ordering}
               className="text-xs font-medium text-brand-500 hover:underline disabled:opacity-50"
             >

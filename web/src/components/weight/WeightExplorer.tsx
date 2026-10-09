@@ -42,6 +42,8 @@ function useSwipe(onPrev: () => void, onNext: () => void) {
 /** The chart, the month-by-month list and any extra tabs the page adds (photos, check-ins), in one card so nothing sits far down the page. */
 export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const tl = useWeightTimeline();
+  // Years that failed can always be fetched again, whatever the error was, so the retry is offered every time.
+  const retryTimeline = <button type="button" onClick={tl.retry} className="text-sm font-semibold underline underline-offset-2 hover:opacity-80">Try again</button>;
   const { points, meta } = tl;
   const nowMs = useRef(Date.now()).current;
 
@@ -202,7 +204,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
             )}
           </div>
 
-          {!ready && <ErrorAlert error={tl.error} onRetry={tl.retry} />}
+          {!ready && <ErrorAlert error={tl.error} action={retryTimeline} />}
           {!ready && !tl.error && <div className="h-[220px] sm:h-[260px] rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your weights" />}
           {ready && (
             <div className="relative">
@@ -220,7 +222,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
               )}
             </div>
           )}
-          {ready && <ErrorAlert error={tl.error} onRetry={tl.retry} className="mt-2" />}
+          {ready && <ErrorAlert error={tl.error} action={retryTimeline} className="mt-2" />}
           {tl.truncated && <p className="text-xs text-slate-400 mt-2">A very long history is shown in part — the most recent entries first.</p>}
 
           {fc && (

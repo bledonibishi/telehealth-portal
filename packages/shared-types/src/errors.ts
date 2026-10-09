@@ -179,10 +179,11 @@ function fromGraphQLError(error: GraphQLErrorLike): DescribedError {
   const ext = error.extensions ?? {};
   const legacyReason = (ext.originalError as { reason?: string } | undefined)?.reason;
   const reason = (ext.reason as string | undefined) ?? legacyReason;
-  const code = isErrorCode(ext.code)
-    ? ext.code
-    : reason
-      ? ErrorCode.SESSION_ENDED
+  // An API from before the catalog sends a session reason with code UNAUTHENTICATED; the reason is what matters.
+  const code = reason && (!isErrorCode(ext.code) || ext.code === ErrorCode.UNAUTHENTICATED)
+    ? ErrorCode.SESSION_ENDED
+    : isErrorCode(ext.code)
+      ? ext.code
       : typeof ext.status === 'number'
         ? errorCodeForStatus(ext.status)
         : ErrorCode.INTERNAL;

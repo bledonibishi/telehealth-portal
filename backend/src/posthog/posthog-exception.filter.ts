@@ -4,6 +4,10 @@ import { GqlExceptionFilter, GqlExecutionContext } from '@nestjs/graphql';
 import { ThrottlerException } from '@nestjs/throttler';
 import { normalizeError } from '../common/errors/normalize-error';
 import { PostHogService } from './posthog.service';
+import { ErrorCode } from '@telehealth/shared-types';
+
+// Expected failures that are not 401s. Like the 401s, they are recorded in the audit log, so tracking them is noise.
+const EXPECTED_FAILURES = new Set<ErrorCode>([ErrorCode.WRONG_CURRENT_PASSWORD]);
 
 @Catch()
 export class PostHogExceptionFilter extends BaseExceptionFilter implements GqlExceptionFilter {
@@ -17,7 +21,7 @@ export class PostHogExceptionFilter extends BaseExceptionFilter implements GqlEx
     const isGraphql = host.getType<string>() === 'graphql';
 
     // A wrong password or an expired token is expected, and the audit log records failed logins
-    if (!(exception instanceof UnauthorizedException)) {
+    if (!(exception instanceof UnauthorizedException) && !EXPECTED_FAILURES.has(normalizeError(exception).code)) {
       const gqlContext = isGraphql ? GqlExecutionContext.create(host as ExecutionContext) : null;
       const req = gqlContext ? gqlContext.getContext()?.req : host.switchToHttp().getRequest();
 

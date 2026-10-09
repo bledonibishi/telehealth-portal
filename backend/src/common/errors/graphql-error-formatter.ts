@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { GraphQLFormattedError } from 'graphql';
 import { unwrapResolverError } from '@apollo/server/errors';
 import { ERRORS, ErrorCode } from '@telehealth/shared-types';
@@ -17,7 +17,10 @@ const REQUEST_ERROR_CODES = new Set(['GRAPHQL_PARSE_FAILED', 'GRAPHQL_VALIDATION
  */
 export function formatGraphQLError(formatted: GraphQLFormattedError, error: unknown): GraphQLFormattedError {
   const apolloCode = formatted.extensions?.code as string | undefined;
-  if (apolloCode && REQUEST_ERROR_CODES.has(apolloCode)) {
+  // Apollo also says BAD_REQUEST for a request it refused itself (a CSRF block, a malformed body); a Nest 400 says it
+  // too, but unwraps to an HttpException and keeps its message below.
+  const refusedByApollo = apolloCode === 'BAD_REQUEST' && !(unwrapResolverError(error) instanceof HttpException);
+  if (apolloCode && (REQUEST_ERROR_CODES.has(apolloCode) || refusedByApollo)) {
     logger.warn(`${apolloCode}: ${formatted.message}`);
     return { message: ERRORS[ErrorCode.BAD_REQUEST].message, locations: formatted.locations, path: formatted.path, extensions: { code: ErrorCode.BAD_REQUEST, severity: 'error' } };
   }

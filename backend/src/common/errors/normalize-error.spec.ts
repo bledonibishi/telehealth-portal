@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
 import { GraphQLError } from 'graphql';
 import { ErrorCode } from '@telehealth/shared-types';
@@ -47,6 +47,12 @@ describe('normalizeError', () => {
     expect(normalizeError(new HttpException('upstream exploded', HttpStatus.BAD_GATEWAY)).message).not.toContain('exploded');
   });
 
+  it('keeps a 503 written for people, and an appError’s own message', () => {
+    const unavailable = normalizeError(new ServiceUnavailableException('Subscription management isn’t available right now. Please message us and we’ll help.'));
+    expect(unavailable).toMatchObject({ code: ErrorCode.SERVICE_UNAVAILABLE, severity: 'warning', message: 'Subscription management isn’t available right now. Please message us and we’ll help.' });
+    expect(normalizeError(appError(ErrorCode.SERVICE_UNAVAILABLE, 'Scheduling is not set up')).message).toBe('Scheduling is not set up');
+  });
+
   it('maps Prisma’s unique and missing-record errors', () => {
     const prisma = (code: string) => Object.assign(new Error('raw'), { name: 'PrismaClientKnownRequestError', code });
     expect(normalizeError(prisma('P2002'))).toMatchObject({ code: ErrorCode.CONFLICT, unexpected: false });
@@ -72,6 +78,11 @@ describe('formatGraphQLError', () => {
   it('answers a query the schema rejects with a generic message', () => {
     const out = formatGraphQLError({ message: 'Cannot query field "secret" on type "Patient".', extensions: { code: 'GRAPHQL_VALIDATION_FAILED' } }, new GraphQLError('x'));
     expect(out).toMatchObject({ message: 'That didn’t work. Please check the details and try again.', extensions: { code: ErrorCode.BAD_REQUEST } });
+  });
+
+  it('treats a request Apollo refused itself as the client’s mistake, not a crash', () => {
+    const out = formatGraphQLError({ message: 'This operation has been blocked as a potential Cross-Site Request Forgery (CSRF).', extensions: { code: 'BAD_REQUEST' } }, new GraphQLError('x'));
+    expect(out).toMatchObject({ message: 'That didn’t work. Please check the details and try again.', extensions: { code: ErrorCode.BAD_REQUEST, severity: 'error' } });
   });
 
   it('never sends a crash’s own text', () => {

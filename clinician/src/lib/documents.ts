@@ -7,9 +7,9 @@ const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
 /**
  * Opens an authenticated document (e.g. a prescription PDF) in a new tab. The
  * endpoint needs the JWT, so a plain link can't load it. The tab is opened
- * synchronously, inside the click, so popup blockers allow it.
+ * synchronously, inside the click, so popup blockers allow it. A failure is shown in an alert, translated with `t`.
  */
-export function openAuthedDocument(path: string) {
+export function openAuthedDocument(path: string, t: (text: string) => string) {
   const tab = window.open('', '_blank');
   fetch(`${API_ROOT}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } })
     .then((res) => {
@@ -25,6 +25,6 @@ export function openAuthedDocument(path: string) {
     })
     .catch((err) => {
       tab?.close();
-      alert(errorMessage(err));
+      alert(t(errorMessage(err)));
     });
 }

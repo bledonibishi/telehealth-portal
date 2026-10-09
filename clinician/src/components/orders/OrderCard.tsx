@@ -286,7 +286,7 @@ export function OrderCard({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1.5">
                     <button
                       type="button"
-                      onClick={() => openAuthedDocument(rx.documentUrl)}
+                      onClick={() => openAuthedDocument(rx.documentUrl, t)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500 px-2.5 py-1 text-xs font-semibold text-brand-500 hover:bg-brand-50"
                     >
                       <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5z" strokeLinejoin="round" /><path d="M11 2.5V6h4M7.5 10h5M7.5 13h5" strokeLinecap="round" /></svg>

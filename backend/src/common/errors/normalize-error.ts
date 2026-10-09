@@ -39,7 +39,10 @@ export function normalizeError(exception: unknown): NormalizedError {
 
     // class-validator answers with a list of messages
     const raw = Array.isArray(body.message) ? body.message.join(' ') : body.message;
-    const message = status >= 500 || typeof raw !== 'string' || !raw || DEFAULT_MESSAGES.has(raw) ? definition.message : raw;
+    // A 500's text is a crash's. A 503 ("Subscription management isn't available right now. Please message us") or an
+    // appError with its own code was written for people, so it is kept.
+    const crashText = status >= 500 && status !== 503 && !isErrorCode(body.code);
+    const message = crashText || typeof raw !== 'string' || !raw || DEFAULT_MESSAGES.has(raw) ? definition.message : raw;
 
     return {
       code,
