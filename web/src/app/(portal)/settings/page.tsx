@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { CHANGE_MY_PASSWORD } from '@/graphql/portal';
 import { clearToken, setToken } from '@/lib/auth';
+import { realtime } from '@/lib/apollo';
 import { CONTACT, EMERGENCY_NUMBER, telHref } from '@/lib/contact';
 import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
 import { StopOrRefundCard } from '@/components/billing/StopOrRefundCard';
@@ -41,7 +42,10 @@ function PasswordForm() {
     try {
       const { data } = await change({ variables: { currentPassword: current, newPassword: next } });
       // Changing the password ends every other session; these tokens keep this one signed in.
-      if (data?.changeMyPassword) setToken(data.changeMyPassword.accessToken, data.changeMyPassword.refreshToken);
+      if (data?.changeMyPassword) {
+        setToken(data.changeMyPassword.accessToken, data.changeMyPassword.refreshToken);
+        realtime?.reconnect();
+      }
       setCurrent(''); setNext(''); setAgain('');
       setDone(true);
     } catch (err: any) {

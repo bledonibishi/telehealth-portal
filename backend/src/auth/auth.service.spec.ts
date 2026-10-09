@@ -10,7 +10,7 @@ jest.mock('otplib', () => ({ authenticator: { verify: jest.fn() } }));
 
 describe('AuthService', () => {
   let prisma: {
-    clinician: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+    clinician: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     patient: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -43,8 +43,8 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     prisma = {
-      clinician: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
-      patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      clinician: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
@@ -64,11 +64,10 @@ describe('AuthService', () => {
 
     it('saves a new hash, ends other sessions, audits it and returns fresh tokens when the current password is right', async () => {
       prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 2 });
-      prisma.patient.update.mockResolvedValue({ ...PATIENT, tokenVersion: 3 });
       compare.mockResolvedValue(true);
       hash.mockResolvedValue('new-hash');
       const tokens = await service.changeOwnPassword(patientAccount, 'old-password-1', 'new-password-12');
-      expect(prisma.patient.update).toHaveBeenCalledWith({ where: { id: 'patient-1' }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
+      expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'patient-1', passwordHash: 'hashed', tokenVersion: 2 }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_CHANGED', actorId: 'patient-1' }), prisma);
       expect(jwtService.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'patient-1', tv: 3 }));
       expect(tokens).toEqual({ accessToken: 'signed-token', refreshToken: 'signed-token' });
@@ -76,12 +75,20 @@ describe('AuthService', () => {
 
     it('lets a clinician change theirs too', async () => {
       prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, tokenVersion: 0 });
-      prisma.clinician.update.mockResolvedValue({ ...CLINICIAN, tokenVersion: 1 });
       compare.mockResolvedValue(true);
       hash.mockResolvedValue('new-hash');
       await service.changeOwnPassword({ id: 'clinician-1', role: UserRole.CLINICIAN }, 'old-password-1', 'new-password-12');
-      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'clinician-1' }, data: expect.objectContaining({ passwordHash: 'new-hash', tokenVersion: { increment: 1 } }) });
+      expect(prisma.clinician.updateMany).toHaveBeenCalledWith({ where: { id: 'clinician-1', passwordHash: 'hashed', tokenVersion: 0 }, data: expect.objectContaining({ passwordHash: 'new-hash', tokenVersion: { increment: 1 } }) });
       expect(jwtService.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'clinician-1', role: 'DOCTOR', tv: 1 }));
+    });
+
+    it('fails, rather than hand back tokens that are already revoked, when another change got there first', async () => {
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 2 });
+      prisma.patient.updateMany.mockResolvedValue({ count: 0 });
+      compare.mockResolvedValue(true);
+      hash.mockResolvedValue('new-hash');
+      await expect(service.changeOwnPassword(patientAccount, 'old-password-1', 'new-password-12')).rejects.toThrow(/changed somewhere else/);
+      expect(jwtService.sign).not.toHaveBeenCalled();
     });
 
     it('refuses, and records the attempt, when the current password is wrong', async () => {
@@ -106,7 +113,7 @@ describe('AuthService', () => {
   describe('requestPasswordReset', () => {
     let reset: { deleteMany: jest.Mock; create: jest.Mock };
     beforeEach(() => {
-      reset = { deleteMany: jest.fn(), create: jest.fn() };
+      reset = { deleteMany: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'new-row' }) };
       (prisma as any).passwordReset = reset;
       (email as any).sendPasswordResetEmail = jest.fn().mockResolvedValue(true);
       config.get.mockImplementation((key: string) => (key === 'PATIENT_APP_URL' ? 'https://app.test' : '7d'));
@@ -121,7 +128,17 @@ describe('AuthService', () => {
       const stored = reset.create.mock.calls[0][0].data;
       expect(stored.tokenHash).not.toBe(token);
       expect(stored.tokenHash).toBe(hashResetToken(token));
-      expect(reset.deleteMany).toHaveBeenCalled();
+      // Older links go only after the new one was sent.
+      await new Promise((r) => setImmediate(r));
+      expect(reset.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({ id: { not: 'new-row' }, usedAt: null }) });
+    });
+
+    it('keeps the older link when the new email was not accepted', async () => {
+      prisma.patient.findFirst.mockResolvedValue(PATIENT);
+      (email as any).sendPasswordResetEmail.mockResolvedValue(false);
+      await service.requestPasswordReset('pat@example.com', 'patient');
+      await new Promise((r) => setImmediate(r));
+      expect(reset.deleteMany).not.toHaveBeenCalled();
     });
 
     it('says true and sends nothing for an unknown address', async () => {
@@ -155,7 +172,7 @@ describe('AuthService', () => {
       prisma.patient.findUnique.mockResolvedValue(PATIENT);
       await expect(service.resetPassword('tok', 'a-good-password-1')).resolves.toBe(true);
       expect(reset.findUnique).toHaveBeenCalledWith({ where: { tokenHash: hashResetToken('tok') } });
-      expect(prisma.patient.update).toHaveBeenCalledWith({ where: { id: 'patient-1' }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
+      expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'patient-1' }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_RESET' }), prisma);
       expect((email as any).sendPasswordChangedEmail).toHaveBeenCalled();
     });
@@ -177,6 +194,14 @@ describe('AuthService', () => {
       prisma.patient.findUnique.mockResolvedValue(PATIENT);
       await expect(service.resetPassword('tok', 'a-good-password-1')).rejects.toThrow(/invalid or has expired/);
       expect(prisma.patient.update).not.toHaveBeenCalled();
+    });
+
+    it('rolls the link back when a clinician was deactivated while the password was being hashed', async () => {
+      reset.findUnique.mockResolvedValue(row({ accountType: 'CLINICIAN', accountId: 'clinician-1' }));
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, deactivatedAt: null });
+      prisma.clinician.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.resetPassword('tok', 'a-good-password-1')).rejects.toThrow(/invalid or has expired/);
+      expect(prisma.clinician.updateMany).toHaveBeenCalledWith({ where: { id: 'clinician-1', deactivatedAt: null }, data: expect.anything() });
     });
 
     it('refuses a weak password without spending the link', async () => {
@@ -304,6 +329,15 @@ describe('AuthService', () => {
 
       await expect(service.verifyMfa('token', '000000')).rejects.toThrow(UnauthorizedException);
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_MFA_FAILED' }));
+    });
+
+    it('refuses a sign-in that was waiting for a code when the password changed or sessions were ended meanwhile', async () => {
+      jwtService.verify.mockReturnValue({ ...PENDING_PAYLOAD, tv: 0 });
+      prisma.clinician.findUnique.mockResolvedValue({ ...CLINICIAN, mfaSecret: 'secret', tokenVersion: 1 });
+      (authenticator.verify as jest.Mock).mockReturnValue(true);
+
+      await expect(service.verifyMfa('token', '123456')).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'SESSION_REVOKED' }) });
+      expect(jwtService.sign).not.toHaveBeenCalled();
     });
 
     it('returns an access token and audit-logs AUTH_MFA_VERIFIED on a correct TOTP code', async () => {

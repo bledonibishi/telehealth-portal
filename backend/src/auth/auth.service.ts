@@ -76,7 +76,7 @@ export class AuthService {
 
     if (clinician.mfaEnabled) {
       const pendingToken = this.jwtService.sign(
-        { sub: clinician.id, role: UserRole.CLINICIAN, mfaPending: true },
+        { sub: clinician.id, role: UserRole.CLINICIAN, mfaPending: true, tv: clinician.tokenVersion ?? 0 },
         { expiresIn: '5m' },
       );
       return { mfaRequired: true, pendingToken, accessToken: null, clinician: null };
@@ -291,13 +291,15 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     const data = { passwordHash, tokenVersion: { increment: 1 }, ...(isPatient ? {} : { passwordSetAt: new Date() }) };
-    const updated: any = await this.prisma.$transaction(async (tx: any) => {
-      const result = await (isPatient ? tx.patient : tx.clinician).update({ where: { id: account.id }, data });
+    await this.prisma.$transaction(async (tx: any) => {
+      // Only if nothing changed the password since it was checked: two overlapping changes must not both succeed, or the
+      // second would end the session the first one just handed back.
+      const changed = await (isPatient ? tx.patient : tx.clinician).updateMany({ where: { id: account.id, passwordHash: row.passwordHash, tokenVersion: row.tokenVersion ?? 0 }, data });
+      if (changed.count !== 1) throw new ConflictException('Your password was changed somewhere else a moment ago. Please try again.');
       await this.audit.log({ actorId: account.id, actorRole, action: 'AUTH_PASSWORD_CHANGED', resourceType, resourceId: account.id, metadata: { ...attempt } }, tx);
-      return result;
     });
     await this.notifyPasswordChanged(row, isPatient);
-    return this.issueTokens(account.id, isPatient ? UserRole.PATIENT : row.role, updated?.tokenVersion ?? row.tokenVersion + 1);
+    return this.issueTokens(account.id, isPatient ? UserRole.PATIENT : row.role, (row.tokenVersion ?? 0) + 1);
   }
 
   /** Ends every session of the signed-in account, this one included. */
@@ -327,22 +329,24 @@ export class AuthService {
 
     const accountType = isPatient ? 'PATIENT' : 'CLINICIAN';
     const { token, tokenHash, expiresAt } = newPasswordResetToken();
-    await this.prisma.$transaction(async (tx: any) => {
-      // Only the newest link works, so an older email lying in an inbox can't be used later.
-      await tx.passwordReset.deleteMany({ where: { accountType, accountId: account.id, usedAt: null } });
-      await tx.passwordReset.create({ data: { accountType, accountId: account.id, tokenHash, expiresAt } });
+    const created = await this.prisma.$transaction(async (tx: any) => {
+      // The newest link is added first and older ones are removed only once it has been sent (below), so a refused
+      // email does not leave the owner with no working link.
+      const row = await tx.passwordReset.create({ data: { accountType, accountId: account.id, tokenHash, expiresAt } });
       await this.audit.log({ actorId: account.id, actorRole: isPatient ? UserRole.PATIENT : UserRole.CLINICIAN, action: 'AUTH_PASSWORD_RESET_REQUESTED', resourceType: accountType === 'PATIENT' ? 'Patient' : 'Clinician', resourceId: account.id, metadata: { ...attempt } }, tx);
+      return row;
     });
 
     const base = isPatient
       ? this.config.get<string>('PATIENT_APP_URL')?.trim() || 'http://localhost:3000'
       : this.config.get<string>('CLINICIAN_APP_URL')?.trim() || 'http://localhost:3002';
-    try {
-      await this.email.sendPasswordResetEmail(account.email, account.firstName, `${base.replace(/\/$/, '')}/reset-password?token=${token}`, audience, PASSWORD_RESET_TTL_MINUTES);
-    } catch (err: any) {
-      // Don't let a mail outage reveal that the account exists.
-      this.logger.error(`Password reset email to ${accountType.toLowerCase()} ${account.id} failed: ${err.message}`);
-    }
+    // Not awaited: the answer must not wait on the mail provider, or its speed would tell a real account from an unknown one.
+    void this.email
+      .sendPasswordResetEmail(account.email, account.firstName, `${base.replace(/\/$/, '')}/reset-password?token=${token}`, audience, PASSWORD_RESET_TTL_MINUTES)
+      .then(async (sent) => {
+        if (sent) await this.prisma.passwordReset.deleteMany({ where: { accountType, accountId: account.id, usedAt: null, id: { not: created.id } } });
+      })
+      .catch((err: any) => this.logger.error(`Password reset email to ${accountType.toLowerCase()} ${account.id} failed: ${err.message}`));
     return true;
   }
 
@@ -373,10 +377,13 @@ export class AuthService {
       // Matching on usedAt: null makes the link single-use even if two requests race.
       const spent = await tx.passwordReset.updateMany({ where: { id: reset.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
       if (spent.count !== 1) return false;
-      await (isPatient ? tx.patient : tx.clinician).update({
-        where: { id: account.id },
+      const changed = await (isPatient ? tx.patient : tx.clinician).updateMany({
+        // Checked again here: the account may have been turned off while the password was being hashed.
+        where: { id: account.id, ...(isPatient ? {} : { deactivatedAt: null }) },
         data: { passwordHash, tokenVersion: { increment: 1 }, ...(isPatient ? {} : { passwordSetAt: new Date(), inviteToken: null, inviteTokenExpiresAt: null }) },
       });
+      // Thrown, not returned, so the spent link rolls back with everything else.
+      if (changed.count !== 1) throw invalidLink();
       await tx.passwordReset.deleteMany({ where: { accountType: reset.accountType, accountId: account.id, usedAt: null } });
       await this.audit.log({ actorId: account.id, actorRole: isPatient ? UserRole.PATIENT : UserRole.CLINICIAN, action: 'AUTH_PASSWORD_RESET', resourceType: isPatient ? 'Patient' : 'Clinician', resourceId: account.id, metadata: { ...attempt } }, tx);
       return true;
@@ -412,6 +419,8 @@ export class AuthService {
     const clinician = await this.prisma.clinician.findUnique({ where: { id: payload.sub } });
     if (!clinician?.mfaSecret) throw new UnauthorizedException('MFA not configured');
     if (clinician.deactivatedAt) throw new UnauthorizedException('This account has been deactivated. Ask an admin to turn it back on.');
+    // A password change or "sign out everywhere" after the password step cancels the sign-in that was waiting for a code.
+    this.assertSessionCurrent(payload, clinician.tokenVersion);
 
     if (!authenticator.verify({ token: totpCode, secret: clinician.mfaSecret })) {
       await this.audit.log({
