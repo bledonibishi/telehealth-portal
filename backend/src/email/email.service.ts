@@ -19,6 +19,8 @@ import {
 } from './templates';
 
 interface Message extends EmailContent {
+  /** What sort of email this is, for the logs: a subject can hold a code or a medicine name. */
+  kind: string;
   to: string | string[];
   attachments?: Array<{ filename: string; content: Buffer }>;
 }
@@ -58,7 +60,7 @@ export class EmailService {
       ...(message.attachments ? { attachments: message.attachments } : {}),
     });
     if (error) {
-      this.logger.error(`Email "${message.subject}" to ${[message.to].flat().join(', ')} failed: ${error.message}`);
+      this.logger.error(`Email (${message.kind}) to ${[message.to].flat().join(', ')} failed: ${error.message}`);
       return error.message;
     }
     return null;
@@ -69,7 +71,7 @@ export class EmailService {
       this.logger.log(`[DEV] Activation email to ${to}: ${activationUrl}`);
       return;
     }
-    await this.deliver({ to, ...activationEmail({ firstName, activationUrl }) });
+    await this.deliver({ to, kind: 'activation', ...activationEmail({ firstName, activationUrl }) });
   }
 
   /** Resolves true only once the provider has accepted it. */
@@ -79,7 +81,7 @@ export class EmailService {
       this.logger.log(`[DEV] Clinician invitation to ${to}: ${inviteUrl}`);
       return false;
     }
-    return !(await this.deliver({ to, ...clinicianInviteEmail({ firstName, inviteUrl, firstTime }) }));
+    return !(await this.deliver({ to, kind: 'clinician-invite', ...clinicianInviteEmail({ firstName, inviteUrl, firstTime }) }));
   }
 
   async sendVerificationCodeEmail(to: string, code: string) {
@@ -87,7 +89,7 @@ export class EmailService {
       this.logger.log(`[DEV] Verification code for ${to}: ${code}`);
       return;
     }
-    const failure = await this.deliver({ to, ...verificationCodeEmail({ code }) });
+    const failure = await this.deliver({ to, kind: 'verification-code', ...verificationCodeEmail({ code }) });
     if (failure) {
       // While developing, the code goes to the log so the flow can still be tried; never in production.
       if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`[DEV] The mail provider refused the email (${failure}). Verification code for ${to}: ${code}`);
@@ -101,7 +103,7 @@ export class EmailService {
       this.logger.log(`[DEV] Payment receipt email to ${to}: ${formatMoney(payment.amount, payment.currency)}`);
       return;
     }
-    await this.deliver({ to, ...paymentReceiptEmail({ firstName, ...payment }) });
+    await this.deliver({ to, kind: 'payment-receipt', ...paymentReceiptEmail({ firstName, ...payment }) });
   }
 
   async sendRefundEmail(to: string, firstName: string | null | undefined, refund: { amount: number; currency: string }) {
@@ -109,7 +111,7 @@ export class EmailService {
       this.logger.log(`[DEV] Refund email to ${to}: ${formatMoney(refund.amount, refund.currency)}`);
       return;
     }
-    await this.deliver({ to, ...refundEmail({ firstName, ...refund }) });
+    await this.deliver({ to, kind: 'refund', ...refundEmail({ firstName, ...refund }) });
   }
 
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
@@ -117,7 +119,7 @@ export class EmailService {
       this.logger.log(`[DEV] Check-in email to ${to}: ${checkInUrl}`);
       return;
     }
-    await this.deliver({ to, ...checkInEmail({ firstName, checkInUrl }) });
+    await this.deliver({ to, kind: 'check-in', ...checkInEmail({ firstName, checkInUrl }) });
   }
 
   async sendOrderUpdateEmail(
@@ -130,7 +132,7 @@ export class EmailService {
       this.logger.log(`[DEV] Order ${kind} email to ${to}${details.expected ? ` (expected ${details.expected})` : ''}${details.trackingNumber ? ` · tracking ${details.trackingNumber}` : ''}`);
       return;
     }
-    await this.deliver({ to, ...orderUpdateEmail({ firstName, kind, ...details }) });
+    await this.deliver({ to, kind: 'order-update', ...orderUpdateEmail({ firstName, kind, ...details }) });
   }
 
   /** Resolves true only once the provider has confirmed it accepted the send. */
@@ -140,7 +142,7 @@ export class EmailService {
       this.logger.log(`[DEV] Dose reminder email to ${to}: ${productName} due ${scheduledFor.toISOString()}`);
       return false;
     }
-    return !(await this.deliver({ to, ...doseReminderEmail({ firstName, productName, scheduledFor, portalUrl }) }));
+    return !(await this.deliver({ to, kind: 'dose-reminder', ...doseReminderEmail({ firstName, productName, scheduledFor, portalUrl }) }));
   }
 
   async sendConsultationUpdateEmail(to: string, firstName: string, headline: string, portalUrl: string) {
@@ -148,7 +150,7 @@ export class EmailService {
       this.logger.log(`[DEV] Consultation update email to ${to}: ${headline}`);
       return;
     }
-    await this.deliver({ to, ...consultationUpdateEmail({ firstName, headline, portalUrl }) });
+    await this.deliver({ to, kind: 'consultation-update', ...consultationUpdateEmail({ firstName, headline, portalUrl }) });
   }
 
   async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean, rewardsUrl?: string) {
@@ -156,7 +158,7 @@ export class EmailService {
       this.logger.log(`[DEV] Referral reward email to ${to}: ${amountLabel} (autoApplied=${autoApplied})`);
       return;
     }
-    await this.deliver({ to, ...referralRewardEmail({ firstName, amountLabel, autoApplied, rewardsUrl }) });
+    await this.deliver({ to, kind: 'referral-reward', ...referralRewardEmail({ firstName, amountLabel, autoApplied, rewardsUrl }) });
   }
 
   /**
@@ -170,6 +172,7 @@ export class EmailService {
     }
     const failure = await this.deliver({
       to,
+      kind: 'partner-order',
       ...partnerOrderEmail({ subject, html }),
       ...(attachment ? { attachments: [{ filename: attachment.filename, content: Buffer.from(attachment.json, 'utf8') }] } : {}),
     });

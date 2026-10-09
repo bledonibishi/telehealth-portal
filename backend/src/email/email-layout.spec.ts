@@ -76,3 +76,18 @@ describe('money emails', () => {
     expect(send.mock.calls[0][0].text).toContain('€20.00');
   });
 });
+
+describe('failed sends are logged without what is in the subject', () => {
+  it('keeps a verification code and a medicine name out of the error log', async () => {
+    send.mockReset().mockResolvedValue({ data: null, error: { message: 'refused' } });
+    const service = new EmailService(config as any);
+    const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+    jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+    await service.sendDoseReminderEmail('a@b.c', 'Tia', 'Semaglutide', new Date('2026-10-05'), 'https://x.test/d');
+    await expect(service.sendVerificationCodeEmail('a@b.c', '654321')).rejects.toThrow('refused');
+    const logged = error.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(logged).toContain('dose-reminder');
+    expect(logged).not.toContain('Semaglutide');
+    expect(logged).not.toContain('654321');
+  });
+});

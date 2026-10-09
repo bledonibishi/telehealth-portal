@@ -40,7 +40,7 @@ export class StripeWebhookService {
           { customerId: stripeId(session.customer), subscriptionId: stripeId(session.subscription) },
           // What Stripe actually took off this payment — not a flag the client could set.
           (session.total_details?.amount_discount ?? 0) > 0,
-          { amount: session.amount_total ?? 0, currency: session.currency ?? 'eur', reference: null },
+          { amount: session.amount_total ?? 0, currency: session.currency ?? 'eur', reference: null, paidAt: new Date((session.created ?? Date.now() / 1000) * 1000) },
         );
         break;
       }
@@ -62,7 +62,7 @@ export class StripeWebhookService {
           invoice.id,
           { customerId: stripeId(invoice.customer), subscriptionId: stripeId(invoice.subscription) },
           discountCents > 0,
-          { amount: invoice.amount_paid ?? 0, currency: invoice.currency ?? 'eur', reference: invoice.number ?? null },
+          { amount: invoice.amount_paid ?? 0, currency: invoice.currency ?? 'eur', reference: invoice.number ?? null, paidAt: new Date((invoice.status_transitions?.paid_at ?? invoice.created ?? Date.now() / 1000) * 1000) },
         );
         break;
       }
@@ -112,7 +112,7 @@ export class StripeWebhookService {
     stripeReferenceId: string,
     stripeIds: { customerId: string | null; subscriptionId: string | null },
     rewardApplied: boolean,
-    payment: { amount: number; currency: string; reference: string | null },
+    payment: { amount: number; currency: string; reference: string | null; paidAt: Date },
   ) {
     if (!email) {
       this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
@@ -133,7 +133,7 @@ export class StripeWebhookService {
     };
 
     // Idempotency: if already converted, skip (also covers subscription renewal invoices)
-    if (lead.convertedAt) {
+    const skipAlreadyConverted = async () => {
       // Still backfill billing ids — a declined consultation needs them to refund.
       if (Object.keys(billing).length) {
         await this.prisma.patient.updateMany({ where: { email }, data: billing });
@@ -142,8 +142,8 @@ export class StripeWebhookService {
       // website answers into the consultation if that failed the first time. Harmless when it already exists.
       await this.createConsultationFromLead(email);
       this.logger.log(`Lead ${lead.id} already converted — skipping`);
-      return;
-    }
+    };
+    if (lead.convertedAt) return skipAlreadyConverted();
 
     // Generate activation token (expires 7 days)
     const { activationToken, activationTokenExpiresAt } = newActivationToken();
@@ -159,37 +159,46 @@ export class StripeWebhookService {
     // Create or update patient
     const tempPasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
-    const patient = await this.prisma.patient.upsert({
-      where: { email },
-      update: { activationToken, activationTokenExpiresAt, ...billing },
-      create: {
-        email,
-        passwordHash: tempPasswordHash,
-        firstName: lead.firstName,
-        lastName: lead.lastName,
-        dateOfBirth: new Date('1990-01-01'), // placeholder — patient sets this on activation
-        leadId: lead.id,
-        activationToken,
-        activationTokenExpiresAt,
-        addressLine1: details.line1 || null,
-        city: details.city || null,
-        postcode: details.postalCode || null,
-        country: details.country || null,
-        ...billing,
-      },
+    // Claiming the lead and creating the patient are one step: when the two events of a payment (the checkout session
+    // and its invoice) arrive together, only one gets through, so there is one activation link and one receipt.
+    // Marked with a Stripe reference (Checkout Session id, or invoice id for the inline Payment Element flow).
+    const patient = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.lead.updateMany({ where: { id: lead.id, convertedAt: null }, data: { convertedAt: new Date(), stripeSessionId: stripeReferenceId } });
+      if (claimed.count === 0) return null;
+      return tx.patient.upsert({
+        where: { email },
+        update: { activationToken, activationTokenExpiresAt, ...billing },
+        create: {
+          email,
+          passwordHash: tempPasswordHash,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          dateOfBirth: new Date('1990-01-01'), // placeholder — patient sets this on activation
+          leadId: lead.id,
+          activationToken,
+          activationTokenExpiresAt,
+          addressLine1: details.line1 || null,
+          city: details.city || null,
+          postcode: details.postalCode || null,
+          country: details.country || null,
+          ...billing,
+        },
+      });
     });
-
-    // Mark lead as converted with a Stripe reference (Checkout Session id, or
-    // invoice id for the inline Payment Element flow)
-    await this.prisma.lead.update({
-      where: { id: lead.id },
-      data: {
-        convertedAt: new Date(),
-        stripeSessionId: stripeReferenceId,
-      },
-    });
+    if (!patient) return skipAlreadyConverted();
 
     this.logger.log(`Patient created/updated for ${email} — patient ${patient.id}`);
+
+    // The receipt goes first, on its own: the steps below can fail (and the payment is then retried, but only once
+    // by this point converted), and a patient who paid must not be left without it. Nothing to confirm for a payment
+    // of nothing (a fully discounted first month).
+    if (payment.amount > 0) {
+      try {
+        await this.email.sendPaymentReceiptEmail(email, lead.firstName, payment);
+      } catch (err: any) {
+        this.logger.error(`Payment receipt email to ${email} failed: ${err?.message}`);
+      }
+    }
 
     // The medical questionnaire answered on the website becomes the consultation now, so onboarding doesn't
     // ask for it again. If it can't (nothing answered, or it needs redoing) the portal asks as before.
@@ -206,14 +215,6 @@ export class StripeWebhookService {
 
     this.logger.log(`Activation email sent to ${email}`);
 
-    // The receipt: what was taken. Nothing to confirm for a payment of nothing (a fully discounted first month).
-    if (payment.amount > 0) {
-      try {
-        await this.email.sendPaymentReceiptEmail(email, lead.firstName, { ...payment, paidAt: new Date() });
-      } catch (err: any) {
-        this.logger.error(`Payment receipt email to ${email} failed: ${err?.message}`);
-      }
-    }
   }
 }
 

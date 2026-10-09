@@ -102,6 +102,13 @@ describe('refund email', () => {
     expect(email.sendRefundEmail).not.toHaveBeenCalled();
   });
 
+  it('sends nothing when Stripe replays the refund it already made for the same request (an immediate retry)', async () => {
+    const { billing, email } = withEmail({ id: 're_1', amount: 4200, currency: 'eur', lastResponse: { headers: { 'idempotent-replayed': 'true' } } });
+    await billing.cancelAndRefund(PATIENT);
+    await settle();
+    expect(email.sendRefundEmail).not.toHaveBeenCalled();
+  });
+
   it('does not undo or fail the refund when the email cannot be sent', async () => {
     const { billing, email } = withEmail();
     email.sendRefundEmail.mockRejectedValue(new Error('down'));

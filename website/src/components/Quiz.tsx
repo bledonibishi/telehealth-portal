@@ -372,6 +372,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
       return;
     }
     setCalcErr('');
+    // The height and weight step opens the GLP-1 quiz, so it is where a visit starts (as in pick, for the other quizzes).
+    if (Object.keys(st.answers).length === 0) track('quiz_started', { product });
+    setRestored(false);
     const bmi = Math.round((w / Math.pow(h / 100, 2)) * 10) / 10;
     const q = questions.find((qq) => qq.id === 'bmi')!;
     const ans = { ...st.answers, [q.id]: { question: q.q, sel: [`BMI ${bmi} (calculated from ${h} cm, ${w} kg)`] } };
