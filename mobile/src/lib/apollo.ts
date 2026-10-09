@@ -8,6 +8,7 @@ import { createClient } from 'graphql-ws';
 import { resetToLogin } from '../navigation/navigationRef';
 import { REFRESH_ACCESS_TOKEN } from '../graphql/operations';
 import { clearTokens, getRefreshToken, getToken, setTokens } from './tokens';
+import { sessionEndReason } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
@@ -60,14 +61,11 @@ const PUBLIC_OPERATIONS = new Set(['LoginPatient', 'ActivateAccount', 'RequestAc
 
 const errorLink = onError(({ graphQLErrors, response, operation, forward, networkError }) => {
   if (PUBLIC_OPERATIONS.has(operation.operationName)) return;
-  const reason = graphQLErrors
-    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
-    .find(Boolean);
+  // Only an error that says the session ended signs the patient out. Any other "unauthenticated" (a wrong current
+  // password) is a message for the screen that asked.
+  const reason = sessionEndReason(graphQLErrors);
 
-  const isAuthError =
-    !!reason ||
-    graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED') ||
-    (networkError && 'statusCode' in networkError && (networkError as any).statusCode === 401);
+  const isAuthError = !!reason || (networkError && 'statusCode' in networkError && (networkError as any).statusCode === 401);
   if (!isAuthError) return;
 
   if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {

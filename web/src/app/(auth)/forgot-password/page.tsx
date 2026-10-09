@@ -4,15 +4,16 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation } from '@apollo/client';
 import { REQUEST_PASSWORD_RESET } from '@/graphql/auth';
+import { InlineError } from '@/components/common/Alert';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-  const [request, { loading, data }] = useMutation(REQUEST_PASSWORD_RESET, { onError: (err) => setError(err.message) });
+  const [error, setError] = useState<unknown>(null);
+  const [request, { loading, data }] = useMutation(REQUEST_PASSWORD_RESET, { onError: (err) => setError(err) });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     request({ variables: { input: { email } } });
   };
 
@@ -28,7 +29,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <>
               <p className="text-sm text-slate-500 mb-6">Enter your email and we&rsquo;ll send you a link to choose a new one.</p>
-              {error && <div role="alert" className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">{error}</div>}
+              <InlineError error={error} className="mb-4 px-3 py-2" />
               <form onSubmit={submit} className="space-y-4">
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">Email</label>

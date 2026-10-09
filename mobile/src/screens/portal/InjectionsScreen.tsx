@@ -38,7 +38,7 @@ export function InjectionsScreen({ navigation }: any) {
   return (
     <Screen title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} refreshing={loading} onRefresh={() => refetch()}>
       {loading && !data && <Empty>Loading…</Empty>}
-      {error && !data && <ErrorText>{error.message}</ErrorText>}
+      {!data && <ErrorText error={error} />}
       {!loading && !error && doses.length === 0 && (
         <Card><Empty>{`${injections ? 'Your injection schedule' : 'Your dose schedule'} isn’t ready yet. Your medicine may have no fixed dose days. Take it as your prescription says.`}</Empty></Card>
       )}

@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { Icon } from './icons';
 import { Modal } from './Modal';
 import { PRESCRIBING_ROLES, ROLES, ROLE_META } from './roles';
+import { InlineError } from '@/components/ui/Alert';
 
 export type InviteResult = { emailSent: boolean; inviteUrl?: string | null; clinician: { firstName: string; lastName: string; email: string } };
 
@@ -59,7 +60,7 @@ export function AddMemberDialog({ onCreated, onClose }: { onCreated: (r: InviteR
           </div>
         </fieldset>
         <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 flex gap-2"><Icon name="envelope" className="w-4 h-4 shrink-0 mt-px" />{t('They will get an email with a link to choose their own password. You never see or set it.')}</p>
-        {error && <p className="text-sm text-red-500" role="alert">{error.message}</p>}
+        <InlineError error={error} />
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="text-sm text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-100">{t('Cancel')}</button>
           <button type="submit" disabled={loading} className={primary}>{loading ? t('Adding…') : t('Add member and send link')}</button>
@@ -97,7 +98,7 @@ function DetailsSection({ c }: { c: any }) {
         <Field label={t('Last name')}><input required maxLength={60} value={form.lastName} onChange={set('lastName')} className={input} /></Field>
       </div>
       <Field label={t('Email')}><input required type="email" maxLength={254} value={form.email} onChange={set('email')} className={input} /></Field>
-      {error && <p className="text-sm text-red-500" role="alert">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex items-center gap-3"><button type="submit" disabled={loading} className={primary}>{loading ? t('Saving…') : t('Save details')}</button><Saved show={saved} /></div>
     </form>
   );
@@ -120,7 +121,7 @@ function RoleSection({ c, isSelf }: { c: any; isSelf: boolean }) {
         ))}
       </div>
       {isSelf && <p className="text-xs text-gray-500">{t('You cannot change your own role')}</p>}
-      {error && <p className="text-sm text-red-500" role="alert">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex items-center gap-3">
         <button type="button" disabled={loading || isSelf || role === c.role} onClick={() => save({ variables: { id: c.id, role } }).catch(() => undefined)} className={primary}>{loading ? t('Saving…') : t('Save role')}</button>
         <Saved show={saved} />
@@ -155,7 +156,7 @@ function LicenceSection({ c }: { c: any }) {
           <button type="submit" disabled={v.loading} className={primary}>{v.loading ? t('Saving…') : t('Confirm verified')}</button>
         </form>
       )}
-      {error && <p className="text-sm text-red-500" role="alert">{error.message}</p>}
+      <InlineError error={error} />
     </div>
   );
 }
@@ -172,7 +173,7 @@ function ProfileSection({ c }: { c: any }) {
       <Field label={t('Specialty')}><input value={form.specialty} maxLength={100} onChange={set('specialty')} placeholder={t('Specialty, e.g. Endocrinologist')} className={input} /></Field>
       <Field label={t('About')}><textarea value={form.bio} maxLength={500} rows={3} onChange={set('bio')} placeholder={t('A line or two about their experience')} className={input} /></Field>
       <Field label={t('Languages')}><input value={form.languages} onChange={set('languages')} placeholder={t('Languages, separated by commas')} className={input} /></Field>
-      {error && <p className="text-sm text-red-500" role="alert">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex items-center gap-3"><button type="submit" disabled={loading} className={primary}>{loading ? t('Saving…') : t('Save')}</button><Saved show={saved} /></div>
     </form>
   );

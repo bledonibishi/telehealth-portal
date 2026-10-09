@@ -6,6 +6,7 @@ import { CREATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { GET_QUESTIONNAIRE } from '@/graphql/questionnaires';
 import QuizQuestionsFields, { autofillAnswers, buildQuizAnswerInputs, QuizAnswers, Question } from './QuizQuestionsFields';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const FIRST_NAMES = ['Amelia', 'Noah', 'Olivia', 'Liam', 'Ava', 'Elijah', 'Sophia', 'Lucas', 'Mia', 'Mason'];
 const LAST_NAMES = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Taylor'];
@@ -74,7 +75,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
   const [form, setForm] = useState<FormState>(EMPTY);
   const [quizAnswers, setQuizAnswers] = useState<QuizAnswers>({});
   const [priorMedicationUse, setPriorMedicationUse] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [created, setCreated] = useState<{ id: string; email: string; temporaryPassword: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [createPatient, { loading }] = useMutation(CREATE_PATIENT, {
@@ -116,7 +117,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
   };
 
   const handleSubmit = async () => {
-    setError('');
+    setError(null);
     try {
       const { data } = await createPatient({
         variables: {
@@ -148,7 +149,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
         });
       }
     } catch (err: any) {
-      setError(err.message ?? t('Failed to create patient'));
+      setError(err);
     }
   };
 
@@ -378,7 +379,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
             )}
           </div>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          <InlineError error={error} size="xs" />
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 shrink-0">

@@ -6,6 +6,7 @@ import { PATIENT_LAB_RESULTS, PATIENT_TRT_MONITORING, RECORD_LAB_RESULT } from '
 import { DEFAULT_UNIT, KIND_LABEL } from './labs-format';
 import { format } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
@@ -20,7 +21,7 @@ export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', o
   const [low, setLow] = useState('');
   const [high, setHigh] = useState('');
   const [collectedOn, setCollectedOn] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [record, { loading }] = useMutation(RECORD_LAB_RESULT, {
     refetchQueries: [{ query: PATIENT_LAB_RESULTS, variables: { patientId } }, { query: PATIENT_TRT_MONITORING, variables: { patientId } }],
     awaitRefetchQueries: true,
@@ -48,7 +49,7 @@ export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', o
       });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('Could not save the result.'));
+      setError(err);
     }
   };
 
@@ -87,7 +88,7 @@ export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', o
           <input type="date" value={collectedOn} max={format(new Date(), 'yyyy-MM-dd')} onChange={(e) => setCollectedOn(e.target.value)} className={`${inputCls} block mt-1`} />
         </label>
       </div>
-      {error && <p className="text-xs text-danger-500">{error}</p>}
+      <InlineError error={error} size="xs" />
       <div className="flex gap-3">
         <button type="submit" disabled={loading} className="bg-brand-500 hover:bg-brand-900 disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg">
           {loading ? t('Saving…') : t('Save result')}

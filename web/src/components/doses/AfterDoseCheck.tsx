@@ -6,6 +6,7 @@ import { differenceInHours, format } from 'date-fns';
 import { LOG_DOSE_FEELING, MY_DOSE_CALENDAR } from '@/graphql/dosing';
 import { FEELINGS } from '@/lib/weight';
 import { ReportSideEffectDialog } from './ReportSideEffectDialog';
+import { InlineError } from '@/components/common/Alert';
 
 /** Ask about the most recent dose once about a day has passed, until they answer or it is a week old. */
 export const ASK_AFTER_HOURS = 20;
@@ -56,7 +57,7 @@ export function AfterDoseCheck({ dose, doseName }: { dose: { id: string; takenAt
               </button>
             ))}
           </div>
-          {error && <p className="text-xs text-danger-500 mt-2">{error.message}</p>}
+          <InlineError error={error} size="xs" className="mt-2" />
         </>
       )}
       {reporting && <ReportSideEffectDialog onClose={() => setReporting(false)} />}

@@ -5,6 +5,7 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
 import { providerFieldGuard } from './auth/provider-field-guard';
+import { formatGraphQLError } from './common/errors/graphql-error-formatter';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
@@ -58,6 +59,8 @@ import { InsightsModule } from './insights/insights.module';
       sortSchema: true,
       // Narrows what the pharmacy partner can read through the records an order links to (see the guard).
       buildSchemaOptions: { fieldMiddleware: [providerFieldGuard] },
+      // Every error leaves with a code, a severity and a message that is safe to show (see common/errors).
+      formatError: formatGraphQLError,
       // graphql-ws needs a persistent connection a serverless function
       // can't hold open. Subscriptions are local-dev only until this runs
       // somewhere with a long-lived process.

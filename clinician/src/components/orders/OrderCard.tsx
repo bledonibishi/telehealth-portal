@@ -10,6 +10,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import PartnerStatus from './PartnerStatus';
 import { TRACKING_LABEL, openProblem, overdueSince } from '@/lib/tracking';
 import { printPackingSlip } from '@/lib/packing-slip';
+import { InlineError } from '@/components/ui/Alert';
 
 const KIND_BADGE: Record<string, string> = {
   HRT: 'bg-violet-100 text-violet-700',
@@ -105,9 +106,9 @@ export function OrderCard({
   const [refund, setRefund] = useState(order.sequence === 1);
   const [endSubscription, setEndSubscription] = useState(order.sequence === 1);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
-  const opts = { refetchQueries, onCompleted: () => setMode(null), onError: (e: Error) => setError(e.message) };
+  const opts = { refetchQueries, onCompleted: () => setMode(null), onError: (e: Error) => setError(e) };
   const [dispatch, { loading: dispatching }] = useMutation(DISPATCH_ORDER, opts);
   const [ship, { loading: shipping }] = useMutation(MARK_ORDER_OUT_FOR_DELIVERY, opts);
   const [markReady, { loading: markingReady }] = useMutation(MARK_ORDER_READY_FOR_PICKUP, opts);
@@ -134,7 +135,7 @@ export function OrderCard({
   const addressMissing = !address && canConfirmDelivery;
   const rxBlocked = rx.status !== 'ACTIVE' || (rx.validUntil && new Date(rx.validUntil) < new Date());
 
-  const run = (fn: () => void) => { setError(''); fn(); };
+  const run = (fn: () => void) => { setError(null); fn(); };
   const problem = openProblem(order.trackingEvents);
   const overdue = overdueSince(order);
 
@@ -354,7 +355,7 @@ export function OrderCard({
               )}
             </>
           )}
-          {error && <p className="mt-2 text-xs text-danger-500">{error}</p>}
+          <InlineError error={error} size="xs" className="mt-2" />
 
           {shippingForm && (
             <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">

@@ -1,11 +1,14 @@
-import { ArgumentsHost, Catch, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlExceptionFilter, GqlExecutionContext } from '@nestjs/graphql';
 import { ThrottlerException } from '@nestjs/throttler';
+import { normalizeError } from '../common/errors/normalize-error';
 import { PostHogService } from './posthog.service';
 
 @Catch()
 export class PostHogExceptionFilter extends BaseExceptionFilter implements GqlExceptionFilter {
+  private readonly logger = new Logger('HTTP');
+
   constructor(private readonly posthog: PostHogService) {
     super();
   }
@@ -26,9 +29,18 @@ export class PostHogExceptionFilter extends BaseExceptionFilter implements GqlEx
       });
     }
 
-    // GraphQL turns a returned exception into an error response. A plain HTTP
+    // GraphQL turns a returned exception into an error response (shaped by formatGraphQLError). A plain HTTP
     // route has no such step — without writing the response, the request hangs.
     if (isGraphql) return exception;
-    return super.catch(exception, host);
+    return this.respond(exception, host);
+  }
+
+  // The same { code, severity, message } a GraphQL error carries, plus the status Nest has always sent.
+  private respond(exception: unknown, host: ArgumentsHost) {
+    const res = host.switchToHttp().getResponse();
+    if (res.headersSent) return super.catch(exception, host);
+    const { status, unexpected, ...payload } = normalizeError(exception);
+    if (unexpected) this.logger.error(exception);
+    res.status(status).json({ statusCode: status, ...payload });
   }
 }

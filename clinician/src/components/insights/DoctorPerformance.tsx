@@ -5,6 +5,7 @@ import { useQuery } from '@apollo/client';
 import { CLINICIAN_PERFORMANCE } from '@/graphql/insights';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import PeriodSelect, { type Period } from './PeriodSelect';
+import { InlineError } from '@/components/ui/Alert';
 
 function duration(minutes: number | null | undefined) {
   if (minutes === null || minutes === undefined) return '—';
@@ -31,7 +32,7 @@ export default function DoctorPerformance() {
         <PeriodSelect value={days} onChange={setDays} />
       </div>
 
-      {error && <p className="text-sm text-red-500 mb-2">{error.message}</p>}
+      <InlineError error={error} className="mb-2" />
       <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

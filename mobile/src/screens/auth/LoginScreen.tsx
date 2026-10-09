@@ -9,11 +9,12 @@ import { LOGIN_PATIENT } from '../../graphql/operations';
 import { MY_ONBOARDING } from '../../graphql/onboarding';
 import { apolloClient } from '../../lib/apollo';
 import { setTokens } from '../../lib/tokens';
+import { ErrorText } from '../../components/ui';
 
 export function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [login, { loading }] = useMutation(LOGIN_PATIENT, {
     onCompleted: async ({ loginPatient }) => {
@@ -27,7 +28,7 @@ export function LoginScreen({ navigation }: any) {
         navigation.replace('Onboarding');
       }
     },
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   return (
@@ -38,7 +39,7 @@ export function LoginScreen({ navigation }: any) {
       </View>
       <View style={styles.card}>
         <Text style={styles.title}>Welcome back</Text>
-        {!!error && <Text style={styles.error}>{error}</Text>}
+        <ErrorText error={error} />
         <TextInput
           style={styles.input}
           placeholder="Email"

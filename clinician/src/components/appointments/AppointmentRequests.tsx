@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { APPOINTMENT_REQUESTS, CANCEL_APPOINTMENT, COMPLETE_APPOINTMENT, SCHEDULE_APPOINTMENT } from '@/graphql/appointments';
 import { GET_NOTIFICATION_COUNTS } from '@/graphql/notifications';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const REASON: Record<string, string> = {
   QUESTION: 'Question', CHECK_UP: 'Check-up', SIDE_EFFECT: 'Side effect', PAIN: 'Pain', DOSE_CHANGE: 'Dose change', OTHER: 'Other',
@@ -79,7 +80,7 @@ function Actions({ a }: { a: any }) {
           <button type="button" onClick={() => setMode(null)} className="text-sm text-gray-500">{t('Cancel')}</button>
         </form>
       )}
-      {error && <p className="text-xs text-red-600 mt-2">{error.message}</p>}
+      <InlineError error={error} size="xs" className="mt-2" />
     </div>
   );
 }
@@ -96,7 +97,7 @@ export default function AppointmentRequests() {
   return (
     <div>
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
-      {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
+      <InlineError error={error} className="p-6" />
       {!loading && !list.length && <div className="p-12 text-center text-gray-400 text-sm">{t('No appointment requests waiting.')}</div>}
       <ul className="divide-y divide-gray-100">
         {list.map((a) => (

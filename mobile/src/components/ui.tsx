@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { describeError } from '@telehealth/shared-types';
 import { colors } from '../theme';
 import { useLayout } from '../lib/layout';
 
@@ -151,7 +152,15 @@ export function Field({ label, hint, ...input }: { label: string; hint?: string 
 }
 
 export const Empty = ({ children }: { children: string }) => <Text style={s.empty}>{children}</Text>;
-export const ErrorText = ({ children }: { children?: string | null }) => (children ? <Text style={s.error} accessibilityRole="alert">{children}</Text> : null);
+/**
+ * One line of error or warning text under a form or button. Pass whatever failed (an Apollo error, an Error, a message):
+ * it shows a safe message, in red for an error and amber for a warning, and nothing when there is no error.
+ */
+export function ErrorText({ error }: { error: unknown }) {
+  const described = describeError(error);
+  if (!described) return null;
+  return <Text style={[s.error, described.severity === 'warning' && s.warning]} accessibilityRole="alert">{described.message}</Text>;
+}
 export const Divider = () => <View style={s.divider} />;
 
 const s = StyleSheet.create({
@@ -179,5 +188,6 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, fontSize: 16, color: colors.slate900, backgroundColor: colors.white },
   empty: { fontSize: 13, color: colors.slate500, lineHeight: 19 },
   error: { fontSize: 13, color: colors.danger, marginTop: 8 },
+  warning: { color: colors.amber800 },
   divider: { height: 1, backgroundColor: colors.slate100, marginVertical: 10 },
 });

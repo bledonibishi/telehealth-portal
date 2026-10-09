@@ -14,6 +14,7 @@ import { StopOrRefundCard } from '@/components/billing/StopOrRefundCard';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
+import { InlineError } from '@/components/common/Alert';
 
 const FAQ: Array<[string, string]> = [
   ['When will my next supply arrive?', 'A few days before your current supply runs out, use “Order next dose early”. Your doctor approves it and the pharmacy sends it; you can follow it under Orders.'],
@@ -31,7 +32,7 @@ function PasswordForm() {
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [done, setDone] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const [change, { loading }] = useMutation(CHANGE_MY_PASSWORD);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +50,7 @@ function PasswordForm() {
       setCurrent(''); setNext(''); setAgain('');
       setDone(true);
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t change your password. Please try again.');
+      setProblem(err);
     }
   };
   return (
@@ -59,7 +60,7 @@ function PasswordForm() {
       <div><label htmlFor="pw-again" className="block text-xs font-medium text-slate-500 mb-1">New password again</label><PasswordInput id="pw-again"  autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} className={field} required /></div>
       <div className="sm:col-span-3 flex flex-wrap items-center gap-3" aria-live="polite">
         <button type="submit" disabled={loading || !current || !next || !again} className={btnPrimary}>{loading ? 'Saving…' : 'Change password'}</button>
-        {problem && <p role="alert" className="text-sm text-red-600">{problem}</p>}
+        <InlineError error={problem} />
         {done && <p className="text-sm text-emerald-700">✓ Password changed. Your other devices were signed out.</p>}
       </div>
     </form>

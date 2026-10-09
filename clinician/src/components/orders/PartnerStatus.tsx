@@ -5,6 +5,7 @@ import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { Modal } from '@/components/consultation/Modal';
 import { ORDER_PARTNER_PAYLOAD, PARTNER_INTEGRATION_STATUS, SEND_ORDER_TO_PARTNER } from '@/graphql/orders';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 /**
  * Where an order stands with the external pharmacy: sent, failed (with the reason), or waiting.
@@ -14,7 +15,7 @@ export default function PartnerStatus({ order }: { order: any }) {
   const { t, timeAgo } = useI18n();
   const [showPayload, setShowPayload] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const { data: integration } = useQuery(PARTNER_INTEGRATION_STATUS);
   const status = integration?.partnerIntegrationStatus;
@@ -23,8 +24,8 @@ export default function PartnerStatus({ order }: { order: any }) {
 
   const [loadPayload, { data: payloadData, loading: loadingPayload }] = useLazyQuery(ORDER_PARTNER_PAYLOAD, { fetchPolicy: 'network-only' });
   const [send, { loading: sending }] = useMutation(SEND_ORDER_TO_PARTNER, {
-    onError: (e) => setError(e.message),
-    onCompleted: () => setError(''),
+    onError: (e) => setError(e),
+    onCompleted: () => setError(null),
   });
 
   const tx = order.partnerTransmission;
@@ -60,7 +61,7 @@ export default function PartnerStatus({ order }: { order: any }) {
       {tx?.status === 'FAILED' && tx.lastError && <span className="text-red-600" title={tx.lastError}>{tx.lastError.length > 60 ? tx.lastError.slice(0, 60) + '…' : tx.lastError}</span>}
       {canSend && (
         <button
-          onClick={() => { setError(''); send({ variables: { orderId: order.id } }); }}
+          onClick={() => { setError(null); send({ variables: { orderId: order.id } }); }}
           disabled={sending}
           className="text-brand-500 hover:text-brand-900 disabled:opacity-50"
         >
@@ -71,7 +72,7 @@ export default function PartnerStatus({ order }: { order: any }) {
         <span className="text-amber-700" title={status.configurationProblem}>{t('Webhook is not fully set up: add PARTNER_WEBHOOK_SECRET')}</span>
       )}
       {waiting && <button onClick={open} className="text-brand-500 hover:text-brand-900">{t('View order for partner')}</button>}
-      {error && <span className="text-red-600">{error}</span>}
+      <InlineError error={error} />
 
       {showPayload && (
         <Modal title={t('Order for the pharmacy partner')} subtitle={t('Structured summary — exactly what is sent to the partner')} wide onClose={() => setShowPayload(false)}>

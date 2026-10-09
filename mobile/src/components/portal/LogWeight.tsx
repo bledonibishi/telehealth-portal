@@ -11,7 +11,7 @@ const requestId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 /** Records a weight now. The request id stays the same across retries of one submission, so a double tap records it once. */
 export function LogWeightForm({ onSaved }: { onSaved: () => void }) {
   const [weight, setWeight] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const id = useRef(requestId());
   const [save, { loading }] = useMutation(ADD_MY_WEIGHT, { refetchQueries: ['MyWeightJourney', 'MyWeightTimeline', 'MyWeightTrend'], awaitRefetchQueries: true });
 
@@ -24,14 +24,14 @@ export function LogWeightForm({ onSaved }: { onSaved: () => void }) {
       await save({ variables: { input: { weightKg: n, measuredAt: new Date().toISOString(), clientRequestId: id.current } } });
       onSaved();
     } catch (e: any) {
-      setProblem(e?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(e);
     }
   };
 
   return (
     <View style={{ gap: 12 }}>
       <Field label="Weight (kg)" placeholder="e.g. 109.4" keyboardType="decimal-pad" value={weight} onChangeText={setWeight} autoFocus />
-      <ErrorText>{problem}</ErrorText>
+      <ErrorText error={problem} />
       <Button label="Save weight" onPress={submit} loading={loading} />
     </View>
   );

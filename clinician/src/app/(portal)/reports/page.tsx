@@ -7,6 +7,7 @@ import ExportCsvButton from '@/components/ExportCsvButton';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import type { CsvColumn } from '@/lib/csv';
+import { Alert, InlineError } from '@/components/ui/Alert';
 
 type Money = { currency: string; amountCents: number };
 type Row = {
@@ -85,10 +86,10 @@ function Report() {
         </div>
       </div>
 
-      {error && !report && <p className="text-sm text-red-500">{error.message}</p>}
+      {!report && <InlineError error={error} />}
       {loading && !report && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
       {report && !report.revenueConfigured && <p className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2">{t('Stripe is not set up, so revenue is not shown. Everything else is counted from your own records.')}</p>}
-      {report?.revenueError && <p className="text-xs bg-red-50 text-red-700 rounded-lg px-3 py-2">{t('Stripe refused the request, so revenue is not shown: {error}', { error: report.revenueError })}</p>}
+      {report?.revenueError && <Alert tone="warning">{t('Stripe refused the request, so revenue is not shown: {error}', { error: report.revenueError })}</Alert>}
       {report?.revenueTruncated && <p className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2">{t('Stripe has more invoices than one request reads, so the oldest months of revenue may be short.')}</p>}
 
       {latest && (

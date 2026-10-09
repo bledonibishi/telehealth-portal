@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
 import { APPLY_VOUCHER, MY_REFERRAL, SET_VOUCHER_AUTO_APPLY } from '@/graphql/referrals';
+import { InlineError } from '@/components/common/Alert';
 
 type Voucher = {
   id: string;
@@ -45,7 +46,7 @@ function VoucherRow({ voucher }: { voucher: Voucher }) {
           {voucher.note ?? (voucher.status === 'APPLIED' ? 'Applied' : 'Ready to apply')}
           {voucher.appliedAt && ` · ${format(new Date(voucher.appliedAt), 'dd MMM yyyy')}`}
         </p>
-        {error && <p className="text-xs text-danger-500 mt-0.5">{error.message}</p>}
+        <InlineError error={error} size="xs" className="mt-0.5" />
       </div>
       {voucher.status === 'ISSUED' ? (
         <button

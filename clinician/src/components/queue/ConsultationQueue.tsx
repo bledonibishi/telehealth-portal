@@ -4,15 +4,16 @@ import { useQuery } from '@apollo/client';
 import { CONSULTATION_QUEUE } from '@/graphql/consultations';
 import { QueueRow } from './QueueRow';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { ErrorAlert } from '@/components/ui/Alert';
 
 export function ConsultationQueue() {
   const { t } = useI18n();
-  const { data, loading, error } = useQuery(CONSULTATION_QUEUE, {
+  const { data, loading, error, refetch } = useQuery(CONSULTATION_QUEUE, {
     pollInterval: 30_000,
   });
 
   if (loading) return <p className="text-sm text-gray-500 p-6">{t('Loading queue…')}</p>;
-  if (error) return <p className="text-sm text-danger-500 p-6">{t('Failed to load queue: {message}', { message: error.message })}</p>;
+  if (error) return <ErrorAlert error={error} title={t('Could not load the queue')} onRetry={() => refetch()} className="m-6" />;
 
   const consultations = data?.consultationQueue ?? [];
 

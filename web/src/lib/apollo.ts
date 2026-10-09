@@ -6,6 +6,7 @@ import { onError } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
 import { print } from 'graphql';
+import { sessionEndReason } from '@telehealth/shared-types';
 import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
 import { clearToken, getRefreshToken, getToken, setToken } from './auth';
 import { createRealtime } from './realtime';
@@ -63,12 +64,10 @@ const PUBLIC_OPERATIONS = new Set(['LoginPatient', 'ActivateAccount', 'RequestAc
 const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
   if (typeof window === 'undefined' || PUBLIC_OPERATIONS.has(operation.operationName)) return;
 
-  const reason = graphQLErrors
-    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
-    .find(Boolean);
-
-  const isAuthError = !!reason || graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED');
-  if (!isAuthError) return;
+  // Only an error that says the session ended signs the patient out. Any other "unauthenticated" (a wrong current
+  // password) is a message for the screen that asked.
+  const reason = sessionEndReason(graphQLErrors);
+  if (!reason) return;
 
   if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {
     endSession();

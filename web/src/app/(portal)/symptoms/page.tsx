@@ -7,6 +7,7 @@ import { MY_SYMPTOM_ASSESSMENTS, MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
 import { SymptomForm } from '@/components/symptoms/SymptomForm';
 import { SymptomChart } from '@/components/symptoms/SymptomChart';
 import { burden, type SymptomAssessment, type SymptomScale } from '@/components/symptoms/types';
+import { InlineError } from '@/components/common/Alert';
 
 const DAY = 86_400_000;
 // Suggest a new entry roughly monthly, in step with the check-ins.
@@ -61,7 +62,7 @@ export default function SymptomsPage() {
       <p className="text-sm text-slate-500 mb-5">Track how your symptoms change on treatment. Your clinician sees this too.</p>
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && <p className="text-sm text-danger-500">{error.message}</p>}
+      <InlineError error={error} />
       {!loading && !error && !scale && (
         <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-500">
           Symptom tracking is part of our hormone programmes.

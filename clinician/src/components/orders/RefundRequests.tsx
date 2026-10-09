@@ -4,14 +4,15 @@ import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { DECIDE_REFUND_REQUEST, REFUND_REQUESTS } from '@/graphql/orders';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 /** Patients asking for their money back (admin only). They give no reason, so what matters is where the order is. */
 export function RefundRequests() {
   const { t, timeAgo } = useI18n();
   const { data } = useQuery(REFUND_REQUESTS, { pollInterval: 60_000, fetchPolicy: 'cache-and-network' });
-  const [decide, { loading }] = useMutation(DECIDE_REFUND_REQUEST, { refetchQueries: [REFUND_REQUESTS], onError: (e) => setError(e.message) });
+  const [decide, { loading }] = useMutation(DECIDE_REFUND_REQUEST, { refetchQueries: [REFUND_REQUESTS], onError: (e) => setError(e) });
   const [endSubscription, setEndSubscription] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const requests: any[] = data?.refundRequests ?? [];
   if (requests.length === 0) return null;
 
@@ -37,14 +38,14 @@ export function RefundRequests() {
             </label>
             <button
               type="button" disabled={loading}
-              onClick={() => { setError(''); decide({ variables: { id: r.id, approve: true, endSubscription: endSubscription[r.id] ?? true } }); }}
+              onClick={() => { setError(null); decide({ variables: { id: r.id, approve: true, endSubscription: endSubscription[r.id] ?? true } }); }}
               className="px-3 py-1.5 bg-danger-500 text-white text-sm rounded-lg disabled:opacity-40"
             >{t('Refund last payment')}</button>
-            <button type="button" disabled={loading} onClick={() => { setError(''); decide({ variables: { id: r.id, approve: false } }); }} className="text-xs text-gray-500 hover:text-gray-800">{t('Decline')}</button>
+            <button type="button" disabled={loading} onClick={() => { setError(null); decide({ variables: { id: r.id, approve: false } }); }} className="text-xs text-gray-500 hover:text-gray-800">{t('Decline')}</button>
           </li>
         ))}
       </ul>
-      {error && <p className="mt-2 text-xs text-danger-500">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-2" />
     </div>
   );
 }

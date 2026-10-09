@@ -32,7 +32,7 @@ export function DoctorScreen({ navigation }: any) {
   return (
     <Screen title="My Doctor" subtitle="The clinicians looking after your treatment." refreshing={loading} onRefresh={() => refetch()}>
       {loading && !team.length && <Empty>Loading…</Empty>}
-      {error && !data && <ErrorText>{error.message}</ErrorText>}
+      {!data && <ErrorText error={error} />}
       {!loading && !team.length && (
         <Card>
           <Empty>A doctor is assigned when your consultation is reviewed. You can already message our team with any question.</Empty>

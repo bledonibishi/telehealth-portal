@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import { ME_BASIC_INFO, UPDATE_MY_BASIC_INFO } from '@/graphql/patient';
+import { InlineError } from '@/components/common/Alert';
 
 const ADDRESS_FIELDS = [
   { key: 'phone', label: 'Phone number', hint: 'The courier may call you — medicines need a signature', type: 'tel' },
@@ -36,11 +37,11 @@ export default function BasicInformationStepPage() {
   const { data } = useQuery(ME_BASIC_INFO);
   const [form, setForm] = useState<Form>(EMPTY);
   const [touched, setTouched] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [save, { loading }] = useMutation(UPDATE_MY_BASIC_INFO, {
     refetchQueries: [{ query: ME_BASIC_INFO }],
     onCompleted: () => router.push('/onboarding'),
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   // Pre-filled from checkout (name) and the placeholder set at account
@@ -75,7 +76,7 @@ export default function BasicInformationStepPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!complete) return;
-    setError('');
+    setError(null);
     save({
       variables: {
         input: {
@@ -142,7 +143,7 @@ export default function BasicInformationStepPage() {
           ))}
         </div>
 
-        {error && <div className="bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">{error}</div>}
+        <InlineError error={error} className="px-4 py-3" />
 
         <button
           type="submit"

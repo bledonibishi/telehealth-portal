@@ -7,6 +7,7 @@ import { CHECK_IN_BY_TOKEN, SUBMIT_CHECK_IN } from '@/graphql/checkin';
 import { QUESTIONNAIRE } from '@/graphql/intake';
 import { QuestionnaireForm, SubmittedAnswer } from '@/components/intake/QuestionnaireForm';
 import { FEELINGS } from '@/lib/weight';
+import { ErrorAlert } from '@/components/common/Alert';
 
 function CheckInForm({ token }: { token: string }) {
   const { data, loading, error } = useQuery(CHECK_IN_BY_TOKEN, { variables: { token } });
@@ -21,8 +22,8 @@ function CheckInForm({ token }: { token: string }) {
   if (error) {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
-        <p className="text-danger-500 font-medium">{error.message}</p>
-        <p className="text-sm text-slate-400 mt-2">
+        <ErrorAlert error={error} className="text-left" />
+        <p className="text-sm text-slate-400 mt-4">
           If you think this is a mistake, sign in to your account and your care team will be in touch.
         </p>
       </div>
@@ -63,7 +64,7 @@ function CheckInForm({ token }: { token: string }) {
       <QuestionnaireForm
         questions={questions}
         submitting={submitting}
-        error={submitError?.message}
+        error={submitError}
         onSubmit={handleSubmit}
         ready={wantsToReorder !== null && feeling !== null}
         footer={

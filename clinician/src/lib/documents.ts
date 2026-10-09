@@ -1,4 +1,5 @@
 import { getToken } from './auth';
+import { ApiError, errorMessage } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
@@ -12,7 +13,7 @@ export function openAuthedDocument(path: string) {
   const tab = window.open('', '_blank');
   fetch(`${API_ROOT}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } })
     .then((res) => {
-      if (!res.ok) throw new Error(`Could not load document (${res.status})`);
+      if (!res.ok) throw ApiError.fromResponse(res.status, '', res.status === 403 ? 'You don’t have access to that document.' : 'Could not load the document. Please try again.');
       return res.blob();
     })
     .then((blob) => {
@@ -24,6 +25,6 @@ export function openAuthedDocument(path: string) {
     })
     .catch((err) => {
       tab?.close();
-      alert(err.message);
+      alert(errorMessage(err));
     });
 }

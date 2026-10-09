@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ErrorAlert } from '@/components/common/Alert';
 
 export type Question = {
   id: string;
@@ -59,7 +60,8 @@ export function QuestionnaireForm({
 }: {
   questions: Question[];
   submitting: boolean;
-  error?: string;
+  /** What went wrong on submit: an Apollo error, an Error or a message. */
+  error?: unknown;
   onSubmit: (answers: SubmittedAnswer[]) => void;
   // Extra fields the page owns, shown before the submit button, and whether they're complete.
   footer?: React.ReactNode;
@@ -166,9 +168,7 @@ export function QuestionnaireForm({
 
       {footer}
 
-      {error && (
-        <div className="bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">{error}</div>
-      )}
+      <ErrorAlert error={error} />
 
       <button
         type="submit"

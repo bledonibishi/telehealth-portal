@@ -3,11 +3,12 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { useMutation } from '@apollo/client';
 import { BrandAnimation } from '../../components/BrandAnimation';
 import { REQUEST_PASSWORD_RESET } from '../../graphql/operations';
+import { ErrorText } from '../../components/ui';
 
 export function ForgotPasswordScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-  const [request, { loading, data }] = useMutation(REQUEST_PASSWORD_RESET, { onError: (e) => setError(e.message) });
+  const [error, setError] = useState<unknown>(null);
+  const [request, { loading, data }] = useMutation(REQUEST_PASSWORD_RESET, { onError: (e) => setError(e) });
   const sent = !!data?.requestPatientPasswordReset;
 
   return (
@@ -27,7 +28,7 @@ export function ForgotPasswordScreen({ navigation }: any) {
         ) : (
           <>
             <Text style={styles.body}>Enter your email and we'll send you a link to choose a new one.</Text>
-            {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+            <ErrorText error={error} />
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -40,7 +41,7 @@ export function ForgotPasswordScreen({ navigation }: any) {
             <TouchableOpacity
               style={[styles.button, (loading || !email.trim()) && styles.buttonDisabled]}
               disabled={loading || !email.trim()}
-              onPress={() => { setError(''); request({ variables: { input: { email: email.trim() } } }); }}
+              onPress={() => { setError(null); request({ variables: { input: { email: email.trim() } } }); }}
             >
               <Text style={styles.buttonText}>{loading ? 'Sending…' : 'Send reset link'}</Text>
             </TouchableOpacity>

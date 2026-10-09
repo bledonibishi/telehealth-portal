@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, View, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { ME_BASIC_INFO, UPDATE_MY_BASIC_INFO } from '../../graphql/operations';
+import { ErrorText } from '../../components/ui';
 
 type Form = Record<'firstName' | 'lastName' | 'dateOfBirth' | 'phone' | 'addressLine1' | 'addressLine2' | 'city' | 'postcode' | 'country', string>;
 
@@ -22,11 +23,11 @@ export function BasicInformationScreen({ navigation }: any) {
   const { data, loading } = useQuery(ME_BASIC_INFO, { fetchPolicy: 'network-only' });
   const [form, setForm] = useState<Form>(EMPTY);
   const [touched, setTouched] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [save, { loading: saving }] = useMutation(UPDATE_MY_BASIC_INFO, {
     refetchQueries: [{ query: ME_BASIC_INFO }],
     onCompleted: () => navigation.goBack(),
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   // Pre-filled with what we already know; the patient confirms or corrects it.
@@ -51,7 +52,7 @@ export function BasicInformationScreen({ navigation }: any) {
 
   const submit = () => {
     if (!complete) return;
-    setError('');
+    setError(null);
     save({
       variables: {
         input: {
@@ -91,7 +92,7 @@ export function BasicInformationScreen({ navigation }: any) {
           {FIELDS.map((f) => input(f.key, f.label, f.keyboard ? { keyboardType: f.keyboard } : {}, f.hint))}
         </View>
 
-        {!!error && <Text style={styles.error}>{error}</Text>}
+        <ErrorText error={error} />
 
         <TouchableOpacity style={[styles.cta, (!complete || saving) && styles.ctaDisabled]} disabled={!complete || saving} onPress={submit}>
           <Text style={styles.ctaText}>{saving ? 'Saving…' : 'Save and continue'}</Text>

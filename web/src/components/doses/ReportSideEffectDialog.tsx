@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { REPORT_SIDE_EFFECTS } from '@/graphql/sideEffects';
 import { Dialog } from '@/components/common/Dialog';
+import { InlineError } from '@/components/common/Alert';
 
 const EFFECTS = [
   ['nausea', 'Nausea'], ['vomiting', 'Vomiting'], ['abdominal_pain', 'Stomach pain'], ['diarrhoea', 'Diarrhoea'], ['constipation', 'Constipation'], ['reflux', 'Heartburn or reflux'],
@@ -85,7 +86,7 @@ function ReportForm({ onClose }: { onClose: () => void }) {
           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
-      {error && <p role="alert" className="text-sm text-danger-500">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={loading || !effects.length} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">
           {loading ? 'Sending…' : 'Tell my doctor'}

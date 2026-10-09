@@ -1,3 +1,4 @@
+import { ApiError } from '@telehealth/shared-types';
 import { getToken } from './auth';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
@@ -6,7 +7,7 @@ export const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
 /** Opens a file the API only serves to a signed-in owner (a prescription PDF) in a new tab. */
 export async function openAuthedFile(path: string): Promise<void> {
   const res = await fetch(`${API_ROOT}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error(res.status === 403 ? 'You don’t have access to that document.' : 'Couldn’t open that document. Please try again.');
+  if (!res.ok) throw ApiError.fromResponse(res.status, '', res.status === 403 ? 'You don’t have access to that document.' : 'Couldn’t open that document. Please try again.');
   const url = URL.createObjectURL(await res.blob());
   window.open(url, '_blank', 'noopener');
   // Long enough for the new tab to load it; then the copy in memory is let go.
@@ -28,8 +29,8 @@ export async function uploadFile(kind: UploadKind, file: File): Promise<string> 
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Upload failed (${res.status})`);
+    // The body is the API's { code, severity, message }; ApiError keeps the message and never shows the raw text.
+    throw ApiError.fromResponse(res.status, await res.text().catch(() => ''), 'We couldn’t upload that file. Please try again.');
   }
 
   const data = await res.json();

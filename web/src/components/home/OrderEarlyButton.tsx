@@ -3,6 +3,7 @@
 import { useRefill } from '@/lib/useRefill';
 import { Icon } from '@/components/portal/Icon';
 import { btnOutline, btnPrimary } from '@/components/portal/Card';
+import { InlineError } from '@/components/common/Alert';
 
 /**
  * "Order next dose early": asks the doctor for the next supply in one tap. The doctor still approves it
@@ -22,7 +23,7 @@ export function OrderEarlyButton({ variant = 'primary', label = 'Order Next Dose
         </button>
       )}
       {r.hint && <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mt-2 max-w-xs">{r.hint}</p>}
-      {r.error && <p role="alert" className="text-[11px] text-red-600 mt-1.5">{r.error.message}</p>}
+      <InlineError error={r.error} size="xs" className="mt-1.5" />
     </div>
   );
 }

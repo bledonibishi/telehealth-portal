@@ -7,12 +7,13 @@ import { fmtDate } from '../../lib/format';
 import { BottomSheet } from '../BottomSheet';
 import { Button, Card, CardTitle, Empty, ErrorText, Field, Stat } from '../ui';
 import { colors } from '../../theme';
+import { errorMessage } from '@telehealth/shared-types';
 
 const requestId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 function MeasurementForm({ onDone }: { onDone: () => void }) {
   const [values, setValues] = useState({ waistCm: '', hipsCm: '', armCm: '' });
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const id = useRef(requestId());
   const [save, { loading }] = useMutation(ADD_MY_BODY_MEASUREMENT, {
     update: (cache, { data }) => cache.writeQuery({ query: MY_BODY_MEASUREMENTS, data: { myBodyMeasurements: data.addMyBodyMeasurement } }),
@@ -33,7 +34,7 @@ function MeasurementForm({ onDone }: { onDone: () => void }) {
       await save({ variables: { input } });
       onDone();
     } catch (e: any) {
-      setProblem(e?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(e);
     }
   };
 
@@ -43,7 +44,7 @@ function MeasurementForm({ onDone }: { onDone: () => void }) {
         <Field key={m.key} label={`${m.label} (cm)`} hint={m.hint} keyboardType="decimal-pad" value={values[m.key]} onChangeText={(t) => setValues({ ...values, [m.key]: t })} />
       ))}
       <Text style={styles.tip}>Measure at the same time of day each time, on bare skin, without pulling the tape tight.</Text>
-      <ErrorText>{problem}</ErrorText>
+      <ErrorText error={problem} />
       <Button label="Save measurements" onPress={submit} loading={loading} />
     </View>
   );
@@ -62,14 +63,14 @@ export function BodyMeasurementsCard() {
   const confirmRemove = (m: BodyMeasurement) =>
     Alert.alert('Remove this entry?', `The measurements from ${fmtDate(m.measuredAt)} will be hidden.`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => remove({ variables: { id: m.id } }).catch((e) => Alert.alert('Couldn’t remove it', e.message)) },
+      { text: 'Remove', style: 'destructive', onPress: () => remove({ variables: { id: m.id } }).catch((e) => Alert.alert('Couldn’t remove it', errorMessage(e))) },
     ]);
 
   return (
     <Card>
       <CardTitle title="Body measurements" subtitle="Waist, hips and arm: progress the scale doesn’t show." right={<Button small variant="soft" label="+ Add" onPress={() => setAdding(true)} />} />
       {loading && !data && <Empty>Loading…</Empty>}
-      {error && !data && <ErrorText>{error.message}</ErrorText>}
+      {!data && <ErrorText error={error} />}
       {data && list.length === 0 && <Empty>Take your waist, hips and arm measurements to see the inches come off, even when the scale moves slowly.</Empty>}
 
       {summary.length > 0 && (

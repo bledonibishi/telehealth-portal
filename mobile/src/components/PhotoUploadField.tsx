@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadImage, UploadKind } from '../lib/upload';
 import { BottomSheet, SheetOption } from './BottomSheet';
 import { colors } from '../theme';
+import { ErrorText } from './ui';
 
 /**
  * One photo to upload. The button opens a sheet from the bottom of the screen to take a photo or
@@ -24,7 +25,7 @@ export function PhotoUploadField({
 }) {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const handleResult = async (result: ImagePicker.ImagePickerResult) => {
@@ -32,7 +33,7 @@ export function PhotoUploadField({
     const asset = result.assets[0];
     setPreviewUri(asset.uri);
     setStatus('uploading');
-    setError('');
+    setError(null);
     try {
       const fileId = await uploadImage(kind, {
         uri: asset.uri,
@@ -43,7 +44,7 @@ export function PhotoUploadField({
       onUploaded(fileId);
     } catch (err: any) {
       setStatus('error');
-      setError(err.message ?? 'Upload failed');
+      setError(err);
     }
   };
 
@@ -105,7 +106,7 @@ export function PhotoUploadField({
         </TouchableOpacity>
       )}
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      <ErrorText error={error} />
 
       <BottomSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title={label}>
         <SheetOption icon="📷" label="Take photo" hint="Use your camera now" primary onPress={() => closeThen(takePhoto)} />

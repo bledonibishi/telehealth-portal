@@ -11,6 +11,7 @@ import { feelingOf, kg, kgChange } from '@/lib/weight';
 import { WeightChart } from './WeightChart';
 import { LogWeightForm } from './LogWeightForm';
 import { Dialog } from '@/components/common/Dialog';
+import { ErrorAlert, InlineError } from '@/components/common/Alert';
 
 type Mode = 'month' | '3M' | '6M' | '1Y' | 'All' | 'custom';
 const PRESETS: { key: Exclude<Mode, 'custom'>; label: string }[] = [
@@ -52,7 +53,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const [showForecast, setShowForecast] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [voidError, setVoidError] = useState<string | null>(null);
+  const [voidError, setVoidError] = useState<unknown>(null);
   const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: WEIGHT_REFETCH });
 
   const { data: forecastData } = useQuery(MY_WEIGHT_FORECAST, { fetchPolicy: 'cache-and-network' });
@@ -140,7 +141,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
   const remove = async (id: string) => {
     setVoidError(null);
     try { await voidWeight({ variables: { entryId: id } }); setConfirmId(null); setSelectedId(null); announceWeightsChanged(); }
-    catch (e: any) { setVoidError(e?.message ?? 'Couldn’t remove that entry.'); }
+    catch (e: any) { setVoidError(e); }
   };
 
   // The target and starting weight come from the same journey query the card above refreshes when a
@@ -201,11 +202,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
             )}
           </div>
 
-          {tl.error && !ready && (
-            <div className="rounded-xl bg-danger-50 border border-danger-100 p-4 text-sm text-danger-500">
-              {tl.error} <button className="underline font-medium" onClick={tl.retry}>Try again</button>
-            </div>
-          )}
+          {!ready && <ErrorAlert error={tl.error} onRetry={tl.retry} />}
           {!ready && !tl.error && <div className="h-[220px] sm:h-[260px] rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your weights" />}
           {ready && (
             <div className="relative">
@@ -223,7 +220,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
               )}
             </div>
           )}
-          {tl.error && ready && <p className="text-xs text-danger-500 mt-2">{tl.error} <button className="underline" onClick={tl.retry}>Try again</button></p>}
+          {ready && <ErrorAlert error={tl.error} onRetry={tl.retry} className="mt-2" />}
           {tl.truncated && <p className="text-xs text-slate-400 mt-2">A very long history is shown in part — the most recent entries first.</p>}
 
           {fc && (
@@ -303,7 +300,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
                       <button type="button" onClick={() => { setConfirmId(p.id); setVoidError(null); }} className="text-xs text-slate-400 hover:text-slate-600 mt-1">Remove</button>
                     )
                   )}
-                  {voidError && confirmId === p.id && <p className="text-xs text-danger-500 mt-1">{voidError}</p>}
+                  {confirmId === p.id && <InlineError error={voidError} size="xs" className="mt-1" />}
                 </li>
               );
             })}

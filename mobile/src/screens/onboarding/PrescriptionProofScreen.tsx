@@ -8,6 +8,7 @@ import { PhotoUploadField } from '../../components/PhotoUploadField';
 import { ProofSampleSlider } from '../../components/proof/ProofSampleSlider';
 import { ProofSample } from '../../components/proof/ProofSample';
 import { ProofRequirements } from '../../components/proof/ProofRequirements';
+import { ErrorText } from '../../components/ui';
 import {
   ChecklistLoader,
   DoseChoice,
@@ -147,7 +148,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
   const [priorUse, setPriorUse] = useState<boolean | null>(null);
   const [proofType, setProofType] = useState<string | null>(null);
   const [proofFileId, setProofFileId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [review, setReview] = useState<ProofReview | null>(null);
   const [dismissedReview, setDismissedReview] = useState(false);
   const [uploadingNameEvidence, setUploadingNameEvidence] = useState(false);
@@ -169,7 +170,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
   const [declareNoProof, { loading: savingNoProof }] = useMutation(DECLARE_PRESCRIPTION_PROOF_UNAVAILABLE, refetch);
 
   const effectivePriorUse = priorUse ?? o?.priorMedicationUse ?? null;
-  const fail = (err: any) => setError(err?.message ?? 'Something went wrong');
+  const fail = (err: any) => setError(err);
   const openChat = (draft?: string) => navigation.navigate('Chat', { draft });
 
   if (loadingOnboarding || loadingConsultations) return <ActivityIndicator style={styles.center} color={colors.brand600} />;
@@ -183,13 +184,13 @@ export function PrescriptionProofScreen({ navigation }: any) {
   };
 
   const handleYes = async () => {
-    setError('');
+    setError(null);
     setPriorUse(true);
     await savePriorMedicationUse({ variables: { priorMedicationUse: true } }).catch(fail);
   };
 
   const handleNo = async () => {
-    setError('');
+    setError(null);
     try {
       await savePriorMedicationUse({ variables: { priorMedicationUse: false } });
       navigation.goBack();
@@ -200,7 +201,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
 
   const handleContinue = async () => {
     if (!proofType || !proofFileId) return;
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await savePrescriptionProofStep({
         variables: { input: { prescriptionProofType: proofType, prescriptionProofFileId: proofFileId } },
@@ -215,7 +216,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
 
   const handleNameEvidence = async () => {
     if (!nameEvidenceFileId) return;
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await saveNameEvidence({ variables: { fileId: nameEvidenceFileId } });
       const result: ProofReview | null = saved?.savePrescriptionNameEvidence?.prescriptionProofReview ?? null;
@@ -227,7 +228,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
   };
 
   const handleDoseAnswer = async (choice: DoseChoice) => {
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await clarifyDose({ variables: { choice } });
       const result: ProofReview | null = saved?.clarifyPrescriptionDose?.prescriptionProofReview ?? null;
@@ -301,7 +302,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
       <Appear key={key}>{children}</Appear>
     </ScrollView>
   );
-  const errorText = !!error && <Text style={styles.error}>{error}</Text>;
+  const errorText = <ErrorText error={error} />;
 
   // ── Reading the document ──────────────────────────────────────────────────
   if (savingProof) return page('loading', <ChecklistLoader title="Checking your document" steps={PROOF_STEPS} />);
@@ -336,7 +337,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
             label={savingNoProof ? 'Saving…' : 'Continue without proof'}
             disabled={savingNoProof}
             onPress={async () => {
-              setError('');
+              setError(null);
               try {
                 await declareNoProof();
                 setAskingNoProof(false);
@@ -382,7 +383,7 @@ export function PrescriptionProofScreen({ navigation }: any) {
                 kind="secondary"
                 disabled={savingNoProof}
                 onPress={async () => {
-                  setError('');
+                  setError(null);
                   try {
                     await declareNoProof();
                     navigation.goBack();

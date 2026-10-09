@@ -2,6 +2,7 @@
 
 import { useMutation } from '@apollo/client';
 import { CREATE_BILLING_PORTAL_SESSION } from '@/graphql/billing';
+import { InlineError } from '@/components/common/Alert';
 
 /** A small button that sends the patient to Stripe's customer portal: update the card, see invoices, manage or cancel. */
 export function ManageSubscriptionButton() {
@@ -23,7 +24,7 @@ export function ManageSubscriptionButton() {
         className="text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 disabled:opacity-60 rounded-lg px-3 py-1.5">
         {loading ? 'Opening…' : '💳 Manage subscription'}
       </button>
-      {error && <p role="alert" className="text-xs text-red-600 mt-1 max-w-xs">{error.message}</p>}
+      <InlineError error={error} size="xs" className="mt-1 max-w-xs" />
     </div>
   );
 }

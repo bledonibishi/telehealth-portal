@@ -46,7 +46,7 @@ export function TargetWeightForm({ current, currentKg, startKg, onDone }: { curr
     <View style={{ gap: 10 }}>
       <Field label="What’s your target weight? (kg)" keyboardType="decimal-pad" value={value} onChangeText={setValue} />
       {valid && currentKg != null && <Preview currentKg={currentKg} startKg={startKg} targetKg={n} />}
-      <ErrorText>{error?.message}</ErrorText>
+      <ErrorText error={error} />
       <Button label="Save target" onPress={submit} disabled={!valid} loading={loading} />
     </View>
   );

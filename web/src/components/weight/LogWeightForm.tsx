@@ -7,6 +7,8 @@ import { ADD_MY_WEIGHT, WEIGHT_REFETCH } from '@/graphql/weight';
 import { announceWeightsChanged } from '@/lib/weights-changed';
 import { uploadFile } from '@/lib/upload';
 import { prepareProgressPhoto } from '@/lib/image';
+import { InlineError } from '@/components/common/Alert';
+import { errorMessage } from '@telehealth/shared-types';
 
 const MIN_KG = 30;
 const MAX_KG = 300;
@@ -26,7 +28,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
   const [when, setWhen] = useState(nowLocal);
   const [note, setNote] = useState('');
   const [showNote, setShowNote] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const requestId = useRef(newRequestId());
   const [photo, setPhoto] = useState<File | null>(null);
@@ -71,7 +73,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
           try {
             uploaded.current = { file: photo, id: await uploadFile('PROGRESS_PHOTO', await prepareProgressPhoto(photo)) };
           } catch (err: any) {
-            return setProblem(`Couldn’t upload the photo: ${err?.message ?? 'please try again'}. You can remove it and save just your weight.`);
+            return setProblem(`Couldn’t upload the photo: ${errorMessage(err) || 'please try again'}. You can remove it and save just your weight.`);
           } finally {
             setUploading(false);
           }
@@ -85,7 +87,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
       announceWeightsChanged();
       onSaved?.(at.getTime());
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -139,7 +141,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
         {onCancel && <button type="button" onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">Close</button>}
       </div>
       <div aria-live="polite">
-        {problem && <p className="text-sm text-danger-500">{problem}</p>}
+        <InlineError error={problem} />
         {saved && <p className="text-sm text-brand-700">✓ {saved}</p>}
       </div>
     </form>

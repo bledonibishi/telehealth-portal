@@ -6,6 +6,7 @@ import { PhotoUploadField } from '../../components/PhotoUploadField';
 import { SAVE_IDENTITY_STEP, MY_ONBOARDING, START_IDENTITY_VERIFICATION } from '../../graphql/onboarding';
 import { SUBMITTED_STATUSES, useIdentityVerification } from '../../lib/useIdentityVerification';
 import { colors } from '../../theme';
+import { ErrorText } from '../../components/ui';
 
 /**
  * The ID step. With the verification service configured, the patient photographs their ID and takes
@@ -34,7 +35,7 @@ export function IdPhotoScreen({ navigation }: any) {
  */
 function VerifiedIdentityStep({ status, refetch, navigation }: { status: string | null; refetch: () => void; navigation: any }) {
   const [link, setLink] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [start, { loading }] = useMutation(START_IDENTITY_VERIFICATION);
 
   const openPage = async (url: string) => {
@@ -46,7 +47,7 @@ function VerifiedIdentityStep({ status, refetch, navigation }: { status: string 
   };
 
   const begin = async () => {
-    setError('');
+    setError(null);
     try {
       const res = await start();
       const url: string = res.data.startIdentityVerification.hostedUrl;
@@ -54,7 +55,7 @@ function VerifiedIdentityStep({ status, refetch, navigation }: { status: string 
       refetch();
       await openPage(url);
     } catch (err: any) {
-      setError(err?.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
@@ -98,7 +99,7 @@ function VerifiedIdentityStep({ status, refetch, navigation }: { status: string 
           {reopen && (
             <Text style={styles.note}>Finish the check on the verification page, then come back here. We’ll update this as soon as you’re done.</Text>
           )}
-          {!!error && <Text style={styles.error}>{error}</Text>}
+          <ErrorText error={error} />
 
           {canStart && (
             <TouchableOpacity
@@ -121,7 +122,7 @@ function VerifiedIdentityStep({ status, refetch, navigation }: { status: string 
 function UploadedIdentityStep({ navigation }: { navigation: any }) {
   const [idDocumentFileId, setIdDocumentFileId] = useState<string | null>(null);
   const [selfieFileId, setSelfieFileId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [saveIdentityStep, { loading }] = useMutation(SAVE_IDENTITY_STEP, {
     refetchQueries: [{ query: MY_ONBOARDING }],
@@ -131,12 +132,12 @@ function UploadedIdentityStep({ navigation }: { navigation: any }) {
 
   const handleContinue = async () => {
     if (!canContinue) return;
-    setError('');
+    setError(null);
     try {
       await saveIdentityStep({ variables: { input: { idDocumentFileId, selfieFileId } } });
       navigation.goBack();
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
@@ -163,7 +164,7 @@ function UploadedIdentityStep({ navigation }: { navigation: any }) {
         <PhotoUploadField kind="SELFIE" label="Selfie" hint="Look directly at the camera" onUploaded={setSelfieFileId} />
       </View>
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      <ErrorText error={error} />
 
       <TouchableOpacity
         style={[styles.cta, (!canContinue || loading) && styles.ctaDisabled]}

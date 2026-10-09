@@ -5,6 +5,7 @@ import { useMutation } from '@apollo/client';
 import { format } from 'date-fns';
 import { MY_WEIGHT_JOURNEY, SET_MY_TARGET_WEIGHT, MY_WEIGHT_TREND } from '@/graphql/weight';
 import { kg, targetPlan } from '@/lib/weight';
+import { InlineError } from '@/components/common/Alert';
 
 /** What the typed target means: how much to lose, a steady-pace date range and where they stand on the way. */
 function TargetPreview({ currentKg, startKg, targetKg }: { currentKg: number; startKg?: number | null; targetKg: number }) {
@@ -88,7 +89,7 @@ export function TargetWeightForm({ current, currentKg, startKg, onDone }: { curr
         )}
       </div>
       {valid && currentKg != null && <TargetPreview currentKg={currentKg} startKg={startKg} targetKg={n} />}
-      {error && <p className="text-xs text-danger-500">{error.message}</p>}
+      <InlineError error={error} size="xs" />
     </form>
   );
 }

@@ -37,13 +37,13 @@ export function AccountScreen({ navigation }: any) {
           <CardTitle title="Stop my subscription" />
           <Text style={styles.text}>No further payments are taken after the period you have already paid for. Nothing you have paid is returned.</Text>
           {stopped ? <Notice tone="good">{stopped}</Notice> : <Button label="Stop my subscription" variant="outline" onPress={confirmStop} loading={stopping} style={styles.button} />}
-          <ErrorText>{stopError?.message}</ErrorText>
+          <ErrorText error={stopError} />
         </Card>
         <Card>
           <CardTitle title="Ask for a refund" />
           <Text style={styles.text}>You don’t need to give a reason. The clinic looks at where your order is and replies; nothing is refunded until it does.</Text>
           {open ? <Notice tone="info">Your request is with the clinic. We’ll be in touch.</Notice> : <Button label="Ask for a refund" variant="outline" onPress={confirmRefund} loading={asking} style={styles.button} />}
-          <ErrorText>{askError?.message}</ErrorText>
+          <ErrorText error={askError} />
         </Card>
       </Columns>
     </Screen>

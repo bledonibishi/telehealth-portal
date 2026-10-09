@@ -10,6 +10,7 @@ import ExportCsvButton from '@/components/ExportCsvButton';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import type { CsvColumn } from '@/lib/csv';
+import { InlineError } from '@/components/ui/Alert';
 
 const PAGE_SIZE = 50;
 
@@ -125,7 +126,7 @@ function AuditLog() {
         )}
       </form>
 
-      {error && <p className="text-sm text-red-500">{error.message}</p>}
+      <InlineError error={error} />
 
       <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-card)]">
         <table className="w-full text-xs">

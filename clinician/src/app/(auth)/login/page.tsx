@@ -2,6 +2,7 @@
 
 import PasswordInput from '@/components/PasswordInput';
 import { useState } from 'react';
+import { ErrorAlert } from '@/components/ui/Alert';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@apollo/client';
@@ -17,7 +18,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
   const [pendingToken, setPendingToken] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [loginClinician, { loading: loginLoading }] = useMutation(LOGIN_CLINICIAN, {
     onCompleted(data) {
@@ -32,7 +33,7 @@ export default function LoginPage() {
       }
     },
     onError(err) {
-      setError(err.message);
+      setError(err);
     },
   });
 
@@ -42,19 +43,19 @@ export default function LoginPage() {
       router.push(landingPathFor(getCurrentRole()));
     },
     onError(err) {
-      setError(err.message);
+      setError(err);
     },
   });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     loginClinician({ variables: { input: { email, password } } });
   };
 
   const handleMfa = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     verifyMfa({ variables: { pendingToken, totpCode } });
   };
 
@@ -62,9 +63,7 @@ export default function LoginPage() {
     <div className="space-y-5">
         <h1 className="text-2xl font-semibold text-gray-900">{t('Clinician Login')}</h1>
 
-        {error && (
-          <p className="text-sm text-danger-500 bg-danger-50 rounded px-3 py-2">{error}</p>
-        )}
+        <ErrorAlert error={error} />
 
         {!pendingToken ? (
           <form onSubmit={handleLogin} className="space-y-4">

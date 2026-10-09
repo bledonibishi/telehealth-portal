@@ -6,6 +6,8 @@ import { ME_BASIC_INFO, MY_CONSULTATIONS, MY_TELEHEALTH_CONSENT } from '../../gr
 import { signOut } from '../../lib/session';
 import { colors } from '../../theme';
 import { identityHint, SUBMITTED_STATUSES, useIdentityVerification } from '../../lib/useIdentityVerification';
+import { ErrorText } from '../../components/ui';
+import { ErrorNotice } from '../../components/ErrorNotice';
 
 // While the application is with a doctor, look again this often: the screen moves on by itself once they decide.
 const REVIEW_POLL_MS = 15_000;
@@ -30,7 +32,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   const { data: consultData, refetch: refetchConsults } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only' });
   const { data: consentData, loading: consentLoading, refetch: refetchConsent } = useQuery(MY_TELEHEALTH_CONSENT, { fetchPolicy: 'network-only' });
   const { data: idvData, refetch: refetchIdv } = useIdentityVerification();
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState<unknown>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const o = data?.myOnboarding;
@@ -60,7 +62,7 @@ export function OnboardingChecklistScreen({ navigation }: any) {
   }, [o?.status, navigation]);
 
   if ((loading || consentLoading) && !o) return <ActivityIndicator style={styles.center} />;
-  if (error) return <Text style={styles.error}>{error.message}</Text>;
+  if (error && !o) return <View style={styles.errorBox}><ErrorNotice error={error} title="We couldn’t load your application" onRetry={() => refetch()} /></View>;
   if (!o) return null;
 
   // With the verification service the check happens on its own page: the step is done once the
@@ -249,18 +251,18 @@ export function OnboardingChecklistScreen({ navigation }: any) {
         Your progress is saved as you go — you can leave and pick up where you stopped. Your data is encrypted, and a clinician reviews every application personally.
       </Text>
 
-      {!!submitError && <Text style={styles.submitError}>{submitError}</Text>}
+      <ErrorText error={submitError} />
 
       <TouchableOpacity
         style={[styles.cta, submitting && styles.ctaDisabled]}
         disabled={submitting}
         onPress={async () => {
           if (!allDone) return navigation.navigate(firstIncomplete!.key);
-          setSubmitError('');
+          setSubmitError(null);
           try {
             await submitOnboarding();
           } catch (err: any) {
-            setSubmitError(err?.message ?? 'We couldn’t submit your application. Please try again.');
+            setSubmitError(err);
           }
         }}
       >
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
   content: { padding: 20, paddingBottom: 40 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  error: { color: '#f43f5e', margin: 16 },
+  errorBox: { padding: 16 },
   pendingWrap: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   pendingMeta: { fontSize: 12, color: '#9ca3af', marginTop: 10 },
   submitError: { color: '#be123c', backgroundColor: '#fff1f2', borderRadius: 12, padding: 10, fontSize: 13, marginTop: 16 },

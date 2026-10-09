@@ -17,6 +17,7 @@ import { hasAccess } from '@/lib/role';
 import { PrescriptionForm, PrescriptionSubmission } from './PrescriptionForm';
 import { Modal } from './Modal';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 type Action = 'approve' | 'decline' | 'more_info' | 'redo' | null;
 
@@ -86,7 +87,7 @@ export function DecisionPanel({
   const [infoMessage, setInfoMessage] = useState('');
   const [redoStep, setRedoStep] = useState('');
   const [redoReason, setRedoReason] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const reviewable = ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'].includes(status);
   const claimedByMe = status === 'IN_REVIEW' && clinician?.id === currentUserId;
@@ -94,7 +95,7 @@ export function DecisionPanel({
   const isAdmin = hasAccess(['ADMIN']);
   const blocked = claimedByOther && !isAdmin;
 
-  const toQueue = { onCompleted() { router.push('/queue'); }, onError(e: Error) { setError(e.message); } };
+  const toQueue = { onCompleted() { router.push('/queue'); }, onError(e: Error) { setError(e); } };
   // What happened to billing for the prescribed dose, shown before going back to the queue.
   const [billingNote, setBillingNote] = useState<string | null>(null);
   const [approve, { loading: approving }] = useMutation(APPROVE_CONSULTATION, {
@@ -104,7 +105,7 @@ export function DecisionPanel({
       else router.push('/queue');
     },
     onError(e: Error) {
-      setError(e.message);
+      setError(e);
     },
   });
   const [decline, { loading: declining }] = useMutation(DECLINE_CONSULTATION, toQueue);
@@ -112,8 +113,8 @@ export function DecisionPanel({
   // The consultation page keeps open after this: the patient now has the step to redo, and approval waits for them.
   const [requestRedo, { loading: redoing }] = useMutation(REQUEST_ONBOARDING_REDO, {
     refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }, { query: GET_CONSULTATION, variables: { id: consultationId } }],
-    onCompleted() { setAction(null); setRedoReason(''); setError(''); },
-    onError(e: Error) { setError(e.message); },
+    onCompleted() { setAction(null); setRedoReason(''); setError(null); },
+    onError(e: Error) { setError(e); },
   });
   const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
   const onboarding = onboardingData?.onboardingSubmission;
@@ -122,8 +123,8 @@ export function DecisionPanel({
     s.key === 'ID_PHOTO' ? !onboarding?.identityViaVerifyService : s.key === 'PRESCRIPTION_PROOF' ? !!onboarding?.priorMedicationUse : true,
   );
   const canRedo = ['PENDING_REVIEW', 'REJECTED'].includes(onboarding?.status ?? '');
-  const [claim, { loading: claiming }] = useMutation(CLAIM_CONSULTATION, { onError: (e) => setError(e.message) });
-  const [release, { loading: releasing }] = useMutation(RELEASE_CONSULTATION, { onError: (e) => setError(e.message) });
+  const [claim, { loading: claiming }] = useMutation(CLAIM_CONSULTATION, { onError: (e) => setError(e) });
+  const [release, { loading: releasing }] = useMutation(RELEASE_CONSULTATION, { onError: (e) => setError(e) });
 
   // Before the "already decided" view: the approval has just made this consultation APPROVED.
   if (billingNote) {
@@ -167,7 +168,7 @@ export function DecisionPanel({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     if (action === 'decline') {
       decline({ variables: { input: { consultationId, reason, messageToPatient: patientMessage } } });
     } else if (action === 'more_info') {
@@ -177,7 +178,7 @@ export function DecisionPanel({
     }
   };
 
-  const close = () => { setAction(null); setError(''); };
+  const close = () => { setAction(null); setError(null); };
 
   return (
     <div className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
@@ -193,7 +194,7 @@ export function DecisionPanel({
         )}
         {status === 'SUBMITTED' && <p className="text-gray-500">{t('Not yet claimed — claim it so colleagues know you’re on it.')}</p>}
         {blockedReason && <p className="text-warn-900">{t(blockedReason)}</p>}
-        {!action && error && <p className="text-danger-500 text-sm">{error}</p>}
+        {!action && <InlineError error={error} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -252,7 +253,7 @@ export function DecisionPanel({
             submitting={approving}
             onCancel={close}
             onSubmit={(rx: PrescriptionSubmission) => {
-              setError('');
+              setError(null);
               approve({ variables: { input: { consultationId, ...rx } } });
             }}
           />
@@ -262,7 +263,7 @@ export function DecisionPanel({
       {action === 'decline' && (
         <Modal title={t('Decline consultation')} onClose={close}>
           <form onSubmit={handleSubmit} className="space-y-3">
-            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <InlineError error={error} />
             <label className="block">
               <span className="block text-xs font-medium text-gray-700 mb-1">{t('Clinical reason (internal, required)')}</span>
               <textarea rows={2} required value={reason} onChange={(e) => setReason(e.target.value)} className={cls} />
@@ -290,7 +291,7 @@ export function DecisionPanel({
       {action === 'redo' && (
         <Modal title={t('Ask the patient to redo a step')} onClose={close}>
           <form onSubmit={handleSubmit} className="space-y-3">
-            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <InlineError error={error} />
             <fieldset className="space-y-1.5">
               <legend className="block text-xs font-medium text-gray-700 mb-1">{t('Which step?')}</legend>
               {redoable.map((s) => (
@@ -318,7 +319,7 @@ export function DecisionPanel({
       {action === 'more_info' && (
         <Modal title={t('Request more information')} onClose={close}>
           <form onSubmit={handleSubmit} className="space-y-3">
-            {error && <p className="text-sm text-danger-500">{error}</p>}
+            <InlineError error={error} />
             <label className="block">
               <span className="block text-xs font-medium text-gray-700 mb-1">{t('What do you need from the patient?')}</span>
               <textarea

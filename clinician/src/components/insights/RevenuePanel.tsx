@@ -5,6 +5,7 @@ import { useQuery } from '@apollo/client';
 import { REVENUE_OVERVIEW, SALES_FUNNEL } from '@/graphql/insights';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import PeriodSelect, { type Period } from './PeriodSelect';
+import { InlineError } from '@/components/ui/Alert';
 
 const STAGE_LABEL: Record<string, string> = {
   LANDING_VISITORS: 'Visited the landing page',
@@ -59,7 +60,7 @@ export default function RevenuePanel() {
         <PeriodSelect value={days} onChange={setDays} />
       </div>
 
-      {revenue.error && <p className="text-sm text-red-500 mb-3">{revenue.error.message}</p>}
+      <InlineError error={revenue.error} className="mb-3" />
       {r && !r.configured && (
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
           {t('Stripe is not connected here, so revenue figures are unavailable. The sales funnel below still works.')}
@@ -97,7 +98,7 @@ export default function RevenuePanel() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
         <p className="text-sm font-medium text-gray-700 mb-4">{t('From the landing page to the first shipment')}</p>
-        {funnel.error && <p className="text-sm text-red-500">{funnel.error.message}</p>}
+        <InlineError error={funnel.error} />
         {funnelData && !funnelData.visitorsConfigured && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
             {t('Website visits and quiz starts are not shown: PostHog is not connected. Set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID in the backend settings.')}

@@ -7,13 +7,15 @@ import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { LOGIN_PATIENT } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
+import { ErrorAlert } from '@/components/common/Alert';
+import { ErrorCode, describeError } from '@telehealth/shared-types';
 
 export default function LoginPage() {
   const router = useRouter();
   const apollo = useApolloClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [loginPatient, { loading }] = useMutation(LOGIN_PATIENT, {
     async onCompleted(data) {
@@ -23,13 +25,13 @@ export default function LoginPage() {
       router.push('/dashboard');
     },
     onError(err) {
-      setError(err.message);
+      setError(err);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     loginPatient({ variables: { input: { email, password } } });
   };
 
@@ -37,11 +39,11 @@ export default function LoginPage() {
     <>
           <h1 className="text-xl font-semibold text-slate-900 mb-6">Sign in to your account</h1>
 
-          {error && (
-            <div className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
+          <ErrorAlert
+            error={error}
+            className="mb-4"
+            action={describeError(error)?.code === ErrorCode.ACCOUNT_NOT_ACTIVATED && <Link href="/get-started" className="underline">Send me a new activation link</Link>}
+          />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

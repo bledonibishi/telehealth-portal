@@ -10,6 +10,7 @@ import { EMERGENCY_NUMBER } from '@/lib/contact';
 import { Icon } from '@/components/portal/Icon';
 import { btnBlue } from '@/components/portal/Card';
 import Link from 'next/link';
+import { InlineError } from '@/components/common/Alert';
 
 const dayOf = (iso: string) => {
   const d = new Date(iso);
@@ -22,7 +23,7 @@ export default function MessagesPage() {
   const currentUserId = token ? parseJwt(token)?.sub ?? null : null;
   const chat = useConversationChat({ currentUserId });
   const [content, setContent] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   // Being on this page is reading the thread.
@@ -45,7 +46,7 @@ export default function MessagesPage() {
       await chat.send(text);
     } catch (err: any) {
       setContent(text); // not sent: give the words back
-      setProblem(err?.message ?? 'Couldn’t send that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -99,7 +100,7 @@ export default function MessagesPage() {
               placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
             <button type="submit" disabled={!content.trim()} className={btnBlue}>Send</button>
           </div>
-          {problem && <p role="alert" className="text-xs text-red-600 mt-2">{problem}</p>}
+          <InlineError error={problem} size="xs" className="mt-2" />
           <p className="text-[11px] text-slate-400 mt-2">
             Not for emergencies. If it can’t wait, <Link href="/appointments?new=1&urgent=1" className="underline">request an urgent appointment</Link> or call {EMERGENCY_NUMBER}.
           </p>

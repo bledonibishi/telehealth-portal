@@ -56,7 +56,7 @@ function Form({ onClose }: { onClose: () => void }) {
       {effects.includes('allergic_reaction') && <Text style={styles.urgent}>Swelling of your face, lips or throat, or trouble breathing, is an emergency: call {EMERGENCY_NUMBER} now. Don’t take another dose until a doctor has told you to.</Text>}
       {severity === 'SEVERE' && <Text style={styles.urgent}>If you have severe stomach pain, can’t keep fluids down, or feel very unwell, call {EMERGENCY_NUMBER} or go to your nearest emergency department now. Don’t wait for a reply.</Text>}
       <TextInput value={note} onChangeText={setNote} placeholder="Anything else? (optional)" placeholderTextColor={colors.slate400} multiline maxLength={500} style={styles.note} />
-      <ErrorText>{error?.message}</ErrorText>
+      <ErrorText error={error} />
       <Button label="Tell my doctor" disabled={!effects.length} loading={loading} onPress={() => send({ variables: { input: { effects, severity, note: note.trim() || undefined } } }).catch(() => undefined)} />
     </View>
   );

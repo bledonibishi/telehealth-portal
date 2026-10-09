@@ -7,6 +7,7 @@ import { PoseFigure, PoseView } from '../../components/PoseFigure';
 import { CameraCapture } from '../../components/CameraCapture';
 import { CHECK_BODY_PHOTO, CHECK_PHOTO_FRAME, DISCARD_BODY_PHOTO, MY_ONBOARDING, SAVE_BODY_PHOTO } from '../../graphql/onboarding';
 import { uploadImage } from '../../lib/upload';
+import { ErrorText } from '../../components/ui';
 
 type Phase = 'guide' | 'checking' | 'failed' | 'saved' | 'done';
 type Result = { outcome: 'PASS' | 'FAIL' | 'UNCHECKED'; issues: string[]; messages: string[]; canSendForReview: boolean };
@@ -40,7 +41,7 @@ export function BodyPhotoScreen({ navigation }: any) {
   const [view, setView] = useState<PoseView>('FRONT');
   const [phase, setPhase] = useState<Phase>('guide');
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<unknown>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraNote, setCameraNote] = useState('');
   const [fails, setFails] = useState<Record<PoseView, number>>({ FRONT: 0, SIDE: 0 });
@@ -88,13 +89,13 @@ export function BodyPhotoScreen({ navigation }: any) {
   };
 
   const persist = async (a: Attempt, sendForReview: boolean) => {
-    setProblem('');
+    setProblem(null);
     try {
       await save({ variables: { input: { view, fileId: a.fileId, sendForReview } } });
       setSaved((s) => ({ ...s, [view]: a.fileId }));
       setPhase('saved');
     } catch (err: any) {
-      setProblem(err?.message ?? 'We couldn’t save that photo. Please try again.');
+      setProblem(err);
       setPhase('failed');
     }
   };
@@ -105,7 +106,7 @@ export function BodyPhotoScreen({ navigation }: any) {
   };
 
   const handleAsset = async (asset: { uri: string; fileName?: string | null; mimeType?: string | null }) => {
-    setProblem('');
+    setProblem(null);
     dropAttempt();
     setPhase('checking');
     setAttempt({ fileId: '', uri: asset.uri, result: { outcome: 'UNCHECKED', issues: [], messages: [], canSendForReview: false } });
@@ -126,13 +127,13 @@ export function BodyPhotoScreen({ navigation }: any) {
       }
     } catch (err: any) {
       setAttempt(null);
-      setProblem(err?.message ?? 'Something went wrong. Please try again.');
+      setProblem(err);
       setPhase('guide');
     }
   };
 
   const takePhoto = async () => {
-    setProblem('');
+    setProblem(null);
     // The live camera, with its outline and tips; the phone's own camera app if that can't be used here.
     if (!cameraNote) return setCameraOpen(true);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -154,7 +155,7 @@ export function BodyPhotoScreen({ navigation }: any) {
 
   const retakeView = (v: PoseView) => {
     setView(v);
-    setProblem('');
+    setProblem(null);
     setPhase('guide');
   };
 
@@ -218,7 +219,7 @@ export function BodyPhotoScreen({ navigation }: any) {
           </Text>
 
           {!!cameraNote && <Text style={styles.notice}>{cameraNote}</Text>}
-          {!!problem && <Text style={styles.error}>{problem}</Text>}
+          <ErrorText error={problem} />
 
           <TouchableOpacity style={styles.primary} onPress={takePhoto}><Text style={styles.primaryText}>Take photo</Text></TouchableOpacity>
           <TouchableOpacity style={styles.outline} onPress={pickFile}><Text style={styles.outlineText}>Upload file</Text></TouchableOpacity>
@@ -258,7 +259,7 @@ export function BodyPhotoScreen({ navigation }: any) {
               <Text key={m} style={styles.foundItem}>• {m}</Text>
             ))}
           </View>
-          {!!problem && <Text style={styles.error}>{problem}</Text>}
+          <ErrorText error={problem} />
           <TouchableOpacity style={styles.primary} onPress={() => { dropAttempt(); setPhase('guide'); takePhoto(); }}>
             <Text style={styles.primaryText}>Retake photo</Text>
           </TouchableOpacity>

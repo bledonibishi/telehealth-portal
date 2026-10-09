@@ -27,6 +27,7 @@ import {
   CLARIFY_PRESCRIPTION_DOSE,
   DECLARE_PRESCRIPTION_PROOF_UNAVAILABLE,
 } from '@/graphql/onboarding';
+import { InlineError } from '@/components/common/Alert';
 
 const PROOF_TYPES: { value: string; label: string; hint: string; fastest?: boolean }[] = [
   { value: 'MEDICINE_BOX_LABEL', label: 'Medicine box label', hint: 'Pharmacy sticker on your box, bottle, or pen', fastest: true },
@@ -72,7 +73,7 @@ export default function PrescriptionProofStepPage() {
   const [priorUse, setPriorUse] = useState<boolean | null>(null);
   const [proofType, setProofType] = useState<string | null>(null);
   const [proofFileId, setProofFileId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   // The automatic check's outcome for the document just uploaded.
   const [review, setReview] = useState<ProofReview | null>(null);
   // Set once the patient leaves the outcome screen to upload again.
@@ -113,26 +114,26 @@ export default function PrescriptionProofStepPage() {
   if (loadingOnboarding || loadingConsultations) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
 
   const handleNo = async () => {
-    setError('');
+    setError(null);
     try {
       await savePriorMedicationUse({ variables: { priorMedicationUse: false } });
       router.push('/onboarding');
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
   const handleYes = async () => {
-    setError('');
+    setError(null);
     setPriorUse(true);
     await savePriorMedicationUse({ variables: { priorMedicationUse: true } }).catch((err) =>
-      setError(err.message ?? 'Something went wrong'),
+      setError(err),
     );
   };
 
   const handleContinue = async () => {
     if (!proofType || !proofFileId) return;
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await savePrescriptionProofStep({
         variables: { input: { prescriptionProofType: proofType, prescriptionProofFileId: proofFileId } },
@@ -141,31 +142,31 @@ export default function PrescriptionProofStepPage() {
       if (result) showReview(result);
       else router.push('/onboarding');
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
   const handleNameEvidence = async () => {
     if (!nameEvidenceFileId) return;
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await saveNameEvidence({ variables: { fileId: nameEvidenceFileId } });
       const result: ProofReview | null = saved?.savePrescriptionNameEvidence?.prescriptionProofReview ?? null;
       if (result) showReview(result);
       else router.push('/onboarding');
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
   const handleDoseAnswer = async (choice: DoseChoice) => {
-    setError('');
+    setError(null);
     try {
       const { data: saved } = await clarifyDose({ variables: { choice } });
       const result: ProofReview | null = saved?.clarifyPrescriptionDose?.prescriptionProofReview ?? null;
       if (result) showReview(result);
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
@@ -271,16 +272,16 @@ export default function PrescriptionProofStepPage() {
           </ul>
         </div>
 
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
         <button
           onClick={async () => {
-            setError('');
+            setError(null);
             try {
               await declareNoProof();
               setAskingNoProof(false);
               router.push('/onboarding');
             } catch (err: any) {
-              setError(err.message ?? 'Something went wrong');
+              setError(err);
             }
           }}
           disabled={savingNoProof}
@@ -323,7 +324,7 @@ export default function PrescriptionProofStepPage() {
 
         {o?.proofRequirements && <ProofRequirements data={o.proofRequirements} compact />}
 
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
         {clinicianRequest ? (
           <>
             <button
@@ -334,12 +335,12 @@ export default function PrescriptionProofStepPage() {
             </button>
             <button
               onClick={async () => {
-                setError('');
+                setError(null);
                 try {
                   await declareNoProof();
                   router.push('/onboarding');
                 } catch (err: any) {
-                  setError(err.message ?? 'Something went wrong');
+                  setError(err);
                 }
               }}
               disabled={savingNoProof}
@@ -408,7 +409,7 @@ export default function PrescriptionProofStepPage() {
         <div className="mt-5">
           <PhotoUploadField key={`name-${uploadKey}`} kind="PRESCRIPTION_PROOF" label="Upload document" onUploaded={setNameEvidenceFileId} />
         </div>
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
         <button
           onClick={handleNameEvidence}
           disabled={!nameEvidenceFileId}
@@ -464,7 +465,7 @@ export default function PrescriptionProofStepPage() {
             ))}
           </div>
         )}
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
 
         {/* Empty when the document's issues are the whole story. */}
         {r.patientMessage && (
@@ -578,7 +579,7 @@ export default function PrescriptionProofStepPage() {
           You told us this is your first time using this medication, so there&rsquo;s nothing to upload. Your clinician will
           start you on the lowest dose.
         </p>
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
         <button
           onClick={() => router.push('/onboarding')}
           className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
@@ -605,7 +606,7 @@ export default function PrescriptionProofStepPage() {
           If you have an existing prescription, we can verify your dose without repeating the full clinical review.
         </p>
 
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
 
         <div className="space-y-3 mt-6">
           <button
@@ -675,7 +676,7 @@ export default function PrescriptionProofStepPage() {
           />
         </div>
 
-        {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+        <InlineError error={error} size="xs" className="mt-3" />
 
         <button
           onClick={handleContinue}
@@ -734,7 +735,7 @@ export default function PrescriptionProofStepPage() {
         I don&rsquo;t have any proof
       </button>
 
-      {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-3" />
     </div>
   );
 }

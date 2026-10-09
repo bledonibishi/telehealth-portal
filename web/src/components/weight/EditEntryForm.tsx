@@ -9,6 +9,8 @@ import { prepareProgressPhoto } from '@/lib/image';
 import { announceWeightsChanged } from '@/lib/weights-changed';
 import type { JourneyEntry } from '@/lib/journey-entries';
 import { AuthedImage } from '@/components/common/AuthedImage';
+import { InlineError } from '@/components/common/Alert';
+import { errorMessage } from '@telehealth/shared-types';
 
 const MIN_KG = 30;
 const MAX_KG = 300;
@@ -29,7 +31,7 @@ export function EditEntryForm({ entry, onDone }: { entry: JourneyEntry; onDone: 
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const [uploading, setUploading] = useState(false);
   // Uploaded once and kept across retries, so a failed save doesn't upload the same photo twice.
   const uploaded = useRef<{ file: File; id: string } | null>(null);
@@ -75,7 +77,7 @@ export function EditEntryForm({ entry, onDone }: { entry: JourneyEntry; onDone: 
           try {
             uploaded.current = { file: photo, id: await uploadFile('PROGRESS_PHOTO', await prepareProgressPhoto(photo)) };
           } catch (err: any) {
-            return setProblem(`Couldn’t upload the photo: ${err?.message ?? 'please try again'}.`);
+            return setProblem(`Couldn’t upload the photo: ${errorMessage(err) || 'please try again'}.`);
           } finally {
             setUploading(false);
           }
@@ -90,7 +92,7 @@ export function EditEntryForm({ entry, onDone }: { entry: JourneyEntry; onDone: 
       }
       onDone();
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -138,7 +140,7 @@ export function EditEntryForm({ entry, onDone }: { entry: JourneyEntry; onDone: 
         <button type="button" onClick={onDone} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>
       </div>
       <p className="text-[11px] text-slate-400">If you change the weight or date, your care team can still see what it was before.</p>
-      {problem && <p className="text-sm text-danger-500" role="alert">{problem}</p>}
+      <InlineError error={problem} />
     </form>
   );
 }
