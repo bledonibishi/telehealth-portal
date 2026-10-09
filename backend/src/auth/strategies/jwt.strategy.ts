@@ -36,12 +36,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Read from the database on every request, so turning an account off stops a session that is already open.
       if (clinician.deactivatedAt) throw authFailure(AuthFailureReason.ACCOUNT_DEACTIVATED);
       // role=CLINICIAN for DB writes (Role enum); clinicianRole for access control
+      // A password change or "sign out everywhere" ends sessions that are already open.
+      if ((payload.tv ?? 0) !== (clinician.tokenVersion ?? 0)) throw authFailure(AuthFailureReason.SESSION_REVOKED);
       return { id: clinician.id, email: clinician.email, role: UserRole.CLINICIAN, clinicianRole: clinician.role };
     }
 
     if (payload.role === UserRole.PATIENT) {
       const patient = await this.prisma.patient.findUnique({ where: { id: payload.sub } });
       if (!patient) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+      if ((payload.tv ?? 0) !== (patient.tokenVersion ?? 0)) throw authFailure(AuthFailureReason.SESSION_REVOKED);
       return { id: patient.id, email: patient.email, role: UserRole.PATIENT };
     }
 

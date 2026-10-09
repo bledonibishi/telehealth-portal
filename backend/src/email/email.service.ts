@@ -12,6 +12,8 @@ import {
   doseReminderEmail,
   orderUpdateEmail,
   partnerOrderEmail,
+  passwordChangedEmail,
+  passwordResetEmail,
   paymentReceiptEmail,
   referralRewardEmail,
   refundEmail,
@@ -82,6 +84,23 @@ export class EmailService {
       return false;
     }
     return !(await this.deliver({ to, kind: 'clinician-invite', ...clinicianInviteEmail({ firstName, inviteUrl, firstTime }) }));
+  }
+
+  /** Resolves true only once the provider has accepted it. */
+  async sendPasswordResetEmail(to: string, firstName: string, resetUrl: string, audience: 'patient' | 'staff', expiresInMinutes: number): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Password reset for ${to}: ${resetUrl}`);
+      return false;
+    }
+    return !(await this.deliver({ to, kind: 'password-reset', ...passwordResetEmail({ firstName, resetUrl, audience, expiresInMinutes }) }));
+  }
+
+  async sendPasswordChangedEmail(to: string, firstName: string, audience: 'patient' | 'staff'): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Password changed notice to ${to}`);
+      return false;
+    }
+    return !(await this.deliver({ to, kind: 'password-changed', ...passwordChangedEmail({ firstName, audience }) }));
   }
 
   async sendVerificationCodeEmail(to: string, code: string) {

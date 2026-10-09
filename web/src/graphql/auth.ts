@@ -24,6 +24,18 @@ export const REFRESH_ACCESS_TOKEN = gql`
   }
 `;
 
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPatientPasswordReset($input: RequestPasswordResetInput!) {
+    requestPatientPasswordReset(input: $input)
+  }
+`;
+
+export const RESET_PASSWORD = gql`
+  mutation ResetPassword($input: ResetPasswordInput!) {
+    resetPassword(input: $input)
+  }
+`;
+
 export const REQUEST_ACTIVATION_LINK = gql`
   mutation RequestActivationLink($input: RequestActivationLinkInput!) {
     requestActivationLink(input: $input)

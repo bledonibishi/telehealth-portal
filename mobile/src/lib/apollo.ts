@@ -54,7 +54,12 @@ function endSession() {
 // refresh token) instead of logging the patient out — this is what keeps
 // them signed in across the 15-minute access token lifetime without
 // re-entering their password, for as long as the 7-day refresh token lasts.
+// Sign-in and the other no-session operations answer "unauthenticated" for a wrong password or a spent link. That is a
+// message for the form to show, not a session that ended; treating it as one threw the patient back to a fresh sign-in screen.
+const PUBLIC_OPERATIONS = new Set(['LoginPatient', 'ActivateAccount', 'RequestActivationLink', 'RequestPatientPasswordReset', 'ResetPassword', 'RefreshAccessToken']);
+
 const errorLink = onError(({ graphQLErrors, response, operation, forward, networkError }) => {
+  if (PUBLIC_OPERATIONS.has(operation.operationName)) return;
   const reason = graphQLErrors
     ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
     .find(Boolean);

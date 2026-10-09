@@ -48,8 +48,10 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
     const reachable = all.filter((o) => o.roles?.includes(ClinicianRole.PROVIDER)).map((o) => o.name);
     expect(reachable).toMatchInlineSnapshot(`
 [
+  "AuthResolver.changeMyPassword",
   "AuthResolver.enableMfa",
   "AuthResolver.setupMfa",
+  "AuthResolver.signOutEverywhere",
   "CatalogResolver.products",
   "NotificationsResolver.notificationCounts",
   "PrescriptionDocumentController.document",
@@ -71,6 +73,9 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "AuthResolver.loginPatient",
   "AuthResolver.refreshAccessToken",
   "AuthResolver.requestActivationLink",
+  "AuthResolver.requestClinicianPasswordReset",
+  "AuthResolver.requestPatientPasswordReset",
+  "AuthResolver.resetPassword",
   "AuthResolver.verifyMfa",
   "CalcomWebhookController.receive",
   "CheckInsResolver.checkInByToken",

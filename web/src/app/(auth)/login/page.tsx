@@ -1,5 +1,6 @@
 'use client';
 
+import { PasswordInput } from '@/components/common/PasswordInput';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -33,14 +34,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <span className="font-bold text-2xl text-slate-900 tracking-tight">telehealth</span>
-          <p className="text-sm text-slate-500 mt-1">Patient portal</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+    <>
           <h1 className="text-xl font-semibold text-slate-900 mb-6">Sign in to your account</h1>
 
           {error && (
@@ -62,9 +56,12 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input
-                type="password"
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <Link href="/forgot-password" className="text-xs text-brand-600 hover:text-brand-700">Forgot password?</Link>
+              </div>
+              <PasswordInput
+                
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -87,8 +84,6 @@ export default function LoginPage() {
               Set up your account
             </Link>
           </p>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

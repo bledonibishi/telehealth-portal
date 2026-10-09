@@ -21,4 +21,11 @@ describe('JwtStrategy', () => {
   it('refuses a clinician who no longer exists', async () => {
     await expect(build(null).validate({ sub: 'gone', role: 'DOCTOR' })).rejects.toMatchObject({ response: expect.objectContaining({ reason: 'ACCOUNT_NOT_FOUND' }) });
   });
+
+  it('ends a session issued before the password changed, but accepts older tokens that carry no number while it is still 0', async () => {
+    await expect(build({ ...doctor, tokenVersion: 1 }).validate({ sub: 'c-1', role: 'DOCTOR', tv: 0 })).rejects.toMatchObject({
+      response: expect.objectContaining({ reason: 'SESSION_REVOKED' }),
+    });
+    await expect(build({ ...doctor, tokenVersion: 0 }).validate({ sub: 'c-1', role: 'DOCTOR' })).resolves.toMatchObject({ id: 'c-1' });
+  });
 });

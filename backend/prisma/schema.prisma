@@ -267,6 +267,8 @@ model Clinician {
   id                   String        @id @default(cuid())
   email                String        @unique
   passwordHash         String        @map("password_hash")
+  // Bumped when the password changes or "sign out everywhere" is used; tokens carry the number they were issued under.
+  tokenVersion         Int           @default(0) @map("token_version")
   firstName            String        @map("first_name")
   lastName             String        @map("last_name")
   // Medical licence — required (with isVerified) before a clinician can prescribe
@@ -379,6 +381,8 @@ model Patient {
   id                       String    @id @default(cuid())
   email                    String    @unique
   passwordHash             String    @map("password_hash")
+  // Bumped when the password changes or "sign out everywhere" is used; tokens carry the number they were issued under.
+  tokenVersion             Int       @default(0) @map("token_version")
   firstName                String    @map("first_name")
   lastName                 String    @map("last_name")
   dateOfBirth              DateTime  @map("date_of_birth")
@@ -1326,4 +1330,18 @@ model EmailVerification {
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@map("email_verifications")
+}
+
+// A single-use "forgot password" link. Only the SHA-256 of the token is stored, so a database leak does not hand out working links.
+model PasswordReset {
+  id          String    @id @default(cuid())
+  accountType String    @map("account_type") // PATIENT | CLINICIAN
+  accountId   String    @map("account_id")
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([accountType, accountId])
+  @@map("password_resets")
 }

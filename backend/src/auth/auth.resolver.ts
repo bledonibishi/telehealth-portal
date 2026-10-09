@@ -2,7 +2,7 @@ import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
 import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
-import { ActivateAccountInput, RequestActivationLinkInput } from './dto/activation.input';
+import { ActivateAccountInput, RequestActivationLinkInput, RequestPasswordResetInput, ResetPasswordInput } from './dto/activation.input';
 import { AuthResponse, MfaSetupResponse, RefreshResponse } from './dto/auth-response.type';
 import { ThrottleLoginAttempts, ThrottleRequests } from './guards/gql-throttler.guard';
 import { Authorized } from './decorators/authorized.decorator';
@@ -57,16 +57,40 @@ export class AuthResolver {
     return this.authService.verifyMfa(pendingToken, totpCode, loginAttempt(ctx));
   }
 
-  @Authorized('PATIENT')
   @ThrottleRequests()
-  @Mutation(() => Boolean, { description: 'Change your own password; the current one is required. Audited.' })
+  @Mutation(() => Boolean, { description: 'Emails a patient a link to choose a new password. Always true, so it cannot be used to find out who has an account.' })
+  requestPatientPasswordReset(@Args('input') input: RequestPasswordResetInput, @Context() ctx: any) {
+    return this.authService.requestPasswordReset(input.email, 'patient', loginAttempt(ctx));
+  }
+
+  @ThrottleRequests()
+  @Mutation(() => Boolean, { description: 'Emails a clinician a link to choose a new password. Always true.' })
+  requestClinicianPasswordReset(@Args('input') input: RequestPasswordResetInput, @Context() ctx: any) {
+    return this.authService.requestPasswordReset(input.email, 'staff', loginAttempt(ctx));
+  }
+
+  @ThrottleLoginAttempts()
+  @Mutation(() => Boolean, { description: 'Spends a password-reset link to set a new password and ends every open session. Does not sign in.' })
+  resetPassword(@Args('input') input: ResetPasswordInput, @Context() ctx: any) {
+    return this.authService.resetPassword(input.token, input.newPassword, loginAttempt(ctx));
+  }
+
+  @Authorized('PATIENT', ...STAFF)
+  @ThrottleRequests()
+  @Mutation(() => RefreshResponse, { description: 'Change your own password; the current one is required. Ends your other sessions and returns fresh tokens for this one. Audited.' })
   changeMyPassword(
     @CurrentUser() user: AuthUser,
     @Args('currentPassword') currentPassword: string,
     @Args('newPassword') newPassword: string,
     @Context() ctx: any,
   ) {
-    return this.authService.changePatientPassword(user.id, currentPassword, newPassword, loginAttempt(ctx));
+    return this.authService.changeOwnPassword(user, currentPassword, newPassword, loginAttempt(ctx));
+  }
+
+  @Authorized('PATIENT', ...STAFF)
+  @Mutation(() => Boolean, { description: 'Ends every session of your account, including this one.' })
+  signOutEverywhere(@CurrentUser() user: AuthUser, @Context() ctx: any) {
+    return this.authService.signOutEverywhere(user, loginAttempt(ctx));
   }
 
   @Mutation(() => RefreshResponse)

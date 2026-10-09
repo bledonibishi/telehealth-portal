@@ -9,6 +9,7 @@ export enum AuthFailureReason {
   ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
   ACCOUNT_DEACTIVATED = 'ACCOUNT_DEACTIVATED',
   UNKNOWN_ROLE = 'UNKNOWN_ROLE',
+  SESSION_REVOKED = 'SESSION_REVOKED',
 }
 
 const MESSAGES: Record<AuthFailureReason, string> = {
@@ -20,6 +21,7 @@ const MESSAGES: Record<AuthFailureReason, string> = {
   [AuthFailureReason.ACCOUNT_NOT_FOUND]: 'Account no longer exists',
   [AuthFailureReason.ACCOUNT_DEACTIVATED]: 'This account has been deactivated',
   [AuthFailureReason.UNKNOWN_ROLE]: 'Token has an unknown role',
+  [AuthFailureReason.SESSION_REVOKED]: 'This session was ended. Please sign in again',
 };
 
 export function authFailure(reason: AuthFailureReason) {

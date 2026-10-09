@@ -35,6 +35,7 @@ export function MoreScreen({ navigation }: any) {
         </Card>
         <Card style={{ padding: 6 }}>
           <Row icon="📝" label="New consultation" hint="Start a medical questionnaire" onPress={() => navigation.navigate('NewConsultation')} />
+          {__DEV__ && <Row icon="🧩" label="Component library" hint="Developers only: Storybook" onPress={() => navigation.navigate('Storybook')} />}
           <Row icon="🚪" label="Sign out" hint="You’ll need to sign in again" onPress={signOut} />
         </Card>
       </Columns>

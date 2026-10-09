@@ -1,11 +1,13 @@
 'use client';
 
+import { PasswordInput } from '@/components/common/PasswordInput';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { CHANGE_MY_PASSWORD } from '@/graphql/portal';
-import { clearToken } from '@/lib/auth';
+import { clearToken, setToken } from '@/lib/auth';
+import { realtime } from '@/lib/apollo';
 import { CONTACT, EMERGENCY_NUMBER, telHref } from '@/lib/contact';
 import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptionCard';
 import { StopOrRefundCard } from '@/components/billing/StopOrRefundCard';
@@ -38,7 +40,12 @@ function PasswordForm() {
     if (next !== again) return setProblem('The two new passwords don’t match.');
     setProblem(null);
     try {
-      await change({ variables: { currentPassword: current, newPassword: next } });
+      const { data } = await change({ variables: { currentPassword: current, newPassword: next } });
+      // Changing the password ends every other session; these tokens keep this one signed in.
+      if (data?.changeMyPassword) {
+        setToken(data.changeMyPassword.accessToken, data.changeMyPassword.refreshToken);
+        realtime?.reconnect();
+      }
       setCurrent(''); setNext(''); setAgain('');
       setDone(true);
     } catch (err: any) {
@@ -47,13 +54,13 @@ function PasswordForm() {
   };
   return (
     <form onSubmit={submit} className="grid sm:grid-cols-3 gap-3 items-end">
-      <div><label htmlFor="pw-current" className="block text-xs font-medium text-slate-500 mb-1">Current password</label><input id="pw-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={field} required /></div>
-      <div><label htmlFor="pw-new" className="block text-xs font-medium text-slate-500 mb-1">New password</label><input id="pw-new" type="password" autoComplete="new-password" minLength={10} maxLength={72} value={next} onChange={(e) => setNext(e.target.value)} className={field} required /></div>
-      <div><label htmlFor="pw-again" className="block text-xs font-medium text-slate-500 mb-1">New password again</label><input id="pw-again" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} className={field} required /></div>
+      <div><label htmlFor="pw-current" className="block text-xs font-medium text-slate-500 mb-1">Current password</label><PasswordInput id="pw-current"  autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} className={field} required /></div>
+      <div><label htmlFor="pw-new" className="block text-xs font-medium text-slate-500 mb-1">New password</label><PasswordInput id="pw-new"  autoComplete="new-password" minLength={10} maxLength={72} value={next} onChange={(e) => setNext(e.target.value)} className={field} required /></div>
+      <div><label htmlFor="pw-again" className="block text-xs font-medium text-slate-500 mb-1">New password again</label><PasswordInput id="pw-again"  autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} className={field} required /></div>
       <div className="sm:col-span-3 flex flex-wrap items-center gap-3" aria-live="polite">
         <button type="submit" disabled={loading || !current || !next || !again} className={btnPrimary}>{loading ? 'Saving…' : 'Change password'}</button>
         {problem && <p role="alert" className="text-sm text-red-600">{problem}</p>}
-        {done && <p className="text-sm text-emerald-700">✓ Password changed.</p>}
+        {done && <p className="text-sm text-emerald-700">✓ Password changed. Your other devices were signed out.</p>}
       </div>
     </form>
   );
