@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { SignUpScreen } from '../screens/auth/SignUpScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { IntakeQuizScreen } from '../screens/intake/IntakeQuizScreen';
 import { ConsentScreen } from '../screens/onboarding/ConsentScreen';
 import { ConsultationStatusScreen } from '../screens/consultation/ConsultationStatusScreen';
@@ -35,6 +36,9 @@ const Tab = createBottomTabNavigator();
 
 const MoreStack = createNativeStackNavigator();
 
+// Development only: `__DEV__` is false in a release build, so the screen and Storybook are dropped from it.
+const StorybookScreen = __DEV__ ? require('../screens/portal/StorybookScreen').StorybookScreen : null;
+
 // Everything that isn't a tab. On a tablet these open full width inside the same column.
 function MoreFlow() {
   return (
@@ -44,6 +48,7 @@ function MoreFlow() {
       <MoreStack.Screen name="Orders" component={OrdersScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Account" component={AccountScreen} options={{ title: '' }} />
       <MoreStack.Screen name="SideEffects" component={SideEffectsScreen} options={{ title: '' }} />
+      {StorybookScreen && <MoreStack.Screen name="Storybook" component={StorybookScreen} options={{ title: 'Component library', headerBackTitle: 'More' }} />}
       <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: '' }} />
       <MoreStack.Screen name="NewConsultation" component={IntakeQuizScreen} options={{ title: 'New consultation' }} />
     </MoreStack.Navigator>
@@ -97,6 +102,7 @@ export function AppNavigator() {
       <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.page } }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="SignUp" component={SignUpScreen} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingFlow} />
         <Stack.Screen name="Main" component={PatientTabs} />
       </Stack.Navigator>

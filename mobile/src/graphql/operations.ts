@@ -1,5 +1,11 @@
 import { gql } from '@apollo/client';
 
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPatientPasswordReset($input: RequestPasswordResetInput!) {
+    requestPatientPasswordReset(input: $input)
+  }
+`;
+
 export const LOGIN_PATIENT = gql`
   mutation LoginPatient($input: LoginInput!) {
     loginPatient(input: $input) {

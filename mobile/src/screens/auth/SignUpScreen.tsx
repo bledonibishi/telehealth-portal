@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PasswordField } from '../../components/PasswordField';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Platform, KeyboardAvoidingView,
 } from 'react-native';
@@ -17,7 +18,7 @@ export function SignUpScreen({ navigation }: any) {
         <TextInput style={styles.input} placeholder="First name" value={form.firstName} onChangeText={set('firstName')} />
         <TextInput style={styles.input} placeholder="Last name" value={form.lastName} onChangeText={set('lastName')} />
         <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" keyboardType="email-address" value={form.email} onChangeText={set('email')} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry value={form.password} onChangeText={set('password')} />
+        <PasswordField style={styles.input} placeholder="Password" autoComplete="new-password" value={form.password} onChangeText={set('password')} />
         <TextInput style={styles.input} placeholder="Date of birth (YYYY-MM-DD)" value={form.dateOfBirth} onChangeText={set('dateOfBirth')} />
         <TouchableOpacity style={styles.button} onPress={() => { /* TODO: call registerPatient mutation */ }}>
           <Text style={styles.buttonText}>Create account</Text>

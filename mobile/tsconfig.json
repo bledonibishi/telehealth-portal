@@ -11,5 +11,5 @@
       "@telehealth/shared-types": ["../packages/shared-types/src"]
     }
   },
-  "include": ["src", "App.tsx"]
+  "include": ["src", "App.tsx", ".rnstorybook"]
 }

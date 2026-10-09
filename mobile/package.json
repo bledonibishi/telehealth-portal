@@ -5,11 +5,15 @@
   "scripts": {
     "dev": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "storybook": "EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
+    "storybook:generate": "sb-rn-get-stories --config-path .rnstorybook",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
     "@babel/runtime": "^7.20.0",
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native/assets-registry": "0.74.81",
     "@react-navigation/bottom-tabs": "^6.5.0",
     "@react-navigation/native": "^6.1.0",
@@ -30,14 +34,25 @@
     "graphql-ws": "^5.14.2",
     "react": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "5.7.0",
-    "react-native-screens": "4.26.2"
+    "react-native-screens": "4.26.2",
+    "react-native-svg": "15.15.4",
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@storybook/addon-ondevice-actions": "^10.6.0",
+    "@storybook/addon-ondevice-controls": "^10.6.0",
+    "@storybook/react-native": "10.6.0",
     "@types/node": "^20.11.0",
     "@types/react": "~19.2.18",
     "babel-preset-expo": "~57.0.14",
-    "typescript": "^6.0.3"
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "storybook": "^10.6.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1"
   }
 }
