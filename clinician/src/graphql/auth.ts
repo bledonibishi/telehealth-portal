@@ -60,6 +60,18 @@ export const ENABLE_MFA = gql`
   }
 `;
 
+export const REQUEST_CLINICIAN_PASSWORD_RESET = gql`
+  mutation RequestClinicianPasswordReset($input: RequestPasswordResetInput!) {
+    requestClinicianPasswordReset(input: $input)
+  }
+`;
+
+export const RESET_PASSWORD = gql`
+  mutation ResetPassword($input: ResetPasswordInput!) {
+    resetPassword(input: $input)
+  }
+`;
+
 export const ACCEPT_CLINICIAN_INVITE = gql`
   mutation AcceptClinicianInvite($token: String!, $password: String!) {
     acceptClinicianInvite(token: $token, password: $password)

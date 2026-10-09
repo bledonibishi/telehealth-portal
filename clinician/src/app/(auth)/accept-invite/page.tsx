@@ -1,12 +1,12 @@
 'use client';
 
+import PasswordInput from '@/components/PasswordInput';
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation } from '@apollo/client';
 import { ACCEPT_CLINICIAN_INVITE } from '@/graphql/auth';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import LanguageSwitcher from '@/components/LanguageSwitcher';
 
 const MIN = 10;
 const MAX = 72;
@@ -29,9 +29,7 @@ function AcceptInvite() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 relative p-4">
-      <div className="absolute top-4 right-4"><LanguageSwitcher onLight /></div>
-      <div className="w-full max-w-sm bg-white rounded-lg shadow p-8 space-y-5">
+    <div className="space-y-5">
         <h1 className="text-2xl font-semibold text-gray-900">{t('Choose your password')}</h1>
 
         {!token ? (
@@ -47,19 +45,18 @@ function AcceptInvite() {
             {problem && <p className="text-sm text-danger-500 bg-danger-50 rounded px-3 py-2" role="alert">{problem}</p>}
             <div>
               <label htmlFor="pw" className="block text-sm font-medium text-gray-700 mb-1">{t('New password')}</label>
-              <input id="pw" type="password" required autoComplete="new-password" minLength={MIN} maxLength={MAX} value={password} onChange={(e) => setPassword(e.target.value)} className={field} />
+              <PasswordInput id="pw"  required autoComplete="new-password" minLength={MIN} maxLength={MAX} value={password} onChange={(e) => setPassword(e.target.value)} className={field} />
               <p className="text-xs text-gray-400 mt-1">{t('At least {min} characters.', { min: MIN })}</p>
             </div>
             <div>
               <label htmlFor="pw2" className="block text-sm font-medium text-gray-700 mb-1">{t('Type it again')}</label>
-              <input id="pw2" type="password" required autoComplete="new-password" maxLength={MAX} value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
+              <PasswordInput id="pw2"  required autoComplete="new-password" maxLength={MAX} value={again} onChange={(e) => setAgain(e.target.value)} className={field} />
             </div>
             <button type="submit" disabled={loading} className="w-full bg-brand-500 text-white rounded px-4 py-2 text-sm font-medium hover:bg-brand-900 disabled:opacity-50">
               {loading ? t('Saving…') : t('Set password')}
             </button>
           </form>
         )}
-      </div>
     </div>
   );
 }
