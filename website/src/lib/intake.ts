@@ -13,6 +13,7 @@ export interface IntakeQuestion {
   min?: number | null;
   max?: number | null;
   unit?: string | null;
+  quickAnswer?: string | null;
   options?: { value: string; label: string; exclusive: boolean }[] | null;
   showIf?: { questionId: string; anyOf: string[] } | null;
 }
@@ -40,7 +41,7 @@ export async function fetchIntake(kind: ProductKind) {
   }>(
     `query Intake($kind: ConsultationKind!) {
       questionnaire(kind: $kind, stage: INTAKE) {
-        questions { id text help type optional min max unit options { value label exclusive } showIf { questionId anyOf } }
+        questions { id text help type optional min max unit quickAnswer options { value label exclusive } showIf { questionId anyOf } }
       }
       consentText(type: TELEHEALTH) { version text }
     }`,

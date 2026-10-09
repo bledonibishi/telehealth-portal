@@ -30,6 +30,10 @@ export interface Question {
   min?: number;
   max?: number;
   unit?: string;
+  // A text question with a ready answer the patient can tap instead of typing (e.g. “None”).
+  quickAnswer?: string;
+  // Single choice only: turns an answer that isn't one of the options (a figure the client worked out) into the value of the option it falls under.
+  interpret?: (raw: string) => string | undefined;
   // Asked only when an earlier single/multi question has one of these values.
   showIf?: { questionId: string; anyOf: string[] };
 }
@@ -122,6 +126,14 @@ const HRT_ELIGIBILITY: Questionnaire = {
   ],
 };
 
+/** The band of a calculated BMI answer ("BMI 34.2 (calculated from 168 cm, 92 kg)"); nothing for any other text or an impossible figure. */
+export function bmiBandOf(raw: string): string | undefined {
+  const m = /^BMI (\d+(?:\.\d+)?)\b/.exec(raw.trim());
+  const bmi = m ? Number(m[1]) : NaN;
+  if (!Number.isFinite(bmi) || bmi < 10 || bmi > 100) return undefined;
+  return bmi >= 30 ? '30_plus' : bmi >= 27 ? '27_29' : 'under_27';
+}
+
 const GLP1_ELIGIBILITY: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'ELIGIBILITY',
@@ -144,6 +156,9 @@ const GLP1_ELIGIBILITY: Questionnaire = {
       id: 'bmi',
       text: 'What is your BMI?',
       type: 'single',
+      // The website asks for height and weight and sends "BMI 34.2 (calculated from 168 cm, 92 kg)": sorted into the
+      // same bands here, so the server enforces the BMI rules itself and not only the browser.
+      interpret: bmiBandOf,
       options: [
         { value: '30_plus', label: '30 or above' },
         { value: '27_29', label: '27 to 29.9' },
@@ -280,8 +295,9 @@ const COMMON_INTAKE: Question[] = [
     text: 'Which medicines, supplements or remedies do you take?',
     help: 'Include the dose if you know it. Write “None” if you take nothing.',
     type: 'text',
+    quickAnswer: 'None',
   },
-  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text' },
+  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text', quickAnswer: 'None' },
   { id: 'other_conditions', text: 'Any other medical conditions we should know about?', type: 'text', optional: true },
   {
     id: 'gp_details',

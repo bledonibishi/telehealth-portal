@@ -16,16 +16,17 @@ function build(leadOver: Record<string, unknown> = {}) {
   };
   const patient = { id: 'p-1', email: 'buyer@b.com', firstName: 'Ann' };
   const prisma = {
-    lead: { findUnique: jest.fn().mockResolvedValue(lead), update: jest.fn().mockResolvedValue({}) },
+    lead: { findUnique: jest.fn().mockResolvedValue(lead), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     patient: { upsert: jest.fn().mockResolvedValue(patient), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn().mockResolvedValue({ id: 'p-1' }) },
   };
-  const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined) };
+  (prisma as any).$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+  const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined), sendPaymentReceiptEmail: jest.fn().mockResolvedValue(undefined) };
   const referrals = { handleConversion: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const submitFromLead = jest.fn().mockResolvedValue({ id: 'c-1' });
   const moduleRef = { get: jest.fn().mockReturnValue({ submitFromLead }) };
   const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any, audit as any, moduleRef as any);
-  return { service, prisma, referrals, lead, audit, submitFromLead };
+  return { service, prisma, referrals, lead, audit, submitFromLead, email };
 }
 
 const sessionEvent = (amountDiscount: number) =>
@@ -115,5 +116,57 @@ describe('StripeWebhookService subscription ended', () => {
     prisma.patient.updateMany.mockResolvedValue({ count: 0 });
     await service.handle(deleted);
     expect(audit.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('StripeWebhookService payment receipt', () => {
+  const paid = (amount_total: number) => ({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', customer_details: { email: 'buyer@b.com' }, customer: 'cus_1', subscription: 'sub_1', total_details: { amount_discount: 0 }, amount_total, currency: 'eur' } } }) as any;
+
+  it('emails a receipt with what was charged after the first payment', async () => {
+    const { service, email } = build();
+    await service.handle(paid(4200));
+    expect(email.sendPaymentReceiptEmail).toHaveBeenCalledWith('buyer@b.com', 'Ann', expect.objectContaining({ amount: 4200, currency: 'eur' }));
+  });
+
+  it('sends none for a payment of nothing, and none for a payment after the first', async () => {
+    const free = build();
+    await free.service.handle(paid(0));
+    expect(free.email.sendPaymentReceiptEmail).not.toHaveBeenCalled();
+    const repeat = build({ convertedAt: new Date() });
+    await repeat.service.handle(paid(4200));
+    expect(repeat.email.sendPaymentReceiptEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the payment when the receipt cannot be sent', async () => {
+    const { service, email } = build();
+    email.sendPaymentReceiptEmail.mockRejectedValue(new Error('down'));
+    await expect(service.handle(paid(4200))).resolves.toBeUndefined();
+  });
+});
+
+describe('StripeWebhookService one payment, one receipt', () => {
+  const paidOn = (created: number) => ({ type: 'checkout.session.completed', data: { object: { id: 'cs_1', created, customer_details: { email: 'buyer@b.com' }, customer: 'cus_1', subscription: 'sub_1', total_details: { amount_discount: 0 }, amount_total: 4200, currency: 'eur' } } }) as any;
+
+  it('dates the receipt by when Stripe took the payment, not by when the event was processed', async () => {
+    const { service, email } = build();
+    const paidAt = Date.UTC(2026, 9, 1, 10) / 1000;
+    await service.handle(paidOn(paidAt));
+    expect(email.sendPaymentReceiptEmail).toHaveBeenCalledWith('buyer@b.com', 'Ann', expect.objectContaining({ paidAt: new Date(paidAt * 1000) }));
+  });
+
+  it('still sends it when a later step (the referral reward) fails and the event is retried', async () => {
+    const { service, email, referrals } = build();
+    referrals.handleConversion.mockRejectedValue(new Error('db down'));
+    await expect(service.handle(paidOn(1_790_000_000))).rejects.toThrow('db down');
+    expect(email.sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing twice when two events for one payment arrive together: only the one that claims the lead goes on', async () => {
+    const { service, prisma, email } = build();
+    prisma.lead.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    await Promise.all([service.handle(paidOn(1_790_000_000)), service.handle(paidOn(1_790_000_000))]);
+    expect(prisma.patient.upsert).toHaveBeenCalledTimes(1);
+    expect(email.sendActivationEmail).toHaveBeenCalledTimes(1);
+    expect(email.sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
   });
 });

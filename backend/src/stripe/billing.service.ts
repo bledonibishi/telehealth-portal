@@ -1,9 +1,12 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { EmailService } from '../email/email.service';
 
 export type BillingPatient = {
   email: string;
+  /** For the greeting in emails; the refund email still goes out without it. */
+  firstName?: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
 };
@@ -82,7 +85,10 @@ export class BillingService {
   private stripe: Stripe;
   private configured: boolean;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private email?: EmailService,
+  ) {
     const secretKey = config.get<string>('STRIPE_SECRET_KEY');
     this.configured = Boolean(secretKey);
     this.stripe = new Stripe(secretKey ?? '', { apiVersion: '2023-10-16' as any });
@@ -147,6 +153,17 @@ export class BillingService {
     }
   }
 
+  /**
+   * Tells the patient a refund went out. Only for a refund made just now (an already-refunded payment has no refund id and a replayed request is marked,
+   * so a retry can't send a second email), and never throws: the money has moved whether or not the email goes.
+   */
+  private notifyRefund(patient: BillingPatient, refund: { refundId: string | null; amount?: number; currency?: string; replayed?: boolean }) {
+    if (!this.email || refund.replayed || !refund.refundId || !refund.amount || !refund.currency) return;
+    this.email
+      .sendRefundEmail(patient.email, patient.firstName, { amount: refund.amount, currency: refund.currency })
+      .catch((err: any) => this.logger.error(`Refund email to ${patient.email} failed: ${err?.message}`));
+  }
+
   async cancelAndRefund(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<RefundOutcome> {
     if (!this.configured) return { status: 'FAILED', error: 'Stripe is not configured' };
 
@@ -159,11 +176,12 @@ export class BillingService {
         await this.stripe.subscriptions.cancel(subscriptionId);
       }
 
-      const { paid, refundId } = await this.refundLatestPaidInvoice(subscriptionId, opts.paidBefore);
+      const { paid, refundId, amount, currency, replayed } = await this.refundLatestPaidInvoice(subscriptionId, opts.paidBefore);
       this.logger.log(`Cancelled ${subscriptionId}, refund ${refundId ?? 'none needed'}`);
       // Only reported as refunded when money was charged: a subscription that never took a payment (or a
       // 100%-discounted one) is cancelled with nothing to give back, and must not read as a refund.
       if (!paid) return { status: 'NOT_REQUIRED', reason: 'The subscription was cancelled; no payment had been taken, so there is nothing to refund' };
+      this.notifyRefund(patient, { refundId, amount, currency, replayed });
       return { status: 'REFUNDED', subscriptionId, refundId };
     } catch (err: any) {
       this.logger.error(`Refund for ${patient.email} failed: ${err.message}`);
@@ -255,7 +273,8 @@ export class BillingService {
    */
   async refundLatestPaymentResult(patient: BillingPatient, opts: { paidBefore?: Date } = {}): Promise<BillingResult> {
     return this.withSubscriptionResult(patient, async (sub) => {
-      const { refundId } = await this.refundLatestPaidInvoice(sub.id, opts.paidBefore);
+      const { refundId, amount, currency, replayed } = await this.refundLatestPaidInvoice(sub.id, opts.paidBefore);
+      this.notifyRefund(patient, { refundId, amount, currency, replayed });
       return refundId
         ? { ok: true, note: `Refunded the latest payment (${refundId})` }
         : { ok: false, note: 'Nothing to refund: there is no paid payment, or it was already refunded' };
@@ -322,7 +341,7 @@ export class BillingService {
   }
 
   /** `paid`: a payment had been taken. `refundId`: the refund made now; null when it was already refunded or nothing was paid. */
-  private async refundLatestPaidInvoice(subscriptionId: string, paidBefore?: Date): Promise<{ paid: boolean; refundId: string | null }> {
+  private async refundLatestPaidInvoice(subscriptionId: string, paidBefore?: Date): Promise<{ paid: boolean; refundId: string | null; amount?: number; currency?: string; replayed?: boolean }> {
     // Cast: the SDK's types target a newer API version than the '2023-10-16'
     // this app pins, where these invoice fields have moved.
     const { data } = await this.stripe.invoices.list({ subscription: subscriptionId, status: 'paid', limit: paidBefore ? 20 : 1 });
@@ -336,7 +355,9 @@ export class BillingService {
 
     try {
       const refund = await this.stripe.refunds.create(target, { idempotencyKey: `decline-refund-${invoice.id}` });
-      return { paid: true, refundId: refund.id };
+      // Stripe answers a repeat of the same request with the refund it already made, and says so in this header: that refund was told about the first time.
+      const replayed = (refund as any).lastResponse?.headers?.['idempotent-replayed'] === 'true';
+      return { paid: true, refundId: refund.id, amount: refund.amount, currency: refund.currency, replayed };
     } catch (err: any) {
       // Retried declines (or a manual refund in the dashboard) hit this — already done.
       if (err?.code === 'charge_already_refunded') return { paid: true, refundId: null };
