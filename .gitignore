@@ -32,6 +32,7 @@ backend/src/schema.gql
 # Output of backend/scripts/compare-proof-models.ts (may contain names read from documents)
 proof-model-comparison-*.json
 backend/sample-proofs/
+backend/email-previews/
 
 # Pose-model weights are downloaded, not committed (AGPL — see backend/models/README.md)
 backend/models/*.onnx

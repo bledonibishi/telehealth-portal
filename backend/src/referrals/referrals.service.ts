@@ -137,7 +137,8 @@ export class ReferralsService {
     }
 
     const amountLabel = formatAmount(REFERRAL_REWARD_CENTS, REWARD_CURRENCY);
-    await this.email.sendReferralRewardEmail(referrer.email, referrer.firstName, amountLabel, referrer.voucherAutoApply);
+    const portal = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+    await this.email.sendReferralRewardEmail(referrer.email, referrer.firstName, amountLabel, referrer.voucherAutoApply, `${portal}/rewards`);
   }
 
   /**

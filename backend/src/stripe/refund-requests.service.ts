@@ -6,7 +6,7 @@ import { UserRole } from '../common/enums';
 import { PushService } from '../push/push.service';
 import { BillingService } from './billing.service';
 
-const BILLING_PATIENT = { id: true, email: true, stripeCustomerId: true, stripeSubscriptionId: true } as const;
+const BILLING_PATIENT = { id: true, email: true, firstName: true, stripeCustomerId: true, stripeSubscriptionId: true } as const;
 
 /**
  * The patient asks, an admin decides. Asking costs the patient nothing and needs no reason; the money only moves when

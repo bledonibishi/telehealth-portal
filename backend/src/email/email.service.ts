@@ -1,13 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { formatMoney, toText } from './email-layout';
+import {
+  type EmailContent,
+  type OrderUpdateKind,
+  activationEmail,
+  checkInEmail,
+  clinicianInviteEmail,
+  consultationUpdateEmail,
+  doseReminderEmail,
+  orderUpdateEmail,
+  partnerOrderEmail,
+  paymentReceiptEmail,
+  referralRewardEmail,
+  refundEmail,
+  verificationCodeEmail,
+} from './templates';
 
-// Patient-supplied text (names) gets interpolated straight into HTML emails —
-// escape it so a name like `<img src=x onerror=...>` can't inject markup.
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+interface Message extends EmailContent {
+  to: string | string[];
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }
 
+/**
+ * Sends the platform's emails. What each email says and looks like lives in ./templates (one file per email, built
+ * from the pieces in email-layout.ts); this class decides when to send, and does the sending and the logging.
+ * Without RESEND_API_KEY nothing is sent: the email is logged instead and the methods that report delivery say false.
+ */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -24,240 +44,135 @@ export class EmailService {
     this.from = config.get<string>('EMAIL_FROM') ?? 'noreply@telehealth.dev';
   }
 
-  async sendActivationEmail(to: string, firstName: string, activationUrl: string) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">Welcome, ${firstName}!</h2>
-        <p style="color:#475569">Your payment was successful. Click the button below to activate your account and access your patient portal.</p>
-        <a href="${activationUrl}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Activate my account
-        </a>
-        <p style="color:#94a3b8;font-size:13px">This link expires in 7 days. If you didn't sign up, you can ignore this email.</p>
-      </div>
-    `;
+  /**
+   * The one place an email leaves the platform. The provider reports a failure (a bad key, a refused address) as a
+   * returned error and not a throw, so it is looked at here: null once the provider has accepted the email, otherwise its error message.
+   */
+  private async deliver(message: Message): Promise<string | null> {
+    const { error } = await this.resend!.emails.send({
+      from: this.from,
+      to: message.to,
+      subject: message.subject,
+      html: message.html,
+      text: toText(message.html),
+      ...(message.attachments ? { attachments: message.attachments } : {}),
+    });
+    if (error) {
+      this.logger.error(`Email "${message.subject}" to ${[message.to].flat().join(', ')} failed: ${error.message}`);
+      return error.message;
+    }
+    return null;
+  }
 
+  async sendActivationEmail(to: string, firstName: string, activationUrl: string) {
     if (!this.resend) {
       this.logger.log(`[DEV] Activation email to ${to}: ${activationUrl}`);
       return;
     }
-
-    await this.resend.emails.send({ from: this.from, to, subject: 'Activate your account', html });
+    await this.deliver({ to, ...activationEmail({ firstName, activationUrl }) });
   }
 
-  /**
-   * Tells a clinician they were added to the team (or sends a fresh link to one who lost their password), with the single-use link
-   * to choose a password. Nothing about any patient. Resolves true only once the provider has accepted it.
-   */
+  /** Resolves true only once the provider has accepted it. */
   async sendClinicianInviteEmail(to: string, firstName: string, inviteUrl: string, firstTime: boolean): Promise<boolean> {
-    const safeName = escapeHtml(firstName);
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">${firstTime ? `Welcome to the team, ${safeName}` : `Set a new password, ${safeName}`}</h2>
-        <p style="color:#475569">${firstTime ? 'An administrator has added you to the clinic portal. Choose a password to get started.' : 'An administrator sent you this link to choose a new password for the clinic portal.'}</p>
-        <a href="${inviteUrl}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Choose my password
-        </a>
-        <p style="color:#94a3b8;font-size:13px">This link works once and expires in 7 days. If you weren't expecting it, ignore this email.</p>
-      </div>
-    `;
-
     if (!this.resend) {
       // Not a real send: the caller must not treat this as delivered.
       this.logger.log(`[DEV] Clinician invitation to ${to}: ${inviteUrl}`);
       return false;
     }
-    const { error } = await this.resend.emails.send({ from: this.from, to, subject: firstTime ? 'You have been added to the clinic portal' : 'Choose a new password for the clinic portal', html });
-    if (error) {
-      this.logger.error(`Clinician invitation email to ${to} failed: ${error.message}`);
-      return false;
-    }
-    return true;
+    return !(await this.deliver({ to, ...clinicianInviteEmail({ firstName, inviteUrl, firstTime }) }));
   }
 
-  /** The six-digit code that proves someone owns the address they typed into the quiz. */
   async sendVerificationCodeEmail(to: string, code: string) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">Your verification code</h2>
-        <p style="color:#475569">Enter this code to continue your assessment:</p>
-        <p style="font-size:34px;font-weight:700;letter-spacing:8px;color:#1e293b;margin:20px 0">${code}</p>
-        <p style="color:#94a3b8;font-size:13px">It expires in 10 minutes. If you didn't ask for it, you can ignore this email.</p>
-      </div>
-    `;
-
     if (!this.resend) {
       this.logger.log(`[DEV] Verification code for ${to}: ${code}`);
       return;
     }
-
-    // The mail provider reports a failure (a bad API key, a refused address) as a returned error rather than throwing,
-    // so it has to be looked at: otherwise the visitor would be told a code was sent when none was.
-    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `${code} is your verification code`, html });
-    if (error) {
+    const failure = await this.deliver({ to, ...verificationCodeEmail({ code }) });
+    if (failure) {
       // While developing, the code goes to the log so the flow can still be tried; never in production.
-      if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`[DEV] The mail provider refused the email (${error.message}). Verification code for ${to}: ${code}`);
-      throw new Error(error.message);
+      if (this.config.get<string>('NODE_ENV') !== 'production') this.logger.warn(`[DEV] The mail provider refused the email (${failure}). Verification code for ${to}: ${code}`);
+      // Thrown, unlike the other emails: the visitor must not be told a code was sent when none was.
+      throw new Error(failure);
     }
   }
 
-  async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">Time for your check-in, ${firstName}</h2>
-        <p style="color:#475569">Share your weight and how you’re feeling — it takes about 2 minutes, and helps us keep your treatment on track.</p>
-        <a href="${checkInUrl}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Start my check-in
-        </a>
-        <p style="color:#94a3b8;font-size:13px">This link is personal to you and expires in 14 days.</p>
-      </div>
-    `;
+  async sendPaymentReceiptEmail(to: string, firstName: string, payment: { amount: number; currency: string; paidAt: Date; reference?: string | null }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Payment receipt email to ${to}: ${formatMoney(payment.amount, payment.currency)}`);
+      return;
+    }
+    await this.deliver({ to, ...paymentReceiptEmail({ firstName, ...payment }) });
+  }
 
+  async sendRefundEmail(to: string, firstName: string | null | undefined, refund: { amount: number; currency: string }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Refund email to ${to}: ${formatMoney(refund.amount, refund.currency)}`);
+      return;
+    }
+    await this.deliver({ to, ...refundEmail({ firstName, ...refund }) });
+  }
+
+  async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {
     if (!this.resend) {
       this.logger.log(`[DEV] Check-in email to ${to}: ${checkInUrl}`);
       return;
     }
-
-    await this.resend.emails.send({ from: this.from, to, subject: 'Your check-in is ready', html });
+    await this.deliver({ to, ...checkInEmail({ firstName, checkInUrl }) });
   }
 
-  /**
-   * Tells a patient their order has moved. Deliberately generic about the medicine: email isn't a secure
-   * channel, so the detail stays in the portal.
-   */
   async sendOrderUpdateEmail(
     to: string,
     firstName: string,
-    kind: 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED',
+    kind: OrderUpdateKind,
     details: { carrier?: string | null; trackingNumber?: string | null; trackingUrl?: string | null; expected?: string | null; ordersUrl: string },
   ) {
-    const copy = {
-      SHIPPED: { subject: 'Your order is on its way', title: 'Your order is on its way', body: 'Your pharmacy has packed your order and handed it to the courier.' },
-      OUT_FOR_DELIVERY: { subject: 'Your order is out for delivery', title: 'Out for delivery today', body: 'The courier has your order and is on the way to you.' },
-      DELIVERY_FAILED: { subject: 'We couldn’t deliver your order today', title: 'We couldn’t deliver today', body: 'The courier wasn’t able to hand over your order. They will usually try again; if you won’t be home, message your care team from the portal and we’ll help.' },
-      DELIVERED: { subject: 'Your order has been delivered', title: 'Your order has arrived', body: 'Your order has been delivered. If you can’t find it, message your care team from the portal.' },
-    }[kind];
-    const safeName = escapeHtml(firstName);
-    const lines: string[] = [];
-    if (kind !== 'DELIVERED' && kind !== 'DELIVERY_FAILED' && details.expected) lines.push(`Expected delivery: <b>${escapeHtml(details.expected)}</b>`);
-    if (kind !== 'DELIVERED' && details.carrier) lines.push(`Courier: ${escapeHtml(details.carrier)}`);
-    if (kind !== 'DELIVERED' && details.trackingNumber) lines.push(`Tracking number: ${escapeHtml(details.trackingNumber)}`);
-    const track =
-      kind !== 'DELIVERED' && details.trackingUrl
-        ? `<p><a href="${escapeHtml(details.trackingUrl)}" style="color:#2563eb">Track your parcel</a></p>`
-        : '';
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">${copy.title}, ${safeName}</h2>
-        <p style="color:#475569">${copy.body}</p>
-        ${lines.length ? `<p style="color:#475569;line-height:1.7">${lines.join('<br>')}</p>` : ''}
-        ${track}
-        <a href="${escapeHtml(details.ordersUrl)}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          View my order
-        </a>
-      </div>
-    `;
-
     if (!this.resend) {
       this.logger.log(`[DEV] Order ${kind} email to ${to}${details.expected ? ` (expected ${details.expected})` : ''}${details.trackingNumber ? ` · tracking ${details.trackingNumber}` : ''}`);
       return;
     }
-    await this.resend.emails.send({ from: this.from, to, subject: copy.subject, html });
+    await this.deliver({ to, ...orderUpdateEmail({ firstName, kind, ...details }) });
   }
 
   /** Resolves true only once the provider has confirmed it accepted the send. */
   async sendDoseReminderEmail(to: string, firstName: string, productName: string, scheduledFor: Date, portalUrl: string): Promise<boolean> {
-    const when = scheduledFor.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-    const safeFirstName = escapeHtml(firstName);
-    const safeProductName = escapeHtml(productName);
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">Upcoming dose reminder</h2>
-        <p style="color:#475569">Hi ${safeFirstName}, your next dose of ${safeProductName} is due on ${when}.</p>
-        <a href="${portalUrl}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          View my dose calendar
-        </a>
-        <p style="color:#94a3b8;font-size:13px">You can mark it as taken or skipped from your portal once it's done.</p>
-      </div>
-    `;
-
     if (!this.resend) {
       // Not a real send — the caller must not treat this as delivered.
       this.logger.log(`[DEV] Dose reminder email to ${to}: ${productName} due ${scheduledFor.toISOString()}`);
       return false;
     }
-
-    const { error } = await this.resend.emails.send({ from: this.from, to, subject: `Reminder: ${productName} dose due ${when}`, html });
-    if (error) {
-      this.logger.error(`Dose reminder email to ${to} failed: ${error.message}`);
-      return false;
-    }
-    return true;
+    return !(await this.deliver({ to, ...doseReminderEmail({ firstName, productName, scheduledFor, portalUrl }) }));
   }
 
-  // Deliberately generic: email isn't a secure channel, so the clinical detail
-  // (decision, reasons, messages) stays behind the portal login.
   async sendConsultationUpdateEmail(to: string, firstName: string, headline: string, portalUrl: string) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">${headline}</h2>
-        <p style="color:#475569">Hi ${firstName}, there's an update from our clinical team. Log in to your patient portal to see it.</p>
-        <a href="${portalUrl}"
-          style="display:inline-block;margin:24px 0;padding:12px 28px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">
-          Open my portal
-        </a>
-      </div>
-    `;
-
     if (!this.resend) {
       this.logger.log(`[DEV] Consultation update email to ${to}: ${headline}`);
       return;
     }
-
-    await this.resend.emails.send({ from: this.from, to, subject: headline, html });
+    await this.deliver({ to, ...consultationUpdateEmail({ firstName, headline, portalUrl }) });
   }
 
-  async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean) {
-    const safeFirstName = escapeHtml(firstName);
-    const body = autoApplied
-      ? `${amountLabel} has already been credited to your account, and will come off your next bill automatically.`
-      : `${amountLabel} is ready for you to apply whenever you like — just visit your Rewards page and hit "Apply now".`;
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#1e293b">A friend you referred just joined!</h2>
-        <p style="color:#475569">Hi ${safeFirstName}, your friend's first payment just went through — thanks for spreading the word.</p>
-        <p style="color:#475569">${body}</p>
-      </div>
-    `;
-
+  async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean, rewardsUrl?: string) {
     if (!this.resend) {
       this.logger.log(`[DEV] Referral reward email to ${to}: ${amountLabel} (autoApplied=${autoApplied})`);
       return;
     }
-
-    await this.resend.emails.send({ from: this.from, to, subject: 'Your referral reward is ready', html });
+    await this.deliver({ to, ...referralRewardEmail({ firstName, amountLabel, autoApplied, rewardsUrl }) });
   }
 
   /**
-   * Sends a short notice about an order to the pharmacy partner (no patient details).
-   * Returns false — instead of pretending — when no email provider is configured.
+   * Sends a short notice about an order to the pharmacy partner (no patient details). Returns false — instead of
+   * pretending — when no email provider is configured or the provider refused it.
    */
   async sendPartnerOrderEmail(to: string[], subject: string, html: string, attachment?: { json: string; filename: string }): Promise<boolean> {
     if (!this.resend) {
       this.logger.warn(`[DEV] Partner order email "${subject}" to ${to.join(', ')} not sent — RESEND_API_KEY is not set`);
       return false;
     }
-    await this.resend.emails.send({
-      from: this.from,
+    const failure = await this.deliver({
       to,
-      subject,
-      html,
+      ...partnerOrderEmail({ subject, html }),
       ...(attachment ? { attachments: [{ filename: attachment.filename, content: Buffer.from(attachment.json, 'utf8') }] } : {}),
     });
-    return true;
+    return !failure;
   }
 }

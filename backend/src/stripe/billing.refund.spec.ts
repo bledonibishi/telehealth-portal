@@ -68,3 +68,44 @@ describe('BillingService.cancelAndRefund (a declined patient)', () => {
     expect(await billing.cancelAndRefund(PATIENT)).toMatchObject({ status: 'FAILED' });
   });
 });
+
+describe('refund email', () => {
+  const settle = () => new Promise((r) => setImmediate(r));
+  function withEmail(refund: any = { id: 're_1', amount: 4200, currency: 'eur' }) {
+    const { billing, stripe } = build();
+    stripe.refunds.create.mockResolvedValue(refund);
+    const email = { sendRefundEmail: jest.fn().mockResolvedValue(undefined) };
+    (billing as any).email = email;
+    return { billing, stripe, email };
+  }
+
+  it('tells the patient how much is coming back after a declined consultation', async () => {
+    const { billing, email } = withEmail();
+    await billing.cancelAndRefund({ ...PATIENT, firstName: 'Tia' });
+    await settle();
+    expect(email.sendRefundEmail).toHaveBeenCalledWith('p@example.com', 'Tia', { amount: 4200, currency: 'eur' });
+  });
+
+  it('tells them after an approved refund request too', async () => {
+    const { billing, stripe, email } = withEmail();
+    stripe.subscriptions.retrieve.mockResolvedValue({ id: 'sub_1', status: 'active' });
+    await billing.refundLatestPaymentResult(PATIENT);
+    await settle();
+    expect(email.sendRefundEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing when the payment was already refunded (a retry), so nobody is told twice', async () => {
+    const { billing, stripe, email } = withEmail();
+    stripe.refunds.create.mockRejectedValue(Object.assign(new Error('x'), { code: 'charge_already_refunded' }));
+    await billing.cancelAndRefund(PATIENT);
+    await settle();
+    expect(email.sendRefundEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not undo or fail the refund when the email cannot be sent', async () => {
+    const { billing, email } = withEmail();
+    email.sendRefundEmail.mockRejectedValue(new Error('down'));
+    expect((await billing.cancelAndRefund(PATIENT)).status).toBe('REFUNDED');
+    await settle();
+  });
+});

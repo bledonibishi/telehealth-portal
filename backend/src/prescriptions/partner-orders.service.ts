@@ -420,6 +420,6 @@ export class PartnerOrdersService {
         ? partnerCancelEmailSummary(message)
         : partnerPingSummary({ reference: message.reference, requiresColdChain: message.prescription.requiresColdChain }, this.config.get<string>('CLINICIAN_APP_URL')?.trim());
     const delivered = await this.email.sendPartnerOrderEmail(this.emailRecipients, subject, html);
-    if (!delivered) throw new Error('Email provider is not configured');
+    if (!delivered) throw new Error('The partner email could not be sent');
   }
 }

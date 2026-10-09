@@ -13,6 +13,7 @@
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:seed-catalog": "ts-node prisma/catalog.ts",
     "compare-proof-models": "ts-node scripts/compare-proof-models.ts",
+    "email-preview": "ts-node -T -P tsconfig.json scripts/preview-emails.ts",
     "set-dose-price": "ts-node scripts/set-dose-price.ts",
     "sync-dose-prices": "ts-node scripts/sync-dose-prices.ts",
     "mark-body-photos-done": "ts-node scripts/mark-body-photos-done.ts",

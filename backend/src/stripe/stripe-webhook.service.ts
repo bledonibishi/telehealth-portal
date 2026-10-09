@@ -40,6 +40,7 @@ export class StripeWebhookService {
           { customerId: stripeId(session.customer), subscriptionId: stripeId(session.subscription) },
           // What Stripe actually took off this payment — not a flag the client could set.
           (session.total_details?.amount_discount ?? 0) > 0,
+          { amount: session.amount_total ?? 0, currency: session.currency ?? 'eur', reference: null },
         );
         break;
       }
@@ -61,6 +62,7 @@ export class StripeWebhookService {
           invoice.id,
           { customerId: stripeId(invoice.customer), subscriptionId: stripeId(invoice.subscription) },
           discountCents > 0,
+          { amount: invoice.amount_paid ?? 0, currency: invoice.currency ?? 'eur', reference: invoice.number ?? null },
         );
         break;
       }
@@ -110,6 +112,7 @@ export class StripeWebhookService {
     stripeReferenceId: string,
     stripeIds: { customerId: string | null; subscriptionId: string | null },
     rewardApplied: boolean,
+    payment: { amount: number; currency: string; reference: string | null },
   ) {
     if (!email) {
       this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
@@ -202,6 +205,15 @@ export class StripeWebhookService {
     await this.email.sendActivationEmail(email, lead.firstName, activationUrl);
 
     this.logger.log(`Activation email sent to ${email}`);
+
+    // The receipt: what was taken. Nothing to confirm for a payment of nothing (a fully discounted first month).
+    if (payment.amount > 0) {
+      try {
+        await this.email.sendPaymentReceiptEmail(email, lead.firstName, { ...payment, paidAt: new Date() });
+      } catch (err: any) {
+        this.logger.error(`Payment receipt email to ${email} failed: ${err?.message}`);
+      }
+    }
   }
 }
 
