@@ -37,7 +37,7 @@ export function useWeightTimeline() {
   const [chunks, setChunks] = useState<Record<number, Point[]>>({});
   const [meta, setMeta] = useState<TimelineMeta | null>(null);
   const [pending, setPending] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [truncated, setTruncated] = useState(false);
   const requested = useRef(new Set<number>());
   // Years whose last request failed, so Retry reloads those (not just the current year).
@@ -63,11 +63,11 @@ export function useWeightTimeline() {
         });
         if (tl.truncated) setTruncated(true);
         failed.current.delete(year);
-        setError((e) => (failed.current.size === 0 ? null : e)); // stay in error while another year is still failing
+        setError((e: unknown) => (failed.current.size === 0 ? null : e)); // stay in error while another year is still failing
       } catch (e: any) {
         requested.current.delete(year); // let a retry ask again
         failed.current.add(year);
-        setError(e?.message ?? 'Couldn’t load your weights');
+        setError(e);
       } finally {
         setPending((n) => n - 1);
       }

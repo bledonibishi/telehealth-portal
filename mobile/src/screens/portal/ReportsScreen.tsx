@@ -11,7 +11,7 @@ import { colors } from '../../theme';
 export function ReportsScreen() {
   const { data, loading, error, refetch } = useQuery(MY_CHECK_IN_REPORTS, { fetchPolicy: 'cache-and-network' });
   const [opening, setOpening] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const reports: any[] = data?.myCheckInReports ?? [];
 
   const open = async (r: any) => {
@@ -20,7 +20,7 @@ export function ReportsScreen() {
     try {
       await openAuthedPdf(r.reportUrl, `check-in-report-${r.weekLabel.replace(' ', '-').toLowerCase()}`);
     } catch (e: any) {
-      setProblem(e?.message ?? 'Couldn’t open that report.');
+      setProblem(e);
     } finally {
       setOpening(null);
     }
@@ -29,9 +29,9 @@ export function ReportsScreen() {
   return (
     <Screen title="Check-in reports" subtitle="After each check-in with your doctor: your weight, your dose and their note." refreshing={loading} onRefresh={() => refetch()}>
       {loading && !data && <Empty>Loading…</Empty>}
-      {error && !data && <ErrorText>{error.message}</ErrorText>}
+      {!data && <ErrorText error={error} />}
       {data && reports.length === 0 && <Card><Empty>Your first report appears here once your doctor has reviewed your first check-in.</Empty></Card>}
-      <ErrorText>{problem}</ErrorText>
+      <ErrorText error={problem} />
       <View style={{ gap: 10 }}>
         {reports.map((r) => (
           <Card key={r.id} style={styles.row}>

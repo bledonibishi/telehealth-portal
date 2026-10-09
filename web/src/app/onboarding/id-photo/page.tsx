@@ -8,6 +8,7 @@ import PhotoUploadField from '@/components/onboarding/PhotoUploadField';
 import { SAVE_IDENTITY_STEP, MY_ONBOARDING, START_IDENTITY_VERIFICATION } from '@/graphql/onboarding';
 import { fileIdOfUrl } from '@/components/onboarding/BodyPhotoFlow';
 import { useIdentityVerification } from '@/lib/useIdentityVerification';
+import { InlineError } from '@/components/common/Alert';
 
 const CHECKLIST = ['Have a valid ID ready (e.g. passport, driving licence)', 'Find a well-lit spot for your selfie'];
 
@@ -25,7 +26,7 @@ function VerifiedIdentityStep({
 }) {
   const router = useRouter();
   const [link, setLink] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [start, { loading }] = useMutation(START_IDENTITY_VERIFICATION);
 
   const open = (url: string, win: Window | null) => {
@@ -35,7 +36,7 @@ function VerifiedIdentityStep({
   };
 
   const begin = async () => {
-    setError('');
+    setError(null);
     // Opened straight from the tap, before the request, so browsers don't treat it as a popup.
     const win = window.open('', '_blank');
     try {
@@ -46,7 +47,7 @@ function VerifiedIdentityStep({
       refetch();
     } catch (err: any) {
       win?.close();
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
@@ -112,7 +113,7 @@ function VerifiedIdentityStep({
               Finish the check on the verification page, then come back here. We&rsquo;ll update this page as soon as you&rsquo;re done.
             </p>
           )}
-          {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+          <InlineError error={error} size="xs" className="mt-3" />
 
           {canStart && (
             <button
@@ -144,7 +145,7 @@ function UploadedIdentityStep() {
   const [phase, setPhase] = useState<'intro' | 'capture'>('intro');
   const [idDocumentFileId, setIdDocumentFileId] = useState<string | null>(null);
   const [selfieFileId, setSelfieFileId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const { data } = useQuery(MY_ONBOARDING, { fetchPolicy: 'network-only' });
   const [saveIdentityStep, { loading }] = useMutation(SAVE_IDENTITY_STEP, {
@@ -164,11 +165,11 @@ function UploadedIdentityStep() {
 
   // Each photo is saved the moment it is uploaded, so leaving halfway loses nothing.
   const saveOne = async (field: 'idDocumentFileId' | 'selfieFileId', fileId: string) => {
-    setError('');
+    setError(null);
     try {
       await saveIdentityStep({ variables: { input: { [field]: fileId } } });
     } catch (err: any) {
-      setError(err.message ?? 'We couldn’t save that photo. Please try again.');
+      setError(err);
     }
   };
 
@@ -176,11 +177,11 @@ function UploadedIdentityStep() {
 
   const handleContinue = async () => {
     if (!canContinue) return;
-    setError('');
+    setError(null);
     try {
       router.push('/onboarding');
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong');
+      setError(err);
     }
   };
 
@@ -240,7 +241,7 @@ function UploadedIdentityStep() {
         />
       </div>
 
-      {error && <p className="text-xs text-danger-500 mt-3">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-3" />
 
       <button
         onClick={handleContinue}

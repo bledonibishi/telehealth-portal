@@ -11,6 +11,7 @@ import { ChatDock, ChatIcon } from '@/components/consultation/ChatDock';
 import { ProgressTracker, trackerSteps } from '@/components/consultation/ProgressTracker';
 import { useConversationChat } from '@/components/consultation/useConsultationChat';
 import { ConversationWatchers } from '@/components/consultation/ConversationWatchers';
+import { ErrorAlert } from '@/components/common/Alert';
 
 const KIND_LABEL: Record<string, string> = { HRT: 'HRT treatment', GLP1: 'GLP-1 weight management' };
 
@@ -65,7 +66,7 @@ function Skeleton() {
 }
 
 export default function ConsultationPage({ params }: { params: { id: string } }) {
-  const { data, loading, error } = useQuery(MY_CONSULTATION, { variables: { id: params.id } });
+  const { data, loading, error, refetch } = useQuery(MY_CONSULTATION, { variables: { id: params.id } });
   const { data: nameData } = useQuery(ME_NAME);
 
   const token = getToken();
@@ -83,7 +84,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
   }, []);
 
   if (loading) return <Skeleton />;
-  if (error) return <div className="p-8 text-sm text-danger-500">{error.message}</div>;
+  if (error) return <ErrorAlert error={error} title="We couldn’t load this consultation" onRetry={() => refetch()} className="m-8" />;
   if (!c) return null;
 
   const firstName: string | undefined = nameData?.me?.firstName;

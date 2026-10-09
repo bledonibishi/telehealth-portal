@@ -5,16 +5,17 @@ import Link from 'next/link';
 import { useMutation } from '@apollo/client';
 import { REQUEST_CLINICIAN_PASSWORD_RESET } from '@/graphql/auth';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 export default function ForgotPasswordPage() {
   const { t } = useI18n();
   const [email, setEmail] = useState('');
-  const [problem, setProblem] = useState('');
-  const [request, { loading, data }] = useMutation(REQUEST_CLINICIAN_PASSWORD_RESET, { onError: (e) => setProblem(e.message) });
+  const [problem, setProblem] = useState<unknown>(null);
+  const [request, { loading, data }] = useMutation(REQUEST_CLINICIAN_PASSWORD_RESET, { onError: (e) => setProblem(e) });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setProblem('');
+    setProblem(null);
     request({ variables: { input: { email } } });
   };
 
@@ -29,7 +30,7 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-gray-600">{t('Enter your work email and we will send you a link to choose a new password.')}</p>
-            {problem && <p className="text-sm text-danger-500 bg-danger-50 rounded px-3 py-2" role="alert">{problem}</p>}
+            <InlineError error={problem} className="px-3 py-2" />
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">{t('Email')}</label>
               <input id="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />

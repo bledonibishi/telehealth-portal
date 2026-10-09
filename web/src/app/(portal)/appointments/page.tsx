@@ -11,6 +11,7 @@ import { Icon, type IconName } from '@/components/portal/Icon';
 import { BookingCard } from '@/components/booking/BookingCard';
 import { BookedAppointments } from '@/components/booking/BookedAppointments';
 import { PastAppointments } from '@/components/booking/PastAppointments';
+import { InlineError } from '@/components/common/Alert';
 
 const REASONS: Array<{ value: string; label: string; icon: IconName; hint: string }> = [
   { value: 'QUESTION', label: 'A question', icon: 'help', hint: 'About your treatment, dose or diet' },
@@ -124,7 +125,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         <b>{willBeUrgent ? 'Urgent' : 'Routine'}:</b> {willBeUrgent ? 'a doctor will get back to you within 24 hours.' : 'a doctor will get back to you within 3 days. Questions can also go straight to Messages.'}
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error.message}</p>}
+      <InlineError error={error} />
       <button type="submit" disabled={loading || !reason} className={btnPrimary}>{loading ? 'Sending…' : 'Continue to pick a time'}</button>
     </form>
   );

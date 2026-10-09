@@ -5,6 +5,8 @@ import { format, isToday, isTomorrow } from 'date-fns';
 import { BookingScheduler, useMyBookings, useReschedule, type Booking } from '@telehealth/booking';
 import { Card, CardHeader, btnOutline } from '@/components/portal/Card';
 import { Icon } from '@/components/portal/Icon';
+import { InlineError } from '@/components/common/Alert';
+import { errorMessage } from '@telehealth/shared-types';
 
 const BRAND = '#132f6f';
 
@@ -29,7 +31,7 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
       await b.cancel(c.uid, 'Cancelled by the patient');
       setConfirming(null);
     } catch (err: any) {
-      setProblem({ uid: c.uid, text: err?.message ?? 'Couldn’t cancel that. Please try again.' });
+      setProblem({ uid: c.uid, text: errorMessage(err) || 'Couldn’t cancel that. Please try again.' });
     }
   };
 
@@ -77,7 +79,7 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
                   <button type="button" onClick={() => { setConfirming(c.uid); move.stop(); }} className="text-xs font-medium text-slate-500 hover:text-red-600">Cancel appointment</button>
                 </div>
               )}
-              {problem?.uid === c.uid && <p role="alert" className="text-xs text-red-600 mt-2">{problem.text}</p>}
+              {problem?.uid === c.uid && <InlineError error={problem.text} size="xs" className="mt-2" />}
 
               {moving && (
                 <div className="mt-4">
@@ -86,7 +88,7 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
                     <button type="button" onClick={move.stop} className="text-xs text-slate-500 hover:text-ink-800">Keep my current time</button>
                   </div>
                   {move.loading && <div className="h-24 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />}
-                  {move.error && <p role="alert" className="text-sm text-red-600">{move.error.message}</p>}
+                  <InlineError error={move.error} />
                   {move.unavailable && <p className="text-sm text-slate-500">This appointment can’t be moved any more. You can cancel it and book a new one.</p>}
                   {move.session && (
                     <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">

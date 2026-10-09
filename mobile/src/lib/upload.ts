@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { ApiError } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 export const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
@@ -32,8 +33,8 @@ export async function uploadImage(kind: UploadKind, image: PickedImage): Promise
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Upload failed (${res.status})`);
+    // The body is the API's { code, severity, message }; ApiError keeps the message and never shows the raw text.
+    throw ApiError.fromResponse(res.status, await res.text().catch(() => ''), 'We couldn’t upload that file. Please try again.');
   }
 
   const data = await res.json();

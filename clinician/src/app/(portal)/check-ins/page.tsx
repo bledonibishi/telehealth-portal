@@ -12,6 +12,7 @@ import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
 import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
 import SideEffectSummary from '@/components/checkins/SideEffectSummary';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
 
@@ -62,7 +63,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const rx = checkIn.prescription;
   // Fresh every time, so a score logged a minute ago is never missed. Approving waits on this.
   const { data: seData, loading: seLoading, error: seError } = useQuery(SIDE_EFFECT_SUMMARY, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
@@ -79,11 +80,11 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const [review, { loading }] = useMutation(REVIEW_CHECK_IN, {
     refetchQueries: [{ query: CHECK_IN_REVIEW_QUEUE }, { query: GET_ORDERS }],
     onCompleted: onDone,
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   const submit = (extra: Partial<PrescriptionSubmission> = {}) => {
-    setError('');
+    setError(null);
     review({
       variables: {
         input: {
@@ -144,7 +145,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
         </>
       )}
 
-      {error && <p className="text-sm text-danger-500">{error}</p>}
+      <InlineError error={error} />
 
       {holdForSideEffects && (
         <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3">
@@ -206,7 +207,7 @@ export default function CheckInsPage() {
         <SideEffectAlerts />
         <MissedDoseAlerts />
         {loading && <p className="p-5 text-sm text-gray-400">{t('Loading…')}</p>}
-        {error && <p className="p-5 text-sm text-danger-500">{error.message}</p>}
+        <InlineError error={error} className="p-5" />
         <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
           {queue.map((c) => {
             const critical = c.redFlags.some((f: any) => f.severity === 'CRITICAL');

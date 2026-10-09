@@ -39,18 +39,18 @@ function MedicalQuestionnaire() {
   const { data: consentData } = useQuery(CONSENT_TEXT, { variables: { type: 'TELEHEALTH' } });
   const consent = consentData?.consentText;
   const [consented, setConsented] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [submit, { loading: submitting }] = useMutation(SUBMIT_INTAKE, {
     refetchQueries: [{ query: MY_CONSULTATIONS }],
     onCompleted: () => {
       if (draftKey) clearDraft(draftKey);
       router.push(returnTo);
     },
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   const handleSubmit = (answers: SubmittedAnswer[]) => {
-    setError('');
+    setError(null);
     submit({ variables: { input: { kind, answers, telehealthConsentVersion: consent?.version } } });
   };
 

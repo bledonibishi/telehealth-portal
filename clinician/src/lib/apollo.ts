@@ -9,6 +9,7 @@ import { print } from 'graphql';
 import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
 import { clearToken, getRefreshToken, getToken, setToken } from './auth';
 import { createRealtime } from './realtime';
+import { sessionEndReason } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
@@ -54,10 +55,8 @@ function endSession() {
 }
 
 const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
-  const reason = graphQLErrors
-    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
-    .find(Boolean);
   // Errors without a reason (for example a wrong password) are not session failures.
+  const reason = sessionEndReason(graphQLErrors);
   if (!reason || typeof window === 'undefined') return;
 
   if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {

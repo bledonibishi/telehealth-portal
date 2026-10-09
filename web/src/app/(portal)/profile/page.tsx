@@ -13,6 +13,7 @@ import { Dialog } from '@/components/common/Dialog';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Avatar, Icon } from '@/components/portal/Icon';
+import { InlineError } from '@/components/common/Alert';
 
 const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink-600';
 const label = 'block text-xs font-medium text-slate-500 mb-1';
@@ -61,7 +62,7 @@ function BodyForm({ p, onDone }: { p: any; onDone: () => void }) {
         <label htmlFor="phone" className={label}>Phone</label>
         <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={field} autoComplete="tel" />
       </div>
-      {error && <p role="alert" className="text-sm text-red-600">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex gap-3">
         <button type="submit" disabled={loading} className={btnPrimary}>{loading ? 'Saving…' : 'Save'}</button>
         <button type="button" onClick={onDone} className="text-sm text-slate-500">Cancel</button>
@@ -94,7 +95,7 @@ function MedicalForm({ p, onDone }: { p: any; onDone: () => void }) {
         <div><label htmlFor="ec-name" className={label}>Emergency contact</label><input id="ec-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} placeholder="Name and relation" className={field} /></div>
         <div><label htmlFor="ec-phone" className={label}>Their phone</label><input id="ec-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={field} /></div>
       </div>
-      {error && <p role="alert" className="text-sm text-red-600">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex gap-3">
         <button type="submit" disabled={loading} className={btnPrimary}>{loading ? 'Saving…' : 'Save'}</button>
         <button type="button" onClick={onDone} className="text-sm text-slate-500">Cancel</button>
@@ -125,7 +126,7 @@ function AddressForm({ p, onDone }: { p: any; onDone: () => void }) {
       </div>
       <div><label htmlFor="country" className={label}>Country</label><input id="country" value={v.country} onChange={set('country')} className={field} autoComplete="country-name" /></div>
       {!p.phone && <p className="text-xs text-amber-700">Add your phone number under “Body & contact” first — the pharmacy needs it.</p>}
-      {error && <p role="alert" className="text-sm text-red-600">{error.message}</p>}
+      <InlineError error={error} />
       <div className="flex gap-3">
         <button type="submit" disabled={loading} className={btnPrimary}>{loading ? 'Saving…' : 'Save address'}</button>
         <button type="button" onClick={onDone} className="text-sm text-slate-500">Cancel</button>

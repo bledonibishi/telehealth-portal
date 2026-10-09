@@ -1,4 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { ErrorCode } from '@telehealth/shared-types';
 
 export enum AuthFailureReason {
   TOKEN_MISSING = 'TOKEN_MISSING',
@@ -25,7 +26,7 @@ const MESSAGES: Record<AuthFailureReason, string> = {
 };
 
 export function authFailure(reason: AuthFailureReason) {
-  return new UnauthorizedException({ statusCode: 401, message: MESSAGES[reason], reason });
+  return new UnauthorizedException({ statusCode: 401, code: ErrorCode.SESSION_ENDED, severity: 'warning', message: MESSAGES[reason], reason });
 }
 
 export function reasonFromJwtError(err: any): AuthFailureReason {

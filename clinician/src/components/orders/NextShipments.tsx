@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { CREATE_REPEAT_ORDER, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { hasAccess } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const URGENCY: Record<string, { label: string; cls: string }> = {
   OVERDUE: { label: 'Overdue', cls: 'bg-red-50 text-red-700' },
@@ -27,14 +28,14 @@ const BLOCKER: Record<string, { text: string; cls: string }> = {
 export default function NextShipments() {
   const { t, fmt } = useI18n();
   const { data, loading, error } = useQuery(NEXT_SHIPMENT_ALERTS, { pollInterval: 60_000 });
-  const [errorFor, setErrorFor] = useState<{ id: string; message: string } | null>(null);
+  const [errorFor, setErrorFor] = useState<{ id: string; error: unknown } | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
   const [create, { loading: creating }] = useMutation(CREATE_REPEAT_ORDER, {
     // The orders list is fulfilment-only (doctors can't read it), so it is refreshed by name where it is open,
     // and the Orders page re-checks whenever it is opened.
     refetchQueries: [{ query: NEXT_SHIPMENT_ALERTS }, 'GetOrders'],
-    onError: (e) => setErrorFor({ id: pendingRef.current ?? '', message: e.message }),
+    onError: (e) => setErrorFor({ id: pendingRef.current ?? '', error: e }),
     onCompleted: () => setErrorFor(null),
   });
   const order = (prescriptionId: string) => {
@@ -58,14 +59,14 @@ export default function NextShipments() {
         {t('Patients whose next supply is coming up or late. Once the order is placed it is passed to the pharmacy partner.')}
       </p>
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
-      {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
+      <InlineError error={error} className="p-6" />
       {!loading && alerts.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{t('No shipments are due soon.')}</div>}
 
       <ul className="divide-y divide-gray-100">
         {alerts.map((a) => {
           const urgency = URGENCY[a.urgency];
           const blocker = BLOCKER[a.blocker];
-          const thisError = errorFor && errorFor.id === a.prescriptionId ? errorFor.message : null;
+          const thisError = errorFor && errorFor.id === a.prescriptionId ? errorFor.error : null;
           return (
             <li key={a.prescriptionId} className="px-4 sm:px-6 py-4 bg-white hover:bg-gray-50 flex flex-wrap items-start gap-x-6 gap-y-2">
               <div className="min-w-[220px] flex-1">
@@ -78,7 +79,7 @@ export default function NextShipments() {
                   <p className="text-xs mt-1.5 font-medium text-brand-700">✓ {t('Patient asked for this supply on {date}', { date: fmt(a.refillRequestedAt, 'dd MMM yyyy') })}</p>
                 )}
                 <p className={`text-xs mt-1.5 font-medium ${blocker.cls}`}>{t(blocker.text)}</p>
-                {thisError && <p className="text-xs text-red-600 mt-1">{thisError}</p>}
+                <InlineError error={thisError} size="xs" className="mt-1" />
               </div>
 
               <div className="text-xs text-gray-500 min-w-[180px]">

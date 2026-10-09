@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { uploadFile, UploadKind } from '@/lib/upload';
 import { AuthedImage } from '@/components/common/AuthedImage';
+import { InlineError } from '@/components/common/Alert';
 
 export default function PhotoUploadField({
   kind,
@@ -22,20 +23,20 @@ export default function PhotoUploadField({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     setPreviewUrl(URL.createObjectURL(file));
     setStatus('uploading');
-    setError('');
+    setError(null);
     try {
       const fileId = await uploadFile(kind, file);
       setStatus('done');
       onUploaded(fileId);
     } catch (err: any) {
       setStatus('error');
-      setError(err.message ?? 'Upload failed');
+      setError(err);
     }
   };
 
@@ -94,7 +95,7 @@ export default function PhotoUploadField({
         </div>
       )}
 
-      {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-2" />
 
       <input
         ref={cameraInputRef}

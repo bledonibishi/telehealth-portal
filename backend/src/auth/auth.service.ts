@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +12,9 @@ import { newActivationToken } from './activation-token';
 import { BCRYPT_ROUNDS, assertAcceptablePassword } from './password-policy';
 import { PASSWORD_RESET_TTL_MINUTES, hashResetToken, newPasswordResetToken } from './password-reset-token';
 import { AuthFailureReason, authFailure, reasonFromJwtError } from './auth-failure';
+import { ErrorCode, appError } from '../common/errors/app-error';
+
+const mfaSessionExpired = () => appError(ErrorCode.UNAUTHENTICATED, 'Your sign-in timed out. Please enter your email and password again.');
 
 // Compared against when the address matches no account, so a wrong address takes as long as a wrong password.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', BCRYPT_ROUNDS);
@@ -50,7 +53,7 @@ export class AuthService {
         resourceId: clinician?.id ?? 'unknown',
         metadata: { email, reason: clinician ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', ...attempt },
       });
-      throw new UnauthorizedException('Invalid credentials');
+      throw appError(ErrorCode.INVALID_CREDENTIALS, 'Invalid credentials');
     }
 
     // Said only after the password was right, so it cannot be used to find out who has an account.
@@ -63,7 +66,7 @@ export class AuthService {
         resourceId: clinician.id,
         metadata: { email, reason: 'DEACTIVATED', ...attempt },
       });
-      throw new UnauthorizedException('This account has been deactivated. Ask an admin to turn it back on.');
+      throw appError(ErrorCode.ACCOUNT_DEACTIVATED, 'This account has been deactivated. Ask an admin to turn it back on.');
     }
 
     await this.audit.log({
@@ -100,7 +103,7 @@ export class AuthService {
    * normal way next, with MFA if they have it, so a link in an inbox never gives access on its own.
    */
   async acceptClinicianInvite(token: string, password: string, attempt: LoginAttempt = {}): Promise<boolean> {
-    const invalidLink = () => new UnauthorizedException('This link is invalid or has expired. Ask an admin to send a new one.');
+    const invalidLink = () => appError(ErrorCode.LINK_INVALID_OR_EXPIRED, 'This link is invalid or has expired. Ask an admin to send a new one.');
     assertAcceptablePassword(password);
 
     const clinician = token ? await this.prisma.clinician.findUnique({ where: { inviteToken: token } }) : null;
@@ -139,11 +142,11 @@ export class AuthService {
     const patient = await this.prisma.patient.findUnique({ where: { email } });
     if (!(await this.passwordMatches(password, patient?.passwordHash))) {
       await this.auditPatientLoginFailed(email, patient?.id, patient ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', attempt);
-      throw new UnauthorizedException('Invalid credentials');
+      throw appError(ErrorCode.INVALID_CREDENTIALS, 'Invalid credentials');
     }
     if (!patient.activatedAt) {
       await this.auditPatientLoginFailed(email, patient.id, 'NOT_ACTIVATED', attempt);
-      throw new UnauthorizedException('Account not activated — check your email for the activation link');
+      throw appError(ErrorCode.ACCOUNT_NOT_ACTIVATED, 'Account not activated — check your email for the activation link');
     }
 
     await this.audit.log({
@@ -176,7 +179,7 @@ export class AuthService {
       where: { email: { equals: email.trim(), mode: 'insensitive' } },
     });
     if (!patient) return true;
-    if (patient.activatedAt) throw new ConflictException('A password is already set for this account. Sign in, or reset your password if you have forgotten it.');
+    if (patient.activatedAt) throw appError(ErrorCode.ACCOUNT_ALREADY_ACTIVATED);
 
     // Reuse a link that is still valid instead of replacing it: repeated requests
     // can't invalidate the one the patient already holds (e.g. the one emailed
@@ -199,7 +202,7 @@ export class AuthService {
 
   /** Spends a single-use activation token to set the patient's password, and signs them in. */
   async activateAccount(token: string, password: string, attempt: LoginAttempt = {}) {
-    const invalidLink = () => new UnauthorizedException('This activation link is invalid or has expired');
+    const invalidLink = () => appError(ErrorCode.LINK_INVALID_OR_EXPIRED, 'This activation link is invalid or has expired');
 
     assertAcceptablePassword(password);
 
@@ -284,7 +287,8 @@ export class AuthService {
       : await this.prisma.clinician.findUnique({ where: { id: account.id } });
     if (!row || !(await bcrypt.compare(currentPassword, row.passwordHash))) {
       await this.audit.log({ actorId: account.id, actorRole, action: 'AUTH_PASSWORD_CHANGE_FAILED', resourceType, resourceId: account.id, metadata: { ...attempt } });
-      throw new UnauthorizedException('Your current password is not right');
+      // A 400, not a 401: the apps end the session on a 401, and a typo here must not sign anyone out.
+      throw appError(ErrorCode.WRONG_CURRENT_PASSWORD);
     }
     assertAcceptablePassword(newPassword, row.email);
     if (newPassword === currentPassword) throw new BadRequestException('Choose a password you are not already using');
@@ -352,7 +356,7 @@ export class AuthService {
 
   /** Spends a reset link to set a new password and ends every open session. It does not sign anyone in. */
   async resetPassword(token: string, newPassword: string, attempt: LoginAttempt = {}): Promise<boolean> {
-    const invalidLink = () => new UnauthorizedException('This link is invalid or has expired. Request a new one.');
+    const invalidLink = () => appError(ErrorCode.LINK_INVALID_OR_EXPIRED, 'This link is invalid or has expired. Request a new one.');
     const tokenHash = token ? hashResetToken(token) : '';
     const reset = tokenHash ? await this.prisma.passwordReset.findUnique({ where: { tokenHash } }) : null;
     const isPatient = reset?.accountType === 'PATIENT';
@@ -412,13 +416,13 @@ export class AuthService {
     try {
       payload = this.jwtService.verify(pendingToken);
     } catch {
-      throw new UnauthorizedException('Invalid or expired MFA session');
+      throw mfaSessionExpired();
     }
-    if (!payload.mfaPending) throw new UnauthorizedException('Not a pending MFA token');
+    if (!payload.mfaPending) throw mfaSessionExpired();
 
     const clinician = await this.prisma.clinician.findUnique({ where: { id: payload.sub } });
-    if (!clinician?.mfaSecret) throw new UnauthorizedException('MFA not configured');
-    if (clinician.deactivatedAt) throw new UnauthorizedException('This account has been deactivated. Ask an admin to turn it back on.');
+    if (!clinician?.mfaSecret) throw mfaSessionExpired();
+    if (clinician.deactivatedAt) throw appError(ErrorCode.ACCOUNT_DEACTIVATED, 'This account has been deactivated. Ask an admin to turn it back on.');
     // A password change or "sign out everywhere" after the password step cancels the sign-in that was waiting for a code.
     this.assertSessionCurrent(payload, clinician.tokenVersion);
 
@@ -431,7 +435,7 @@ export class AuthService {
         resourceId: clinician.id,
         metadata: { ...attempt },
       });
-      throw new UnauthorizedException('Invalid TOTP code');
+      throw appError(ErrorCode.INVALID_MFA_CODE);
     }
 
     await this.audit.log({
@@ -512,9 +516,9 @@ export class AuthService {
 
   async enableMfa(clinicianId: string, totpCode: string) {
     const clinician = await this.prisma.clinician.findUnique({ where: { id: clinicianId } });
-    if (!clinician?.mfaSecret) throw new UnauthorizedException('Run setupMfa first');
+    if (!clinician?.mfaSecret) throw appError(ErrorCode.BAD_REQUEST, 'Start two-step verification setup again.');
     if (!authenticator.verify({ token: totpCode, secret: clinician.mfaSecret })) {
-      throw new UnauthorizedException('Invalid TOTP code');
+      throw appError(ErrorCode.INVALID_MFA_CODE);
     }
     await this.prisma.clinician.update({
       where: { id: clinicianId },

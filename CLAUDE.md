@@ -19,3 +19,21 @@
 - Prefer a recommendation over a list of options. If you are unsure whether something is true or lawful (this is a
   prescription-medicine business in Kosovo, with plans for Europe), say what you checked, what you could not verify, and
   who should confirm it.
+
+## Errors and warnings
+
+One system for every app; see `packages/shared-types/src/errors.ts`.
+
+- **Catalog:** every error has an `ErrorCode` with a status, a severity (`error` = something failed or the input is wrong;
+  `warning` = nothing broke but it can't happen yet) and a default message. Add new codes there, and add their message to
+  the clinician dictionaries (`clinician/src/lib/i18n/dictionaries`).
+- **Backend:** throw `appError(ErrorCode.X, 'message for people')` (`backend/src/common/errors/app-error.ts`) when the apps
+  must tell the error apart or it is a warning (`warning('…')`). Nest's `BadRequestException('…')` etc. still work and get
+  the code for their status. Write every message for the patient or clinician who reads it. Crashes, Prisma and
+  GraphQL validation errors are hidden behind the generic message by `normalizeError` / `formatGraphQLError`.
+- **Apps:** never render `error.message`. Pass whatever failed to the library component: web `InlineError` / `ErrorAlert`
+  / `Alert` (`web/src/components/common/Alert.tsx`), clinician the same in `clinician/src/components/ui/Alert.tsx`
+  (translated), mobile `ErrorText` / `ErrorNotice` (stories under Feedback). Keep the error object in state
+  (`useState<unknown>(null)`), not its message, so warnings stay amber. Branch on `describeError(e).code`, never on message
+  text. For plain text (a native alert) use `errorMessage(e)`; for a failed `fetch`, throw `ApiError.fromResponse(...)`.
+- **Sessions:** apps sign out only when `sessionEndReason(...)` says so; any other 401 is a message for the form.

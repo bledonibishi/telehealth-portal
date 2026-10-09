@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { MY_SYMPTOM_ASSESSMENTS, RECORD_MY_SYMPTOMS } from '@/graphql/symptoms';
 import type { SymptomAssessment, SymptomScale } from './types';
+import { InlineError } from '@/components/common/Alert';
 
 /**
  * The full questionnaire, one row per symptom. Starts from the last answers (when there are any) so a
@@ -14,7 +15,7 @@ export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; 
     // Only from an assessment on this same questionnaire — the other scale reuses some item ids.
     Object.fromEntries((previous?.scale === scale.id ? previous.answers : []).map((a) => [a.itemId, a.score])),
   );
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const [save, { loading }] = useMutation(RECORD_MY_SYMPTOMS, { refetchQueries: [{ query: MY_SYMPTOM_ASSESSMENTS }], awaitRefetchQueries: true });
 
   const left = scale.items.filter((i) => answers[i.id] === undefined).length;
@@ -27,7 +28,7 @@ export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; 
       await save({ variables: { input: { answers: scale.items.map((i) => ({ itemId: i.id, score: answers[i.id] })) } } });
       onDone();
     } catch (err) {
-      setProblem(err instanceof Error ? err.message : 'Something went wrong — please try again.');
+      setProblem(err);
     }
   };
 
@@ -70,7 +71,7 @@ export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; 
         </fieldset>
       ))}
 
-      {problem && <p className="text-sm text-danger-500 mb-3">{problem}</p>}
+      <InlineError error={problem} className="mb-3" />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">
           {loading ? 'Saving…' : 'Save'}

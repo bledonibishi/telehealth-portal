@@ -9,6 +9,7 @@ import { useIdentityVerification } from '@/lib/useIdentityVerification';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
 import { MY_TELEHEALTH_CONSENT } from '@/graphql/intake';
+import { InlineError } from '@/components/common/Alert';
 
 type StepKey = 'basic-information' | 'consent' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
 
@@ -34,7 +35,7 @@ export default function OnboardingLandingPage() {
   });
 
   const o = data?.myOnboarding;
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState<unknown>(null);
 
   useEffect(() => {
     if (o?.status === 'APPROVED') router.replace('/dashboard');
@@ -182,11 +183,11 @@ export default function OnboardingLandingPage() {
   }
 
   const handleSubmit = async () => {
-    setSubmitError('');
+    setSubmitError(null);
     try {
       await submitOnboarding();
     } catch (err: any) {
-      setSubmitError(err.message ?? 'We couldn’t submit your application. Please try again.');
+      setSubmitError(err);
     }
   };
 
@@ -243,7 +244,7 @@ export default function OnboardingLandingPage() {
         Your progress is saved as you go — you can leave and pick up where you stopped. A clinician reviews every application personally.
       </p>
 
-      {submitError && <p role="alert" className="mt-6 text-sm text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">{submitError}</p>}
+      <InlineError error={submitError} className="mt-6 px-3 py-2.5" />
 
       <button
         onClick={() => (allDone ? handleSubmit() : router.push(`/onboarding/${firstIncomplete!.key}`))}

@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
+import { InlineError } from '@/components/common/Alert';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   SUBMITTED: { label: 'Under review', cls: 'bg-blue-100 text-blue-700' },
@@ -26,7 +27,7 @@ export default function ConsultationsPage() {
       </div>
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && <p className="text-sm text-danger-500">{error.message}</p>}
+      <InlineError error={error} />
 
       {!loading && consultations.length === 0 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">

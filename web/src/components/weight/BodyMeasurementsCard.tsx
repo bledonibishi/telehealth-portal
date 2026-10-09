@@ -7,6 +7,7 @@ import { ADD_MY_BODY_MEASUREMENT, MY_BODY_MEASUREMENTS, VOID_MY_BODY_MEASUREMENT
 import { cmChange, MEASURE_COLORS, MEASURES, seriesOf, summariseMeasurements, type BodyMeasurement } from '@/lib/body-measurements';
 import { Card, CardHeader } from '@/components/portal/Card';
 import { Dialog } from '@/components/common/Dialog';
+import { InlineError } from '@/components/common/Alert';
 
 const newRequestId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
@@ -14,7 +15,7 @@ const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-
 /** Fill in any of the three; leave the rest empty. A retry of one submission is recorded once. */
 function MeasurementForm({ onDone }: { onDone: () => void }) {
   const [values, setValues] = useState({ waistCm: '', hipsCm: '', armCm: '' });
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const requestId = useRef(newRequestId());
   const [save, { loading }] = useMutation(ADD_MY_BODY_MEASUREMENT, {
     update: (cache, { data }) => cache.writeQuery({ query: MY_BODY_MEASUREMENTS, data: { myBodyMeasurements: data.addMyBodyMeasurement } }),
@@ -36,7 +37,7 @@ function MeasurementForm({ onDone }: { onDone: () => void }) {
       await save({ variables: { input } });
       onDone();
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -57,7 +58,7 @@ function MeasurementForm({ onDone }: { onDone: () => void }) {
         <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">{loading ? 'Saving…' : 'Save measurements'}</button>
         <button type="button" onClick={onDone} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>
       </div>
-      {problem && <p className="text-sm text-danger-500" role="alert">{problem}</p>}
+      <InlineError error={problem} />
     </form>
   );
 }
@@ -96,7 +97,7 @@ export function BodyMeasurementsCard() {
       </CardHeader>
 
       {loading && !data && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && !data && <p className="text-sm text-danger-500">{error.message}</p>}
+      {!data && <InlineError error={error} />}
 
       {data && list.length === 0 && (
         <div className="rounded-xl bg-slate-50 p-4 text-center">
@@ -134,7 +135,7 @@ export function BodyMeasurementsCard() {
                 </li>
               ))}
             </ul>
-            {removeError && <p className="text-xs text-danger-500 mt-1">{removeError.message}</p>}
+            <InlineError error={removeError} size="xs" className="mt-1" />
           </details>
         </>
       )}

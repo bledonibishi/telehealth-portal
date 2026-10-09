@@ -480,7 +480,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                         </span>
                         <span className="flex items-center gap-3">
                           {c.reportUrl && hasAccess(['ADMIN', 'DOCTOR']) && (
-                            <button type="button" onClick={() => openAuthedDocument(c.reportUrl)} className="text-xs font-medium text-brand-500 hover:underline">{t('Report PDF')}</button>
+                            <button type="button" onClick={() => openAuthedDocument(c.reportUrl, t)} className="text-xs font-medium text-brand-500 hover:underline">{t('Report PDF')}</button>
                           )}
                           <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
                         </span>

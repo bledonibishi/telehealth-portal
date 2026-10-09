@@ -14,6 +14,7 @@ import { WeightCards } from '@/components/weight/WeightCards';
 import { PhotoTimeline } from '@/components/weight/PhotoTimeline';
 import { MeasurementsChart } from '@/components/weight/MeasurementsChart';
 import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
+import { InlineError } from '@/components/common/Alert';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
@@ -24,7 +25,7 @@ export default function WeightJourneyPage() {
       <PageHeader title="Weight Journey" subtitle="Your weigh-ins and photos over time, with the date of each." />
 
       {loading && !journey && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && !journey && <p className="text-sm text-danger-500">{error.message}</p>}
+      {!journey && <InlineError error={error} />}
       {!loading && !error && !journey && (
         <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-500">
           The Weight Journey is available on our weight-management programme.

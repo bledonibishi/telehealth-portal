@@ -12,6 +12,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import { openProblem, overdueSince } from '@/lib/tracking';
 import { orderMatchesSearch } from '@/lib/order-search';
+import { InlineError } from '@/components/ui/Alert';
 
 type Order = any;
 
@@ -85,9 +86,9 @@ export default function OrdersPage() {
   const isAdmin = hasAccess(['ADMIN']);
   const client = useApolloClient();
   const [statementMonth, setStatementMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [statementError, setStatementError] = useState('');
+  const [statementError, setStatementError] = useState<unknown>(null);
   async function downloadStatement() {
-    setStatementError('');
+    setStatementError(null);
     const [year, month] = statementMonth.split('-').map(Number);
     try {
       const { data } = await client.query({ query: PHARMACY_STATEMENT, variables: { year, month }, fetchPolicy: 'network-only' });
@@ -98,7 +99,7 @@ export default function OrdersPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setStatementError((e as Error).message);
+      setStatementError(e);
     }
   }
   const { data: shipmentData } = useQuery(NEXT_SHIPMENT_ALERTS, { pollInterval: 60_000, skip: !canSeeShipments });
@@ -136,7 +137,7 @@ export default function OrdersPage() {
                 <input type="month" value={statementMonth} onChange={(e) => setStatementMonth(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-700" aria-label={t('Month')} />
                 <button type="button" onClick={downloadStatement} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50">{t('Pharmacy statement (CSV)')}</button>
               </div>
-              {statementError && <p className="text-xs text-danger-500">{statementError}</p>}
+              <InlineError error={statementError} size="xs" />
             </div>
           )}
           {canSeeShipments && (
@@ -240,7 +241,7 @@ export default function OrdersPage() {
       </div>
 
       {loading && !data && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
-      {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
+      <InlineError error={error} className="p-6" />
 
       <div className="divide-y divide-gray-100">
         {orders.map((order) => (

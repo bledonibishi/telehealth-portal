@@ -8,6 +8,7 @@ import { LOG_MY_SIDE_EFFECT_SCORES, MY_SIDE_EFFECT_SCORES } from '@/graphql/side
 import { describeScore, HIGH_SCORE, isScoreCheckDue, SCORES, type ScoreEntry, type ScoreKey } from '@/lib/side-effect-scores';
 import { Dialog } from '@/components/common/Dialog';
 import { Card, CardHeader } from '@/components/portal/Card';
+import { InlineError } from '@/components/common/Alert';
 
 const newRequestId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 /** The scores are the weight-loss medicines' usual side effects, so they are only asked of those patients. */
@@ -21,7 +22,7 @@ const blank = (): Record<ScoreKey, number> => ({ nausea: 1, vomiting: 1, abdomin
 function ScoresForm({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState(blank);
   const [note, setNote] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const requestId = useRef(newRequestId());
   const [save, { data, loading }] = useMutation(LOG_MY_SIDE_EFFECT_SCORES, { refetchQueries: [{ query: MY_SIDE_EFFECT_SCORES }, 'MySideEffectReports'] });
   const saved = data?.logMySideEffectScores;
@@ -32,7 +33,7 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
     try {
       await save({ variables: { input: { ...values, note: note.trim() || undefined, clientRequestId: requestId.current } } });
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -68,7 +69,7 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
         <textarea id="score-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
           className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
-      {problem && <p role="alert" className="text-sm text-danger-500">{problem}</p>}
+      <InlineError error={problem} />
       <div className="flex items-center gap-3">
         <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">{loading ? 'Saving…' : 'Save this week'}</button>
         <button type="button" onClick={onClose} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>

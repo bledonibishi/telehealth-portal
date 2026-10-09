@@ -37,7 +37,7 @@ function ScoreScale({ label, value, onChange }: { label: string; value: number; 
 function ScoresForm({ onClose }: { onClose: () => void }) {
   const [values, setValues] = useState(blank);
   const [note, setNote] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const id = useRef(requestId());
   const [save, { data, loading }] = useMutation(LOG_MY_SIDE_EFFECT_SCORES, { refetchQueries: [{ query: MY_SIDE_EFFECT_SCORES }, { query: MY_SIDE_EFFECT_REPORTS }] });
   const saved = data?.logMySideEffectScores;
@@ -47,7 +47,7 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
     try {
       await save({ variables: { input: { ...values, note: note.trim() || undefined, clientRequestId: id.current } } });
     } catch (e: any) {
-      setProblem(e?.message ?? 'Couldn’t save that. Please try again.');
+      setProblem(e);
     }
   };
 
@@ -69,7 +69,7 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
       <Text style={styles.small}>Over the last week, how strong was each of these? <Text style={{ fontWeight: '700', color: colors.slate700 }}>1 means none, 10 means the worst you can imagine.</Text></Text>
       {SCORES.map((s) => <ScoreScale key={s.key} label={s.label} value={values[s.key]} onChange={(n) => setValues({ ...values, [s.key]: n })} />)}
       <TextInput value={note} onChangeText={setNote} placeholder="Anything else? (optional)" placeholderTextColor={colors.slate400} multiline maxLength={500} style={styles.note} />
-      <ErrorText>{problem}</ErrorText>
+      <ErrorText error={problem} />
       <Button label="Save this week" loading={loading} onPress={submit} />
       <Text style={styles.tiny}>This isn’t for emergencies. For severe stomach pain, trouble breathing or swelling of the face or throat, call {EMERGENCY_NUMBER}.</Text>
     </View>

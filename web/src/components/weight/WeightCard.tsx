@@ -7,6 +7,7 @@ import type { JourneyEntry } from '@/lib/journey-entries';
 import { AuthedImage } from '@/components/common/AuthedImage';
 import { Icon, type IconName } from '@/components/portal/Icon';
 import { useJourneyPhotos } from './JourneyPhotos';
+import { InlineError } from '@/components/common/Alert';
 
 /** The ⋮ in the corner of a card: change it, delete it, download its photo. */
 function EntryMenu({ entry, open, onOpen }: { entry: JourneyEntry; open: boolean; onOpen: (open: boolean) => void }) {
@@ -67,14 +68,14 @@ function EntryNote({ entry, alwaysOpen = false }: { entry: JourneyEntry; alwaysO
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState(entry.note ?? '');
   const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
 
   const start = () => { setText(entry.note ?? ''); setProblem(null); setWriting(true); };
   const save = async () => {
     setSaving(true);
     setProblem(null);
     try { await saveNote(entry, text); setWriting(false); }
-    catch (e: any) { setProblem(e?.message ?? 'Couldn’t save the note.'); }
+    catch (e: any) { setProblem(e); }
     finally { setSaving(false); }
   };
 
@@ -88,7 +89,7 @@ function EntryNote({ entry, alwaysOpen = false }: { entry: JourneyEntry; alwaysO
           <button type="button" onClick={save} disabled={saving} className="font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save note'}</button>
           <button type="button" onClick={() => setWriting(false)} className="text-slate-400 hover:text-slate-600">Cancel</button>
         </div>
-        {problem && <p className="text-xs text-danger-500 mt-1" role="alert">{problem}</p>}
+        <InlineError error={problem} size="xs" className="mt-1" />
       </div>
     );
   }

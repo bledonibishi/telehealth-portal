@@ -13,6 +13,7 @@ import { Dialog } from '@/components/common/Dialog';
 import { LogWeightForm } from './LogWeightForm';
 import { EditEntryForm } from './EditEntryForm';
 import { PhotoLightbox } from './PhotoLightbox';
+import { InlineError } from '@/components/common/Alert';
 
 interface JourneyPhotos {
   entries: JourneyEntry[];
@@ -52,7 +53,7 @@ export function JourneyPhotosProvider({ journey, children }: { journey: any; chi
   const [adding, setAdding] = useState<'photo' | 'weight' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<unknown>(null);
   const [voidWeight, { loading: voiding }] = useMutation(VOID_MY_WEIGHT, { refetchQueries: WEIGHT_REFETCH, awaitRefetchQueries: true });
   const [editWeight] = useMutation(EDIT_MY_WEIGHT, { refetchQueries: WEIGHT_REFETCH, awaitRefetchQueries: true });
 
@@ -96,7 +97,7 @@ export function JourneyPhotosProvider({ journey, children }: { journey: any; chi
       announceWeightsChanged();
       setDeleting(null);
     } catch (e: any) {
-      setDeleteError(e?.message ?? 'Couldn’t delete that entry. Please try again.');
+      setDeleteError(e);
     }
   };
 
@@ -147,7 +148,7 @@ export function JourneyPhotosProvider({ journey, children }: { journey: any; chi
             {deleting.fileId ? ' The weight leaves your journey and its photo is erased.' : ' The weight leaves your journey.'}
           </p>
           <p className="text-xs text-slate-400 mt-2">Your care team keeps a note that this weight was recorded and removed. This can’t be undone here.</p>
-          {deleteError && <p className="text-sm text-danger-500 mt-2" role="alert">{deleteError}</p>}
+          <InlineError error={deleteError} className="mt-2" />
           <div className="flex justify-end gap-2 mt-5">
             <button type="button" onClick={() => setDeleting(null)} className="text-sm text-slate-500 hover:bg-slate-100 rounded-xl px-4 py-2.5">Keep it</button>
             <button type="button" onClick={confirmDelete} disabled={voiding} className="text-sm font-semibold text-white bg-danger-500 hover:bg-danger-900 disabled:opacity-50 rounded-xl px-4 py-2.5">{voiding ? 'Deleting…' : 'Delete entry'}</button>

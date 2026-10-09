@@ -22,6 +22,7 @@ import { DoseHistory } from '@/components/doses/DoseHistory';
 import { WeeklySideEffectPrompt } from '@/components/doses/SideEffectTracker';
 import { lastSiteOf, SITE_LABEL, suggestNextSite, type InjectionSite } from '@/lib/injection-sites';
 import '@/styles/dose-calendar.css';
+import { InlineError } from '@/components/common/Alert';
 
 type DoseEvent = {
   id: string;
@@ -126,9 +127,9 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const [site, setSite] = useState<InjectionSite | null>(null);
   const [guide, setGuide] = useState(false);
   const [video, setVideo] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   // Same variables as the page's own query, or the refetch lands under another cache key and the dose on screen goes stale.
-  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR, variables: { fromDays: 60, toDays: 90 } }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
+  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR, variables: { fromDays: 60, toDays: 90 } }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
   const [markSkipped, { loading: skipping }] = useMutation(MARK_DOSE_SKIPPED, opts);
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
@@ -179,7 +180,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
           )}
         </div>
       )}
-      {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-2" />
       {guide && <InjectionGuide onClose={() => setGuide(false)} requiresColdChain={dose.product.requiresColdChain} />}
       {video && <InjectionVideoDialog onClose={() => setVideo(false)} onShowSteps={() => { setVideo(false); setGuide(true); }} />}
 
@@ -285,7 +286,7 @@ export default function DosesPage() {
       <PageHeader title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} />
 
       {loading && <p className="text-sm text-slate-400">Loading…</p>}
-      {error && <p className="text-sm text-danger-500">{error.message}</p>}
+      <InlineError error={error} />
 
       {!loading && doses.length === 0 && (
         <EmptyState

@@ -8,6 +8,7 @@ import { openAuthedDocument } from '@/lib/documents';
 import { hasAccess } from '@/lib/role';
 import { PrescriptionForm, PrescriptionSubmission, Row } from './PrescriptionForm';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const STATUS_STYLE: Record<string, { label: string; border: string; text: string }> = {
   ACTIVE: { label: 'Prescription issued', border: 'border-green-200', text: 'text-green-700' },
@@ -23,11 +24,11 @@ function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: s
 
   const [reasonForChange, setReasonForChange] = useState('');
   const [messageToPatient, setMessageToPatient] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [changeDose, { loading }] = useMutation(CHANGE_DOSE, {
     refetchQueries: [{ query: GET_ORDERS }],
     onCompleted: onDone,
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   const currentItems: Row[] = (rx.items ?? []).map((i: any) => ({
@@ -63,7 +64,7 @@ function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: s
         />
       </label>
 
-      {error && <p className="text-xs text-danger-500">{error}</p>}
+      <InlineError error={error} size="xs" />
 
       <PrescriptionForm
         consultationId={consultationId}
@@ -75,7 +76,7 @@ function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: s
         onCancel={onDone}
         onSubmit={(input: PrescriptionSubmission) => {
           if (!reasonForChange.trim()) return setError('A reason for the change is required');
-          setError('');
+          setError(null);
           changeDose({
             variables: {
               input: {
@@ -102,12 +103,13 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
   const [cancelling, setCancelling] = useState(false);
   const [changingDose, setChangingDose] = useState(false);
   const [reason, setReason] = useState('');
-  const [repeatMessage, setRepeatMessage] = useState('');
+  const [repeatSent, setRepeatSent] = useState(false);
+  const [repeatError, setRepeatError] = useState<unknown>(null);
   const [cancel, { loading, error }] = useMutation(CANCEL_PRESCRIPTION, { onCompleted: () => setCancelling(false) });
   const [orderRepeat, { loading: ordering }] = useMutation(CREATE_REPEAT_ORDER, {
     refetchQueries: [{ query: GET_ORDERS }],
-    onCompleted: () => setRepeatMessage(t('Repeat sent to the pharmacy queue')),
-    onError: (e) => setRepeatMessage(e.message),
+    onCompleted: () => { setRepeatError(null); setRepeatSent(true); },
+    onError: (e) => { setRepeatSent(false); setRepeatError(e); },
   });
   const style = STATUS_STYLE[rx.status] ?? STATUS_STYLE.ACTIVE;
   const isPrescriber = hasAccess(['ADMIN', 'DOCTOR']);
@@ -165,16 +167,17 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
       )}
       {rx.cancelReason && <p className="text-xs text-danger-500">{t('Cancelled:')} {rx.cancelReason}</p>}
       {expired && rx.status === 'ACTIVE' && <p className="text-xs text-danger-500">{t('Expired — a new prescription is needed.')}</p>}
-      {repeatMessage && <p className="text-xs text-gray-600">{repeatMessage}</p>}
+      {repeatSent && <p className="text-xs text-gray-600" role="status">{t('Repeat sent to the pharmacy queue')}</p>}
+      <InlineError error={repeatError} size="xs" />
 
       {!changingDose && (
         <div className="flex gap-3">
-          <button onClick={() => openAuthedDocument(rx.documentUrl)} className="text-xs font-medium text-brand-500 hover:underline">
+          <button onClick={() => openAuthedDocument(rx.documentUrl, t)} className="text-xs font-medium text-brand-500 hover:underline">
             {t('View PDF')}
           </button>
           {canRepeat && (
             <button
-              onClick={() => { setRepeatMessage(''); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
+              onClick={() => { setRepeatSent(false); setRepeatError(null); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
               disabled={ordering}
               className="text-xs font-medium text-brand-500 hover:underline disabled:opacity-50"
             >
@@ -214,7 +217,7 @@ export function PrescriptionCard({ prescription: rx, patientId }: { prescription
             placeholder={t('Reason (recorded and shown to the pharmacy)')}
             className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
-          {error && <p className="text-xs text-danger-500">{error.message}</p>}
+          <InlineError error={error} size="xs" />
           <div className="flex gap-2">
             <button type="submit" disabled={loading} className="text-xs bg-danger-500 text-white rounded px-2.5 py-1 disabled:opacity-50">
               {loading ? t('Cancelling…') : t('Confirm cancel')}

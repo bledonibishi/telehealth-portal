@@ -9,6 +9,7 @@ import { AuthedImage } from '@/components/common/AuthedImage';
 import { Icon } from '@/components/portal/Icon';
 import { CameraCapture } from './CameraCapture';
 import { AVOID_CAPTION, PoseFigure, type PoseView } from './PoseFigure';
+import { InlineError } from '@/components/common/Alert';
 
 type Phase = 'guide' | 'checking' | 'failed' | 'saved' | 'done';
 type Result = { outcome: 'PASS' | 'FAIL' | 'UNCHECKED'; issues: string[]; messages: string[]; canSendForReview: boolean };
@@ -50,7 +51,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraNote, setCameraNote] = useState('');
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<unknown>(null);
   const [fails, setFails] = useState<Record<PoseView, number>>({ FRONT: 0, SIDE: 0 });
   const uploadInput = useRef<HTMLInputElement>(null);
   const captureInput = useRef<HTMLInputElement>(null);
@@ -97,20 +98,20 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
   };
 
   const persist = async (a: Attempt, sendForReview: boolean) => {
-    setProblem('');
+    setProblem(null);
     try {
       await save({ variables: { input: { view, fileId: a.fileId, sendForReview } } });
       setSaved((s) => ({ ...s, [view]: a.fileId }));
       setPhase('saved');
     } catch (err: any) {
-      setProblem(err?.message ?? 'We couldn’t save that photo. Please try again.');
+      setProblem(err);
       setPhase('failed');
     }
   };
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    setProblem('');
+    setProblem(null);
     dropAttempt();
     setPhase('checking');
     let previewUrl = '';
@@ -135,19 +136,19 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
       }
     } catch (err: any) {
       setAttempt(null);
-      setProblem(err?.message ?? 'Something went wrong. Please try again.');
+      setProblem(err);
       setPhase('guide');
     }
   };
 
   const takePhoto = () => {
-    setProblem('');
+    setProblem(null);
     if (cameraNote) captureInput.current?.click(); // the live camera isn't available here: use the phone's own camera app
     else setCameraOpen(true);
   };
   const retake = () => {
     dropAttempt();
-    setProblem('');
+    setProblem(null);
     setPhase('guide');
     takePhoto();
   };
@@ -163,7 +164,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
   const retakeView = (v: PoseView) => {
     setView(v);
     setPhase('guide');
-    setProblem('');
+    setProblem(null);
   };
 
   return (
@@ -206,7 +207,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
           </div>
 
           {cameraNote && <p role="status" className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">{cameraNote}</p>}
-          {problem && <p role="alert" className="mt-4 text-sm bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3">{problem}</p>}
+          <InlineError error={problem} className="mt-4 px-4 py-3" />
 
           <div className="mt-6 space-y-3">
             <button type="button" onClick={takePhoto} className={primary}><Icon name="camera" className="w-4 h-4" /> Take photo</button>
@@ -251,7 +252,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
             </ul>
           </div>
 
-          {problem && <p role="alert" className="mt-4 text-sm bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3">{problem}</p>}
+          <InlineError error={problem} className="mt-4 px-4 py-3" />
 
           <div className="mt-6 space-y-3">
             <button type="button" onClick={retake} className={primary}><Icon name="camera" className="w-4 h-4" /> Retake photo</button>

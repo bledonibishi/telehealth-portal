@@ -15,6 +15,7 @@ import { OnboardingSummary } from './OnboardingSummary';
 import { getToken } from '@/lib/auth';
 import { differenceInYears, formatDistanceToNow } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { ErrorAlert } from '@/components/ui/Alert';
 
 function parseJwtPayload(token: string) {
   try {
@@ -47,14 +48,14 @@ const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0
 
 export function ConsultationDetail({ id }: { id: string }) {
   const { t, timeAgo, fmt } = useI18n();
-  const { data, loading, error } = useQuery(GET_CONSULTATION, { variables: { id } });
+  const { data, loading, error, refetch } = useQuery(GET_CONSULTATION, { variables: { id } });
   const patientId: string | undefined = data?.consultation?.patient?.id;
   // Shared with the decision panel and the side summary through the cache.
   const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId }, skip: !patientId });
   const onboarding = onboardingData?.onboardingSubmission;
 
   if (loading) return <p className="p-6 text-sm text-gray-500">{t('Loading…')}</p>;
-  if (error) return <p className="p-6 text-sm text-danger-500">{error.message}</p>;
+  if (error) return <ErrorAlert error={error} title={t('Could not load this consultation')} onRetry={() => refetch()} className="m-6" />;
 
   const c = data?.consultation;
   if (!c) return null;

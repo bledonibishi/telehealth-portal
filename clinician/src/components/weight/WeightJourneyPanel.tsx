@@ -8,6 +8,7 @@ import {
 import { FEELINGS, kg, kgChange as rawKgChange } from '@/lib/weight';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import ProgressPhotos from './ProgressPhotos';
+import { InlineError } from '@/components/ui/Alert';
 
 const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
@@ -59,7 +60,7 @@ function CorrectionForm({
   requireReason?: boolean;
   fields: { key: string; label: string; initial: string }[];
   saving: boolean;
-  error?: string;
+  error?: unknown;
   onSave: (values: Record<string, number>, reason: string) => void;
   onCancel: () => void;
 }) {
@@ -91,7 +92,7 @@ function CorrectionForm({
         onChange={(e) => setReason(e.target.value)}
         className={`${inputCls} w-full`}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      <InlineError error={error} size="xs" />
       <div className="flex gap-2">
         <button
           disabled={!valid || saving}
@@ -169,7 +170,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
                 { key: 'targetWeightKg', label: t('Target'), initial: String(journey.targetWeightKg ?? '') },
               ]}
               saving={goal.loading}
-              error={goal.error?.message}
+              error={goal.error}
               onCancel={() => setEditingGoal(false)}
               onSave={async (v, reason) => {
                 try {
@@ -213,7 +214,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
                     <CorrectionForm
                       fields={[{ key: 'weightKg', label: t('Weight'), initial: String(e.weightKg) }]}
                       saving={weight.loading}
-                      error={weight.error?.message}
+                      error={weight.error}
                       onCancel={() => setEditingCheckIn(null)}
                       onSave={async (v, reason) => {
                         try {
@@ -252,7 +253,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
   return (
     <div>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Recorded weights · last 12 months')}</p>
-      {error && <p className="text-xs text-red-600">{error.message}</p>}
+      <InlineError error={error} size="xs" />
       {loading && !data && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
       {data && rows.length === 0 && <p className="text-sm text-gray-400">{t('No weights recorded.')}</p>}
       <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -279,7 +280,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
                 requireReason
                 fields={[{ key: 'weightKg', label: t('Correct weight'), initial: String(r.weightKg) }]}
                 saving={corr.loading}
-                error={corr.error?.message}
+                error={corr.error}
                 onCancel={() => setOpen(null)}
                 onSave={async (v, why) => {
                   try { await correct({ variables: { input: { entryId: r.id, weightKg: v.weightKg, reason: why } } }); setOpen(null); } catch { /* shown via corr.error */ }
@@ -289,7 +290,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
             {open?.id === r.id && open?.action === 'void' && (
               <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
                 <input placeholder={t('Reason for voiding (required — kept in the audit log)')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full`} />
-                {vd.error && <p className="text-xs text-red-600">{vd.error.message}</p>}
+                <InlineError error={vd.error} size="xs" />
                 <div className="flex gap-2">
                   <button
                     disabled={!reason.trim() || vd.loading}

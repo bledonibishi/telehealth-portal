@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, MY_CONVERSATION, SEND_MESSAGE } from '../../graphql/operations';
 import { colors } from '../../theme';
+import { ErrorText } from '../../components/ui';
 
 type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
@@ -22,7 +23,7 @@ export function OnboardingChatScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const [content, setContent] = useState<string>(route?.params?.draft ?? '');
   const [me, setMe] = useState<string | null>(null);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<unknown>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export function OnboardingChatScreen({ navigation, route }: any) {
   const send = async () => {
     const text = content.trim();
     if (!text || sending) return;
-    setProblem('');
+    setProblem(null);
     // Consultations come newest first; with none, the server keeps it on the pre-consultation thread.
     const replyTo = consultations[0]?.id;
     try {
@@ -77,7 +78,7 @@ export function OnboardingChatScreen({ navigation, route }: any) {
       setContent('');
       await refetch();
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t send that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -122,7 +123,7 @@ export function OnboardingChatScreen({ navigation, route }: any) {
       />
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {!!problem && <Text style={styles.problem}>{problem}</Text>}
+        <ErrorText error={problem} />
         <View style={styles.inputRow}>
           <TextInput style={styles.input} value={content} onChangeText={setContent} placeholder="Write a message…" multiline maxLength={2000} />
           <Pressable onPress={send} disabled={!content.trim() || sending} style={[styles.send, (!content.trim() || sending) && { opacity: 0.4 }]}>

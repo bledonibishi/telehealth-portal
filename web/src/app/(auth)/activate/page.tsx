@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { ACTIVATE_ACCOUNT } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
+import { ErrorAlert } from '@/components/common/Alert';
+import { ErrorCode, describeError } from '@telehealth/shared-types';
 
 const MIN_LENGTH = 10;
 
@@ -16,7 +18,7 @@ function ActivateForm() {
   const token = useSearchParams().get('token');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [activate, { loading }] = useMutation(ACTIVATE_ACCOUNT, {
     async onCompleted(data) {
@@ -24,12 +26,12 @@ function ActivateForm() {
       await apollo.clearStore();
       router.push('/onboarding');
     },
-    onError: (err) => setError(err.message),
+    onError: (err) => setError(err),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     if (password.length < MIN_LENGTH) return setError(`Use at least ${MIN_LENGTH} characters.`);
     if (password !== confirm) return setError('The two passwords don’t match.');
     activate({ variables: { input: { token, password } } });
@@ -50,16 +52,11 @@ function ActivateForm() {
               <h1 className="text-xl font-semibold text-slate-900 mb-2">Choose your password</h1>
               <p className="text-sm text-slate-500 mb-6">You&rsquo;ll use it to sign in to your patient portal.</p>
 
-              {error && (
-                <div className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">
-                  {error}{' '}
-                  {error.toLowerCase().includes('link') && (
-                    <Link href="/get-started" className="underline">
-                      Get a new link
-                    </Link>
-                  )}
-                </div>
-              )}
+              <ErrorAlert
+                error={error}
+                className="mb-4"
+                action={describeError(error)?.code === ErrorCode.LINK_INVALID_OR_EXPIRED && <Link href="/get-started" className="underline">Get a new link</Link>}
+              />
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

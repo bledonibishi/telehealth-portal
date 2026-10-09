@@ -60,7 +60,7 @@ export function WeightScreen({ navigation }: any) {
   return (
     <Screen title="Weight Journey" subtitle="Your weigh-ins over time." refreshing={loading} onRefresh={() => refetch()}>
       {loading && !journey && <Empty>Loading…</Empty>}
-      {error && !journey && <ErrorText>{error.message}</ErrorText>}
+      {!journey && <ErrorText error={error} />}
       {!loading && !error && !journey && <Card><Empty>The Weight Journey is available on our weight-management programme.</Empty></Card>}
 
       {journey && (

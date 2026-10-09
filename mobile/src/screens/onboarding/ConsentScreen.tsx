@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { ACCEPT_TELEHEALTH_CONSENT, CONSENT_TEXT, MY_TELEHEALTH_CONSENT } from '../../graphql/operations';
+import { ErrorText } from '../../components/ui';
 
 /** For a patient an admin set up: the telehealth consent, accepted by the patient themselves. */
 export function ConsentScreen({ navigation }: any) {
   const { data, loading } = useQuery(CONSENT_TEXT, { variables: { type: 'TELEHEALTH' } });
   const consent = data?.consentText;
   const [agreed, setAgreed] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const [accept, { loading: saving }] = useMutation(ACCEPT_TELEHEALTH_CONSENT, {
     refetchQueries: [{ query: MY_TELEHEALTH_CONSENT }],
     awaitRefetchQueries: true,
     onCompleted: () => navigation.goBack(),
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   if (loading) return <View style={styles.container}><ActivityIndicator /></View>;
@@ -29,11 +30,11 @@ export function ConsentScreen({ navigation }: any) {
         <View style={[styles.box, agreed && styles.boxOn]}>{agreed && <Text style={styles.tick}>✓</Text>}</View>
         <Text style={styles.agreeText}>I understand and agree</Text>
       </TouchableOpacity>
-      {!!error && <Text style={styles.error}>{error}</Text>}
+      <ErrorText error={error} />
       <TouchableOpacity
         style={[styles.next, (!consent || !agreed || saving) && styles.disabled]}
         disabled={!consent || !agreed || saving}
-        onPress={() => { setError(''); accept({ variables: { version: consent.version } }); }}
+        onPress={() => { setError(null); accept({ variables: { version: consent.version } }); }}
       >
         <Text style={styles.nextText}>{saving ? 'Saving…' : 'Continue'}</Text>
       </TouchableOpacity>

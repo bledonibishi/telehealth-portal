@@ -5,6 +5,7 @@ import {
 import { useMutation, useQuery } from '@apollo/client';
 import { CONSENT_TEXT, MY_CONSULTATIONS, MY_PRODUCT_KIND, QUESTIONNAIRE, SUBMIT_INTAKE_QUIZ } from '../../graphql/operations';
 import { ConsultationKind } from '@telehealth/shared-types';
+import { errorMessage } from '@telehealth/shared-types';
 
 type Question = {
   id: string;
@@ -60,7 +61,7 @@ export function IntakeQuizScreen({ navigation, route }: any) {
     onError(e) {
       // Walk back through the questions with earlier answers kept, so the
       // patient can correct what the server rejected.
-      Alert.alert('Please check your answers', e.message);
+      Alert.alert('Please check your answers', errorMessage(e));
       setHistory([]);
       const first = questions[0];
       setDraft(first && !first.options ? (values[first.id] ?? []).join('') : '');

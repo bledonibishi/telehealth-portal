@@ -19,6 +19,7 @@ import HealthAlertsPanel from '@/components/patients/HealthAlertsPanel';
 import { bmiBand, inBmiRange, joinedWithin, type BmiRange, type JoinedRange } from '@/lib/bmi';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
+import { InlineError } from '@/components/ui/Alert';
 
 const KIND_LABEL: Record<string, string> = { HRT: 'HRT', GLP1: 'GLP-1', TRT: 'TRT' };
 
@@ -351,7 +352,7 @@ function Patients() {
         </div>
 
         {loading && <p className="text-sm text-[color:var(--t-dim)]">{t('Loading…')}</p>}
-        {error && <p className="text-sm text-rose-400">{error.message}</p>}
+        <InlineError error={error} />
 
         <div
           className="flex-1 min-h-0 overflow-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-panel)]"

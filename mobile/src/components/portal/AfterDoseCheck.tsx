@@ -45,7 +45,7 @@ export function AfterDoseCheck({ dose, doseName }: { dose: { id: string; takenAt
               </Pressable>
             ))}
           </View>
-          <ErrorText>{error?.message}</ErrorText>
+          <ErrorText error={error} />
         </>
       )}
       <ReportSideEffectSheet visible={reporting} onClose={() => setReporting(false)} />

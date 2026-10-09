@@ -16,6 +16,8 @@ import { Icon, type IconName } from '@/components/team/icons';
 import { ConfirmDialog } from '@/components/team/Modal';
 import { AddMemberDialog, EditMemberDialog, type InviteResult } from '@/components/team/MemberDialogs';
 import { PRESCRIBING_ROLES, ROLES, ROLE_META } from '@/components/team/roles';
+import { InlineError } from '@/components/ui/Alert';
+import { errorMessage } from '@telehealth/shared-types';
 
 type StatusFilter = 'active' | 'deactivated' | 'all';
 type Flash = { tone: 'ok' | 'error'; text: string };
@@ -115,7 +117,7 @@ export default function TeamPage() {
       if (done) setFlash({ tone: 'ok', text: done });
       return result;
     } catch (e) {
-      setFlash({ tone: 'error', text: (e as Error).message });
+      setFlash({ tone: 'error', text: t(errorMessage(e)) });
     } finally {
       setBusyId(null);
       setPending(null);
@@ -221,7 +223,7 @@ export default function TeamPage() {
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-500 p-4" role="alert">{error.message}</p>}
+        <InlineError error={error} className="p-4" />
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">

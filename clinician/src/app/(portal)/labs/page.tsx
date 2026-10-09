@@ -8,6 +8,7 @@ import { FLAGGED_LAB_RESULT_QUEUE, REVIEW_LAB_RESULT, TRT_MONITORING_QUEUE } fro
 import { KIND_LABEL, type TrtMonitoring } from '@/components/labs/labs-format';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
+import { InlineError } from '@/components/ui/Alert';
 
 type TrtRow = { patientName: string; monitoring: TrtMonitoring };
 
@@ -43,7 +44,7 @@ function ReviewButton({ id }: { id: string }) {
       <button disabled={loading} onClick={() => review({ variables: { input: { labResultId: id, reviewNote: note.trim() || undefined } } })} className="text-xs font-medium text-white bg-brand-500 rounded-lg px-2.5 py-1 disabled:opacity-50">
         {t('Done')}
       </button>
-      {error && <span className="text-xs text-danger-500">{error.message}</span>}
+      <InlineError error={error} size="xs" />
     </div>
   );
 }

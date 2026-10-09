@@ -5,21 +5,23 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation } from '@apollo/client';
 import { REQUEST_ACTIVATION_LINK } from '@/graphql/auth';
+import { ErrorAlert } from '@/components/common/Alert';
+import { ErrorCode, describeError } from '@telehealth/shared-types';
 
 function GetStartedForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState(params.get('email') ?? '');
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [requestLink, { loading }] = useMutation(REQUEST_ACTIVATION_LINK, {
     onCompleted: () => setSent(true),
-    onError: (err) => setError(err.message),
+    onError: (err) => setError(err),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     requestLink({ variables: { input: { email: email.trim() } } });
   };
 
@@ -57,17 +59,16 @@ function GetStartedForm() {
                 Enter the email you paid with and we&rsquo;ll send you a link to choose your password.
               </p>
 
-              {error && (
-                <div role="alert" className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">
-                  {error}
-                  {error.includes('password is already set') && (
-                    <span className="mt-2 flex gap-4 font-medium">
-                      <Link href="/login" className="underline">Sign in</Link>
-                      <Link href="/forgot-password" className="underline">Reset password</Link>
-                    </span>
-                  )}
-                </div>
-              )}
+              <ErrorAlert
+                error={error}
+                className="mb-4"
+                action={describeError(error)?.code === ErrorCode.ACCOUNT_ALREADY_ACTIVATED && (
+                  <span className="flex gap-4 font-medium">
+                    <Link href="/login" className="underline">Sign in</Link>
+                    <Link href="/forgot-password" className="underline">Reset password</Link>
+                  </span>
+                )}
+              />
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

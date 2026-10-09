@@ -82,12 +82,12 @@ export function OrdersScreen({ navigation }: any) {
             <CardTitle title="Next supply" subtitle={supply.medication ?? undefined} />
             {supply.refillState === 'REQUESTED' ? <Pill label="✓ Refill requested" tone="good" /> : <Button label="Order next dose early" onPress={() => request().catch(() => undefined)} disabled={supply.refillState !== 'READY'} loading={requesting} />}
             {!!hint && <Text style={styles.hint}>{hint}</Text>}
-            <ErrorText>{requestError?.message}</ErrorText>
+            <ErrorText error={requestError} />
           </Card>
         )}
 
         {loading && !orders.length && <Empty>Loading…</Empty>}
-        {error && !data && <ErrorText>{error.message}</ErrorText>}
+        {!data && <ErrorText error={error} />}
         {!loading && !error && !orders.length && <Card><Empty>Your first supply is being prepared by the pharmacy. It shows here, with tracking, as soon as it is on its way.</Empty></Card>}
 
         <Columns>
@@ -137,8 +137,8 @@ export function OrdersScreen({ navigation }: any) {
 
         <Card>
           <CardTitle title="Payments & invoices" subtitle="What you’ve paid for your treatment." right={<Button small variant="outline" label="💳 Manage" loading={opening} onPress={manage} />} />
-          <ErrorText>{portalError?.message}</ErrorText>
-          {invoiceError && !invoiceData && <ErrorText>{invoiceError.message}</ErrorText>}
+          <ErrorText error={portalError} />
+          {!invoiceData && <ErrorText error={invoiceError} />}
           {invoiceData && invoices.length === 0 && <Empty>Your payments will show here, each with a downloadable invoice.</Empty>}
           {invoices.map((i, idx) => (
             <View key={i.id} style={[styles.invoice, idx > 0 && styles.rowBorder]}>

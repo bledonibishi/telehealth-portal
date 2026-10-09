@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_LEADS } from '@/graphql/leads';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
+import { InlineError } from '@/components/ui/Alert';
 
 const KIND_BADGE: Record<string, string> = {
   HRT:  'bg-violet-100 text-violet-700',
@@ -80,7 +81,7 @@ export default function LeadsPage() {
       </div>
 
       {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
-      {error && <p className="p-6 text-sm text-red-500">{error.message}</p>}
+      <InlineError error={error} className="p-6" />
 
       <div className="overflow-x-auto">
       <table className="w-full text-sm min-w-[640px]">

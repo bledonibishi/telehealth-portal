@@ -7,6 +7,7 @@ import { PRESCRIBING_CHECK, PRESCRIBING_CONTEXT } from '@/graphql/consultations'
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { Select } from '@/components/ui/Select';
 import { NumberStepper } from '@/components/ui/NumberStepper';
+import { ErrorAlert } from '@/components/ui/Alert';
 
 type Strength = { id: string; label: string; packDescription?: string | null; titrationStep?: number | null; defaultQuantity: number };
 type Product = {
@@ -48,7 +49,7 @@ const isComplete = (r: Row) => r.productId && r.strengthId && r.quantity > 0 && 
 
 export function PrescriptionForm({
   consultationId, kind, submitting, onSubmit, onCancel,
-  submitLabel = 'Approve and issue prescription', initialItems, stepUp = false, showDoseContext = false, error = '',
+  submitLabel = 'Approve and issue prescription', initialItems, stepUp = false, showDoseContext = false, error,
 }: {
   consultationId: string;
   kind: 'HRT' | 'GLP1' | 'TRT';
@@ -63,7 +64,8 @@ export function PrescriptionForm({
   // A consultation's first prescription: show the dose paid for and what the proof showed.
   showDoseContext?: boolean;
   // Why the last submit failed, shown right above the buttons where it can't be missed.
-  error?: string;
+  /** What went wrong on submit: an Apollo error, an Error or a message. */
+  error?: unknown;
 }) {
   const { t } = useI18n();
   const { data, loading } = useQuery(PRODUCTS, { variables: { kind } });
@@ -333,11 +335,7 @@ export function PrescriptionForm({
         </div>
       )}
 
-      {error && (
-        <div role="alert" className="bg-danger-50 border border-danger-500 rounded-lg p-3 text-sm text-danger-500">
-          {error}
-        </div>
-      )}
+      <ErrorAlert error={error} />
 
       <div className="flex items-center gap-2 border-t border-gray-100 pt-4">
         <button type="submit" disabled={!canSubmit} className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-5 h-10 text-sm font-medium disabled:opacity-50 transition-colors">

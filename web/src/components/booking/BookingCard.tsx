@@ -5,6 +5,8 @@ import { format } from 'date-fns';
 import { BookingScheduler, useBooking, useReschedule, type Booking } from '@telehealth/booking';
 import { Icon } from '@/components/portal/Icon';
 import { btnOutline } from '@/components/portal/Card';
+import { ErrorAlert } from '@/components/common/Alert';
+import { InlineError } from '@/components/common/Alert';
 
 /** The portal's navy, so the scheduler's buttons match the page around it. */
 const BRAND = '#132f6f';
@@ -18,10 +20,10 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
   const b = useBooking(purpose, referenceId, { onChange });
   const move = useReschedule();
   const moving = !!move.uid;
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
 
   if (b.loading && !b.session) return <div className="h-24 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />;
-  if (b.error) return <p role="alert" className="text-sm text-red-600">{b.error.message}</p>;
+  if (b.error) return <ErrorAlert error={b.error} title="We couldn’t load the available times" />;
   if (!b.session) return <>{fallback}</>;
 
   const cancel = async () => {
@@ -29,7 +31,7 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
     try {
       await b.cancel('Cancelled by the patient');
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t cancel that. Please try again.');
+      setProblem(err);
     }
   };
 
@@ -57,7 +59,7 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
           {c.canReschedule && <button type="button" onClick={() => move.start(c.uid)} className="text-xs font-medium text-ink-600 hover:text-ink-800">Change time</button>}
           <button type="button" onClick={cancel} disabled={b.cancelling} className="text-xs font-medium text-slate-500 hover:text-red-600">{b.cancelling ? 'Cancelling…' : 'Cancel booking'}</button>
         </div>
-        {problem && <p role="alert" className="text-xs text-red-600 mt-2">{problem}</p>}
+        <InlineError error={problem} size="xs" className="mt-2" />
       </div>
     );
   }

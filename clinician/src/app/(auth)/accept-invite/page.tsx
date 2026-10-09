@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMutation } from '@apollo/client';
 import { ACCEPT_CLINICIAN_INVITE } from '@/graphql/auth';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
 
 const MIN = 10;
 const MAX = 72;
@@ -17,12 +18,12 @@ function AcceptInvite() {
   const token = useSearchParams().get('token') ?? '';
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
-  const [problem, setProblem] = useState('');
-  const [accept, { loading, data }] = useMutation(ACCEPT_CLINICIAN_INVITE, { onError: (e) => setProblem(e.message) });
+  const [problem, setProblem] = useState<unknown>(null);
+  const [accept, { loading, data }] = useMutation(ACCEPT_CLINICIAN_INVITE, { onError: (e) => setProblem(e) });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setProblem('');
+    setProblem(null);
     if (password.length < MIN || password.length > MAX) return setProblem(t('Choose a password of {min} to {max} characters.', { min: MIN, max: MAX }));
     if (password !== again) return setProblem(t('The two passwords are different.'));
     accept({ variables: { token, password } });
@@ -42,7 +43,7 @@ function AcceptInvite() {
         ) : (
           <form onSubmit={submit} className="space-y-4">
             <p className="text-sm text-gray-600">{t('An admin added you to the clinic portal. Choose a password to finish. The link works once.')}</p>
-            {problem && <p className="text-sm text-danger-500 bg-danger-50 rounded px-3 py-2" role="alert">{problem}</p>}
+            <InlineError error={problem} className="px-3 py-2" />
             <div>
               <label htmlFor="pw" className="block text-sm font-medium text-gray-700 mb-1">{t('New password')}</label>
               <PasswordInput id="pw"  required autoComplete="new-password" minLength={MIN} maxLength={MAX} value={password} onChange={(e) => setPassword(e.target.value)} className={field} />

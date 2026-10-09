@@ -11,6 +11,7 @@ import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptio
 import { Card, CardHeader } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
+import { InlineError } from '@/components/common/Alert';
 
 const RX_STATUS: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'Active', cls: 'bg-emerald-50 text-emerald-700' },
@@ -26,7 +27,7 @@ export default function DocumentsPage() {
   const { data: reportData } = useQuery(MY_CHECK_IN_REPORTS, { fetchPolicy: 'cache-and-network' });
   const next = useCareStage();
   const [opening, setOpening] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<unknown>(null);
   const prescriptions: any[] = rxData?.myPrescriptions ?? [];
   const labs: any[] = labData?.myLabResults ?? [];
   const reports: any[] = reportData?.myCheckInReports ?? [];
@@ -37,7 +38,7 @@ export default function DocumentsPage() {
     try {
       await openAuthedFile((rx.documentUrl ?? rx.reportUrl)!);
     } catch (err: any) {
-      setProblem(err?.message ?? 'Couldn’t open that document.');
+      setProblem(err);
     } finally {
       setOpening(null);
     }
@@ -75,7 +76,7 @@ export default function DocumentsPage() {
             Your prescriptions appear here once a doctor has issued one. {next.stage !== 'TREATING' && next.stage !== 'LOADING' && <>{next.title}. {next.action && <Link href={next.action.href} className="text-ink-600 underline">{next.action.label}</Link>}</>}
           </p>
         )}
-        {problem && <p role="alert" className="text-sm text-red-600 mb-2">{problem}</p>}
+        <InlineError error={problem} className="mb-2" />
         <ul className="divide-y divide-slate-100">
           {prescriptions.map((rx) => (
             <li key={rx.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">

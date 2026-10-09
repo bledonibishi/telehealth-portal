@@ -23,8 +23,8 @@ function Body({ dose, needsClinician, lastSite, onClose }: { dose: Dose; needsCl
   const [note, setNote] = useState('');
   const [site, setSite] = useState<InjectionSite | null>(null);
   const [guide, setGuide] = useState(false);
-  const [error, setError] = useState('');
-  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR, variables: { fromDays: 60, toDays: 90 } }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e.message) };
+  const [error, setError] = useState<unknown>(null);
+  const opts = { refetchQueries: [{ query: MY_DOSE_CALENDAR, variables: { fromDays: 60, toDays: 90 } }, { query: MY_MISSED_DOSE_STATUS }], onCompleted: onClose, onError: (e: Error) => setError(e) };
   const [markTaken, { loading: taking }] = useMutation(MARK_DOSE_TAKEN, opts);
   const [markSkipped, { loading: skipping }] = useMutation(MARK_DOSE_SKIPPED, opts);
   const [unmark, { loading: undoing }] = useMutation(UNMARK_DOSE, opts);
@@ -62,7 +62,7 @@ function Body({ dose, needsClinician, lastSite, onClose }: { dose: Dose; needsCl
           {dose.status === 'TAKEN' && <Button small variant="soft" label="Save where I injected" disabled={!site} loading={taking} onPress={() => markTaken({ variables: { id: dose.id, injectionSite: site } })} style={{ marginTop: 12 }} />}
         </View>
       )}
-      <ErrorText>{error}</ErrorText>
+      <ErrorText error={error} />
 
       {(dose.status === 'SCHEDULED' || dose.status === 'MISSED') && (
         <View style={{ gap: 10 }}>

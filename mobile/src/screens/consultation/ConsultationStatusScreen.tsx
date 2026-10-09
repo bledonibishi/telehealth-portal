@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import { MY_CONSULTATIONS, MY_TREATMENT_PLAN } from '../../graphql/operations';
 import { careStage } from '../../lib/careStage';
 import { signOut } from '../../lib/session';
+import { ErrorNotice } from '../../components/ErrorNotice';
 
 // The doctor's decision arrives while the app is open: look again this often.
 const POLL_MS = 30_000;
@@ -24,7 +25,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
   React.useEffect(() => navigation.addListener('focus', () => { refetch(); refetchPlan(); }), [navigation, refetch, refetchPlan]);
 
   if (loading && !data) return <ActivityIndicator style={styles.center} />;
-  if (error && !data) return <Text style={styles.error}>{error.message}</Text>;
+  if (error && !data) return <View style={styles.errorBox}><ErrorNotice error={error} title="We couldn’t load your consultation" onRetry={() => refetch()} /></View>;
 
   const consultations = data?.myConsultations ?? [];
   const plan = planData?.myTreatmentPlan;
@@ -124,5 +125,5 @@ const styles = StyleSheet.create({
   rx: { fontSize: 13, color: '#22c55e', marginTop: 4 },
   empty: { textAlign: 'center', color: '#9ca3af', marginTop: 40, fontSize: 14 },
   center: { flex: 1, justifyContent: 'center' },
-  error: { color: '#f43f5e', margin: 16 },
+  errorBox: { padding: 16 },
 });

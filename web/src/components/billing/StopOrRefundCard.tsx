@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { CANCEL_MY_SUBSCRIPTION, MY_OPEN_REFUND_REQUEST, REQUEST_MY_REFUND } from '@/graphql/billing';
+import { InlineError } from '@/components/common/Alert';
 
 /**
  * Two separate asks, kept apart on purpose: stopping stops the next payment (nothing paid is returned); a refund
@@ -32,7 +33,7 @@ export function StopOrRefundCard() {
         ) : (
           <button type="button" onClick={() => setConfirming('stop')} className="mt-2 text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-1.5">Stop my subscription</button>
         )}
-        {stopError && <p role="alert" className="mt-1 text-xs text-red-600">{stopError.message}</p>}
+        <InlineError error={stopError} size="xs" className="mt-1" />
       </div>
 
       <div className="border-t border-slate-100 pt-4">
@@ -49,7 +50,7 @@ export function StopOrRefundCard() {
         ) : (
           <button type="button" onClick={() => setConfirming('refund')} className="mt-2 text-xs font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-1.5">Ask for a refund</button>
         )}
-        {askError && <p role="alert" className="mt-1 text-xs text-red-600">{askError.message}</p>}
+        <InlineError error={askError} size="xs" className="mt-1" />
       </div>
     </div>
   );
