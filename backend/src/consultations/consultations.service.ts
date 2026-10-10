@@ -1,4 +1,6 @@
-import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,7 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
 import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
-import { ConsentType, ConsultationKind, OnboardingStatus, OnboardingStepKey, ProductCategory, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
+import { ClinicianRole, ConsentType, ConsultationKind, OnboardingStatus, OnboardingStepKey, ProductCategory, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
 import { requiredReviewSteps, stepFiles } from '../onboarding/required-steps';
 import { lockPatientIdentity } from '../identity-verification/identity-verification.service';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
@@ -28,6 +30,9 @@ const REVIEWABLE = [
   ConsultationStatus.IN_REVIEW,
   ConsultationStatus.MORE_INFO_REQUESTED,
 ] as const;
+
+// One notification per consultation waiting for review, done once it is picked up or decided.
+const consultationKey = (id: string) => `consult:${id}`;
 
 const RISK_RANK: Record<RiskTag, number> = { [RiskTag.RED]: 0, [RiskTag.ORANGE]: 1, [RiskTag.GREEN]: 2 };
 
@@ -49,6 +54,7 @@ export class ConsultationsService {
     private partner: PartnerOrdersService,
     private proofReview: PrescriptionProofReviewService,
     private dosePricing: DosePricingService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   // A doctor who has claimed a consultation owns the decision; others (bar
@@ -98,6 +104,8 @@ export class ConsultationsService {
       patientId: c.patientId,
       metadata: c.clinicianId && c.clinicianId !== clinicianId ? { takenFrom: c.clinicianId } : undefined,
     });
+    // Picked up: it no longer waits for the rest of the team.
+    await this.notifier?.resolve(consultationKey(consultationId));
     return this.findById(consultationId);
   }
 
@@ -129,10 +137,14 @@ export class ConsultationsService {
   // Best effort: a failed email or message must not undo a clinical decision
   // that is already saved.
   private async notifyPatient(
-    patient: { email: string; firstName: string },
+    patient: { id: string; email: string; firstName: string },
+    consultationId: string,
     headline: string,
     message?: { consultationId: string; clinicianId: string; content?: string },
   ) {
+    // Decided: nobody on the team needs to be told it is waiting any more.
+    await this.notifier?.resolve(consultationKey(consultationId));
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline }, href: '/dashboard' });
     try {
       if (message?.content?.trim()) {
         await this.messaging.send(message.clinicianId, UserRole.CLINICIAN, {
@@ -309,6 +321,13 @@ export class ConsultationsService {
       metadata: { questionnaireVersion: data.questionnaireVersion, redFlags: flags.length },
     });
 
+    await this.notifier?.toStaff(open?.clinicianId ? { clinicianIds: [open.clinicianId] } : { roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+      kind: NotificationKind.CONSULTATION_SUBMITTED,
+      params: { patient: `${consultation.patient.firstName} ${consultation.patient.lastName}` },
+      href: `/consultation/${consultation.id}`,
+      groupKey: consultationKey(consultation.id),
+    });
+
     this.posthog.capture(patientId, 'consultation_submitted', {
       consultation_id: consultation.id,
       consultation_kind: consultation.kind,
@@ -447,7 +466,7 @@ export class ConsultationsService {
       return { ...consultation, prescription };
     });
 
-    await this.notifyPatient(updated.patient, 'Your treatment has been approved');
+    await this.notifyPatient(updated.patient, updated.id, 'Your treatment has been approved');
     const billingNote = await this.billPrescribedDose(clinicianId, updated.patient, c.kind as ConsultationKind, updated.prescription.id);
 
     // The first supply is ready: pass it to the pharmacy partner (a failure is retried later, never undoes the approval).
@@ -517,7 +536,7 @@ export class ConsultationsService {
       );
     });
 
-    await this.notifyPatient(c.patient, 'Your clinician needs you to redo a step', {
+    await this.notifyPatient(c.patient, consultationId, 'Your clinician needs you to redo a step', {
       consultationId,
       clinicianId,
       content: reason,
@@ -571,7 +590,7 @@ export class ConsultationsService {
       return declined;
     });
 
-    await this.notifyPatient(updated.patient, 'An update on your consultation', {
+    await this.notifyPatient(updated.patient, updated.id, 'An update on your consultation', {
       consultationId: updated.id,
       clinicianId,
       content: input.messageToPatient,
@@ -640,7 +659,7 @@ export class ConsultationsService {
       return requested;
     });
 
-    await this.notifyPatient(updated.patient, 'Your clinician has a question', {
+    await this.notifyPatient(updated.patient, consultationId, 'Your clinician has a question', {
       consultationId,
       clinicianId,
       content: message,

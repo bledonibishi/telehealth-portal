@@ -1,4 +1,6 @@
-import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -25,6 +27,7 @@ export class PrescriptionsService {
     private email: EmailService,
     private config: ConfigService,
     private partner: PartnerOrdersService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   async findById(id: string) {
@@ -145,6 +148,7 @@ export class PrescriptionsService {
 
   // Best effort: a failed email or message must not undo a dose change that is already saved.
   private async notifyPatient(patient: { id: string; email: string; firstName: string }, clinicianId: string, message?: string) {
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline: 'Your dose has been updated' }, href: '/dashboard' });
     try {
       if (message?.trim()) {
         const thread = await this.prisma.consultation.findFirst({ where: { patientId: patient.id }, orderBy: { submittedAt: 'desc' } });

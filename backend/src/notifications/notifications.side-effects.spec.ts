@@ -5,8 +5,8 @@ describe('NotificationsService.getCounts — side effects', () => {
   const build = () => {
     const prisma: any = {
       lead: { count: jest.fn().mockResolvedValue(0) },
-      consultation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-    patient: { findMany: jest.fn().mockResolvedValue([]) },
+      consultation: { count: jest.fn().mockResolvedValue(0) },
+    $queryRaw: jest.fn().mockResolvedValue([{ n: 0 }]),
       order: { count: jest.fn().mockResolvedValue(0) },
       sideEffectReport: { count: jest.fn().mockResolvedValue(4) },
     };
@@ -30,8 +30,8 @@ describe('NotificationsService.getCounts — urgent appointments', () => {
   const build = () => {
     const prisma: any = {
       lead: { count: jest.fn().mockResolvedValue(0) },
-      consultation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-    patient: { findMany: jest.fn().mockResolvedValue([]) },
+      consultation: { count: jest.fn().mockResolvedValue(0) },
+    $queryRaw: jest.fn().mockResolvedValue([{ n: 0 }]),
       order: { count: jest.fn().mockResolvedValue(0) },
       appointmentRequest: { count: jest.fn().mockResolvedValue(2) },
     };

@@ -10,15 +10,15 @@ function setup(over: { claimed?: number; refund?: () => Promise<{ ok: boolean; n
       updateMany: jest.fn().mockResolvedValue({ count: over.claimed ?? 1 }),
       update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...rows, ...data })),
     },
-    patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'p-1', email: 'a@x', stripeCustomerId: null, stripeSubscriptionId: 's' }) },
+    patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'p-1', email: 'a@x', stripeCustomerId: null, stripeSubscriptionId: 's' }), findUnique: jest.fn().mockResolvedValue({ firstName: 'A', lastName: 'B' }) },
   };
   const audit = { log: jest.fn() };
   const billing = {
     refundLatestPaymentResult: jest.fn(over.refund ?? (async () => ({ ok: true, note: 'Refunded the latest payment (re_1)' }))),
     cancelAtPeriodEndResult: jest.fn().mockResolvedValue(over.stop ?? { ok: true, note: 'Subscription cancels at the end of the current period' }),
   };
-  const push = { sendToPatient: jest.fn() };
-  return { service: new RefundRequestsService(prisma, audit as any, billing as any, push as any), prisma, audit, billing, push };
+  const notifier = { toPatient: jest.fn(), toStaff: jest.fn(), resolve: jest.fn() };
+  return { service: new RefundRequestsService(prisma, audit as any, billing as any, notifier as any), prisma, audit, billing, notifier };
 }
 
 describe('RefundRequestsService', () => {
@@ -65,10 +65,10 @@ describe('RefundRequestsService', () => {
   });
 
   it('is not an approval when nothing was refunded: it stays open, and the patient is not told it was approved', async () => {
-    const { service, prisma, push } = setup({ refund: async () => ({ ok: false, note: 'Stripe is not configured — update billing by hand' }) });
+    const { service, prisma, notifier } = setup({ refund: async () => ({ ok: false, note: 'Stripe is not configured — update billing by hand' }) });
     await expect(service.decide('admin', 'r-1', true, false)).rejects.toThrow(/Nothing was refunded/);
     expect(prisma.refundRequest.update).toHaveBeenCalledWith({ where: { id: 'r-1' }, data: expect.objectContaining({ status: 'REQUESTED' }) });
-    expect(push.sendToPatient).not.toHaveBeenCalled();
+    expect(notifier.toPatient).not.toHaveBeenCalled();
   });
 
   it('says so when the refund went through but the subscription could not be stopped', async () => {

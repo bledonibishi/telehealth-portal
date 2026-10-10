@@ -10,5 +10,6 @@ export { passwordChangedEmail } from './password-changed';
 export { passwordResetEmail } from './password-reset';
 export { paymentReceiptEmail } from './payment-receipt';
 export { referralRewardEmail } from './referral-reward';
+export { staffAlertEmail } from './staff-alert';
 export { refundEmail } from './refund';
 export { verificationCodeEmail } from './verification-code';

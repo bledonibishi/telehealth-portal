@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OPEN_ALERTS_WHERE } from '../side-effects/side-effects';
 import { DosingService } from '../dosing/dosing.service';
@@ -28,42 +29,36 @@ export class NotificationsService {
     includeSideEffects = false,
     includeAppointments = false,
     includeOrderProblems = false,
-  }: { includeMissedDoses?: boolean; includeShipments?: boolean; includeSideEffects?: boolean; includeAppointments?: boolean; includeOrderProblems?: boolean } = {}) {
+    forClinicianId,
+  }: {
+    includeMissedDoses?: boolean;
+    includeShipments?: boolean;
+    includeSideEffects?: boolean;
+    includeAppointments?: boolean;
+    includeOrderProblems?: boolean;
+    /** Count only what nobody has picked up yet or this clinician has (consultations, patient messages). */
+    forClinicianId?: string;
+  } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [newLeads, pendingConsultations, pendingOrders, consultationsWithMessages, preConsultationThreads, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests] =
+    const [newLeads, pendingConsultations, pendingOrdersAll, patientMessages, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, problems, refundRequests] =
       await Promise.all([
-        // Leads created in the last 24h
-        this.prisma.lead.count({ where: { createdAt: { gte: since24h } } }),
+        // Leads from the last 24h that have not become patients yet
+        this.prisma.lead.count({ where: { createdAt: { gte: since24h }, convertedAt: null } }),
 
         // Consultations awaiting clinical review
         this.prisma.consultation.count({
-          where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } },
+          where: {
+            status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] },
+            ...(forClinicianId ? { OR: [{ clinicianId: null }, { clinicianId: forClinicianId }] } : {}),
+          },
         }),
 
         // Orders waiting for the pharmacy
         this.prisma.order.count({ where: { status: 'PENDING' } }),
 
-        // Find consultations where the last message was from a patient
-        this.prisma.consultation.findMany({
-          where: { messages: { some: {} } },
-          select: {
-            id: true,
-            messages: {
-              orderBy: { sentAt: 'desc' },
-              take: 1,
-              select: { senderRole: true },
-            },
-          },
-        }),
-
-        // Patients without a consultation yet whose last message is theirs
-        this.prisma.patient.findMany({
-          where: { messages: { some: { consultationId: null } } },
-          select: {
-            messages: { where: { consultationId: null }, orderBy: { sentAt: 'desc' }, take: 1, select: { senderRole: true } },
-          },
-        }),
+        // Patients whose last message is theirs: they are waiting for a reply
+        this.countAwaitingReply(forClinicianId),
 
         // GLP-1 patients who may need re-titrating after missed doses
         includeMissedDoses ? this.countMissedDoseAlerts() : 0,
@@ -78,31 +73,50 @@ export class NotificationsService {
         includeAppointments ? this.prisma.appointmentRequest.count({ where: { status: 'REQUESTED', urgency: 'URGENT' } }) : 0,
 
         // Orders that went wrong on the way, or that the pharmacy cannot supply
-        includeOrderProblems ? this.countOrderProblems() : 0,
+        includeOrderProblems ? this.countOrderProblems() : { total: 0, stillPending: 0 },
 
         // Patients asking for their money back
         includeOrderProblems ? this.prisma.refundRequest.count({ where: { status: 'REQUESTED' } }) : 0,
       ]);
 
-    const patientMessages =
-      consultationsWithMessages.filter((c) => c.messages[0]?.senderRole === 'PATIENT').length +
-      preConsultationThreads.filter((p) => p.messages[0]?.senderRole === 'PATIENT').length;
+    // An order that cannot be supplied is still "pending" but is counted as a problem: never as both, or the badge
+    // stays higher than the work there is.
+    const pendingOrders = pendingOrdersAll - problems.stillPending;
+    const orderProblems = problems.total;
 
     return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests };
   }
 
+  /**
+   * One row per patient conversation, counted in the database: the newest message of each patient, kept when the
+   * patient wrote it. With a clinician, only conversations on a consultation nobody has picked up or that is theirs.
+   */
+  private async countAwaitingReply(forClinicianId?: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
+      SELECT count(*)::int AS n FROM (
+        SELECT DISTINCT ON (m.patient_id) m.sender_role, c.clinician_id
+        FROM messages m LEFT JOIN consultations c ON c.id = m.consultation_id
+        ORDER BY m.patient_id, m.sent_at DESC
+      ) latest
+      WHERE latest.sender_role = 'PATIENT'
+      ${forClinicianId ? Prisma.sql`AND (latest.clinician_id IS NULL OR latest.clinician_id = ${forClinicianId})` : Prisma.empty}
+    `);
+    return rows[0]?.n ?? 0;
+  }
+
   /** Open orders whose latest tracking word is a problem, or whose expected date has passed. */
-  private async countOrderProblems() {
+  private async countOrderProblems(): Promise<{ total: number; stillPending: number }> {
     const orders = await this.prisma.order.findMany({
       where: { status: { in: ['PENDING', 'DISPATCHED', 'OUT_FOR_DELIVERY'] } },
       select: { status: true, estimatedDeliveryTo: true, trackingEvents: { orderBy: { occurredAt: 'desc' }, take: 1, select: { status: true } } },
     });
     const now = Date.now();
-    return orders.filter((o) => {
+    const problems = orders.filter((o) => {
       const latest = o.trackingEvents[0]?.status;
       if (latest && ORDER_PROBLEM_STATUSES.includes(latest)) return true;
       return o.status !== 'PENDING' && !!o.estimatedDeliveryTo && o.estimatedDeliveryTo.getTime() + 12 * 3_600_000 < now;
-    }).length;
+    });
+    return { total: problems.length, stillPending: problems.filter((o) => o.status === 'PENDING').length };
   }
 
   private async countMissedDoseAlerts() {

@@ -1,4 +1,6 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
@@ -25,6 +27,7 @@ export class CheckInsService {
     private prisma: PrismaService,
     private email: EmailService,
     config: ConfigService,
+    @Optional() private notifier?: NotifierService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
     this.isProduction = config.get<string>('NODE_ENV') === 'production';
@@ -83,6 +86,7 @@ export class CheckInsService {
       });
 
       const url = this.buildUrl(token)!;
+      await this.notifier?.toPatient(checkIn.patientId, { kind: NotificationKind.CHECK_IN_READY, href: '/dashboard', groupKey: `checkin:${checkIn.id}` });
       await this.email.sendCheckInEmail(checkIn.patient.email, checkIn.patient.firstName, url);
       this.logger.log(`Sent check-in email to ${checkIn.patient.email}`);
     }
@@ -247,6 +251,7 @@ export class CheckInsService {
       },
     });
     if (count === 0) throw new BadRequestException('This check-in has already been completed');
+    await this.notifier?.resolve(`checkin:${checkIn.id}`);
 
     const updated = await this.prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id }, include: { patient: true } });
     return this.toModel(updated);

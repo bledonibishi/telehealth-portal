@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectionSite, Prisma } from '@prisma/client';
@@ -39,6 +41,7 @@ export class DosingService {
     private prisma: PrismaService,
     private email: EmailService,
     config: ConfigService,
+    @Optional() private notifier?: NotifierService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
   }
@@ -331,6 +334,9 @@ export class DosingService {
         data: { reminderSentAt: new Date() },
       });
       if (claim.count === 0) continue; // already claimed/sent, or cancelled since the fetch above
+
+      // The app and the phone are told once, whatever happens to the email (which is retried below when it fails).
+      await this.notifier?.toPatient(event.patientId, { kind: NotificationKind.DOSE_DUE, href: '/doses', groupKey: `dose:${event.id}`, once: true });
 
       try {
         const delivered = await this.email.sendDoseReminderEmail(

@@ -13,6 +13,7 @@ import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptio
 import { StopOrRefundCard } from '@/components/billing/StopOrRefundCard';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
+import { NotificationPreferences } from '@/components/portal/NotificationPreferences';
 import { Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
 
@@ -88,6 +89,11 @@ export default function SettingsPage() {
       <Card>
         <CardHeader title="Stop or refund" subtitle="Stop future payments, or ask the clinic for your money back." />
         <StopOrRefundCard />
+      </Card>
+
+      <Card>
+        <CardHeader title="Notifications" subtitle="Choose what we send to your phone and by email." />
+        <NotificationPreferences />
       </Card>
 
       <Card>

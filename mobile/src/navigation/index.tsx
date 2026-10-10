@@ -24,7 +24,9 @@ import { DoctorScreen } from '../screens/portal/DoctorScreen';
 import { OrdersScreen } from '../screens/portal/OrdersScreen';
 import { SideEffectsScreen } from '../screens/portal/SideEffectsScreen';
 import { ReportsScreen } from '../screens/portal/ReportsScreen';
+import { NotificationsScreen } from '../screens/portal/NotificationsScreen';
 import { MY_PRODUCT_KIND } from '../graphql/portal';
+import { UNREAD_NOTIFICATION_COUNT } from '../graphql/operations';
 import { colors } from '../theme';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { listenForNoticeTaps, registerForPush } from '../lib/push';
@@ -44,6 +46,7 @@ function MoreFlow() {
   return (
     <MoreStack.Navigator screenOptions={{ headerTintColor: colors.ink700, headerShadowVisible: false, headerStyle: { backgroundColor: colors.page } }}>
       <MoreStack.Screen name="MoreHome" component={MoreScreen} options={{ headerShown: false }} />
+      <MoreStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Doctor" component={DoctorScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Orders" component={OrdersScreen} options={{ title: '' }} />
       <MoreStack.Screen name="Account" component={AccountScreen} options={{ title: '' }} />
@@ -67,13 +70,15 @@ function PatientTabs() {
   }, []);
   const { data } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-and-network' });
   const kind: string | null | undefined = data?.myProductKind;
+  const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { pollInterval: 60_000 });
+  const unread: number = unreadData?.unreadNotificationCount ?? 0;
   return (
     <Tab.Navigator sceneContainerStyle={{ backgroundColor: colors.page }} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.ink700, tabBarInactiveTintColor: colors.slate400, tabBarLabelStyle: { fontSize: 11, fontWeight: '600' } }}>
       <Tab.Screen name="Status" component={ConsultationStatusScreen} options={{ title: 'Home', tabBarIcon: icon('🏠') }} />
       {kind === 'GLP1' && <Tab.Screen name="Weight" component={WeightScreen} options={{ tabBarIcon: icon('⚖️') }} />}
       {!!kind && <Tab.Screen name="Injections" component={InjectionsScreen} options={{ title: kind === 'HRT' ? 'Doses' : 'Injections', tabBarIcon: icon('💉') }} />}
       <Tab.Screen name="Messages" component={MessagingScreen} options={{ tabBarIcon: icon('💬') }} />
-      <Tab.Screen name="More" component={MoreFlow} options={{ tabBarIcon: icon('☰') }} />
+      <Tab.Screen name="More" component={MoreFlow} options={{ tabBarIcon: icon('☰'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined }} />
     </Tab.Navigator>
   );
 }

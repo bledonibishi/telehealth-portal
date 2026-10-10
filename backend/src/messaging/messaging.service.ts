@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -6,8 +7,14 @@ import { UserRole } from '../common/enums';
 import { SendMessageInput } from './dto/send-message.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { AuthUser } from '../auth/access-roles';
+import { NotifierService } from '../notifications/notifier.service';
+import { ClinicianRole } from '../common/enums';
 
 const pubSub = new PubSub();
+
+// One notification per conversation and side (see NotifierService groupKey).
+const patientMessageKey = (patientId: string) => `team-msg:${patientId}`;
+const staffMessageKey = (patientId: string) => `patient-msg:${patientId}`;
 
 @Injectable()
 export class MessagingService {
@@ -15,6 +22,7 @@ export class MessagingService {
     private prisma: PrismaService,
     private audit: AuditService,
     private posthog: PostHogService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   // Staff can reach any thread; a patient only threads on their own consultations.
@@ -84,7 +92,37 @@ export class MessagingService {
 
     // The pre-consultation thread has no live channel; both sides poll it.
     if (consultationId) pubSub.publish(`NEW_MESSAGE.${consultationId}`, { newMessage: message });
+    // Never holds up or fails the message itself.
+    void this.notifyOtherSide(patientId, consultationId, senderRole).catch(() => undefined);
     return message;
+  }
+
+  /**
+   * The care team wrote: the patient hears about it (one notification however many messages, until they read them),
+   * and the "waiting for a reply" notifications on the staff side are done. The patient wrote: the clinician on the
+   * consultation hears about it, or the whole clinical team when nobody has picked it up yet.
+   */
+  private async notifyOtherSide(patientId: string, consultationId: string | null, senderRole: UserRole) {
+    if (!this.notifier) return;
+    if (senderRole !== UserRole.PATIENT) {
+      await this.notifier.resolve(staffMessageKey(patientId));
+      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId) });
+      return;
+    }
+    const [patient, consultation] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true } }),
+      consultationId ? this.prisma.consultation.findUnique({ where: { id: consultationId }, select: { clinicianId: true } }) : null,
+    ]);
+    if (!patient) return;
+    await this.notifier.toStaff(
+      consultation?.clinicianId ? { clinicianIds: [consultation.clinicianId] } : { roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR, ClinicianRole.CX_TEAM] },
+      {
+        kind: NotificationKind.PATIENT_MESSAGE,
+        params: { patient: `${patient.firstName} ${patient.lastName}` },
+        href: `/patients?patient=${patientId}&tab=messages`,
+        groupKey: staffMessageKey(patientId),
+      },
+    );
   }
 
   /** Messages a patient sent or received before they had a consultation. */
@@ -99,6 +137,7 @@ export class MessagingService {
       where: { patientId, consultationId: null, readAt: null, senderRole: byPatient ? { not: UserRole.PATIENT } : UserRole.PATIENT },
       data: { readAt: new Date() },
     });
+    if (byPatient) await this.notifier?.resolve(patientMessageKey(patientId));
     return count;
   }
 
@@ -122,6 +161,7 @@ export class MessagingService {
       data: { readAt },
     });
     if (count > 0) pubSub.publish(`MESSAGES_READ.${consultationId}`, { messagesRead: { consultationId, byPatient, readAt } });
+    if (byPatient) await this.notifier?.resolve(patientMessageKey(user.id));
     return count;
   }
 

@@ -17,6 +17,7 @@ import {
   paymentReceiptEmail,
   referralRewardEmail,
   refundEmail,
+  staffAlertEmail,
   verificationCodeEmail,
 } from './templates';
 
@@ -178,6 +179,15 @@ export class EmailService {
       return;
     }
     await this.deliver({ to, kind: 'referral-reward', ...referralRewardEmail({ firstName, amountLabel, autoApplied, rewardsUrl }) });
+  }
+
+  /** Tells a staff member something urgent is waiting. Names no patient (see staffAlertEmail). */
+  async sendStaffAlertEmail(to: string, firstName: string, headline: string, portalUrl: string) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Staff alert email to ${to}: ${headline}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'staff-alert', ...staffAlertEmail({ firstName, headline, portalUrl }) });
   }
 
   /**

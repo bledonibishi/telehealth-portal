@@ -35,3 +35,13 @@ export const money = (cents: number, currency: string) => {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
 };
+
+/** "just now" / "5 min ago" / "3 h ago" / "2 days ago", then the date: for when something happened. */
+export function timeAgo(d: string | Date, now: Date = new Date()): string {
+  const min = Math.floor((now.getTime() - new Date(d).getTime()) / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
+  const days = Math.floor(min / (24 * 60));
+  return days < 7 ? `${days} day${days === 1 ? '' : 's'} ago` : fmtDate(d);
+}

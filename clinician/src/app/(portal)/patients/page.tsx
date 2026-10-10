@@ -190,8 +190,12 @@ function Patients() {
   // The open patient lives in the URL (?patient=<id>), so the "Patients" link in the menu and the
   // browser's Back button both return to the list, and a consultation can link straight to a patient.
   const router = useRouter();
-  const selectedId = useSearchParams().get('patient');
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get('patient');
   const [fullTab, setFullTab] = useState<Tab>('overview');
+  // ?tab=messages opens the profile on that tab (linked from a notification about the patient's message).
+  const linkedTab = searchParams.get('tab') as Tab | null;
+  useEffect(() => { if (selectedId && linkedTab) setFullTab(linkedTab); }, [selectedId, linkedTab]);
   const [creating, setCreating] = useState(false);
   const canCreate = hasAccess(['ADMIN']);
   const isPrescriber = hasAccess(['ADMIN', 'DOCTOR']);

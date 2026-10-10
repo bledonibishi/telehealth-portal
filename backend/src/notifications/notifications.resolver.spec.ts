@@ -4,7 +4,7 @@ const COUNTS = { newLeads: 4, pendingConsultations: 3, patientMessages: 2, pendi
 
 function setup() {
   const service = { getCounts: jest.fn().mockResolvedValue(COUNTS) };
-  return { service, resolver: new NotificationsResolver(service as any) };
+  return { service, resolver: new NotificationsResolver(service as any, {} as any) };
 }
 const user = (clinicianRole: string) => ({ id: 'u', email: 'u@x', role: 'CLINICIAN', clinicianRole }) as any;
 

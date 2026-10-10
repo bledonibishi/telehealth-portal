@@ -123,15 +123,15 @@ describe('OrdersService', () => {
       expect(email.sendOrderUpdateEmail).toHaveBeenCalledWith('p@example.com', 'Emma', 'DELIVERED', expect.anything());
     });
 
-    it('also tells the patient’s phone, in general words, even when email is not set up', async () => {
-      const push = { sendToPatient: jest.fn().mockResolvedValue(undefined) };
-      const phoneOnly = new OrdersService(prisma, audit as any, trtMonitoring as any, partner as any, { get: () => undefined } as any, undefined, undefined, push as any);
+    it('also notifies the patient (app and phone), with nothing personal in it, even when email is not set up', async () => {
+      const notifier = { toPatient: jest.fn().mockResolvedValue(undefined), toStaff: jest.fn(), resolve: jest.fn() };
+      const phoneOnly = new OrdersService(prisma, audit as any, trtMonitoring as any, partner as any, { get: () => undefined } as any, undefined, undefined, notifier as any);
       prisma.order.findUnique.mockResolvedValue(patientOrder({ status: 'DELIVERED' }));
       await phoneOnly.markDelivered('prov-1', 'o-1');
-      expect(push.sendToPatient).toHaveBeenCalledTimes(1);
-      const [, message] = push.sendToPatient.mock.calls[0];
-      expect(message.title).toMatch(/arrived/i);
-      expect(JSON.stringify(message)).not.toMatch(/Emma|p@example|street/i);
+      expect(notifier.toPatient).toHaveBeenCalledTimes(1);
+      const [, notice] = notifier.toPatient.mock.calls[0];
+      expect(notice.kind).toBe('ORDER_DELIVERED');
+      expect(JSON.stringify(notice)).not.toMatch(/Emma|p@example|street/i);
     });
   });
 

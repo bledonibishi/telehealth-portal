@@ -3,8 +3,8 @@ import { NotificationsService } from './notifications.service';
 function makePrisma() {
   return {
     lead: { count: jest.fn().mockResolvedValue(0) },
-    consultation: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-    patient: { findMany: jest.fn().mockResolvedValue([]) },
+    consultation: { count: jest.fn().mockResolvedValue(0) },
+    $queryRaw: jest.fn().mockResolvedValue([{ n: 0 }]),
     order: { count: jest.fn().mockResolvedValue(0) },
   };
 }
@@ -38,5 +38,25 @@ describe('NotificationsService.getCounts — shipments due', () => {
     expect((await service.getCounts()).shipmentsDue).toBe(0);
     expect(dueCount).not.toHaveBeenCalled();
     expect((await service.getCounts({ includeShipments: true })).shipmentsDue).toBe(4);
+  });
+});
+
+describe('NotificationsService.getCounts — order problems', () => {
+  it('does not count an order that cannot be supplied both as pending and as a problem', async () => {
+    const prisma: any = {
+      ...makePrisma(),
+      order: {
+        count: jest.fn().mockResolvedValue(5),
+        findMany: jest.fn().mockResolvedValue([
+          { status: 'PENDING', estimatedDeliveryTo: null, trackingEvents: [{ status: 'CANNOT_FULFIL' }] },
+          { status: 'PENDING', estimatedDeliveryTo: null, trackingEvents: [{ status: 'CANNOT_FULFIL' }] },
+          { status: 'DISPATCHED', estimatedDeliveryTo: null, trackingEvents: [{ status: 'DELIVERY_FAILED' }] },
+        ]),
+      },
+      refundRequest: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const counts = await new NotificationsService(prisma, {} as any, {} as any).getCounts({ includeOrderProblems: true });
+    expect(counts.orderProblems).toBe(3);
+    expect(counts.pendingOrders).toBe(3);
   });
 });

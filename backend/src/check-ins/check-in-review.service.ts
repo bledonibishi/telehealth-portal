@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -44,6 +46,7 @@ export class CheckInReviewService {
     private partner: PartnerOrdersService,
     private dosePricing: DosePricingService,
     private sideEffects: SideEffectsService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   async queue() {
@@ -208,6 +211,7 @@ export class CheckInReviewService {
 
   // Messages live on consultation threads; use the patient's latest one.
   private async notifyPatient(patient: { id: string; email: string; firstName: string }, clinicianId: string, headline: string, message?: string) {
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline }, href: '/dashboard' });
     try {
       if (message?.trim()) {
         const thread = await this.prisma.consultation.findFirst({ where: { patientId: patient.id }, orderBy: { submittedAt: 'desc' } });

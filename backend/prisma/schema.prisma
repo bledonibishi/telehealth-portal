@@ -304,40 +304,75 @@ model Clinician {
   bookings            Booking[]
   enteredLabResults   LabResult[]            @relation("LabResultEnteredBy")
   reviewedLabResults  LabResult[]            @relation("LabResultReviewedBy")
+  notifications       Notification[]
 
   @@map("clinicians")
 }
 
 model Lead {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  firstName       String           @map("first_name")
-  lastName        String           @map("last_name")
-  productKind     ConsultationKind @map("product_kind")
-  quizAnswers     Json             @map("quiz_answers")
-  stripeSessionId String?          @map("stripe_session_id")
+  id                     String           @id @default(cuid())
+  email                  String           @unique
+  firstName              String           @map("first_name")
+  lastName               String           @map("last_name")
+  productKind            ConsultationKind @map("product_kind")
+  quizAnswers            Json             @map("quiz_answers")
+  stripeSessionId        String?          @map("stripe_session_id")
   // The referrer's code this lead arrived with, if any — kept even before a
   // Referral row exists, since LeadsService validates it at creation time.
-  referralCode    String?          @map("referral_code")
+  referralCode           String?          @map("referral_code")
   // Delivery details and whether the referral reward was applied, captured at
   // checkout and copied onto the Patient when the first payment succeeds.
-  checkoutDetails Json?            @map("checkout_details")
+  checkoutDetails        Json?            @map("checkout_details")
   // The medical questionnaire, answered on the website after choosing a treatment and before paying. It becomes the
   // patient's consultation when the first payment succeeds (see ConsultationsService.submitFromLead). The consent
   // they accepted with it is kept here until then, with where it was accepted from.
-  intakeAnswers          Json?     @map("intake_answers")
-  intakeConsentVersion   String?   @map("intake_consent_version")
-  intakeConsentIp        String?   @map("intake_consent_ip")
-  intakeConsentUserAgent String?   @map("intake_consent_user_agent")
-  intakeSavedAt          DateTime? @map("intake_saved_at")
-  convertedAt     DateTime?        @map("converted_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  intakeAnswers          Json?            @map("intake_answers")
+  intakeConsentVersion   String?          @map("intake_consent_version")
+  intakeConsentIp        String?          @map("intake_consent_ip")
+  intakeConsentUserAgent String?          @map("intake_consent_user_agent")
+  intakeSavedAt          DateTime?        @map("intake_saved_at")
+  convertedAt            DateTime?        @map("converted_at")
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   patient  Patient?
   referral Referral?
 
   @@map("leads")
+}
+
+// Something that happened which one person should hear about: a patient (their care team wrote, an order moved) or a
+// staff member (a patient wrote, an urgent request came in). Exactly one of patientId and clinicianId is set. The words
+// are not stored: `kind` and `params` are turned into text by each app (see shared-types notifications.ts), so the
+// clinician portal can show them in its own language. Rows about the same thing share a `groupKey` (e.g. "msg:<patient>"):
+// a new event updates the reader's unread row instead of adding another, and handling the thing (replying, answering
+// the request) marks every row with that key read, for everyone it was sent to.
+model Notification {
+  id          String    @id @default(cuid())
+  patientId   String?   @map("patient_id")
+  clinicianId String?   @map("clinician_id")
+  kind        String
+  params      Json      @default("{}")
+  // Where tapping it leads, as a path inside the reader's app, e.g. "/messages".
+  href        String?
+  groupKey    String?   @map("group_key")
+  // How many events this row stands for (5 messages from one patient are one row saying 5).
+  count       Int       @default(1)
+  readAt      DateTime? @map("read_at")
+  // When we emailed a reminder about it still being unread (once per row).
+  emailedAt   DateTime? @map("emailed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  // When the last event joined this row; the list is ordered by it.
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+
+  patient   Patient?   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinician Clinician? @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, updatedAt])
+  @@index([clinicianId, updatedAt])
+  @@index([groupKey, readAt])
+  @@index([kind, readAt, emailedAt])
+  @@map("notifications")
 }
 
 // A phone a patient is signed in on, so we can tell it when an order moves. One row per Expo push token; a token
@@ -414,6 +449,13 @@ model Patient {
   allergies                String?
   emergencyContactName     String?   @map("emergency_contact_name")
   emergencyContactPhone    String?   @map("emergency_contact_phone")
+  // Which notifications may reach the phone as a push, and whether an unread message is followed up by email. The app
+  // itself always shows everything; treatment decisions and refunds are always pushed (see shared-types notificationCategory).
+  pushMessages             Boolean   @default(true) @map("push_messages")
+  pushOrders               Boolean   @default(true) @map("push_orders")
+  pushReminders            Boolean   @default(true) @map("push_reminders")
+  pushRewards              Boolean   @default(true) @map("push_rewards")
+  emailUnreadMessages      Boolean   @default(true) @map("email_unread_messages")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
@@ -445,6 +487,7 @@ model Patient {
   identityVerifications IdentityVerification[]
   refundRequests        RefundRequest[]
   pushDevices           PushDevice[]
+  notifications         Notification[]
 
   @@map("patients")
 }
@@ -1315,19 +1358,19 @@ model Voucher {
 // A code emailed to someone starting the quiz, and the short-lived proof that they entered it. The quiz needs the proof
 // to save a lead for that email, so nobody can save or change answers under an email they can't read.
 model EmailVerification {
-  id               String    @id @default(cuid())
-  email            String    @unique
-  codeSalt         String?   @map("code_salt")
-  codeHash         String?   @map("code_hash")
-  codeExpiresAt    DateTime? @map("code_expires_at")
-  attempts         Int       @default(0)
-  lastSentAt       DateTime  @map("last_sent_at")
-  sentCount        Int       @default(1) @map("sent_count")
-  sentWindowStart  DateTime  @map("sent_window_start")
-  tokenHash        String?   @map("token_hash")
-  tokenExpiresAt   DateTime? @map("token_expires_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  email           String    @unique
+  codeSalt        String?   @map("code_salt")
+  codeHash        String?   @map("code_hash")
+  codeExpiresAt   DateTime? @map("code_expires_at")
+  attempts        Int       @default(0)
+  lastSentAt      DateTime  @map("last_sent_at")
+  sentCount       Int       @default(1) @map("sent_count")
+  sentWindowStart DateTime  @map("sent_window_start")
+  tokenHash       String?   @map("token_hash")
+  tokenExpiresAt  DateTime? @map("token_expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@map("email_verifications")
 }
