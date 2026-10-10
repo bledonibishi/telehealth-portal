@@ -18,7 +18,7 @@ export function BloodTestsCard() {
   if (!m) return null;
 
   return (
-    <section className={`rounded-2xl border p-5 mb-6 ${m.refillsOnHold ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`} aria-label="Blood tests">
+    <section className={`rounded-lg border p-5 mb-6 ${m.refillsOnHold ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`} aria-label="Blood tests">
       <h2 className="text-xs font-semibold text-brand-700 uppercase tracking-wide">Blood tests</h2>
       {m.refillsOnHold ? (
         <p className="text-sm text-amber-900 mt-2">

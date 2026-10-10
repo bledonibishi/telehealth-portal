@@ -18,15 +18,15 @@ type Alert = {
   patients: { id: string; name: string }[];
 };
 
-// Dark-surface colours: the dot, and a left edge so a red one can be told from an amber one at a glance.
+// A coloured dot, and a thin edge, so a red alert can be told from an amber one at a glance.
 const LEVEL: Record<Alert['level'], { dot: string; edge: string }> = {
-  RED: { dot: '🔴', edge: 'border-l-red-500' },
-  YELLOW: { dot: '🟡', edge: 'border-l-yellow-400' },
-  ORANGE: { dot: '🟠', edge: 'border-l-orange-400' },
+  RED: { dot: 'bg-red-500', edge: 'shadow-[inset_2px_0_0_theme(colors.red.500)]' },
+  YELLOW: { dot: 'bg-yellow-400', edge: 'shadow-[inset_2px_0_0_theme(colors.yellow.400)]' },
+  ORANGE: { dot: 'bg-orange-400', edge: 'shadow-[inset_2px_0_0_theme(colors.orange.400)]' },
 };
 
 /** Alerts shown before the list is collapsed. */
-const SHOWN = 4;
+const SHOWN = 3;
 
 /**
  * What to look at first: a rising weight, a severe side effect, consultations waiting, check-ins overdue,
@@ -60,38 +60,45 @@ export default function HealthAlertsPanel() {
   };
 
   return (
-    <section className="shrink-0 rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-card)]" aria-label={t('Important alerts')}>
-      <h2 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-[color:var(--t-muted)]">{t('Important alerts')} · {alerts.length}</h2>
+    <section className="shrink-0 overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)]" aria-label={t('Important alerts')}>
+      <h2 className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-[color:var(--t-muted)] border-b border-[color:var(--border-subtle)]">
+        {t('Important alerts')}
+        <span className="rounded-full bg-[color:var(--bg-hover)] px-1.5 text-[11px] text-[color:var(--t-body)]">{alerts.length}</span>
+      </h2>
       <ul className="divide-y divide-[color:var(--border-subtle)]">
         {shown.map((a) => {
           const { title, detail } = describe(a);
           const single = a.kind === 'WEIGHT_GAIN' || a.kind === 'SEVERE_SIDE_EFFECT' || a.kind === 'WEIGHT_ENTRY_CHECK';
+          const link = 'text-xs font-medium text-brand-500 hover:underline whitespace-nowrap';
           return (
-            <li key={a.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-l-4 px-4 py-2.5 ${LEVEL[a.level].edge}`}>
-              <span aria-hidden>{LEVEL[a.level].dot}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-[color:var(--t-strong)]">{title}</p>
-                {a.kind === 'PRESCRIPTIONS_EXPIRING' ? (
-                  // Each name opens that patient's record: there is no page that lists prescriptions by when they end.
-                  <p className="text-xs text-[color:var(--t-muted)]">
-                    {a.patients.map((p, i) => (
-                      <span key={p.id}>{i > 0 && ', '}<Link href={`/patients?patient=${p.id}`} className="text-sky-400 hover:underline">{p.name}</Link></span>
-                    ))}
-                    {a.count > a.patients.length && ` +${a.count - a.patients.length}`}
-                  </p>
-                ) : (
-                  <p className="text-xs text-[color:var(--t-muted)] truncate">{detail}</p>
-                )}
-              </div>
-              {single && a.patients[0] && <Link href={`/patients?patient=${a.patients[0].id}`} className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Open record')}</Link>}
-              {a.kind === 'PENDING_REVIEWS' && <Link href="/queue" className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Go to the review queue')}</Link>}
-              {a.kind === 'OVERDUE_CHECK_INS' && <Link href="/check-ins" className="text-xs font-medium text-sky-400 hover:underline whitespace-nowrap">{t('Open check-ins')}</Link>}
+            <li key={a.id} className={`flex items-center gap-3 px-4 py-2 ${LEVEL[a.level].edge}`}>
+              <span className={`h-2 w-2 shrink-0 rounded-full ${LEVEL[a.level].dot}`} aria-hidden />
+              <p className="min-w-0 flex-1 truncate text-[13px]">
+                <span className="font-medium text-[color:var(--t-strong)]">{title}</span>
+                <span className="text-[color:var(--t-muted)]">
+                  {' · '}
+                  {a.kind === 'PRESCRIPTIONS_EXPIRING' ? (
+                    // Each name opens that patient's record: there is no page that lists prescriptions by when they end.
+                    <>
+                      {a.patients.map((p, i) => (
+                        <span key={p.id}>{i > 0 && ', '}<Link href={`/patients?patient=${p.id}`} className="text-brand-500 hover:underline">{p.name}</Link></span>
+                      ))}
+                      {a.count > a.patients.length && ` +${a.count - a.patients.length}`}
+                    </>
+                  ) : (
+                    detail
+                  )}
+                </span>
+              </p>
+              {single && a.patients[0] && <Link href={`/patients?patient=${a.patients[0].id}`} className={link}>{t('Open record')}</Link>}
+              {a.kind === 'PENDING_REVIEWS' && <Link href="/queue" className={link}>{t('Go to the review queue')}</Link>}
+              {a.kind === 'OVERDUE_CHECK_INS' && <Link href="/check-ins" className={link}>{t('Open check-ins')}</Link>}
             </li>
           );
         })}
       </ul>
       {alerts.length > SHOWN && (
-        <button type="button" onClick={() => setAll(!all)} className="w-full border-t border-[color:var(--border-subtle)] px-4 py-2 text-xs text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]">
+        <button type="button" onClick={() => setAll(!all)} className="w-full border-t border-[color:var(--border-subtle)] px-4 py-1.5 text-xs text-[color:var(--t-muted)] hover:text-[color:var(--t-strong)]">
           {all ? t('Show fewer') : t('Show all ({n})', { n: alerts.length })}
         </button>
       )}

@@ -18,6 +18,8 @@ import { AddMemberDialog, EditMemberDialog, type InviteResult } from '@/componen
 import { PRESCRIBING_ROLES, ROLES, ROLE_META } from '@/components/team/roles';
 import { InlineError } from '@/components/ui/Alert';
 import { errorMessage } from '@telehealth/shared-types';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { LoadingState } from '@telehealth/loading';
 
 type StatusFilter = 'active' | 'deactivated' | 'all';
 type Flash = { tone: 'ok' | 'error'; text: string };
@@ -64,7 +66,7 @@ function InviteNotice({ result, onClose }: { result: InviteResult; onClose: () =
     try { await navigator.clipboard.writeText(result.inviteUrl ?? ''); setCopied(true); } catch { /* the link is shown, so it can be selected by hand */ }
   };
   return (
-    <div className={`rounded-xl border p-4 mb-4 flex gap-3 ${result.emailSent ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`} role="status">
+    <div className={`rounded-md border p-4 mb-4 flex gap-3 ${result.emailSent ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`} role="status">
       <Icon name={result.emailSent ? 'envelope' : 'link'} className={`w-5 h-5 shrink-0 mt-0.5 ${result.emailSent ? 'text-green-700' : 'text-amber-700'}`} />
       <div className="min-w-0 flex-1">
         {result.emailSent ? (
@@ -165,7 +167,7 @@ export default function TeamPage() {
 
       {notice && <InviteNotice result={notice} onClose={() => setNotice(null)} />}
       {flash && (
-        <div className={`rounded-xl border px-4 py-3 mb-4 flex items-center gap-2 text-sm ${flash.tone === 'ok' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`} role={flash.tone === 'ok' ? 'status' : 'alert'}>
+        <div className={`rounded-md border px-4 py-3 mb-4 flex items-center gap-2 text-sm ${flash.tone === 'ok' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`} role={flash.tone === 'ok' ? 'status' : 'alert'}>
           <Icon name={flash.tone === 'ok' ? 'check' : 'ban'} className="w-4 h-4 shrink-0" />
           <span className="flex-1">{flash.text}</span>
           <button type="button" onClick={() => setFlash(null)} aria-label={t('Close')} className="w-6 h-6 rounded text-current opacity-60 hover:opacity-100 flex items-center justify-center"><Icon name="close" className="w-3.5 h-3.5" /></button>
@@ -183,7 +185,7 @@ export default function TeamPage() {
               type="button"
               aria-pressed={on}
               onClick={() => setRoleFilter(on ? null : role)}
-              className={`text-left bg-white border rounded-xl p-4 transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${on ? 'border-brand-500 ring-1 ring-brand-500' : 'border-gray-200 hover:border-gray-300'}`}
+              className={`text-left bg-white border rounded-md p-4 transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${on ? 'border-brand-500 ring-1 ring-brand-500' : 'border-gray-200 hover:border-gray-300'}`}
             >
               <div className="flex items-center justify-between">
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${meta.badge}`}>{t(meta.label)}</span>
@@ -195,19 +197,9 @@ export default function TeamPage() {
         })}
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white border border-gray-200 rounded-md">
         <div className="flex flex-wrap items-center gap-3 p-3 border-b border-gray-100">
-          <label className="relative flex-1 min-w-[12rem]">
-            <span className="sr-only">{t('Search by name or email')}</span>
-            <Icon name="search" className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('Search by name or email')}
-              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
+          <SearchInput className="flex-1 min-w-[12rem]" value={query} onChange={setQuery} placeholder={t('Search by name or email')} ariaLabel={t('Search by name or email')} clearLabel={t('Clear search')} />
           <div className="inline-flex rounded-lg bg-gray-100 p-0.5" role="group" aria-label={t('Status')}>
             {statusTabs.map((s) => (
               <button
@@ -315,7 +307,7 @@ export default function TeamPage() {
                   </td>
                 </tr>
               )}
-              {loading && !data && <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">{t('Loading…')}</td></tr>}
+              {loading && !data && <tr><td colSpan={5}><LoadingState label={t('Loading…')} /></td></tr>}
             </tbody>
           </table>
         </div>

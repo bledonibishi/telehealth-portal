@@ -8,6 +8,7 @@ import { SymptomForm } from '@/components/symptoms/SymptomForm';
 import { SymptomChart } from '@/components/symptoms/SymptomChart';
 import { burden, type SymptomAssessment, type SymptomScale } from '@/components/symptoms/types';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const DAY = 86_400_000;
 // Suggest a new entry roughly monthly, in step with the check-ins.
@@ -61,10 +62,10 @@ export default function SymptomsPage() {
       <h1 className="text-2xl font-bold text-ink-900 -mt-1 mb-0.5">Symptoms</h1>
       <p className="text-sm text-slate-500 mb-5">Track how your symptoms change on treatment. Your clinician sees this too.</p>
 
-      {loading && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && <LoadingState variant="inline" label="Loading…" />}
       <InlineError error={error} />
       {!loading && !error && !scale && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-500">
+        <div className="bg-white rounded-lg border border-slate-100 p-8 text-center text-sm text-slate-500">
           Symptom tracking is part of our hormone programmes.
         </div>
       )}
@@ -74,7 +75,7 @@ export default function SymptomsPage() {
           {editing ? (
             <SymptomForm scale={scale} previous={latest} onDone={() => setEditing(false)} />
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
+            <div className="bg-white rounded-lg border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{due ? 'Time for an update' : 'Up to date'}</p>
                 <p className="text-sm text-slate-600 mt-1">
@@ -83,7 +84,7 @@ export default function SymptomsPage() {
                     : 'Start with how you feel today, so we have something to compare against.'}
                 </p>
               </div>
-              <button onClick={() => setEditing(true)} className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl">
+              <button onClick={() => setEditing(true)} className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md">
                 {latest ? 'Update' : 'Start'}
               </button>
             </div>
@@ -91,7 +92,7 @@ export default function SymptomsPage() {
 
           {latest && (
             <>
-              <section className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 mb-6" aria-label="Latest score">
+              <section className="bg-white rounded-lg border border-slate-100 p-5 sm:p-6 mb-6" aria-label="Latest score">
                 <div className="flex items-baseline justify-between mb-5">
                   <div>
                     <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Latest</p>
@@ -115,7 +116,7 @@ export default function SymptomsPage() {
               </section>
 
               {history.length > 1 && (
-                <section className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 mb-6" aria-label="Over time">
+                <section className="bg-white rounded-lg border border-slate-100 p-5 sm:p-6 mb-6" aria-label="Over time">
                   <h2 className="text-xs font-semibold text-ink-800 uppercase tracking-wide mb-4">Over time</h2>
                   <SymptomChart assessments={history} />
                 </section>

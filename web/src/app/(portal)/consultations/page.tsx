@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   SUBMITTED: { label: 'Under review', cls: 'bg-blue-100 text-blue-700' },
@@ -26,16 +27,16 @@ export default function ConsultationsPage() {
         <p className="text-sm text-slate-500 mt-0.5">Track the status of your treatment requests.</p>
       </div>
 
-      {loading && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && <LoadingState variant="inline" label="Loading…" />}
       <InlineError error={error} />
 
       {!loading && consultations.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
+        <div className="bg-white rounded-lg border border-slate-100 p-12 text-center">
           <p className="text-slate-900 text-sm font-medium">Complete your medical questionnaire</p>
           <p className="text-slate-400 text-sm mt-1">A doctor reviews your answers before prescribing.</p>
           <Link
             href="/onboarding/medical-questionnaire?from=dashboard"
-            className="inline-block mt-4 bg-ink-800 hover:bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+            className="inline-block mt-4 bg-ink-800 hover:bg-ink-900 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
           >
             Start questionnaire
           </Link>
@@ -49,7 +50,7 @@ export default function ConsultationsPage() {
           return (
             <div
               key={c.id}
-              className="bg-white rounded-2xl border border-slate-100 p-6 flex items-center justify-between gap-4"
+              className="bg-white rounded-lg border border-slate-100 p-6 flex items-center justify-between gap-4"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-1">

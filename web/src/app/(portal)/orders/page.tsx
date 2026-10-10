@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
+import { SkeletonCard } from '@telehealth/loading';
 
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {
@@ -23,7 +24,12 @@ export default function OrdersPage() {
         <OrderEarlyButton className="flex flex-col items-end" />
       </PageHeader>
 
-      {loading && !orders.length && <Card><p className="text-sm text-slate-400">Loading…</p></Card>}
+      {loading && !orders.length && (
+        <div className="space-y-4">
+          <SkeletonCard lines={4} className="bg-white" label="Loading your orders…" />
+          <SkeletonCard lines={4} className="bg-white" label="Loading your orders…" />
+        </div>
+      )}
       {!loading && !orders.length && (
         <EmptyState icon="cart" what="Your first order" whenTreating={{ text: 'Your first supply is being prepared by the pharmacy. It shows here, with tracking, as soon as it is on its way.', action: { href: '/treatment-plan', label: 'Open My Treatment' } }} />
       )}

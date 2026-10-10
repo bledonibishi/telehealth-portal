@@ -25,6 +25,9 @@
       ],
       "@telehealth/booking": [
         "../packages/booking/src"
+      ],
+      "@telehealth/loading": [
+        "../packages/loading/src"
       ]
     },
     "allowJs": true,

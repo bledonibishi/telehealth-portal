@@ -11,7 +11,7 @@ export function DoseHistory({ doses, showSite }: { doses: Row[]; showSite: boole
   const taken = doses.filter((d) => d.status === 'TAKEN' && d.takenAt).sort((a, b) => b.takenAt!.localeCompare(a.takenAt!));
   if (taken.length === 0) return null;
   return (
-    <section className="bg-white rounded-2xl border border-slate-100 p-5 mt-6" aria-labelledby="dose-history-title">
+    <section className="bg-white rounded-lg border border-slate-100 p-5 mt-6" aria-labelledby="dose-history-title">
       <h2 id="dose-history-title" className="text-base font-semibold text-ink-900 mb-3">Dose history</h2>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

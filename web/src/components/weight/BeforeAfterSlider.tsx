@@ -13,7 +13,7 @@ export function BeforeAfterSlider({ beforeId, afterId, beforeLabel, afterLabel }
   const [pos, setPos] = useState(50);
 
   return (
-    <div className="group relative w-full aspect-[3/4] max-h-[26rem] mx-auto overflow-hidden rounded-2xl bg-slate-100 select-none touch-pan-y">
+    <div className="group relative w-full aspect-[3/4] max-h-[26rem] mx-auto overflow-hidden rounded-lg bg-slate-100 select-none touch-pan-y">
       <AuthedImage fileId={afterId} alt={`After: ${afterLabel}`} className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
         <AuthedImage fileId={beforeId} alt={`Before: ${beforeLabel}`} className="w-full h-full object-cover" />

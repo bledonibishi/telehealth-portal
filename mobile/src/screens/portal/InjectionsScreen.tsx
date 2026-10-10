@@ -12,6 +12,7 @@ import { type Dose, doseName, doseToAskAbout, isRotatingPen, missedDoseAdvice, o
 import { lastSiteOf, SITE_LABEL, suggestNextSite } from '../../lib/injectionSites';
 import { isScoreCheckDue } from '../../lib/sideEffectScores';
 import { colors } from '../../theme';
+import { SkeletonCard } from '../../components/Skeleton';
 
 export function InjectionsScreen({ navigation }: any) {
   const { data, loading, error, refetch } = useQuery(MY_DOSE_CALENDAR, { variables: { fromDays: 60, toDays: 90 }, fetchPolicy: 'cache-and-network' });
@@ -37,7 +38,7 @@ export function InjectionsScreen({ navigation }: any) {
 
   return (
     <Screen title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} refreshing={loading} onRefresh={() => refetch()}>
-      {loading && !data && <Empty>Loading…</Empty>}
+      {loading && !data && <SkeletonCard lines={4} label="Loading your doses…" />}
       {!data && <ErrorText error={error} />}
       {!loading && !error && doses.length === 0 && (
         <Card><Empty>{`${injections ? 'Your injection schedule' : 'Your dose schedule'} isn’t ready yet. Your medicine may have no fixed dose days. Take it as your prescription says.`}</Empty></Card>

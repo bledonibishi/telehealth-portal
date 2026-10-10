@@ -43,7 +43,7 @@ function EntryMenu({ entry, open, onOpen }: { entry: JourneyEntry; open: boolean
         <Icon name="more" className="w-5 h-5" />
       </button>
       {open && (
-        <ul role="menu" className="wj-pop origin-top-right absolute right-0 top-full mt-1 z-20 w-44 bg-white rounded-xl border border-slate-200 shadow-lg py-1">
+        <ul role="menu" className="wj-pop origin-top-right absolute right-0 top-full mt-1 z-20 w-44 bg-white rounded-md border border-slate-200 shadow-lg py-1">
           {items.map((item) => (
             <li key={item.label} role="none">
               <button
@@ -139,7 +139,7 @@ function Photo({ entry, className }: { entry: JourneyEntry; className: string })
   );
 }
 
-const shell = 'wj-rise group relative rounded-xl border border-slate-200 bg-white transition duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)] hover:border-slate-300';
+const shell = 'wj-rise group relative rounded-md border border-slate-200 bg-white transition duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)] hover:border-slate-300';
 
 /** One entry of the journey, as a tile in the grid or a wider row in the list. `order` staggers its arrival. */
 export function WeightCard({ entry, view, order }: { entry: JourneyEntry; view: 'grid' | 'list'; order: number }) {

@@ -13,6 +13,7 @@ import { MY_DOSE_SUMMARY } from '@/graphql/dosing';
 import { MARK_ALL_NOTIFICATIONS_READ, MARK_NOTIFICATIONS_READ, MY_NOTIFICATIONS, UNREAD_NOTIFICATION_COUNT } from '@/graphql/notifications';
 import { InlineError } from '@/components/common/Alert';
 import { Avatar, Icon, type IconName } from './Icon';
+import { LoadingState } from '@telehealth/loading';
 
 type Note = { key: string; title: string; detail: string; href: string; icon: IconName };
 
@@ -157,14 +158,14 @@ function Bell() {
         {unread === 0 && reminders.length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white" aria-hidden />}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white rounded-2xl border border-slate-200 shadow-xl z-40 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-96 max-w-[calc(100vw-2rem)] bg-white rounded-lg border border-slate-200 shadow-xl z-40 overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
             <p className="text-sm font-semibold text-ink-900">Notifications</p>
             {tab === 'inbox' && unread > 0 && <button type="button" onClick={readAll} className="text-xs font-semibold text-ink-700 hover:underline">Mark all as read</button>}
           </div>
           {markError && <InlineError error={markError} className="px-4 pb-2" />}
 
-          <div role="tablist" className="mx-4 mb-2 flex rounded-xl bg-slate-100 p-0.5">
+          <div role="tablist" className="mx-4 mb-2 flex rounded-md bg-slate-100 p-0.5">
             {([['inbox', 'News', unread], ['todo', 'To do', reminders.length]] as const).map(([key, label, n]) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
                 className={`flex-1 flex items-center justify-center gap-1.5 rounded-[10px] py-1.5 text-xs font-semibold transition-colors ${tab === key ? 'bg-white text-ink-900 shadow-sm' : 'text-slate-500 hover:text-ink-900'}`}>
@@ -182,8 +183,8 @@ function Bell() {
                 <ul>
                   {reminders.map((n) => (
                     <li key={n.key}>
-                      <Link href={n.href} onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
-                        <span className="w-9 h-9 shrink-0 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center"><Icon name={n.icon} className="w-[18px] h-[18px]" /></span>
+                      <Link href={n.href} onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-slate-50">
+                        <span className="w-9 h-9 shrink-0 rounded-md bg-amber-50 text-amber-600 flex items-center justify-center"><Icon name={n.icon} className="w-[18px] h-[18px]" /></span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-semibold text-ink-900">{n.title}</span>
                           <span className="block text-xs text-slate-500">{n.detail}</span>
@@ -197,7 +198,7 @@ function Bell() {
             ) : error ? (
               <InlineError error={error} className="px-2 py-3" />
             ) : loading && notices.length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-slate-500">Loading…</p>
+              <LoadingState label="Loading…" className="px-3 !py-8" />
             ) : notices.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-slate-500">You’re all caught up.</p>
             ) : (
@@ -206,8 +207,8 @@ function Bell() {
                   const text = notificationText(n.kind, Object.fromEntries(n.params.map((p) => [p.key, p.value])), n.count);
                   return (
                     <li key={n.id}>
-                      <button type="button" onClick={() => openNotice(n)} className={`relative w-full flex items-start gap-3 text-left rounded-xl px-3 py-2.5 hover:bg-slate-50 ${n.readAt ? '' : 'bg-slate-50'}`}>
-                        <span className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center ${n.readAt ? 'bg-slate-100 text-slate-400' : TONE_TILE[text.tone]}`}>
+                      <button type="button" onClick={() => openNotice(n)} className={`relative w-full flex items-start gap-3 text-left rounded-md px-3 py-2.5 hover:bg-slate-50 ${n.readAt ? '' : 'bg-slate-50'}`}>
+                        <span className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center ${n.readAt ? 'bg-slate-100 text-slate-400' : TONE_TILE[text.tone]}`}>
                           <Icon name={KIND_ICON[n.kind] ?? 'bell'} className="w-[18px] h-[18px]" />
                         </span>
                         <span className="min-w-0 flex-1">
@@ -223,7 +224,7 @@ function Bell() {
               </ul>
             )}
             {tab === 'inbox' && notices.length >= 20 && !olderDone && (
-              <button type="button" onClick={showOlder} className="w-full rounded-xl py-2 text-xs font-semibold text-ink-700 hover:bg-slate-50">Show older</button>
+              <button type="button" onClick={showOlder} className="w-full rounded-md py-2 text-xs font-semibold text-ink-700 hover:bg-slate-50">Show older</button>
             )}
           </div>
         </div>
@@ -239,7 +240,7 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
   const p = data?.myProfile;
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={`w-full flex items-center gap-3 pl-1 pr-3 py-1 border transition-colors ${open ? 'bg-white border-slate-200 rounded-t-3xl border-b-transparent' : 'border-transparent rounded-full hover:bg-slate-100'}`}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={`w-full flex items-center gap-3 pl-1 pr-3 py-1 border transition-colors ${open ? 'bg-white border-slate-200 rounded-t-xl border-b-transparent' : 'border-transparent rounded-full hover:bg-slate-100'}`}>
         <Avatar first={p?.firstName} last={p?.lastName} />
         <span className="hidden sm:block text-left">
           <span className="block text-sm font-semibold text-ink-900 leading-tight">{p ? `${p.firstName} ${p.lastName}` : ' '}</span>
@@ -248,13 +249,13 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
         <Icon name="chevron" className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full -mt-px w-full min-w-[13rem] bg-white rounded-b-3xl border border-slate-200 shadow-xl z-40 p-1.5 pt-0">
+        <div className="absolute right-0 top-full -mt-px w-full min-w-[13rem] bg-white rounded-b-xl border border-slate-200 shadow-xl z-40 p-1.5 pt-0">
           {[{ href: '/profile', label: 'Profile', icon: 'user' as const }, { href: '/settings', label: 'Settings', icon: 'settings' as const }].map((i) => (
-            <Link key={i.href} href={i.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+            <Link key={i.href} href={i.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
               <Icon name={i.icon} className="w-4 h-4" /> {i.label}
             </Link>
           ))}
-          <button type="button" onClick={onSignOut} className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={onSignOut} className="w-full flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
             <Icon name="logout" className="w-4 h-4" /> Sign out
           </button>
         </div>
@@ -266,7 +267,7 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
 export function TopBar({ onMenu, onSignOut }: { onMenu: () => void; onSignOut: () => void }) {
   return (
     <header className="flex items-center justify-end gap-3 px-4 sm:px-6 lg:px-8 py-3">
-      <button type="button" onClick={onMenu} aria-label="Open menu" className="lg:hidden mr-auto w-10 h-10 rounded-xl border border-slate-200 bg-white text-ink-900 flex items-center justify-center">
+      <button type="button" onClick={onMenu} aria-label="Open menu" className="lg:hidden mr-auto w-10 h-10 rounded-md border border-slate-200 bg-white text-ink-900 flex items-center justify-center">
         <Icon name="menu" />
       </button>
       <Bell />

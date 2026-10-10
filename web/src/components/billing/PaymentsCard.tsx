@@ -6,6 +6,7 @@ import { MY_INVOICES } from '@/graphql/billing';
 import { Card, CardHeader } from '@/components/portal/Card';
 import { ManageSubscriptionButton } from './ManageSubscriptionCard';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type Invoice = { id: string; createdAt: string; amountCents: number; currency: string; status: 'PAID' | 'UNPAID'; description?: string | null; cardBrand?: string | null; cardLast4?: string | null; viewUrl?: string | null; pdfUrl?: string | null };
 
@@ -29,7 +30,7 @@ export function PaymentsCard() {
         <ManageSubscriptionButton />
       </CardHeader>
 
-      {loading && !data && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && !data && <LoadingState variant="inline" label="Loading…" />}
       {!data && <InlineError error={error} />}
       {data && invoices.length === 0 && <p className="text-sm text-slate-500">Your payments will show here, each with a downloadable invoice.</p>}
 

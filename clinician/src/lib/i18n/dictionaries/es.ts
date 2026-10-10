@@ -1,5 +1,10 @@
 // English is the source language and its text is the key: wrap UI text in t("...") and add the translation here (and in the other two files). A missing key simply shows the English text.
 export const es: Record<string, string> = {
+  "The patient hasn’t finished onboarding yet": "El paciente aún no ha terminado la incorporación",
+  "Waiting for the patient to redo the steps you asked them to": "Esperando a que el paciente repita los pasos que le pidió",
+  "The identity check hasn’t been approved yet": "La verificación de identidad aún no ha sido aprobada",
+  "Fulfilment": "Logística",
+  "Clinical": "Clínico",
   "(lower is better)": "(menos es mejor)",
   "+ Add another medicine": "+ Añadir otro medicamento",
   "+ New patient": "+ Nuevo paciente",

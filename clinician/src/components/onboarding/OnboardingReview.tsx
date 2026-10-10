@@ -22,7 +22,7 @@ function OnboardingStepSection({
 }) {
   const { t } = useI18n();
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white">
+    <section className="rounded-lg border border-gray-200 bg-white">
       <header className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-100">
         <h4 className="text-sm font-semibold text-gray-900">{t(title)}</h4>
         {savedDecision && !savedDecision.approved && (
@@ -107,14 +107,14 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="bg-gray-50 rounded-md p-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
                     <p className="text-sm text-gray-800">
                       {onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Manual review') : t(onboarding.personaStatus.replace(/_/g, ' '))}
                       {onboarding.identityViaVerifyService && <span className="text-xs text-gray-400"> · {t('verification service')}</span>}
                     </p>
                   </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
+                  <div className="bg-gray-50 rounded-md p-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Photo compliance')}</p>
                     <p className="text-sm text-gray-800">{t(onboarding.photoReviewStatus.replace(/_/g, ' '))}</p>
                   </div>
@@ -128,7 +128,7 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
                       {onboarding.identityViaVerifyService ? (
                         // The ID photos stay in the verification service and are decided there, so there is
                         // nothing for a clinician to approve here: approval waits for that result instead.
-                        <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="bg-gray-50 rounded-md p-3">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('ID document & selfie')}</p>
                           <p className="text-sm text-gray-700">
                             {onboarding.personaStatus === 'VERIFIED'

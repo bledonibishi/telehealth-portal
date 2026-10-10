@@ -16,6 +16,7 @@ import { getToken } from '@/lib/auth';
 import { differenceInYears, formatDistanceToNow } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ErrorAlert } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 function parseJwtPayload(token: string) {
   try {
@@ -54,7 +55,7 @@ export function ConsultationDetail({ id }: { id: string }) {
   const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId }, skip: !patientId });
   const onboarding = onboardingData?.onboardingSubmission;
 
-  if (loading) return <p className="p-6 text-sm text-gray-500">{t('Loading…')}</p>;
+  if (loading) return <LoadingState label={t('Loading…')} className="!py-6" />;
   if (error) return <ErrorAlert error={error} title={t('Could not load this consultation')} onRetry={() => refetch()} className="m-6" />;
 
   const c = data?.consultation;
@@ -119,7 +120,7 @@ export function ConsultationDetail({ id }: { id: string }) {
               )}
 
               {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
-                <section key={section} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <section key={section} className="bg-white rounded-md border border-gray-200 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-gray-900">{t(section)}</h2>
                     <span className="text-xs text-gray-400">{answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}</span>
@@ -140,7 +141,7 @@ export function ConsultationDetail({ id }: { id: string }) {
             </div>
 
             <aside className="space-y-4 min-w-0">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Patient')}</h3>
                 <dl className="space-y-2.5 text-sm">
                   <div>
@@ -160,7 +161,7 @@ export function ConsultationDetail({ id }: { id: string }) {
 
               {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
 
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Prior consultations')}</h3>
                 <PatientHistory patientId={c.patient.id} excludeId={c.id} />
               </div>

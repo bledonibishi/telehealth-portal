@@ -7,6 +7,7 @@ import { CREATE_REPEAT_ORDER, NEXT_SHIPMENT_ALERTS } from '@/graphql/orders';
 import { hasAccess } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const URGENCY: Record<string, { label: string; cls: string }> = {
   OVERDUE: { label: 'Overdue', cls: 'bg-red-50 text-red-700' },
@@ -58,7 +59,7 @@ export default function NextShipments() {
       <p className="px-4 sm:px-6 py-3 text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
         {t('Patients whose next supply is coming up or late. Once the order is placed it is passed to the pharmacy partner.')}
       </p>
-      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && <LoadingState label={t('Loading…')} className="!py-6" />}
       <InlineError error={error} className="p-6" />
       {!loading && alerts.length === 0 && <div className="p-12 text-center text-gray-400 text-sm">{t('No shipments are due soon.')}</div>}
 

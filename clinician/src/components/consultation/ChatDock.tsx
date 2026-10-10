@@ -9,6 +9,7 @@ import { MessageTicks, tickStateOf } from './MessageTicks';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { SkeletonMessages } from '@telehealth/loading';
 
 type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
@@ -185,7 +186,7 @@ export function ChatDock({
           onClick={() => setOpenPersisted(true)}
           aria-label={unread > 0 ? t('Open messages, {n} new', { n: unread }) : t('Open messages')}
           title={t('Messages')}
-          className="relative w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-brand-50 hover:text-brand-900 transition-colors"
+          className="relative w-10 h-10 rounded-md flex items-center justify-center text-gray-500 hover:bg-brand-50 hover:text-brand-900 transition-colors"
         >
           <ChatIcon />
           {unread > 0 && (
@@ -236,7 +237,7 @@ export function ChatDock({
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-gray-50 space-y-1">
-        {loading && <p className="text-xs text-gray-400 text-center">{t('Loading…')}</p>}
+        {loading && <SkeletonMessages label={t('Loading…')} />}
         {!loading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 px-6">
             <ChatIcon className="w-8 h-8 mb-2" />
@@ -259,7 +260,7 @@ export function ChatDock({
                 </span>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-snug whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] rounded-lg px-3.5 py-2 text-sm leading-snug whitespace-pre-wrap break-words ${
                   row.isMe
                     ? 'bg-brand-500 text-white rounded-br-md'
                     : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
@@ -291,7 +292,7 @@ export function ChatDock({
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 border border-gray-300 rounded-xl pl-3 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
+          className="flex items-end gap-2 border border-gray-300 rounded-md pl-3 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
         >
           <textarea
             ref={inputRef}

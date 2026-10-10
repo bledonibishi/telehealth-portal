@@ -13,6 +13,7 @@ import { checkInLine } from '../../lib/weight';
 import { fmtDate, kg } from '../../lib/format';
 import { openLink } from '../../lib/config';
 import { colors } from '../../theme';
+import { SkeletonCard } from '../../components/Skeleton';
 
 const DAY = 86_400_000;
 const SPARK_POINTS = 24;
@@ -59,7 +60,7 @@ export function WeightScreen({ navigation }: any) {
 
   return (
     <Screen title="Weight Journey" subtitle="Your weigh-ins over time." refreshing={loading} onRefresh={() => refetch()}>
-      {loading && !journey && <Empty>Loading…</Empty>}
+      {loading && !journey && <SkeletonCard lines={4} label="Loading your weight journey…" />}
       {!journey && <ErrorText error={error} />}
       {!loading && !error && !journey && <Card><Empty>The Weight Journey is available on our weight-management programme.</Empty></Card>}
 

@@ -12,6 +12,7 @@ import { Card, CardHeader } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
+import { SkeletonText } from '@telehealth/loading';
 
 const RX_STATUS: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'Active', cls: 'bg-emerald-50 text-emerald-700' },
@@ -54,7 +55,7 @@ export default function DocumentsPage() {
           <ul className="divide-y divide-slate-100">
             {reports.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-                <span className="w-10 h-10 rounded-xl bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="heart" /></span>
+                <span className="w-10 h-10 rounded-md bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="heart" /></span>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-ink-900">{r.weekLabel} check-in</p>
                   <p className="text-xs text-slate-500">Reviewed {format(new Date(r.reviewedAt), 'd MMM yyyy')}</p>
@@ -70,7 +71,7 @@ export default function DocumentsPage() {
 
       <Card>
         <CardHeader title="Prescriptions" subtitle="Every prescription you’ve had, newest first." href="/prescription" action="Current prescription →" />
-        {loading && !prescriptions.length && <p className="text-sm text-slate-400">Loading…</p>}
+        {loading && !prescriptions.length && <SkeletonText lines={4} label="Loading your prescriptions…" />}
         {!loading && !prescriptions.length && (
           <p className="text-sm text-slate-500">
             Your prescriptions appear here once a doctor has issued one. {next.stage !== 'TREATING' && next.stage !== 'LOADING' && <>{next.title}. {next.action && <Link href={next.action.href} className="text-ink-600 underline">{next.action.label}</Link>}</>}
@@ -80,7 +81,7 @@ export default function DocumentsPage() {
         <ul className="divide-y divide-slate-100">
           {prescriptions.map((rx) => (
             <li key={rx.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-              <span className="w-10 h-10 rounded-xl bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="rx" /></span>
+              <span className="w-10 h-10 rounded-md bg-ink-50 text-ink-700 flex items-center justify-center flex-shrink-0"><Icon name="rx" /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink-900 truncate">{rx.medication} {rx.dosage}</p>
                 <p className="text-xs text-slate-500">

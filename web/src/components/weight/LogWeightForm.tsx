@@ -91,7 +91,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
     }
   };
 
-  const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
+  const field = 'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
   return (
     <form onSubmit={submit} className="space-y-3" noValidate>
       <div className={compact ? 'grid grid-cols-[7rem_1fr] gap-2' : 'grid sm:grid-cols-[9rem_1fr] gap-3'}>
@@ -135,7 +135,7 @@ export function LogWeightForm({ onSaved, onCancel, compact = false, withPhoto = 
       </div>}
 
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">
+        <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-md">
           {uploading ? 'Uploading photo…' : loading ? 'Saving…' : 'Save weight'}
         </button>
         {onCancel && <button type="button" onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-600">Close</button>}

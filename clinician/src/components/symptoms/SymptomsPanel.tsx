@@ -49,15 +49,15 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
   return (
     <div className="p-5 space-y-5">
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+        <div className="bg-gray-50 rounded-md px-3 py-2.5">
           <p className="text-xs text-gray-400">{t('Latest')}</p>
           <p className="text-sm font-semibold text-gray-900 mt-0.5">{latest.totalScore} · {latest.severity}</p>
         </div>
-        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+        <div className="bg-gray-50 rounded-md px-3 py-2.5">
           <p className="text-xs text-gray-400">{t('First recorded')}</p>
           <p className="text-sm font-semibold text-gray-900 mt-0.5">{first.totalScore} · {first.severity}</p>
         </div>
-        <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+        <div className="bg-gray-50 rounded-md px-3 py-2.5">
           <p className="text-xs text-gray-400">{t('Range')}</p>
           <p className="text-sm font-semibold text-gray-900 mt-0.5">{latest.minScore}–{latest.maxScore} <span className="font-normal text-gray-400">{t('(lower is better)')}</span></p>
         </div>

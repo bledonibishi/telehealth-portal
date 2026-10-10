@@ -20,6 +20,9 @@ import { bmiBand, inBmiRange, joinedWithin, type BmiRange, type JoinedRange } fr
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
 import { InlineError } from '@/components/ui/Alert';
+import { Select } from '@/components/ui/Select';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { SkeletonTableRows } from '@telehealth/loading';
 
 const KIND_LABEL: Record<string, string> = { HRT: 'HRT', GLP1: 'GLP-1', TRT: 'TRT' };
 
@@ -66,7 +69,15 @@ type Quick = 'ACTIVE' | 'REVIEW' | 'TARGET' | 'REPLY';
 type SortKey = 'name' | 'status' | 'medication' | 'bmi' | 'lost' | 'target' | 'progress' | 'lastCheckIn' | 'review';
 type Sort = { key: SortKey; dir: 'asc' | 'desc' };
 
-const selectCls = 'border border-[color:var(--border)] rounded-lg px-2.5 py-1.5 text-xs text-[color:var(--t-body)] bg-[color:var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-sky-500';
+/** One of the filter dropdowns: the app's own Select, so its list looks like every other dropdown and not the browser's. */
+function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="w-40">
+      <Select size="sm" ariaLabel={label} value={value} onChange={onChange} options={options} />
+    </div>
+  );
+}
+
 
 const PATIENT_COLUMNS: CsvColumn<any>[] = [
   { header: 'First name', value: (p) => p.firstName },
@@ -137,13 +148,13 @@ function StatCard({ label, value, hint, tone, active, onClick }: {
       onClick={onClick}
       disabled={!onClick}
       aria-pressed={onClick ? !!active : undefined}
-      className={`text-left rounded-xl border px-4 py-2.5 transition-colors ${
-        active ? 'border-sky-400 bg-[color:var(--bg-hover)]' : 'border-[color:var(--border)] bg-[color:var(--bg-card)]'
-      } ${onClick ? 'hover:border-[color:var(--border-strong)] cursor-pointer' : 'cursor-default'}`}
+      title={hint}
+      className={`flex items-baseline justify-between gap-3 px-4 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${
+        active ? 'bg-[color:var(--bg-hover)] shadow-[inset_0_-2px_0_theme(colors.teal.600)]' : ''
+      } ${onClick ? 'hover:bg-[color:var(--bg-hover)] cursor-pointer' : 'cursor-default'}`}
     >
-      <p className="text-xs text-[color:var(--t-muted)]">{t(label)}</p>
-      <p className={`text-2xl font-semibold ${tone}`}>{value.toLocaleString()}</p>
-      {hint && <p className="text-[10px] text-[color:var(--t-dim)]">{hint}</p>}
+      <span className="text-xs text-[color:var(--t-muted)] truncate">{t(label)}</span>
+      <span className={`text-xl font-semibold tabular-nums ${tone}`}>{value.toLocaleString()}</span>
     </button>
   );
 }
@@ -291,18 +302,19 @@ function Patients() {
   return (
     <div ref={rootRef} className="relative h-full overflow-hidden bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
       {/* List */}
-      <div className={`${selectedId ? 'hidden' : 'flex'} h-full flex-col gap-4 p-3 sm:p-5`}>
-        <div className="flex items-center justify-between shrink-0">
-          <div>
-            <h1 className="text-2xl font-bold tracking-wide text-[color:var(--t-strong)] uppercase">{t('Doctor’s patient dashboard')}</h1>
-            <p className="text-xs text-[color:var(--t-dim)] mt-0.5">{chatMode ? t('Click a patient to chat with them') : t('Hover a patient to preview their profile · click to open it in full')}</p>
+      {/* The whole list scrolls as one page; the root stays a fixed frame so the hover card and chat dock keep their place. */}
+      <div className={`${selectedId ? 'hidden' : 'flex'} h-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:p-5`}>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold tracking-tight text-[color:var(--t-strong)]">{t('Doctor’s patient dashboard')}</h1>
+            <p className="text-xs text-[color:var(--t-dim)]">{chatMode ? t('Click a patient to chat with them') : t('Hover a patient to preview their profile · click to open it in full')}</p>
           </div>
           <div className="flex items-center gap-2">
-            <ExportCsvButton resource="patients" rows={patients} columns={PATIENT_COLUMNS} className="py-2" />
+            <ExportCsvButton resource="patients" rows={patients} columns={PATIENT_COLUMNS} />
             {canCreate && (
               <button
                 onClick={() => setCreating(true)}
-                className="px-3.5 py-2 text-sm font-medium rounded-lg bg-sky-500 text-white hover:bg-sky-400"
+                className="h-9 px-3.5 text-[13px] font-medium rounded-lg bg-brand-500 text-white hover:opacity-90 transition-opacity"
               >
                 {t('+ New patient')}
               </button>
@@ -312,7 +324,7 @@ function Patients() {
 
         {isPrescriber && <HealthAlertsPanel />}
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 shrink-0">
+        <div className="grid grid-cols-2 lg:grid-cols-5 shrink-0 overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)] divide-x divide-y lg:divide-y-0 divide-[color:var(--border-subtle)]">
           <StatCard label="Total patients" value={all.length} hint={t('{n} activated · click to list all', { n: activated })} tone="text-emerald-400" active={!filtersActive && search === ''} onClick={showAll} />
           <StatCard label="Active on treatment" value={counts.active} tone="text-[color:var(--t-strong)]" active={quick === 'ACTIVE'} onClick={() => toggleQuick('ACTIVE')} />
           <StatCard label="Pending consults" value={counts.review} hint={t('Waiting for a clinician')} tone="text-amber-400" active={quick === 'REVIEW'} onClick={() => toggleQuick('REVIEW')} />
@@ -321,32 +333,13 @@ function Patients() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <input
-            type="text"
-            placeholder={t('Search by name or email…')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full sm:w-64 border border-[color:var(--border)] rounded-lg px-3 py-1.5 text-sm bg-[color:var(--bg-card)] text-[color:var(--t-strong)] placeholder:text-[color:var(--t-dim)] focus:outline-none focus:ring-2 focus:ring-sky-500"
-          />
-          <select value={programme} onChange={(e) => setProgramme(e.target.value)} className={selectCls}>
-            {PROGRAMME_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          </select>
-          <select value={medication} onChange={(e) => setMedication(e.target.value)} className={selectCls}>
-            <option value="ALL">{t('All medications')}</option>
-            {medicationOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className={selectCls}>
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          </select>
-          <select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)} className={selectCls}>
-            {REVIEW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          </select>
-          <select value={bmiRange} onChange={(e) => setBmiRange(e.target.value as BmiRange)} className={selectCls} aria-label={t('BMI range')}>
-            {BMI_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          </select>
-          <select value={joined} onChange={(e) => setJoined(e.target.value as JoinedRange)} className={selectCls} aria-label={t('Date joined')}>
-            {JOINED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
-          </select>
+          <SearchInput className="w-full sm:w-56" value={search} onChange={setSearch} placeholder={t('Search by name or email…')} ariaLabel={t('Search by name or email…')} clearLabel={t('Clear search')} />
+          <FilterSelect label={t('Programme')} value={programme} onChange={setProgramme} options={PROGRAMME_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
+          <FilterSelect label={t('Medication')} value={medication} onChange={setMedication} options={[{ value: 'ALL', label: t('All medications') }, ...medicationOptions.map((m) => ({ value: m, label: m }))]} />
+          <FilterSelect label={t('Status')} value={status} onChange={setStatus} options={STATUS_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
+          <FilterSelect label={t('Review status')} value={reviewStatus} onChange={setReviewStatus} options={REVIEW_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
+          <FilterSelect label={t('BMI range')} value={bmiRange} onChange={(v) => setBmiRange(v as BmiRange)} options={BMI_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
+          <FilterSelect label={t('Date joined')} value={joined} onChange={(v) => setJoined(v as JoinedRange)} options={JOINED_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
           {filtersActive && (
             <button onClick={resetFilters} className="text-xs text-[color:var(--t-muted)] hover:text-[color:var(--t-body)] underline">
               {t('Clear filters')}
@@ -355,15 +348,14 @@ function Patients() {
           <span className="text-xs text-[color:var(--t-dim)] ml-auto">{t('{n} of {total}', { n: patients.length, total: all.length })}</span>
         </div>
 
-        {loading && <p className="text-sm text-[color:var(--t-dim)]">{t('Loading…')}</p>}
         <InlineError error={error} />
 
         <div
-          className="flex-1 min-h-0 overflow-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--bg-panel)]"
+          className="shrink-0 overflow-x-auto rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--bg-panel)]"
           onMouseLeave={() => schedule(null, 300)}
         >
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10">
+            <thead>
               <tr className="group bg-[color:var(--bg-card)] border-b border-[color:var(--border)] text-left text-xs text-[color:var(--t-muted)]">
                 <SortHeader label="Patient name" sortKey="name" sort={sort} onSort={handleSort} className="pl-5" />
                 <SortHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
@@ -377,6 +369,7 @@ function Patients() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[color:var(--border-subtle)]">
+              {loading && !data && <SkeletonTableRows rows={8} cols={9} avatar label={t('Loading…')} />}
               {patients.map((patient: any) => {
                 const age = differenceInYears(new Date(), new Date(patient.dateOfBirth));
                 const review = patient.latestConsultationStatus ? REVIEW_STATUS[patient.latestConsultationStatus] : NO_CONSULTATION;

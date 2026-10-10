@@ -7,6 +7,7 @@ import { Button, Card, CardTitle, Columns, Empty, ErrorText, Screen } from '../.
 import { EMERGENCY_NUMBER, openLink, PORTAL_URL, SUPPORT_HOURS } from '../../lib/config';
 import { fmtDate } from '../../lib/format';
 import { colors } from '../../theme';
+import { SkeletonRows } from '../../components/Skeleton';
 
 type Member = { id: string; name: string; role: string; licensingBody?: string | null; primary: boolean; involvement: string; since: string; specialty?: string | null; bio?: string | null; languages: string[] };
 type Appointment = { id: string; reason: string; status: string; scheduledFor?: string | null; createdAt: string; clinicianName?: string | null; clinicianNote?: string | null };
@@ -31,7 +32,7 @@ export function DoctorScreen({ navigation }: any) {
 
   return (
     <Screen title="My Doctor" subtitle="The clinicians looking after your treatment." refreshing={loading} onRefresh={() => refetch()}>
-      {loading && !team.length && <Empty>Loading…</Empty>}
+      {loading && !team.length && <Card><SkeletonRows rows={3} label="Loading your care team…" /></Card>}
       {!data && <ErrorText error={error} />}
       {!loading && !team.length && (
         <Card>

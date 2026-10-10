@@ -4,6 +4,7 @@ import { MessageTicks, tickStateOf } from './MessageTicks';
 import { useEffect, useRef, useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import type { ChatMessage } from './useConsultationChat';
+import { LoadingState } from '@telehealth/loading';
 
 const QUICK_REPLIES = [
   { label: 'I have a question', text: 'Hi, I have a question about my treatment: ' },
@@ -103,7 +104,7 @@ export function ChatDock({
           <button
             type="button"
             onClick={() => onOpenChange(true)}
-            className="fixed z-30 right-4 bottom-20 md:right-24 md:bottom-6 max-w-[320px] text-left bg-white border border-brand-100 shadow-xl rounded-2xl px-4 py-3"
+            className="fixed z-30 right-4 bottom-20 md:right-24 md:bottom-6 max-w-[320px] text-left bg-white border border-brand-100 shadow-xl rounded-lg px-4 py-3"
           >
             <p className="text-xs font-semibold text-brand-700">New message from your care team</p>
             <p className="text-sm text-slate-700 mt-0.5 line-clamp-2">{preview.content}</p>
@@ -116,7 +117,7 @@ export function ChatDock({
             onClick={() => onOpenChange(true)}
             aria-label={unread > 0 ? `Open chat with your care team, ${unread} new` : 'Open chat with your care team'}
             title="Chat with your care team"
-            className="relative w-12 h-12 rounded-2xl bg-brand-50 text-brand-700 flex items-center justify-center hover:bg-brand-100 transition-colors"
+            className="relative w-12 h-12 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center hover:bg-brand-100 transition-colors"
           >
             <ChatIcon />
             <UnreadBadge count={unread} />
@@ -150,7 +151,7 @@ export function ChatDock({
       aria-label="Chat with your care team"
       className={
         floating
-          ? 'fixed inset-0 z-40 md:inset-auto md:right-6 md:bottom-6 md:w-[380px] md:h-[min(600px,calc(100vh-3rem))] md:rounded-2xl md:shadow-2xl md:border border-slate-100 bg-white flex flex-col min-h-0 overflow-hidden'
+          ? 'fixed inset-0 z-40 md:inset-auto md:right-6 md:bottom-6 md:w-[380px] md:h-[min(600px,calc(100vh-3rem))] md:rounded-lg md:shadow-2xl md:border border-slate-100 bg-white flex flex-col min-h-0 overflow-hidden'
           : 'fixed inset-0 z-40 md:static md:inset-auto md:w-[380px] shrink-0 md:border-l border-slate-100 bg-white flex flex-col min-h-0'
       }
     >
@@ -178,7 +179,7 @@ export function ChatDock({
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-slate-50 space-y-1">
-        {loading && <p className="text-xs text-slate-400 text-center">Loading…</p>}
+        {loading && <LoadingState label="Loading…" className="!py-6" />}
         {!loading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6">
             <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mb-3">
@@ -201,7 +202,7 @@ export function ChatDock({
                 <span className="text-[11px] font-medium text-slate-500 mb-1 px-1">{row.isMe ? 'You' : 'Your care team'}</span>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] rounded-lg px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words ${
                   row.isMe
                     ? 'bg-brand-600 text-white rounded-br-md'
                     : 'bg-white text-slate-900 border border-slate-100 shadow-sm rounded-bl-md'
@@ -233,7 +234,7 @@ export function ChatDock({
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 border border-slate-200 rounded-2xl pl-4 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
+          className="flex items-end gap-2 border border-slate-200 rounded-lg pl-4 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
         >
           <textarea
             ref={inputRef}
@@ -255,7 +256,7 @@ export function ChatDock({
             type="submit"
             disabled={sending || !content.trim()}
             aria-label="Send message"
-            className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center disabled:bg-slate-200 disabled:text-slate-400"
+            className="w-9 h-9 rounded-md bg-brand-600 text-white flex items-center justify-center disabled:bg-slate-200 disabled:text-slate-400"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />

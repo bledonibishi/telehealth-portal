@@ -187,7 +187,7 @@ export function CameraCapture({ view, onCapture, onClose, onUnavailable, onFrame
 
         <div className="absolute top-0 inset-x-0 p-4 flex items-start justify-between gap-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <button type="button" onClick={onClose} aria-label="Close camera" className={round}>✕</button>
-          <p className="flex-1 text-center text-[13px] leading-snug text-white bg-black/45 backdrop-blur rounded-xl px-3 py-2 max-w-sm">{GUIDE[view]}</p>
+          <p className="flex-1 text-center text-[13px] leading-snug text-white bg-black/45 backdrop-blur rounded-md px-3 py-2 max-w-sm">{GUIDE[view]}</p>
           <span className="w-11" aria-hidden />
         </div>
 
@@ -196,7 +196,7 @@ export function CameraCapture({ view, onCapture, onClose, onUnavailable, onFrame
             {live.ready ? (
               <p className="inline-flex items-center gap-2 rounded-full bg-emerald-500 text-white text-sm font-semibold px-4 py-2 shadow-lg">✓ Looks good — take the photo</p>
             ) : (
-              <ul className="max-w-sm rounded-2xl bg-amber-400/95 text-amber-950 text-[13px] font-medium px-4 py-2.5 shadow-lg space-y-0.5">
+              <ul className="max-w-sm rounded-lg bg-amber-400/95 text-amber-950 text-[13px] font-medium px-4 py-2.5 shadow-lg space-y-0.5">
                 {live.messages.slice(0, 2).map((m) => <li key={m}>{m}</li>)}
               </ul>
             )}

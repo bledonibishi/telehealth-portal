@@ -21,11 +21,12 @@ import { QuickLinks } from '@/components/home/QuickLinks';
 import { Card, btnPrimary } from '@/components/portal/Card';
 import { useCareStage } from '@/lib/useCareStage';
 import { Icon } from '@/components/portal/Icon';
+import { SkeletonCard, SkeletonTile } from '@telehealth/loading';
 
 /** One line that needs the patient's attention, with the action beside it. */
 function Notice({ tone, title, text, href, action }: { tone: 'warn' | 'info'; title: string; text: string; href: string; action: string }) {
   return (
-    <div className={`rounded-xl border px-4 py-2.5 flex items-center justify-between gap-3 ${tone === 'warn' ? 'bg-orange-50 border-orange-100' : 'bg-white border-slate-200/70'}`}>
+    <div className={`rounded-md border px-4 py-2.5 flex items-center justify-between gap-3 ${tone === 'warn' ? 'bg-orange-50 border-orange-100' : 'bg-white border-slate-200/70'}`}>
       <p className="text-sm min-w-0"><b className="text-ink-900">{title}</b> <span className="text-slate-500">{text}</span></p>
       <Link href={href} className="flex-shrink-0 text-sm font-medium text-ink-600 hover:text-ink-800">{action}</Link>
     </div>
@@ -69,19 +70,27 @@ export default function DashboardPage() {
         {journey && <WeightTrendNotice />}
       </div>
 
-      <ProgressOverview journey={journey} plan={plan} />
+      {planLoading && !plan ? (
+        <section aria-label="Your treatment progress" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6 gap-3 mb-5">
+          {[1, 2, 3, 4, 5].map((k) => <SkeletonTile key={k} className="bg-white" label="Loading…" />)}
+        </section>
+      ) : (
+        <ProgressOverview journey={journey} plan={plan} />
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_18.5rem] gap-5 items-start">
         <div className="grid grid-cols-1 md:grid-cols-6 gap-5 min-w-0 [&>*]:min-w-0">
           <div className="md:col-span-6">
             {plan ? (
               <PlanHero plan={plan} />
+            ) : planLoading || next.stage === 'LOADING' ? (
+              <SkeletonCard lines={5} className="min-h-[16rem] bg-white" label="Loading your treatment plan…" />
             ) : (
               <Card className="h-full">
                 <p className="text-sm font-medium text-ink-700">Current Treatment Plan</p>
-                <h2 className="text-xl font-bold text-ink-900 mt-2">{planLoading || next.stage === 'LOADING' ? 'Loading…' : next.title}</h2>
-                {!planLoading && next.text && <p className="text-sm text-slate-500 mt-2 max-w-xl">{next.text}</p>}
-                {!planLoading && next.action && <Link href={next.action.href} className={`${btnPrimary} mt-4`}>{next.action.label}</Link>}
+                <h2 className="text-xl font-bold text-ink-900 mt-2">{next.title}</h2>
+                {next.text && <p className="text-sm text-slate-500 mt-2 max-w-xl">{next.text}</p>}
+                {next.action && <Link href={next.action.href} className={`${btnPrimary} mt-4`}>{next.action.label}</Link>}
               </Card>
             )}
           </div>

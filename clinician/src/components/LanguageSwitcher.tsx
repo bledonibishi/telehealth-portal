@@ -47,7 +47,7 @@ export default function LanguageSwitcher({ onLight = false }: { onLight?: boolea
         <ul
           role="listbox"
           aria-label={t('Language')}
-          className={`absolute right-0 top-full mt-2 z-50 w-48 p-1.5 rounded-xl border shadow-xl ${
+          className={`absolute right-0 top-full mt-2 z-50 w-48 p-1.5 rounded-md border shadow-xl ${
             onLight ? 'border-gray-200 bg-white shadow-black/10' : 'border-[color:var(--border)] bg-[color:var(--bg-panel)] shadow-black/30'
           }`}
         >

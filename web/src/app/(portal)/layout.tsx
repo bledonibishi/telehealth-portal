@@ -11,6 +11,7 @@ import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
 import { MY_PRODUCT_KIND } from '@/graphql/intake';
+import { LoadingState } from '@telehealth/loading';
 
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
@@ -98,15 +99,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         {onboardingError ? (
           <p className="text-sm text-slate-400">Signing you out…</p>
         ) : (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <LoadingState variant="inline" label="Loading…" />
         )}
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-[#f4f7fc]">
-      <aside className="hidden lg:block w-56 flex-shrink-0">
+    <div className="flex h-screen bg-surface">
+      <aside className="hidden lg:block w-60 flex-shrink-0">
         <Sidebar items={navItems} />
       </aside>
 
@@ -115,7 +116,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="w-72 max-w-[85vw] h-full relative">
             <Sidebar items={navItems} onNavigate={() => setMenuOpen(false)} />
-            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu" className="absolute top-5 right-3 w-9 h-9 rounded-lg text-white/80 hover:bg-white/10 flex items-center justify-center">
+            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu" className="absolute top-5 right-3 w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-900/5 flex items-center justify-center">
               <Icon name="close" />
             </button>
           </div>

@@ -8,6 +8,7 @@ import { CONSENT_TEXT, MY_PRODUCT_KIND, QUESTIONNAIRE, SUBMIT_INTAKE } from '@/g
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { QuestionnaireForm, SubmittedAnswer, clearDraft } from '@/components/intake/QuestionnaireForm';
 import { getToken, parseJwt } from '@/lib/auth';
+import { LoadingState } from '@telehealth/loading';
 
 const PROGRAMMES = [
   { kind: 'HRT', label: 'HRT — menopause symptoms' },
@@ -63,7 +64,7 @@ function MedicalQuestionnaire() {
         A doctor reads every answer before prescribing, so please be as accurate as you can. It takes about 5 minutes.
       </p>
 
-      {kindLoading && <p className="text-sm text-slate-400 mt-6">Loading…</p>}
+      {kindLoading && <LoadingState variant="inline" label="Loading…" className="mt-6" />}
 
       {!kindLoading && !kind && (
         <div className="mt-6 space-y-2">
@@ -72,7 +73,7 @@ function MedicalQuestionnaire() {
             <button
               key={p.kind}
               onClick={() => setChosenKind(p.kind)}
-              className="w-full text-left bg-white rounded-2xl border border-slate-100 px-4 py-3 text-sm hover:bg-slate-50"
+              className="w-full text-left bg-white rounded-lg border border-slate-100 px-4 py-3 text-sm hover:bg-slate-50"
             >
               {p.label}
             </button>
@@ -80,7 +81,7 @@ function MedicalQuestionnaire() {
         </div>
       )}
 
-      {kind && loading && <p className="text-sm text-slate-400 mt-6">Loading questions…</p>}
+      {kind && loading && <LoadingState variant="inline" label="Loading questions…" className="mt-6" />}
 
       {data?.questionnaire && (
         <div className="mt-6">
@@ -93,7 +94,7 @@ function MedicalQuestionnaire() {
             draftKey={draftKey}
             footer={
               consent && (
-                <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+                <fieldset className="bg-white rounded-lg border border-slate-100 p-4">
                   <p className="text-sm font-medium text-slate-900">Before you send this</p>
                   <ul className="mt-2 space-y-1.5 list-disc pl-5 text-xs text-slate-600">
                     {consent.text.split('\n').map((line: string) => <li key={line}>{line}</li>)}

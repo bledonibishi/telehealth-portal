@@ -44,7 +44,7 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
         <p className="text-sm font-semibold text-slate-900">✓ Saved — your doctor can see this</p>
         <p className="text-xs text-slate-500 mt-1">They look at your scores before they approve your next dose or supply.</p>
         {high.length > 0 && <p className="text-xs text-slate-600 mt-2">You marked {high.map((s) => s.label.toLowerCase()).join(' and ')} as strong, so your doctor has been alerted as well.</p>}
-        {saved.advice && <p className="text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-xl p-3 mt-3">{saved.advice}</p>}
+        {saved.advice && <p className="text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-md p-3 mt-3">{saved.advice}</p>}
         <button type="button" onClick={onClose} className="text-sm font-medium text-brand-600 hover:text-brand-700 mt-3">Close</button>
       </div>
     );
@@ -67,11 +67,11 @@ function ScoresForm({ onClose }: { onClose: () => void }) {
       <div>
         <label htmlFor="score-note" className="block text-xs font-medium text-slate-500 mb-1">Anything else? (optional)</label>
         <textarea id="score-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
-          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          className="w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
       <InlineError error={problem} />
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">{loading ? 'Saving…' : 'Save this week'}</button>
+        <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-md">{loading ? 'Saving…' : 'Save this week'}</button>
         <button type="button" onClick={onClose} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>
       </div>
       <p className="text-xs text-slate-400">This isn’t for emergencies. For severe stomach pain, trouble breathing or swelling of the face or throat, call 112.</p>
@@ -94,12 +94,12 @@ export function WeeklySideEffectPrompt() {
   const [open, setOpen] = useState(false);
   if (!glp1 || !data || !isScoreCheckDue(data.mySideEffectScores)) return null;
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex flex-wrap items-center justify-between gap-3" role="region" aria-label="Weekly side-effect check">
+    <div className="bg-white rounded-lg border border-slate-100 p-5 mb-6 flex flex-wrap items-center justify-between gap-3" role="region" aria-label="Weekly side-effect check">
       <div>
         <p className="text-sm font-semibold text-slate-900">How have you been this week?</p>
         <p className="text-xs text-slate-500 mt-0.5">A one-minute check on side effects. Your doctor reads it before approving your next dose.</p>
       </div>
-      <button type="button" onClick={() => setOpen(true)} className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl">Log this week</button>
+      <button type="button" onClick={() => setOpen(true)} className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md">Log this week</button>
       {open && <SideEffectScoresDialog onClose={() => setOpen(false)} />}
     </div>
   );

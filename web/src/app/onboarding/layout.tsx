@@ -40,7 +40,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     router.replace('/login');
   };
 
-  const item = 'w-full flex items-center gap-3 px-3.5 py-3 text-sm text-left text-ink-900 hover:bg-slate-50 rounded-xl';
+  const item = 'w-full flex items-center gap-3 px-3.5 py-3 text-sm text-left text-ink-900 hover:bg-slate-50 rounded-md';
 
   return (
     <OnboardingChatProvider>
@@ -54,7 +54,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
                 Menu <Icon name="chevron" className="w-4 h-4" />
               </button>
               {menu && (
-                <div role="menu" className="absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-200 shadow-xl z-40 p-1.5">
+                <div role="menu" className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-slate-200 shadow-xl z-40 p-1.5">
                   {!onHub && (
                     <Link href="/onboarding" role="menuitem" className={item}>
                       <Icon name="check" className="w-4 h-4 text-emerald-600" />

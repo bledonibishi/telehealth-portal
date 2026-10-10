@@ -12,6 +12,7 @@ import { remindersFrom } from '../../lib/reminders';
 import { SegmentedControl } from '../../components/SegmentedControl';
 import { MY_APPOINTMENTS, MY_SUPPLY_STATUS } from '../../graphql/portal';
 import { timeAgo } from '../../lib/format';
+import { SkeletonRows } from '../../components/Skeleton';
 
 type Notice = { id: string; kind: string; href: string | null; count: number; readAt: string | null; updatedAt: string; params: Array<{ key: string; value: string }> };
 
@@ -102,7 +103,7 @@ export function NotificationsScreen() {
       ) : (
         <Card style={{ padding: 4 }}>
           {notices.length === 0 ? (
-            <View style={{ padding: 14 }}><Empty>{loading ? 'Loading…' : 'Nothing yet. We’ll tell you here when your care team writes or your order moves.'}</Empty></View>
+            <View style={{ padding: 14 }}>{loading ? <SkeletonRows rows={4} label="Loading your notifications…" /> : <Empty>Nothing yet. We’ll tell you here when your care team writes or your order moves.</Empty>}</View>
           ) : (
             notices.map((n) => {
               const text = notificationText(n.kind, Object.fromEntries(n.params.map((p) => [p.key, p.value])), n.count);

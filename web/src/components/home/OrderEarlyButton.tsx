@@ -16,7 +16,7 @@ export function OrderEarlyButton({ variant = 'primary', label = 'Order Next Dose
   return (
     <div className={className}>
       {r.requested ? (
-        <p className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 text-emerald-800 text-sm font-semibold px-4 py-2.5"><Icon name="check" className="w-4 h-4" /> Refill requested</p>
+        <p className="inline-flex items-center gap-2 rounded-md bg-emerald-50 text-emerald-800 text-sm font-semibold px-4 py-2.5"><Icon name="check" className="w-4 h-4" /> Refill requested</p>
       ) : (
         <button type="button" onClick={r.request} disabled={!r.canRequest || r.loading} className={`${cls} ${fullWidth ? 'w-full !px-3' : 'whitespace-nowrap'}`} title={r.hint ?? undefined}>
           <Icon name="truck" className="w-4 h-4" /> {r.loading ? 'Sending…' : label}

@@ -7,6 +7,8 @@ import { GET_LEADS } from '@/graphql/leads';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
 import { InlineError } from '@/components/ui/Alert';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { SkeletonTableRows } from '@telehealth/loading';
 
 const KIND_BADGE: Record<string, string> = {
   HRT:  'bg-violet-100 text-violet-700',
@@ -71,16 +73,9 @@ export default function LeadsPage() {
 
       {/* Search */}
       <div className="px-4 sm:px-6 py-3 bg-white border-b border-gray-100">
-        <input
-          type="text"
-          placeholder={t('Search by name or email…')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-        />
+        <SearchInput className="w-full max-w-xs" value={search} onChange={setSearch} placeholder={t('Search by name or email…')} ariaLabel={t('Search by name or email…')} clearLabel={t('Clear search')} />
       </div>
 
-      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
       <InlineError error={error} className="p-6" />
 
       <div className="overflow-x-auto">
@@ -96,6 +91,7 @@ export default function LeadsPage() {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
+          {loading && !data && <SkeletonTableRows rows={6} cols={6} label={t('Loading…')} />}
           {leads.map((lead: any) => (
             <>
               <tr key={lead.id} className="hover:bg-gray-50">

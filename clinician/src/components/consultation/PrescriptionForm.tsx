@@ -8,6 +8,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { Select } from '@/components/ui/Select';
 import { NumberStepper } from '@/components/ui/NumberStepper';
 import { ErrorAlert } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type Strength = { id: string; label: string; packDescription?: string | null; titrationStep?: number | null; defaultQuantity: number };
 type Product = {
@@ -180,7 +181,7 @@ export function PrescriptionForm({
     });
   };
 
-  if (loading) return <p className="text-sm text-gray-500">{t('Loading medicines…')}</p>;
+  if (loading) return <LoadingState variant="inline" label={t('Loading medicines…')} />;
   if (!products.length) return <p className="text-sm text-danger-500">{t('No {kind} medicines are available to prescribe. An admin needs to add them to the catalog.', { kind })}</p>;
 
   return (
@@ -192,7 +193,7 @@ export function PrescriptionForm({
         const strength = product?.strengths.find((s) => s.id === row.strengthId);
         const chosenElsewhere = new Set(rows.filter((_, j) => j !== i).map((r) => r.productId));
         return (
-          <div key={i} className="border border-gray-200 rounded-xl bg-gray-50 p-4 space-y-4">
+          <div key={i} className="border border-gray-200 rounded-md bg-gray-50 p-4 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{t('Medicine {n}', { n: i + 1 })}</span>

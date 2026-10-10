@@ -13,6 +13,7 @@ import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
 import SideEffectSummary from '@/components/checkins/SideEffectSummary';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState, SkeletonList } from '@telehealth/loading';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
 
@@ -150,7 +151,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
       {holdForSideEffects && (
         <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3">
           {seLoading ? (
-            <p className="text-sm text-gray-500">{t('Loading the side-effect summary…')}</p>
+            <LoadingState variant="inline" label={t('Loading the side-effect summary…')} />
           ) : (
             <label className="flex items-start gap-2 text-sm text-gray-900 cursor-pointer">
               <input type="checkbox" checked={seReviewed} onChange={(e) => setSeReviewed(e.target.checked)} className="mt-0.5" />
@@ -173,7 +174,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
             onSubmit={(rxInput) => submit(rxInput)}
           />
         ) : (
-          <p className="text-xs text-gray-500">{t('Loading the patient’s consultation…')}</p>
+          <LoadingState variant="inline" label={t('Loading the patient’s consultation…')} />
         )
       )}
 
@@ -206,7 +207,7 @@ export default function CheckInsPage() {
         </div>
         <SideEffectAlerts />
         <MissedDoseAlerts />
-        {loading && <p className="p-5 text-sm text-gray-400">{t('Loading…')}</p>}
+        {loading && <div className="p-5"><SkeletonList rows={4} label={t('Loading…')} /></div>}
         <InlineError error={error} className="p-5" />
         <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
           {queue.map((c) => {
