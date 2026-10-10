@@ -35,6 +35,11 @@ function Preferences() {
     save({
       variables: { input: { [key]: value } },
       optimisticResponse: { updateMyNotificationPreferences: { __typename: 'NotificationPreferencesModel', ...prefs, [key]: value } },
+      // The result has no id, so it is written into the query the switches read from; otherwise they would jump back to
+      // the old value after a save. A failed save rolls the switch back and the error shows below.
+      update: (cache, { data: saved }) => {
+        if (saved) cache.writeQuery({ query: MY_NOTIFICATION_PREFERENCES, data: { myNotificationPreferences: saved.updateMyNotificationPreferences } });
+      },
     }).catch(() => undefined);
   return (
     <Card style={{ padding: 4, marginTop: 14 }}>

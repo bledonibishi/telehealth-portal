@@ -173,6 +173,19 @@ export class EmailService {
     await this.deliver({ to, kind: 'consultation-update', ...consultationUpdateEmail({ firstName, headline, portalUrl }) });
   }
 
+  /**
+   * The one nudge for a message from the care team still unread. Resolves true only once the provider has accepted it,
+   * so the caller can try again later when it has not (including when no provider is configured).
+   */
+  async sendUnreadMessageEmail(to: string, firstName: string, messagesUrl: string): Promise<boolean> {
+    const headline = 'You have an unread message from your care team';
+    if (!this.resend) {
+      this.logger.log(`[DEV] Unread message email to ${to}: ${headline}`);
+      return false;
+    }
+    return !(await this.deliver({ to, kind: 'unread-message', ...consultationUpdateEmail({ firstName, headline, portalUrl: messagesUrl }) }));
+  }
+
   async sendReferralRewardEmail(to: string, firstName: string, amountLabel: string, autoApplied: boolean, rewardsUrl?: string) {
     if (!this.resend) {
       this.logger.log(`[DEV] Referral reward email to ${to}: ${amountLabel} (autoApplied=${autoApplied})`);

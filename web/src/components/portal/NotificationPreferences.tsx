@@ -29,6 +29,11 @@ export function NotificationPreferences() {
     save({
       variables: { input: { [key]: next } },
       optimisticResponse: { updateMyNotificationPreferences: { __typename: 'NotificationPreferencesModel', ...prefs, [key]: next } },
+      // The result has no id, so it is written into the query the switches read from; otherwise they would keep showing
+      // the old value after a save, and the next click would send the same value again. A failed save rolls the switch back.
+      update: (cache, { data: saved }) => {
+        if (saved) cache.writeQuery({ query: MY_NOTIFICATION_PREFERENCES, data: { myNotificationPreferences: saved.updateMyNotificationPreferences } });
+      },
     }).catch(() => undefined);
   };
 

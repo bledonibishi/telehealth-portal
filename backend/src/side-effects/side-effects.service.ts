@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { NotificationKind } from '@telehealth/shared-types';
 import { NotifierService } from '../notifications/notifier.service';
 import { ClinicianRole, ConsultationStatus, PrescriptionStatus, UserRole } from '../common/enums';
@@ -16,6 +16,8 @@ const sideEffectKey = (patientId: string) => `sidefx:${patientId}`;
 
 @Injectable()
 export class SideEffectsService {
+  private readonly logger = new Logger(SideEffectsService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -56,7 +58,7 @@ export class SideEffectsService {
       );
       return created;
     });
-    await this.alertDoctors(patientId, input.severity).catch(() => undefined);
+    await this.alertDoctors(patientId, input.severity).catch((err) => this.logger.error(`Alerting doctors about side effects of patient ${patientId} failed: ${err?.message}`, err?.stack));
     return this.toModel(row, adviceFor(input.severity));
   }
 
@@ -114,7 +116,7 @@ export class SideEffectsService {
       }
       throw e;
     }
-    if (severity) await this.alertDoctors(patientId, severity).catch(() => undefined);
+    if (severity) await this.alertDoctors(patientId, severity).catch((err) => this.logger.error(`Alerting doctors about side effects of patient ${patientId} failed: ${err?.message}`, err?.stack));
     return this.toEntry(row, severity ? URGENT_ADVICE : null);
   }
 
@@ -228,7 +230,7 @@ export class SideEffectsService {
       severe ? null : this.prisma.consultation.findFirst({ where: { patientId, status: ConsultationStatus.APPROVED, clinicianId: { not: null } }, orderBy: { updatedAt: 'desc' }, select: { clinicianId: true } }),
     ]);
     if (!patient) return;
-    await this.notifier.toStaff(approved?.clinicianId ? { clinicianIds: [approved.clinicianId] } : { roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+    await this.notifier.toStaff({ clinicianIds: approved?.clinicianId ? [approved.clinicianId] : undefined, roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
       kind: severe ? NotificationKind.SIDE_EFFECT_SEVERE : NotificationKind.SIDE_EFFECT_REPORTED,
       params: { patient: `${patient.firstName} ${patient.lastName}` },
       href: '/check-ins',

@@ -19,7 +19,7 @@ function setup({ open = null as null | { id: string; kind: string }, staff = [{ 
     },
   };
   const push = { sendToPatient: jest.fn().mockResolvedValue(undefined) };
-  const email = { sendStaffAlertEmail: jest.fn().mockResolvedValue(undefined), sendConsultationUpdateEmail: jest.fn().mockResolvedValue(undefined) };
+  const email = { sendStaffAlertEmail: jest.fn().mockResolvedValue(undefined), sendConsultationUpdateEmail: jest.fn().mockResolvedValue(undefined), sendUnreadMessageEmail: jest.fn().mockResolvedValue(true) };
   const service = new NotifierService(prisma as any, push as any, email as any, { get: () => undefined } as any);
   return { prisma, push, email, service };
 }
@@ -136,7 +136,7 @@ describe('NotifierService.emailUnreadMessages', () => {
     expect(await service.emailUnreadMessages()).toBe(1);
     const where = prisma.notification.findMany.mock.calls[0][0].where;
     expect(where).toEqual(expect.objectContaining({ kind: 'CARE_TEAM_MESSAGE', readAt: null, emailedAt: null, patient: expect.objectContaining({ emailUnreadMessages: true }) }));
-    expect(email.sendConsultationUpdateEmail).toHaveBeenCalledWith('a@x', 'Emma', 'You have an unread message from your care team', 'http://localhost:3000/messages');
+    expect(email.sendUnreadMessageEmail).toHaveBeenCalledWith('a@x', 'Emma', 'http://localhost:3000/messages');
   });
 
   it('does not send when another run, or the patient reading it, got there first', async () => {
@@ -144,15 +144,83 @@ describe('NotifierService.emailUnreadMessages', () => {
     prisma.notification.findMany.mockResolvedValue([row]);
     prisma.notification.updateMany.mockResolvedValue({ count: 0 });
     expect(await service.emailUnreadMessages()).toBe(0);
-    expect(email.sendConsultationUpdateEmail).not.toHaveBeenCalled();
+    expect(email.sendUnreadMessageEmail).not.toHaveBeenCalled();
   });
 
-  it('lets the next run try again when the email fails', async () => {
+  it('gives the claim back, to try again next run, when the email throws', async () => {
     const { service, prisma, email } = setup();
     prisma.notification.findMany.mockResolvedValue([row]);
     prisma.notification.updateMany.mockResolvedValue({ count: 1 });
-    email.sendConsultationUpdateEmail.mockRejectedValue(new Error('down'));
+    email.sendUnreadMessageEmail.mockRejectedValue(new Error('down'));
     expect(await service.emailUnreadMessages()).toBe(0);
     expect(prisma.notification.updateMany).toHaveBeenLastCalledWith({ where: { id: 'n-1' }, data: { emailedAt: null } });
+  });
+
+  it('also gives the claim back when the provider refused it without throwing', async () => {
+    const { service, prisma, email } = setup();
+    prisma.notification.findMany.mockResolvedValue([row]);
+    prisma.notification.updateMany.mockResolvedValue({ count: 1 });
+    email.sendUnreadMessageEmail.mockResolvedValue(false);
+    expect(await service.emailUnreadMessages()).toBe(0);
+    expect(prisma.notification.updateMany).toHaveBeenLastCalledWith({ where: { id: 'n-1' }, data: { emailedAt: null } });
+  });
+});
+
+describe('NotifierService grouping', () => {
+  it('keeps the more urgent kind when a milder event joins the unread row, and does not email again', async () => {
+    const { service, prisma, email } = setup({ open: { id: 'n-1', kind: 'SIDE_EFFECT_SEVERE' } });
+    await service.toStaff({ roles: ['DOCTOR' as any] }, { kind: NotificationKind.SIDE_EFFECT_REPORTED, groupKey: 'sidefx:p-1', email: true });
+    expect(prisma.notification.update.mock.calls[0][0].data.kind).toBe('SIDE_EFFECT_SEVERE');
+    expect(email.sendStaffAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('joins the row another request created at the same moment instead of failing', async () => {
+    const { service, prisma } = setup();
+    const { Prisma } = jest.requireActual('@prisma/client');
+    prisma.notification.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'n-9', kind: 'PATIENT_MESSAGE' });
+    prisma.notification.create.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'x' }));
+    await service.toStaff({ clinicianIds: ['c-1'] }, { kind: NotificationKind.PATIENT_MESSAGE, groupKey: 'patient-msg:p-1' });
+    expect(prisma.notification.update).toHaveBeenCalledWith({ where: { id: 'n-9' }, data: expect.objectContaining({ count: { increment: 1 } }) });
+  });
+});
+
+describe('NotifierService.toStaff recipients', () => {
+  it('falls back to the roles when the named clinician can no longer be reached', async () => {
+    const { service, prisma } = setup();
+    prisma.clinician.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'c-2', email: 'd@x', firstName: 'Dea' }]);
+    await service.toStaff({ clinicianIds: ['gone'], roles: ['DOCTOR' as any] }, { kind: NotificationKind.PATIENT_MESSAGE });
+    expect(prisma.clinician.findMany.mock.calls[1][0].where).toEqual(expect.objectContaining({ role: { in: ['DOCTOR'] } }));
+    expect(prisma.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ clinicianId: 'c-2' }) });
+  });
+
+  it('does not email one person after another: a slow mail provider cannot add up', async () => {
+    const staff = [1, 2, 3].map((n) => ({ id: `c-${n}`, email: `d${n}@x`, firstName: 'D' }));
+    const { service, email } = setup({ staff });
+    let running = 0;
+    let peak = 0;
+    email.sendStaffAlertEmail.mockImplementation(async () => { running++; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 5)); running--; });
+    await service.toStaff({ roles: ['DOCTOR' as any] }, { kind: NotificationKind.URGENT_APPOINTMENT, email: true });
+    expect(peak).toBe(3);
+  });
+
+  it('logs a failure with its stack and still reaches the others', async () => {
+    const staff = [1, 2].map((n) => ({ id: `c-${n}`, email: `d${n}@x`, firstName: 'D' }));
+    const { service, prisma } = setup({ staff });
+    const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+    prisma.notification.create.mockRejectedValueOnce(new Error('db hiccup'));
+    await service.toStaff({ roles: ['DOCTOR' as any] }, { kind: NotificationKind.PATIENT_MESSAGE });
+    expect(prisma.notification.create).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('writing the inbox row'), expect.stringContaining('db hiccup'));
+  });
+});
+
+describe('NotifierService.prune', () => {
+  it('counts the read-retention from when it was read, not from its last event', async () => {
+    const { service, prisma } = setup();
+    const now = new Date('2026-10-10T00:00:00Z');
+    await service.prune(now);
+    const [{ where }] = prisma.notification.deleteMany.mock.calls[0];
+    expect(where.OR[0]).toEqual({ readAt: { lt: new Date('2026-07-12T00:00:00Z') } });
+    expect(where.OR[1]).toEqual({ readAt: null, updatedAt: { lt: new Date('2026-04-13T00:00:00Z') } });
   });
 });

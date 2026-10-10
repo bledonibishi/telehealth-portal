@@ -6,7 +6,7 @@ import { useQuery } from '@apollo/client';
 import { differenceInYears, differenceInDays } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_PATIENTS } from '@/graphql/patients';
-import PatientPanel, { type Tab } from './PatientPanel';
+import PatientPanel, { TABS, type Tab } from './PatientPanel';
 import PatientHoverCard, { HOVER_CARD_HEIGHT } from '@/components/patients/PatientHoverCard';
 import PatientChatWindow from '@/components/patients/PatientChatWindow';
 import CreatePatientModal from '@/components/patients/CreatePatientModal';
@@ -193,9 +193,10 @@ function Patients() {
   const searchParams = useSearchParams();
   const selectedId = searchParams.get('patient');
   const [fullTab, setFullTab] = useState<Tab>('overview');
-  // ?tab=messages opens the profile on that tab (linked from a notification about the patient's message).
-  const linkedTab = searchParams.get('tab') as Tab | null;
-  useEffect(() => { if (selectedId && linkedTab) setFullTab(linkedTab); }, [selectedId, linkedTab]);
+  // ?tab=messages opens the profile on that tab (linked from a notification about the patient's message). Only a tab that
+  // exists counts, and it is handed to the panel on its first render: the panel keeps the tab it started on.
+  const requestedTab = searchParams.get('tab');
+  const linkedTab = TABS.find((t) => t === requestedTab) ?? null;
   const [creating, setCreating] = useState(false);
   const canCreate = hasAccess(['ADMIN']);
   const isPrescriber = hasAccess(['ADMIN', 'DOCTOR']);
@@ -507,9 +508,9 @@ function Patients() {
       {selectedId && (
         <div className="h-full overflow-hidden flex flex-col">
           <PatientPanel
-            key={selectedId}
+            key={`${selectedId}:${linkedTab ?? ''}`}
             patientId={selectedId}
-            initialTab={fullTab}
+            initialTab={linkedTab ?? fullTab}
             onClose={() => { router.push('/patients'); setFullTab('overview'); }}
           />
         </div>
