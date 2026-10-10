@@ -11,6 +11,7 @@ export const SAMPLES: Array<{ name: string; content: t.EmailContent }> = [
   { name: 'payment-receipt', content: t.paymentReceiptEmail({ firstName: 'Redon', amount: 12900, currency: 'eur', paidAt: new Date(), reference: 'A1B2C3D4-0001' }) },
   { name: 'refund', content: t.refundEmail({ firstName: 'Redon', amount: 12900, currency: 'eur' }) },
   { name: 'consultation-update', content: t.consultationUpdateEmail({ firstName: 'Redon', headline: 'Your treatment has been approved', portalUrl: `${P}/dashboard` }) },
+  { name: 'staff-alert', content: t.staffAlertEmail({ firstName: 'Arta', headline: 'Urgent appointment request', portalUrl: `${C}/appointments` }) },
   { name: 'order-shipped', content: t.orderUpdateEmail({ firstName: 'Redon', kind: 'SHIPPED', carrier: 'DHL', trackingNumber: 'JD0146000123', trackingUrl: track, expected: 'Mon 12 Oct', ordersUrl: `${P}/orders` }) },
   { name: 'order-out-for-delivery', content: t.orderUpdateEmail({ firstName: 'Redon', kind: 'OUT_FOR_DELIVERY', carrier: 'DHL', trackingNumber: 'JD0146000123', trackingUrl: track, ordersUrl: `${P}/orders` }) },
   { name: 'order-delivery-failed', content: t.orderUpdateEmail({ firstName: 'Redon', kind: 'DELIVERY_FAILED', carrier: 'DHL', ordersUrl: `${P}/orders` }) },

@@ -41,6 +41,7 @@ const KIND_BADGE: Record<string, string> = {
 };
 
 export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
+export const TABS: Tab[] = ['overview', 'prescriptions', 'orders', 'onboarding', 'messages', 'checkin', 'weight', 'symptoms', 'labs'];
 
 // A patient's messages live in each consultation's thread, so listen to every one of them
 // and reload the patient when anything arrives.

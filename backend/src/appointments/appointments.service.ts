@@ -1,11 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { AppointmentRequest, AppointmentStatus, Booking, Clinician } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { BookingService } from '../booking/booking.service';
-import { UserRole } from '../common/enums';
+import { ClinicianRole, UserRole } from '../common/enums';
 import { AppointmentAlertModel, AppointmentRequestModel, RequestAppointmentInput, ScheduleAppointmentInput } from './models/appointment.model';
 import { EMERGENCY_ADVICE, MAX_DETAILS_LENGTH, MAX_OPEN_REQUESTS, RED_FLAGS, byPriority, triage } from './triage';
 
@@ -23,6 +25,9 @@ type Row = AppointmentRequest & { handledBy?: Pick<Clinician, 'firstName' | 'las
  * Patients asking to see a doctor, and the clinical team answering. Urgent requests (warning signs, severe
  * pain, or the patient saying it can't wait) must be answered within 24 hours; the rest within 3 days.
  */
+// One notification per urgent request, done once a doctor answers it.
+const appointmentKey = (id: string) => `appt:${id}`;
+
 @Injectable()
 export class AppointmentsService implements OnModuleInit {
   private readonly logger = new Logger(AppointmentsService.name);
@@ -33,6 +38,7 @@ export class AppointmentsService implements OnModuleInit {
     private email: EmailService,
     private config: ConfigService,
     private bookings: BookingService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   /** Appointments are the booking system's first customer: the patient picks a time for a request they have made. */
@@ -69,6 +75,8 @@ export class AppointmentsService implements OnModuleInit {
       await this.transition(actor.actorId, actor.actorRole, row, OPEN, { status: 'SCHEDULED', scheduledFor: b.startsAt, meetingUrl: b.meetingUrl, ...(b.clinicianId && { handledById: b.clinicianId }) }, 'APPOINTMENT_SCHEDULED');
     } else if ((b.status === 'CANCELLED' || b.status === 'REJECTED') && row.status === 'SCHEDULED' && row.scheduledFor?.getTime() === b.startsAt.getTime()) {
       await this.transition(actor.actorId, actor.actorRole, row, ['SCHEDULED'], { status: 'REQUESTED', scheduledFor: null, meetingUrl: null }, 'APPOINTMENT_UNSCHEDULED');
+      // Waiting for a doctor again: an urgent one must reach them again, it is still due within 24 hours of the original request.
+      if (row.urgency === 'URGENT') await this.alertDoctors(row.patientId, row.id).catch((err) => this.logger.error(`Alerting doctors about reopened request ${row.id} failed: ${err?.message}`, err?.stack));
     } else if (b.status === 'COMPLETED' && row.status === 'SCHEDULED') {
       await this.transition(actor.actorId, actor.actorRole, row, ['SCHEDULED'], { status: 'COMPLETED' }, 'APPOINTMENT_COMPLETED');
     }
@@ -113,6 +121,7 @@ export class AppointmentsService implements OnModuleInit {
       );
       return created;
     });
+    if (row.urgency === 'URGENT') await this.alertDoctors(patientId, row.id).catch((err) => this.logger.error(`Alerting doctors about urgent request ${row.id} failed: ${err?.message}`, err?.stack));
     return { ...this.toModel(row), advice: t.emergencyAdvised ? EMERGENCY_ADVICE : null };
   }
 
@@ -194,12 +203,29 @@ export class AppointmentsService implements OnModuleInit {
   private async transition(actorId: string, actorRole: UserRole, row: AppointmentRequest, from: AppointmentStatus[], data: Record<string, unknown>, action: string) {
     const { count } = await this.prisma.appointmentRequest.updateMany({ where: { id: row.id, status: { in: from } }, data });
     if (count !== 1) throw new ConflictException(`This appointment is already ${row.status.toLowerCase()}`);
+    // Answered, booked or withdrawn: it no longer waits for a doctor. Going back to waiting (a booked time was given up) is
+    // the opposite: the alert is raised again by whoever reopened it.
+    if (data.status !== 'REQUESTED') await this.notifier?.resolve(appointmentKey(row.id));
     await this.audit.log({ actorId, actorRole, action, resourceType: 'AppointmentRequest', resourceId: row.id, patientId: row.patientId, metadata: { status: data.status } });
     const updated = await this.prisma.appointmentRequest.findUniqueOrThrow({ where: { id: row.id }, include: { handledBy: { select: { firstName: true, lastName: true } } } });
     return this.toModel(updated);
   }
 
+  /** Urgent requests must be answered within 24 hours: every doctor hears about it, by email too. */
+  private async alertDoctors(patientId: string, requestId: string) {
+    if (!this.notifier) return;
+    const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true } });
+    await this.notifier.toStaff({ roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+      kind: NotificationKind.URGENT_APPOINTMENT,
+      params: { patient: patient ? `${patient.firstName} ${patient.lastName}` : 'A patient' },
+      href: '/appointments',
+      groupKey: appointmentKey(requestId),
+      email: true,
+    });
+  }
+
   private async notify(patientId: string, headline: string) {
+    await this.notifier?.toPatient(patientId, { kind: NotificationKind.APPOINTMENT_UPDATE, params: { headline }, href: '/appointments' });
     try {
       const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: patientId }, select: { email: true, firstName: true } });
       const portal = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';

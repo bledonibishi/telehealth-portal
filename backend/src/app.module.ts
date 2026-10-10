@@ -25,6 +25,7 @@ import { CouriersModule } from './couriers/couriers.module';
 import { CheckoutModule } from './checkout/checkout.module';
 import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { NotifierModule } from './notifications/notifier.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -88,6 +89,7 @@ import { InsightsModule } from './insights/insights.module';
     CouriersModule,
     CheckoutModule,
     EmailModule,
+    NotifierModule,
     NotificationsModule,
     DashboardModule,
     UploadsModule,

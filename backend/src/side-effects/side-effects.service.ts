@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrescriptionStatus, UserRole } from '../common/enums';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
+import { ClinicianRole, ConsultationStatus, PrescriptionStatus, UserRole } from '../common/enums';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LogSideEffectScoresInput, ReportSideEffectsInput, SideEffectAlertModel, SideEffectReportModel, SideEffectScoreEntryModel, SideEffectSummaryModel } from './models/side-effect.model';
@@ -9,11 +11,17 @@ import {
   HIGH_SCORE, alertSeverityFor, attentionReasons, isValidScore, summariseScores,
 } from './side-effect-scores';
 
+// One notification per patient with side effects nobody has acknowledged yet.
+const sideEffectKey = (patientId: string) => `sidefx:${patientId}`;
+
 @Injectable()
 export class SideEffectsService {
+  private readonly logger = new Logger(SideEffectsService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   /** A patient tells their doctor about a side effect without waiting for the monthly check-in. */
@@ -50,6 +58,7 @@ export class SideEffectsService {
       );
       return created;
     });
+    await this.alertDoctors(patientId, input.severity).catch((err) => this.logger.error(`Alerting doctors about side effects of patient ${patientId} failed: ${err?.message}`, err?.stack));
     return this.toModel(row, adviceFor(input.severity));
   }
 
@@ -107,6 +116,7 @@ export class SideEffectsService {
       }
       throw e;
     }
+    if (severity) await this.alertDoctors(patientId, severity).catch((err) => this.logger.error(`Alerting doctors about side effects of patient ${patientId} failed: ${err?.message}`, err?.stack));
     return this.toEntry(row, severity ? URGENT_ADVICE : null);
   }
 
@@ -202,7 +212,31 @@ export class SideEffectsService {
       }
       return tx.sideEffectReport.findUniqueOrThrow({ where: { id } });
     });
+    // Once nothing from this patient is waiting, the notification about them is done.
+    const open = await this.prisma.sideEffectReport.count({ where: { patientId: existing.patientId, acknowledgedAt: null } });
+    if (open === 0) await this.notifier?.resolve(sideEffectKey(existing.patientId));
     return this.toModel(row);
+  }
+
+  /**
+   * Severe effects go to every doctor, since they can't wait for one person to be in. Others go to the doctor who
+   * approved the patient's treatment, or every doctor when there isn't one.
+   */
+  private async alertDoctors(patientId: string, severity: string) {
+    if (!this.notifier) return;
+    const severe = severity === 'SEVERE';
+    const [patient, approved] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true } }),
+      severe ? null : this.prisma.consultation.findFirst({ where: { patientId, status: ConsultationStatus.APPROVED, clinicianId: { not: null } }, orderBy: { updatedAt: 'desc' }, select: { clinicianId: true } }),
+    ]);
+    if (!patient) return;
+    await this.notifier.toStaff({ clinicianIds: approved?.clinicianId ? [approved.clinicianId] : undefined, roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+      kind: severe ? NotificationKind.SIDE_EFFECT_SEVERE : NotificationKind.SIDE_EFFECT_REPORTED,
+      params: { patient: `${patient.firstName} ${patient.lastName}` },
+      href: '/check-ins',
+      groupKey: sideEffectKey(patientId),
+      email: severe,
+    });
   }
 
   private toModel(r: { id: string; effects: string[]; severity: any; note: string | null; medication: string | null; createdAt: Date; acknowledgedAt: Date | null }, advice: string | null = null): SideEffectReportModel {

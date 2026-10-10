@@ -7,14 +7,15 @@ import { BillingService } from '../stripe/billing.service';
 import { describeEstimate } from './delivery-estimate';
 import type { TrackingEventInput } from '../couriers/courier-adapter';
 import { orderStatusFor, rankOf, type TrackingStatus } from '../couriers/tracking-status';
-import { PushService } from '../push/push.service';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import type { StatementOrder } from './pharmacy-statement';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { TrtMonitoringService } from '../labs/trt-monitoring.service';
 import { PartnerOrdersService } from './partner-orders.service';
 import { deliveryAddressOf } from './delivery-address';
-import { OrderStatus, PrescriptionStatus, UserRole } from '../common/enums';
+import { ClinicianRole, OrderStatus, PrescriptionStatus, UserRole } from '../common/enums';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -31,11 +32,11 @@ export interface ShippingDetails {
 const RECENT_DAYS = 60;
 
 /** What a locked screen shows. Always general: no medicine, no name, no address. The app has the details. */
-const PUSH_TEXT: Record<'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED', (orderId: string) => { title: string; body: string; data: Record<string, string> }> = {
-  SHIPPED: (id) => ({ title: 'Your order is on its way', body: 'The courier has collected it. Open the app to follow it.', data: { type: 'order', orderId: id } }),
-  OUT_FOR_DELIVERY: (id) => ({ title: 'Out for delivery today', body: 'Your order is with the courier and will reach you today.', data: { type: 'order', orderId: id } }),
-  DELIVERED: (id) => ({ title: 'Your order has arrived', body: 'Open the app for your next steps.', data: { type: 'order', orderId: id } }),
-  DELIVERY_FAILED: (id) => ({ title: 'We couldn’t deliver your order', body: 'The courier will usually try again. Open the app for details.', data: { type: 'order', orderId: id } }),
+const NOTICE: Record<'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED', NotificationKind> = {
+  SHIPPED: NotificationKind.ORDER_SHIPPED,
+  OUT_FOR_DELIVERY: NotificationKind.ORDER_OUT_FOR_DELIVERY,
+  DELIVERED: NotificationKind.ORDER_DELIVERED,
+  DELIVERY_FAILED: NotificationKind.ORDER_DELIVERY_FAILED,
 };
 
 const clip = (v: string | null | undefined, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
@@ -90,7 +91,7 @@ export class OrdersService {
     private config?: ConfigService,
     private email?: EmailService,
     private billing?: BillingService,
-    private push?: PushService,
+    private notifier?: NotifierService,
   ) {}
 
   /**
@@ -382,11 +383,21 @@ export class OrdersService {
 
   /** Emails the patient about their order. Never fails the step itself: the order has moved whether or not the email went. */
   private async tellPatient(
-    order: { id: string; patientId: string; patient: { email: string; firstName: string }; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; estimatedDeliveryFrom: Date | null; estimatedDeliveryTo: Date | null },
+    order: { id: string; patientId: string; patient: { email: string; firstName: string; lastName?: string }; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; estimatedDeliveryFrom: Date | null; estimatedDeliveryTo: Date | null },
     kind: 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED',
   ) {
-    // The phone is told even when email isn't set up, and the two never hold each other up.
-    void this.push?.sendToPatient(order.patientId, PUSH_TEXT[kind](order.id));
+    // The app and the phone are told even when email isn't set up, and the two never hold each other up.
+    void this.notifier?.toPatient(order.patientId, { kind: NOTICE[kind], params: { orderId: order.id }, href: '/orders', groupKey: `order:${order.id}` });
+    if (kind === 'DELIVERY_FAILED') {
+      void this.notifier?.toStaff({ roles: [ClinicianRole.ADMIN] }, {
+        kind: NotificationKind.ORDER_PROBLEM,
+        params: { patient: `${order.patient.firstName} ${order.patient.lastName ?? ''}`.trim() },
+        href: '/orders',
+        groupKey: `order-problem:${order.id}`,
+      });
+    } else if (kind === 'DELIVERED') {
+      void this.notifier?.resolve(`order-problem:${order.id}`);
+    }
     if (!this.email) return;
     try {
       const portal = this.config?.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';

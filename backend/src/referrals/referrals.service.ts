@@ -1,4 +1,6 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import Stripe from 'stripe';
@@ -23,6 +25,7 @@ export class ReferralsService {
     private email: EmailService,
     private posthog: PostHogService,
     private posthogLogger: PostHogLoggerService,
+    @Optional() private notifier?: NotifierService,
   ) {
     this.stripe = new Stripe(config.get<string>('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2023-10-16' as any });
     this.webflowSiteUrl = config.get<string>('WEBFLOW_SITE_URL', 'http://localhost:3000');
@@ -136,6 +139,7 @@ export class ReferralsService {
       await this.applyVoucher(referrerVoucher.id, referrer.id);
     }
 
+    await this.notifier?.toPatient(referrer.id, { kind: NotificationKind.REFERRAL_REWARD, href: '/rewards' });
     const amountLabel = formatAmount(REFERRAL_REWARD_CENTS, REWARD_CURRENCY);
     const portal = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
     await this.email.sendReferralRewardEmail(referrer.email, referrer.firstName, amountLabel, referrer.voucherAutoApply, `${portal}/rewards`);

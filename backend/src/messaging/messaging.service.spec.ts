@@ -166,4 +166,59 @@ describe('MessagingService', () => {
       await expect(service.sendAs(doctor, { content: 'to whom?' })).rejects.toThrow(/which patient/);
     });
   });
+
+  describe('notifications', () => {
+    const sentAt = new Date('2026-10-10T10:00:00Z');
+    let notifier: { toPatient: jest.Mock; toStaff: jest.Mock; resolve: jest.Mock };
+    let notifying: MessagingService;
+
+    beforeEach(() => {
+      notifier = { toPatient: jest.fn().mockResolvedValue(undefined), toStaff: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(undefined) };
+      (prisma as any).patient = { findUnique: jest.fn().mockResolvedValue({ firstName: 'Emma', lastName: 'H' }) };
+      (prisma.message as any).findUnique = jest.fn().mockResolvedValue({ readAt: null });
+      (prisma.message as any).count = jest.fn().mockResolvedValue(0);
+      notifying = new MessagingService(prisma as any, audit as any, posthog as any, notifier as any);
+    });
+
+    const patientSays = () => {
+      prisma.message.create.mockResolvedValue({ ...MESSAGE, patientId: 'patient-1', senderRole: UserRole.PATIENT, sentAt });
+      return notifying.send('patient-1', UserRole.PATIENT, { consultationId: 'consult-1', content: 'Hello' });
+    };
+    const careTeamSays = () => {
+      prisma.message.create.mockResolvedValue({ ...MESSAGE, patientId: 'patient-1', senderId: 'doc-1', senderRole: UserRole.CLINICIAN, sentAt });
+      return notifying.send('doc-1', UserRole.CLINICIAN, { consultationId: 'consult-1', content: 'Hi' });
+    };
+
+    it('has recorded the notification by the time send returns', async () => {
+      let recorded = false;
+      notifier.toStaff.mockImplementation(async () => { await new Promise((r) => setTimeout(r, 5)); recorded = true; });
+      await patientSays();
+      expect(recorded).toBe(true);
+    });
+
+    it('tells the assigned clinician, with the whole clinical team as the fallback when they can no longer be reached', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({ patientId: 'patient-1', clinicianId: 'doc-9' });
+      await patientSays();
+      expect(notifier.toStaff).toHaveBeenCalledWith({ clinicianIds: ['doc-9'], roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] }, expect.objectContaining({ kind: 'PATIENT_MESSAGE', groupKey: 'patient-msg:patient-1' }));
+    });
+
+    it('closes the staff alert at once when a reply landed while it was being written', async () => {
+      (prisma.message as any).count.mockResolvedValue(1);
+      await patientSays();
+      expect(notifier.resolve).toHaveBeenCalledWith('patient-msg:patient-1');
+    });
+
+    it('closes the patient notification at once when the chat was opened while it was being written', async () => {
+      (prisma.message as any).findUnique.mockResolvedValue({ readAt: new Date() });
+      await careTeamSays();
+      expect(notifier.toPatient).toHaveBeenCalledTimes(1);
+      expect(notifier.resolve).toHaveBeenLastCalledWith('team-msg:patient-1');
+    });
+
+    it('still saves and returns the message when notifying fails', async () => {
+      notifier.toStaff.mockRejectedValue(new Error('boom'));
+      await expect(patientSays()).resolves.toMatchObject({ id: 'msg-1' });
+    });
+  });
 });
+

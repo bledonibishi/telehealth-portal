@@ -4,7 +4,8 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { apolloClient } from './apollo';
 import { navigationRef } from '../navigation/navigationRef';
-import { REGISTER_PUSH_TOKEN, UNREGISTER_PUSH_TOKEN } from '../graphql/operations';
+import { REGISTER_PUSH_TOKEN, UNREGISTER_PUSH_TOKEN, UNREAD_NOTIFICATION_COUNT } from '../graphql/operations';
+import { markNoticeRead, openHref } from './notices';
 
 const TOKEN_KEY = 'push_token';
 
@@ -52,16 +53,24 @@ export async function unregisterPush(): Promise<void> {
   }
 }
 
-/** Where a tapped notice leads. */
+/** Where a tapped notice leads: the screen it is about, and it counts as read. Older backends sent only a type. */
 function openFor(data: Record<string, unknown> | undefined) {
   if (!navigationRef.isReady()) return;
+  if (typeof data?.notificationId === 'string') void markNoticeRead(data.notificationId);
+  if (typeof data?.href === 'string') return openHref(data.href);
   if (data?.type === 'order') (navigationRef as any).navigate('Main', { screen: 'More', params: { screen: 'Orders' } });
   else if (data?.type === 'refund') (navigationRef as any).navigate('Main', { screen: 'More', params: { screen: 'Account' } });
 }
 
-/** Listens for taps on notices, including the one that opened the app. Returns a function that stops listening. */
+/**
+ * Listens for taps on notices, including the one that opened the app, and keeps the badge current when one arrives
+ * while the app is open. Returns a function that stops listening.
+ */
 export function listenForNoticeTaps(): () => void {
   const sub = Notifications.addNotificationResponseReceivedListener((r) => openFor(r.notification.request.content.data));
+  const received = Notifications.addNotificationReceivedListener(() => {
+    apolloClient.refetchQueries({ include: [UNREAD_NOTIFICATION_COUNT] }).catch(() => undefined);
+  });
   Notifications.getLastNotificationResponseAsync().then((r) => r && openFor(r.notification.request.content.data)).catch(() => undefined);
-  return () => sub.remove();
+  return () => { sub.remove(); received.remove(); };
 }

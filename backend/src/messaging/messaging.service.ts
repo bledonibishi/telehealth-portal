@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -6,15 +7,24 @@ import { UserRole } from '../common/enums';
 import { SendMessageInput } from './dto/send-message.input';
 import { PostHogService } from '../posthog/posthog.service';
 import { AuthUser } from '../auth/access-roles';
+import { NotifierService } from '../notifications/notifier.service';
+import { ClinicianRole } from '../common/enums';
 
 const pubSub = new PubSub();
 
+// One notification per conversation and side (see NotifierService groupKey).
+const patientMessageKey = (patientId: string) => `team-msg:${patientId}`;
+const staffMessageKey = (patientId: string) => `patient-msg:${patientId}`;
+
 @Injectable()
 export class MessagingService {
+  private readonly logger = new Logger(MessagingService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
     private posthog: PostHogService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   // Staff can reach any thread; a patient only threads on their own consultations.
@@ -84,7 +94,47 @@ export class MessagingService {
 
     // The pre-consultation thread has no live channel; both sides poll it.
     if (consultationId) pubSub.publish(`NEW_MESSAGE.${consultationId}`, { newMessage: message });
+    // Waited for, so the notification is recorded before this request ends (an un-awaited write can be cut off on a
+    // serverless host, or land after the message was already read). It never throws: the message is saved.
+    await this.notifyOtherSide(message, consultationId).catch((err) => this.logger.error(`Notifying about message ${message.id} failed: ${err?.message}`, err?.stack));
     return message;
+  }
+
+  /**
+   * The care team wrote: the patient hears about it (one notification however many messages, until they read them),
+   * and the "waiting for a reply" notifications on the staff side are done. The patient wrote: the clinician on the
+   * consultation hears about it, or the whole clinical team when nobody has picked it up yet.
+   */
+  private async notifyOtherSide(message: { id: string; patientId: string; senderRole: string; sentAt: Date }, consultationId: string | null) {
+    if (!this.notifier) return;
+    const { patientId } = message;
+    if (message.senderRole !== UserRole.PATIENT) {
+      await this.notifier.resolve(staffMessageKey(patientId));
+      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId) });
+      // The patient may have opened the chat while the notification was being written: then it is already handled.
+      const stored = await this.prisma.message.findUnique({ where: { id: message.id }, select: { readAt: true } });
+      if (stored?.readAt) await this.notifier.resolve(patientMessageKey(patientId));
+      return;
+    }
+    const [patient, consultation] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true } }),
+      consultationId ? this.prisma.consultation.findUnique({ where: { id: consultationId }, select: { clinicianId: true } }) : null,
+    ]);
+    if (!patient) return;
+    const clinicalTeam = [ClinicianRole.ADMIN, ClinicianRole.DOCTOR, ClinicianRole.CX_TEAM];
+    await this.notifier.toStaff(
+      // The assigned clinician; the whole team when nobody is assigned or that person can no longer be reached.
+      { clinicianIds: consultation?.clinicianId ? [consultation.clinicianId] : undefined, roles: clinicalTeam },
+      {
+        kind: NotificationKind.PATIENT_MESSAGE,
+        params: { patient: `${patient.firstName} ${patient.lastName}` },
+        href: `/patients?patient=${patientId}&tab=messages`,
+        groupKey: staffMessageKey(patientId),
+      },
+    );
+    // Someone from the care team may have replied while the notification was being written: then it is answered.
+    const replied = await this.prisma.message.count({ where: { patientId, senderRole: { not: UserRole.PATIENT }, sentAt: { gt: message.sentAt } } });
+    if (replied > 0) await this.notifier.resolve(staffMessageKey(patientId));
   }
 
   /** Messages a patient sent or received before they had a consultation. */
@@ -99,6 +149,7 @@ export class MessagingService {
       where: { patientId, consultationId: null, readAt: null, senderRole: byPatient ? { not: UserRole.PATIENT } : UserRole.PATIENT },
       data: { readAt: new Date() },
     });
+    if (byPatient) await this.notifier?.resolve(patientMessageKey(patientId));
     return count;
   }
 
@@ -122,6 +173,7 @@ export class MessagingService {
       data: { readAt },
     });
     if (count > 0) pubSub.publish(`MESSAGES_READ.${consultationId}`, { messagesRead: { consultationId, byPatient, readAt } });
+    if (byPatient) await this.notifier?.resolve(patientMessageKey(user.id));
     return count;
   }
 

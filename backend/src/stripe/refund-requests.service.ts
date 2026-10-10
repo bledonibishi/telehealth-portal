@@ -2,9 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { UserRole } from '../common/enums';
-import { PushService } from '../push/push.service';
+import { NotificationKind } from '@telehealth/shared-types';
+import { ClinicianRole, UserRole } from '../common/enums';
+import { NotifierService } from '../notifications/notifier.service';
 import { BillingService } from './billing.service';
+
+const refundKey = (id: string) => `refund:${id}`;
 
 const BILLING_PATIENT = { id: true, email: true, firstName: true, stripeCustomerId: true, stripeSubscriptionId: true } as const;
 
@@ -18,7 +21,7 @@ export class RefundRequestsService {
     private prisma: PrismaService,
     private audit: AuditService,
     private billing: BillingService,
-    private push?: PushService,
+    private notifier?: NotifierService,
   ) {}
 
   /** The patient's open request, if any. */
@@ -42,7 +45,18 @@ export class RefundRequestsService {
       throw err;
     }
     await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'REFUND_REQUESTED', resourceType: 'RefundRequest', resourceId: created.id, patientId });
+    if (this.notifier) await this.tellAdmins(patientId, created.id).catch(() => undefined);
     return created;
+  }
+
+  private async tellAdmins(patientId: string, requestId: string) {
+    const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true } });
+    await this.notifier?.toStaff({ roles: [ClinicianRole.ADMIN] }, {
+      kind: NotificationKind.REFUND_REQUESTED,
+      params: { patient: patient ? `${patient.firstName} ${patient.lastName}` : 'A patient' },
+      href: '/orders',
+      groupKey: refundKey(requestId),
+    });
   }
 
   /** Stops the next payment; what has been paid stays paid. */
@@ -103,9 +117,8 @@ export class RefundRequestsService {
     }
     const decided = await this.prisma.refundRequest.update({ where: { id }, data: { outcome } });
     await this.audit.log({ actorId: adminId, actorRole: UserRole.CLINICIAN, action: approve ? 'REFUND_APPROVED' : 'REFUND_DECLINED', resourceType: 'RefundRequest', resourceId: id, patientId: request.patientId });
-    void this.push?.sendToPatient(request.patientId, approve
-      ? { title: 'Your refund was approved', body: 'It can take a few days to reach your account.', data: { type: 'refund' } }
-      : { title: 'About your refund request', body: 'The clinic has looked at it and isn’t able to refund this one. Message us if you have questions.', data: { type: 'refund' } });
+    await this.notifier?.resolve(refundKey(id));
+    void this.notifier?.toPatient(request.patientId, { kind: approve ? NotificationKind.REFUND_APPROVED : NotificationKind.REFUND_DECLINED, href: '/settings' });
     return decided;
   }
 }
