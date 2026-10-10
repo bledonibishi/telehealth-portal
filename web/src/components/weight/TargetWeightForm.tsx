@@ -16,7 +16,7 @@ function TargetPreview({ currentKg, startKg, targetKg }: { currentKg: number; st
   const from = format(plan.fastestAt, 'MMM yyyy');
   const to = format(plan.slowestAt, 'MMM yyyy');
   return (
-    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 space-y-2" aria-live="polite">
+    <div className="rounded-md bg-slate-50 border border-slate-100 p-3 space-y-2" aria-live="polite">
       <p className="text-sm font-medium text-slate-900">You’d lose {kg(plan.toLoseKg)} to reach {kg(targetKg)}.</p>
       <p className="text-xs text-slate-500">
         At a steady 0.5–1 kg a week that’s around {from === to ? from : `${from} – ${to}`}. A rough guide, not a promise — your doctor sets your plan.
@@ -72,13 +72,13 @@ export function TargetWeightForm({ current, currentKg, startKg, onDone }: { curr
           max={300}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="w-28 border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+          className="w-28 border border-slate-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
         <span className="text-sm text-slate-500">kg</span>
         <button
           type="submit"
           disabled={!valid || loading}
-          className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+          className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
         >
           {loading ? 'Saving…' : 'Save'}
         </button>

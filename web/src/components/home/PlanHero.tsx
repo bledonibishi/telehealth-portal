@@ -46,7 +46,7 @@ export function PlanHero({ plan, detailsHref = '/treatment-plan' }: { plan: Plan
   const dotsTotal = plan.supplyDosesTotal ?? total;
   const dotsTaken = plan.supplyDosesTotal != null ? plan.supplyDosesTaken ?? 0 : plan.dosesTaken;
   return (
-    <section aria-labelledby="plan-title" className="h-full rounded-2xl border border-ink-100 bg-gradient-to-br from-ink-50 via-[#e9f0fd] to-[#dde8fb] p-5">
+    <section aria-labelledby="plan-title" className="h-full rounded-lg border border-slate-200 bg-white p-5">
       <div className="h-full grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_13rem] gap-4 items-center [&>*]:min-w-0">
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7.5rem] gap-3 items-center">
           <div className="min-w-0">
@@ -60,12 +60,12 @@ export function PlanHero({ plan, detailsHref = '/treatment-plan' }: { plan: Plan
             </dl>
             <Link href={detailsHref} className={`${btnPrimary} mt-5 whitespace-nowrap`}>View Plan Details <Icon name="arrow" className="w-4 h-4" /></Link>
           </div>
-          <div className="hidden sm:flex items-center justify-center rounded-2xl bg-white/70 border border-white h-36">
+          <div className="hidden sm:flex items-center justify-center rounded-lg bg-white/70 border border-white h-36">
             <PenIllustration label={plan.productName} className="w-28 h-28" />
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-ink-100 p-4">
+        <div className="bg-surface rounded-md border border-slate-200 p-4">
           <p className="text-sm font-medium text-ink-700">Your Progress</p>
           <div className="flex items-center gap-3 mt-3">
             <DoseRing taken={plan.dosesTaken} total={Math.max(total, plan.dosesTaken)} size={84} />

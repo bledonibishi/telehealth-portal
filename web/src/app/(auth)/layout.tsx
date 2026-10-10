@@ -91,7 +91,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             <span className="font-bold text-2xl text-slate-900 tracking-tight">Omopharmacy</span>
             <p className="text-sm text-slate-500 mt-1">Patient portal</p>
           </div>
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-0 md:rounded-none md:shadow-none md:border-0">{children}</div>
+          <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 md:p-0 md:rounded-none md:shadow-none md:border-0">{children}</div>
         </div>
       </main>
     </div>

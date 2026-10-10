@@ -9,12 +9,13 @@ import { FEELINGS, kg, kgChange as rawKgChange } from '@/lib/weight';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import ProgressPhotos from './ProgressPhotos';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+    <div className="bg-gray-50 rounded-md px-3 py-2.5">
       <p className="text-xs text-gray-400">{label}</p>
       <p className="text-sm font-semibold text-gray-900 mt-0.5">{value}</p>
     </div>
@@ -32,7 +33,7 @@ function WeightTrendFlag({ patientId }: { patientId: string }) {
   if (!trend) return null;
   if (trend.level === 'GAIN') {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3" role="alert">
+      <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3" role="alert">
         <p className="text-sm font-semibold text-red-700">{t('Weight is trending up')}</p>
         <p className="text-xs text-red-700/90 mt-0.5">
           {t('About +{pct}% every 4 weeks at the pace of the recent weigh-ins ({rate} kg a week). If it continues: about +{kg} kg in 3 months.', { pct: trend.changePct28Days, rate: trend.kgPerWeek, kg: trend.kgIn3Months })}
@@ -42,7 +43,7 @@ function WeightTrendFlag({ patientId }: { patientId: string }) {
   }
   if (trend.level === 'CHECK_ENTRY') {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3" role="status">
         <p className="text-sm font-semibold text-amber-800">{t('The latest weight may be a typing mistake')}</p>
         <p className="text-xs text-amber-800/90 mt-0.5">
           {t('{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient sees a note to check it the next time they open their weights; nobody has contacted them.', { latest: trend.latestKg, pct: Math.round(trend.jumpPct), previous: trend.previousKg })}
@@ -70,7 +71,7 @@ function CorrectionForm({
   const valid = fields.every((f) => Number(values[f.key]) > 0) && (!requireReason || reason.trim().length > 0);
 
   return (
-    <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+    <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-md p-3">
       <div className="flex flex-wrap gap-3">
         {fields.map((f) => (
           <label key={f.key} className="text-xs text-gray-500">
@@ -141,7 +142,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
       )}
       {!hasProgress && <p className="text-xs text-gray-400">{t('The patient hasn’t set a target weight yet.')}</p>}
 
-      <div className="bg-gray-50 rounded-xl p-4 text-sm">
+      <div className="bg-gray-50 rounded-md p-4 text-sm">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Last check-in')}</p>
         {last ? (
           <>
@@ -197,7 +198,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
             {[...entries].reverse().map((e) => {
               const feeling = e.feeling ? FEELINGS[e.feeling] : null;
               return (
-                <div key={e.checkInId} className="border border-gray-100 rounded-xl p-3">
+                <div key={e.checkInId} className="border border-gray-100 rounded-md p-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-gray-900">{t('Month {n}', { n: e.month })} · {kg(e.weightKg)}</p>
                     <p className="text-xs text-gray-400">{fmt(e.date, 'dd MMM yyyy')}</p>
@@ -254,11 +255,11 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
     <div>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Recorded weights · last 12 months')}</p>
       <InlineError error={error} size="xs" />
-      {loading && !data && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && !data && <LoadingState variant="inline" label={t('Loading…')} />}
       {data && rows.length === 0 && <p className="text-sm text-gray-400">{t('No weights recorded.')}</p>}
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {rows.map((r) => (
-          <div key={r.id} className="border border-gray-100 rounded-xl p-3">
+          <div key={r.id} className="border border-gray-100 rounded-md p-3">
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-sm font-medium text-gray-900">{kg(r.weightKg)}</p>
               <p className="text-xs text-gray-400">{fmt(r.measuredAt, 'dd MMM yyyy · HH:mm')}</p>
@@ -288,7 +289,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
               />
             )}
             {open?.id === r.id && open?.action === 'void' && (
-              <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+              <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-md p-3">
                 <input placeholder={t('Reason for voiding (required — kept in the audit log)')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full`} />
                 <InlineError error={vd.error} size="xs" />
                 <div className="flex gap-2">

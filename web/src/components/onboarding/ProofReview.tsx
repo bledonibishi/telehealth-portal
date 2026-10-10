@@ -48,7 +48,7 @@ export function ChecklistLoader({ title, steps }: { title: string; steps: string
     <div className="py-6" role="status" aria-live="polite">
       <h1 className="text-xl font-bold text-slate-900">{title}</h1>
       <p className="text-sm text-slate-500 mt-2">This usually takes a few seconds. Please keep this page open.</p>
-      <ul className="mt-6 bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100">
+      <ul className="mt-6 bg-white rounded-lg border border-slate-100 divide-y divide-slate-100">
         {steps.map((step, i) => (
           <li key={step} className="flex items-center gap-3 px-4 py-3.5">
             <CheckIcon state={i < current ? 'pass' : i === current ? 'active' : 'waiting'} />
@@ -66,7 +66,7 @@ export const NAME_EVIDENCE_STEPS = ['Reading your document', 'Looking for your p
 /** What was read off the document, one line per check: green when it matches, amber when it doesn't. */
 export function ProofChecklist({ checks, doseQuestion }: { checks: ProofCheck[]; doseQuestion?: React.ReactNode }) {
   return (
-    <div className="mt-5 bg-white rounded-2xl border border-slate-100">
+    <div className="mt-5 bg-white rounded-lg border border-slate-100">
       <p className="px-4 pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">What we checked</p>
       <ul className="divide-y divide-slate-100">
         {checks.map((c) => (
@@ -129,7 +129,7 @@ export function DoseQuestion({
   ];
 
   return (
-    <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+    <section className="mt-5 rounded-lg border border-amber-200 bg-amber-50/70 p-4">
       <div className="flex items-center gap-2">
         <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center" aria-hidden>
           !
@@ -138,12 +138,12 @@ export function DoseQuestion({
       </div>
 
       <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-stretch gap-2">
-        <div className="rounded-xl bg-white border border-amber-100 px-3 py-2.5 text-center">
+        <div className="rounded-md bg-white border border-amber-100 px-3 py-2.5 text-center">
           <p className="text-[11px] text-slate-500">On your document</p>
           <p className="text-lg font-bold text-slate-900">{doc}</p>
         </div>
         <span className="self-center text-amber-600 font-bold" aria-label="does not match">≠</span>
-        <div className="rounded-xl bg-white border border-amber-100 px-3 py-2.5 text-center">
+        <div className="rounded-md bg-white border border-amber-100 px-3 py-2.5 text-center">
           <p className="text-[11px] text-slate-500">You told us</p>
           <p className="text-lg font-bold text-slate-900">{reportedDose}</p>
         </div>
@@ -160,7 +160,7 @@ export function DoseQuestion({
             role="radio"
             aria-checked={choice === o.value}
             onClick={() => setChoice(o.value)}
-            className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+            className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-md border text-left transition-colors ${
               choice === o.value ? 'border-ink-500 bg-white ring-1 ring-ink-500' : 'border-slate-200 bg-white hover:bg-slate-50'
             }`}
           >
@@ -177,7 +177,7 @@ export function DoseQuestion({
         type="button"
         onClick={() => choice && onAnswer(choice)}
         disabled={!choice || saving}
-        className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+        className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-2.5 rounded-md text-sm transition-colors"
       >
         {saving ? 'Saving…' : 'Confirm'}
       </button>

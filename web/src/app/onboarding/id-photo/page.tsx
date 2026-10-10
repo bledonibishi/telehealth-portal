@@ -9,6 +9,7 @@ import { SAVE_IDENTITY_STEP, MY_ONBOARDING, START_IDENTITY_VERIFICATION } from '
 import { fileIdOfUrl } from '@/components/onboarding/BodyPhotoFlow';
 import { useIdentityVerification } from '@/lib/useIdentityVerification';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const CHECKLIST = ['Have a valid ID ready (e.g. passport, driving licence)', 'Find a well-lit spot for your selfie'];
 
@@ -64,18 +65,18 @@ function VerifiedIdentityStep({
       </p>
 
       {status === 'REJECTED' && (
-        <div className="mt-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">
+        <div className="mt-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-md px-4 py-3 text-sm">
           We couldn&rsquo;t verify your identity. Please try again with clear photos of your ID card and yourself.
         </div>
       )}
       {status === 'EXPIRED' && (
-        <div className="mt-5 bg-slate-100 text-slate-600 rounded-xl px-4 py-3 text-sm">
+        <div className="mt-5 bg-slate-100 text-slate-600 rounded-md px-4 py-3 text-sm">
           That link has expired. Start again to get a new one.
         </div>
       )}
 
       {finished ? (
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 mt-6 text-center">
+        <div className="bg-white rounded-lg border border-slate-100 p-5 mt-6 text-center">
           <div className="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-xl mx-auto mb-3">
             {status === 'APPROVED' ? '✓' : '⏳'}
           </div>
@@ -89,14 +90,14 @@ function VerifiedIdentityStep({
           </p>
           <button
             onClick={() => router.push('/onboarding')}
-            className="w-full mt-5 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+            className="w-full mt-5 bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-md text-sm transition-colors"
           >
             Continue
           </button>
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-2xl border border-slate-100 p-4 mt-6">
+          <div className="bg-white rounded-lg border border-slate-100 p-4 mt-6">
             <p className="text-sm font-semibold text-slate-900 mb-3">Before you start</p>
             <ul className="space-y-3">
               {['Have your Kosovo ID card ready', 'Find a well-lit spot for your selfie'].map((item) => (
@@ -119,7 +120,7 @@ function VerifiedIdentityStep({
             <button
               onClick={link && status === 'PENDING' ? () => open(link, window.open('', '_blank')) : begin}
               disabled={loading}
-              className="w-full mt-8 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-8 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
             >
               {loading ? 'Opening…' : link && status === 'PENDING' ? 'Open the verification page again' : status === 'REJECTED' || status === 'EXPIRED' ? 'Try again' : 'Start verification'}
             </button>
@@ -134,7 +135,7 @@ export default function IdPhotoStepPage() {
   const { data, loading, refetch } = useIdentityVerification();
   const idv = data?.myIdentityVerification;
 
-  if (loading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
+  if (loading) return <LoadingState label="Loading…" className="!py-12" />;
   if (idv?.configured) return <VerifiedIdentityStep status={idv.status ?? null} refetch={() => void refetch()} />;
   return <UploadedIdentityStep />;
 }
@@ -195,7 +196,7 @@ function UploadedIdentityStep() {
           This is legally required before we can prescribe and is only used for this verification.
         </p>
 
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 mt-6">
+        <div className="bg-white rounded-lg border border-slate-100 p-4 mt-6">
           <p className="text-sm font-semibold text-slate-900 mb-3">Before you start</p>
           <ul className="space-y-3">
             {CHECKLIST.map((item) => (
@@ -209,7 +210,7 @@ function UploadedIdentityStep() {
 
         <button
           onClick={() => setPhase('capture')}
-          className="w-full mt-8 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-8 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           Start verification
         </button>
@@ -246,7 +247,7 @@ function UploadedIdentityStep() {
       <button
         onClick={handleContinue}
         disabled={!canContinue || loading}
-        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
       >
         {loading ? 'Saving…' : 'Continue'}
       </button>

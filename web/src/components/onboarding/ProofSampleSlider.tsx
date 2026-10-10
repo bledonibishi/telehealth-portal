@@ -155,7 +155,7 @@ export function ProofSampleSlider({ flagged = [] }: { flagged?: Field[] }) {
   };
 
   return (
-    <figure className="mt-4 rounded-2xl border border-slate-200 bg-white p-3" aria-roledescription="carousel" aria-label="Example photos">
+    <figure className="mt-4 rounded-lg border border-slate-200 bg-white p-3" aria-roledescription="carousel" aria-label="Example photos">
       <div className="flex items-center justify-between">
         <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${verdict.cls}`}>
           <span aria-hidden>{verdict.icon}</span> {slide.title}
@@ -166,7 +166,7 @@ export function ProofSampleSlider({ flagged = [] }: { flagged?: Field[] }) {
       </div>
 
       <div
-        className="relative mt-2 rounded-xl overflow-hidden bg-slate-100 select-none"
+        className="relative mt-2 rounded-md overflow-hidden bg-slate-100 select-none"
         style={{ aspectRatio: `${FRAME_RATIO}` }}
         onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
         onTouchEnd={(e) => {

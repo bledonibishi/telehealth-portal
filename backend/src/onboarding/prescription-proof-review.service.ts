@@ -89,7 +89,7 @@ export class PrescriptionProofReviewService {
       if (!file || file.patientId !== patientId) {
         outcome = { status: 'FAILED', reason: 'Proof file not found for this patient' };
       } else {
-        outcome = await this.reader.read(await this.uploads.readContents(file), file.mimeType);
+        outcome = await this.reader.read(await this.uploads.readContents(file), file.mimeType, patientId);
       }
     } catch (err) {
       this.logger.error(`Could not load prescription proof for ${patientId}: ${(err as Error).message}`);
@@ -128,7 +128,7 @@ export class PrescriptionProofReviewService {
     try {
       const file = await this.prisma.uploadedFile.findUnique({ where: { id: evidenceFileId } });
       if (file && file.patientId === patientId) {
-        const outcome = await this.reader.readNameEvidence(await this.uploads.readContents(file), file.mimeType);
+        const outcome = await this.reader.readNameEvidence(await this.uploads.readContents(file), file.mimeType, patientId);
         if (outcome.status === 'COMPLETED') nameEvidence = outcome.reading;
       }
     } catch (err) {

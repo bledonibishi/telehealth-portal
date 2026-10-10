@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { BloodTestsCard } from '@/components/labs/BloodTestsCard';
+import { LoadingState } from '@telehealth/loading';
 
 export default function PrescriptionPage() {
   const { data, loading } = useQuery(MY_CONSULTATIONS);
@@ -18,7 +19,7 @@ export default function PrescriptionPage() {
 
       <BloodTestsCard />
 
-      {loading && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && <LoadingState variant="inline" label="Loading…" />}
 
       {!loading && withPrescription.length === 0 && (
         <EmptyState icon="rx" what="Your prescription" whenTreating={{ text: 'Your prescription has been issued and will show here in a moment. The PDF is under Documents.', action: { href: '/documents', label: 'Open Documents' } }} />
@@ -28,7 +29,7 @@ export default function PrescriptionPage() {
         {withPrescription.map((c: any) => {
           const rx = c.prescription;
           return (
-            <div key={c.id} className="bg-white rounded-2xl border border-slate-100 p-6">
+            <div key={c.id} className="bg-white rounded-lg border border-slate-100 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <span className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{c.kind}</span>

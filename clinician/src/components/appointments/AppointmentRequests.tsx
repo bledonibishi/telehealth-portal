@@ -7,6 +7,7 @@ import { APPOINTMENT_REQUESTS, CANCEL_APPOINTMENT, COMPLETE_APPOINTMENT, SCHEDUL
 import { GET_NOTIFICATION_COUNTS } from '@/graphql/notifications';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { SkeletonList } from '@telehealth/loading';
 
 const REASON: Record<string, string> = {
   QUESTION: 'Question', CHECK_UP: 'Check-up', SIDE_EFFECT: 'Side effect', PAIN: 'Pain', DOSE_CHANGE: 'Dose change', OTHER: 'Other',
@@ -96,7 +97,7 @@ export default function AppointmentRequests() {
 
   return (
     <div>
-      {loading && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && <div className="p-6"><SkeletonList rows={3} label={t('Loading…')} /></div>}
       <InlineError error={error} className="p-6" />
       {!loading && !list.length && <div className="p-12 text-center text-gray-400 text-sm">{t('No appointment requests waiting.')}</div>}
       <ul className="divide-y divide-gray-100">

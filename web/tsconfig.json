@@ -17,7 +17,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@telehealth/shared-types": ["../packages/shared-types/src"],
-      "@telehealth/booking": ["../packages/booking/src"]
+      "@telehealth/booking": ["../packages/booking/src"],
+      "@telehealth/loading": ["../packages/loading/src"]
     }
   },
   "include": [

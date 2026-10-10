@@ -6,6 +6,7 @@ import { onError } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
 import { print } from 'graphql';
+import { createLoadingLink } from '@telehealth/loading';
 import { sessionEndReason } from '@telehealth/shared-types';
 import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
 import { clearToken, getRefreshToken, getToken, setToken } from './auth';
@@ -113,7 +114,8 @@ const splitLink =
     : httpChain;
 
 export const apolloClient = new ApolloClient({
-  link: splitLink,
+  // First in the chain, so every call (and its retries) is counted for the loading bar.
+  link: createLoadingLink().concat(splitLink),
   cache: new InMemoryCache({
     typePolicies: {
       // Symptom questionnaire items and domains share ids across scales (e.g. "sleep"

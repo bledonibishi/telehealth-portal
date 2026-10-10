@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from '@apollo/client';
 import { MY_NOTIFICATION_PREFERENCES, UPDATE_NOTIFICATION_PREFERENCES } from '@/graphql/notifications';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type Prefs = { pushMessages: boolean; pushOrders: boolean; pushReminders: boolean; pushRewards: boolean; emailUnreadMessages: boolean };
 
@@ -38,7 +39,7 @@ export function NotificationPreferences() {
   };
 
   if (error) return <InlineError error={error} />;
-  if (!prefs) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!prefs) return <LoadingState variant="inline" label="Loading…" />;
   return (
     <div>
       <ul className="divide-y divide-slate-100">

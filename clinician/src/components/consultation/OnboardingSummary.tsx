@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@apollo/client';
 import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { LoadingState } from '@telehealth/loading';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   APPROVED: { label: 'Approved', cls: 'bg-green-100 text-green-700' },
@@ -28,7 +29,7 @@ export function OnboardingSummary({ patientId }: { patientId: string }) {
         {!loading && <span className={`text-xs font-medium px-2 py-0.5 rounded ${status.cls}`}>{t(status.label)}</span>}
       </div>
 
-      {loading && <p className="text-xs text-gray-400">{t('Loading…')}</p>}
+      {loading && <LoadingState variant="inline" label={t('Loading…')} />}
       {!loading && !o && <p className="text-xs text-gray-500">{t('The patient hasn’t started onboarding.')}</p>}
 
       {!loading && o?.status === 'PENDING_REVIEW' && (

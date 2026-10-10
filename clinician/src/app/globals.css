@@ -33,40 +33,40 @@
 html:not([data-theme='light']) .dark-surface { color-scheme: dark; }
 @layer components {
   html:not([data-theme='light']) .dark-surface :where(input:not([type='checkbox']):not([type='radio']), select, textarea) {
-    background-color: #213a6b;
+    background-color: #151617;
     color: #f1f5f9;
-    border-color: #3d63a8;
+    border-color: #2c2d30;
   }
-  html:not([data-theme='light']) .dark-surface :where(input, textarea)::placeholder { color: #8fa4cc; }
+  html:not([data-theme='light']) .dark-surface :where(input, textarea)::placeholder { color: #71717a; }
 }
-html:not([data-theme='light']) .dark-surface .bg-white { background-color: #28457b; }
-html:not([data-theme='light']) .dark-surface .bg-gray-50 { background-color: #2a4a82; }
-html:not([data-theme='light']) .dark-surface .bg-gray-100 { background-color: #325392; }
-html:not([data-theme='light']) .dark-surface .bg-gray-200 { background-color: #3d63a8; }
-html:not([data-theme='light']) .dark-surface .hover\:bg-gray-50:hover { background-color: #325392; }
-html:not([data-theme='light']) .dark-surface .hover\:bg-gray-100:hover { background-color: #3d63a8; }
-html:not([data-theme='light']) .dark-surface .disabled\:bg-gray-200:disabled { background-color: #3d63a8; }
+html:not([data-theme='light']) .dark-surface .bg-white { background-color: #1a1b1d; }
+html:not([data-theme='light']) .dark-surface .bg-gray-50 { background-color: #1e1f21; }
+html:not([data-theme='light']) .dark-surface .bg-gray-100 { background-color: #242527; }
+html:not([data-theme='light']) .dark-surface .bg-gray-200 { background-color: #2c2d30; }
+html:not([data-theme='light']) .dark-surface .hover\:bg-gray-50:hover { background-color: #242527; }
+html:not([data-theme='light']) .dark-surface .hover\:bg-gray-100:hover { background-color: #2c2d30; }
+html:not([data-theme='light']) .dark-surface .disabled\:bg-gray-200:disabled { background-color: #2c2d30; }
 html:not([data-theme='light']) .dark-surface .text-gray-900 { color: #f1f5f9; }
 html:not([data-theme='light']) .dark-surface .text-gray-800 { color: #f1f5f9; }
 html:not([data-theme='light']) .dark-surface .text-gray-700 { color: #e2e8f0; }
-html:not([data-theme='light']) .dark-surface .text-gray-600 { color: #d3def0; }
-html:not([data-theme='light']) .dark-surface .text-gray-500 { color: #b4c4e0; }
-html:not([data-theme='light']) .dark-surface .text-gray-400 { color: #9db0d2; }
-html:not([data-theme='light']) .dark-surface .text-gray-300 { color: #869bc3; }
-html:not([data-theme='light']) .dark-surface .disabled\:text-gray-400:disabled { color: #869bc3; }
+html:not([data-theme='light']) .dark-surface .text-gray-600 { color: #d4d4d8; }
+html:not([data-theme='light']) .dark-surface .text-gray-500 { color: #a1a1aa; }
+html:not([data-theme='light']) .dark-surface .text-gray-400 { color: #8a8a93; }
+html:not([data-theme='light']) .dark-surface .text-gray-300 { color: #71717a; }
+html:not([data-theme='light']) .dark-surface .disabled\:text-gray-400:disabled { color: #71717a; }
 html:not([data-theme='light']) .dark-surface .hover\:text-gray-600:hover { color: #e2e8f0; }
 html:not([data-theme='light']) .dark-surface .hover\:text-gray-700:hover { color: #f1f5f9; }
 html:not([data-theme='light']) .dark-surface .hover\:text-gray-800:hover { color: #ffffff; }
 html:not([data-theme='light']) .dark-surface .hover\:text-gray-900:hover { color: #ffffff; }
-html:not([data-theme='light']) .dark-surface .border-gray-100 { border-color: #2f4f8e; }
-html:not([data-theme='light']) .dark-surface .border-gray-200 { border-color: #3d63a8; }
-html:not([data-theme='light']) .dark-surface .border-gray-200\/70 { border-color: rgba(61,99,168,.7); }
-html:not([data-theme='light']) .dark-surface .border-gray-300 { border-color: #5079bd; }
-html:not([data-theme='light']) .dark-surface .divide-gray-100 > :not([hidden]) ~ :not([hidden]), html:not([data-theme='light']) .dark-surface .divide-gray-50 > :not([hidden]) ~ :not([hidden]) { border-color: #2f4f8e; }
-html:not([data-theme='light']) .dark-surface .stroke-gray-100 { stroke: #3d63a8; }
-html:not([data-theme='light']) .dark-surface .stroke-gray-300 { stroke: #5079bd; }
-html:not([data-theme='light']) .dark-surface .fill-gray-400 { fill: #9db0d2; }
-html:not([data-theme='light']) .dark-surface .ring-white { --tw-ring-color: #28457b; }
+html:not([data-theme='light']) .dark-surface .border-gray-100 { border-color: #242528; }
+html:not([data-theme='light']) .dark-surface .border-gray-200 { border-color: #2c2d30; }
+html:not([data-theme='light']) .dark-surface .border-gray-200\/70 { border-color: rgba(44,45,48,.7); }
+html:not([data-theme='light']) .dark-surface .border-gray-300 { border-color: #3f4044; }
+html:not([data-theme='light']) .dark-surface .divide-gray-100 > :not([hidden]) ~ :not([hidden]), html:not([data-theme='light']) .dark-surface .divide-gray-50 > :not([hidden]) ~ :not([hidden]) { border-color: #242528; }
+html:not([data-theme='light']) .dark-surface .stroke-gray-100 { stroke: #2c2d30; }
+html:not([data-theme='light']) .dark-surface .stroke-gray-300 { stroke: #3f4044; }
+html:not([data-theme='light']) .dark-surface .fill-gray-400 { fill: #8a8a93; }
+html:not([data-theme='light']) .dark-surface .ring-white { --tw-ring-color: #1a1b1d; }
 html:not([data-theme='light']) .dark-surface .bg-red-50 { background-color: rgba(239,68,68,0.1); }
 html:not([data-theme='light']) .dark-surface .hover\:bg-red-50:hover { background-color: rgba(239,68,68,.18); }
 html:not([data-theme='light']) .dark-surface .bg-red-100 { background-color: rgba(239,68,68,0.16); }
@@ -260,22 +260,22 @@ html:not([data-theme='light']) .dark-surface .hover\:text-warn-600:hover { color
 html:not([data-theme='light']) .dark-surface .divide-amber-100 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(245,158,11,.25); }
 
 /*
- * Theme palette. The portal has two modes: the blue "night" mode (default) and a light mode.
+ * Theme palette. The portal has two modes: a neutral dark "night" mode (default) and a warm off-white light mode.
  * Components written for the dashboard read these variables, so one toggle re-colours everything;
  * the older light-styled components are handled by the `.dark-surface` remap below (night mode only).
  * `data-theme` is set on <html> before first paint (see app/layout.tsx).
  */
 html {
-  --bg-page: #1b2f5c; --bg-panel: #213a6b; --bg-card: #28457b; --bg-hover: #325392; --bg-subtle: #2a4a82;
-  --border: #3d63a8; --border-strong: #5079bd; --border-subtle: #2f4f8e;
-  --t-strong: #f1f5f9; --t-body: #e2e8f0; --t-muted: #cbd5e1; --t-dim: #94a3b8;
+  --bg-page: #0e0f10; --bg-panel: #151617; --bg-card: #1a1b1d; --bg-hover: #242527; --bg-subtle: #1e1f21;
+  --border: #2c2d30; --border-strong: #3f4044; --border-subtle: #242528;
+  --t-strong: #f4f4f5; --t-body: #e4e4e7; --t-muted: #b4b4bb; --t-dim: #8a8a93;
   --chart-accent: #2dd4bf; --chart-target: #34d399;
 }
 html[data-theme='light'] {
-  --bg-page: #eef3fb; --bg-panel: #ffffff; --bg-card: #ffffff; --bg-hover: #e6eefb; --bg-subtle: #f4f8fe;
-  --border: #d8e2f1; --border-strong: #b9c9e3; --border-subtle: #e3eaf6;
-  --t-strong: #0f172a; --t-body: #1e293b; --t-muted: #475569; --t-dim: #64748b;
-  --chart-accent: #0ea5e9; --chart-target: #16a34a;
+  --bg-page: #f7f7f4; --bg-panel: #fbfbf9; --bg-card: #ffffff; --bg-hover: #f0f0eb; --bg-subtle: #f7f7f4;
+  --border: #e4e4df; --border-strong: #cfcfc8; --border-subtle: #ecece7;
+  --t-strong: #111514; --t-body: #1f2523; --t-muted: #52525b; --t-dim: #71717a;
+  --chart-accent: #0f766e; --chart-target: #16a34a;
 }
 /* Pale accent text that reads on night blue needs a deeper shade on white. */
 html[data-theme='light'] .text-emerald-300 { color: #047857; }
@@ -288,6 +288,7 @@ html[data-theme='light'] .text-sky-300 { color: #0369a1; }
 html[data-theme='light'] .text-sky-400 { color: #0284c7; }
 html[data-theme='light'] .text-orange-300 { color: #c2410c; }
 html[data-theme='light'] .text-orange-400 { color: #ea580c; }
+html[data-theme='light'] .text-red-200 { color: #991b1b; }
 html[data-theme='light'] .text-red-300 { color: #b91c1c; }
 html[data-theme='light'] .text-red-400 { color: #dc2626; }
 html[data-theme='light'] .text-yellow-300 { color: #a16207; }

@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { UploadKind } from '@prisma/client';
+import { LlmTracingService } from '../langfuse/llm-tracing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { type PoseDetecting, PoseDetector } from './pose-detector';
@@ -102,6 +103,8 @@ export class PhotoCheckService implements OnModuleInit {
     private uploads: UploadsService,
     private config: ConfigService,
     private detector: PoseDetector,
+    // Tracing is optional: without it (tests) the checks run untraced.
+    @Optional() private tracing: LlmTracingService = new LlmTracingService(),
   ) {}
 
   async onModuleInit() {
@@ -170,7 +173,8 @@ export class PhotoCheckService implements OnModuleInit {
     // The check is written down before it runs, and counted with the others: requests that arrive together
     // each see the others in the count, so they can't all slip under the daily limit.
     const entry = await this.prisma.bodyPhotoCheck.create({ data: { patientId, fileId, view, outcome: 'UNCHECKED', issues: [] } });
-    const outcome = await this.judge(patientId, file, view);
+    // One trace per check; the photo itself is never recorded, only what the check found.
+    const outcome = await this.tracing.trace('check-body-photo', { userId: patientId, tags: ['onboarding', 'body-photo', view.toLowerCase()], input: { view }, output: (o: Judged) => ({ outcome: o.outcome, issues: o.issues, why: o.why, provider: o.model }) }, () => this.judge(patientId, file, view));
     await this.prisma.bodyPhotoCheck.update({ where: { id: entry.id }, data: { outcome: outcome.outcome, issues: outcome.issues, model: outcome.model ?? null } });
     const failed = outcome.outcome === 'FAIL' ? await this.failedChecks(patientId, view) : 0;
     return {
@@ -292,22 +296,32 @@ export class PhotoCheckService implements OnModuleInit {
 
   /** What the Claude model sees in one image, or null when its answer isn't usable. Throws on an API failure. */
   private async observe(bytes: Buffer, mediaType: ImageType, view: BodyPhotoView) {
-    const res = await this.api().messages.create({
-      model: this.model,
-      max_tokens: 400,
-      system: SYSTEM,
-      tools: [TOOL],
-      tool_choice: { type: 'tool', name: TOOL.name },
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: bytes.toString('base64') } },
-          { type: 'text', text: `This photo was submitted as the ${view === 'FRONT' ? 'front-facing' : 'side-facing'} full-body photo. Report what you see.` },
-        ],
-      }],
-    });
-    const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-    return parseObservation(call?.input);
+    const instruction = `This photo was submitted as the ${view === 'FRONT' ? 'front-facing' : 'side-facing'} full-body photo. Report what you see.`;
+    return this.tracing.generation(
+      'describe-body-photo',
+      // The instructions only: the photo is described by its type and size, never sent to Langfuse.
+      { model: this.model, input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: [{ type: 'image', media_type: mediaType, bytes: bytes.length }, { type: 'text', text: instruction }] }], modelParameters: { max_tokens: 400 } },
+      async (record) => {
+        const res = await this.api().messages.create({
+          model: this.model,
+          max_tokens: 400,
+          system: SYSTEM,
+          tools: [TOOL],
+          tool_choice: { type: 'tool', name: TOOL.name },
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: bytes.toString('base64') } },
+              { type: 'text', text: instruction },
+            ],
+          }],
+        });
+        const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+        // What the model reported (counts and yes/no answers about framing, pose and clothing), nothing that identifies anyone.
+        record({ model: res.model, usage: res.usage, output: call?.input });
+        return parseObservation(call?.input);
+      },
+    );
   }
 
   /**

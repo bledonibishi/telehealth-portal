@@ -3,6 +3,7 @@
 import { useQuery } from '@apollo/client';
 import { PATIENT_HISTORY } from '@/graphql/consultations';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { LoadingState } from '@telehealth/loading';
 
 const STATUS_LABELS: Record<string, string> = {
   SUBMITTED: 'New',
@@ -18,7 +19,7 @@ export function PatientHistory({ patientId, excludeId }: { patientId: string; ex
 
   const history = (data?.patientHistory ?? []).filter((c: any) => c.id !== excludeId);
 
-  if (loading) return <p className="text-xs text-gray-400">{t('Loading history…')}</p>;
+  if (loading) return <LoadingState variant="inline" label={t('Loading history…')} />;
   if (history.length === 0) return <p className="text-xs text-gray-400">{t('No prior consultations.')}</p>;
 
   return (

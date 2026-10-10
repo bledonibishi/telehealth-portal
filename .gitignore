@@ -37,3 +37,9 @@ backend/email-previews/
 # Pose-model weights are downloaded, not committed (AGPL — see backend/models/README.md)
 backend/models/*.onnx
 backend/models/*.pt
+
+# Proof-reader test documents: the synthetic set is regenerated on demand (pnpm make-proof-test-set); anything in
+# private/ may be a real prescription and must never be committed.
+backend/eval/proof-reader/synthetic/
+backend/eval/proof-reader/private/
+backend/proof-model-comparison-*.json

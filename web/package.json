@@ -16,6 +16,7 @@
     "@fullcalendar/list": "6.1.21",
     "@fullcalendar/react": "^6.1.21",
     "@telehealth/booking": "workspace:*",
+    "@telehealth/loading": "workspace:*",
     "@telehealth/shared-types": "workspace:*",
     "date-fns": "^3.3.1",
     "graphql": "^16.8.1",

@@ -10,6 +10,7 @@ import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { ME_BASIC_INFO } from '@/graphql/patient';
 import { MY_TELEHEALTH_CONSENT } from '@/graphql/intake';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type StepKey = 'basic-information' | 'consent' | 'medical-questionnaire' | 'id-photo' | 'body-photo' | 'prescription-proof';
 
@@ -42,7 +43,7 @@ export default function OnboardingLandingPage() {
   }, [o?.status, router]);
 
   if (loading || consultationsLoading || meLoading || consentLoading || idvLoading || !o) {
-    return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
+    return <LoadingState label="Loading…" className="!py-12" />;
   }
 
   // With the verification service the check happens on its own page: the step is done once the
@@ -163,7 +164,7 @@ export default function OnboardingLandingPage() {
           Your clinician has reviewed your application and decided it isn&rsquo;t safe to prescribe online. They&rsquo;ve sent you a message explaining why.
         </p>
         {refunded && <p className="text-sm text-slate-500 mt-2">Your subscription has been cancelled and your payment refunded.</p>}
-        <button type="button" onClick={() => openChat()} className="inline-block mt-6 text-sm font-semibold text-white bg-ink-700 hover:bg-ink-800 rounded-xl px-5 py-2.5">
+        <button type="button" onClick={() => openChat()} className="inline-block mt-6 text-sm font-semibold text-white bg-ink-700 hover:bg-ink-800 rounded-md px-5 py-2.5">
           Read your clinician&rsquo;s message
         </button>
       </div>
@@ -194,7 +195,7 @@ export default function OnboardingLandingPage() {
   return (
     <div>
       {o.status === 'REJECTED' && (
-        <div className="mb-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-xl px-4 py-3 text-sm">
+        <div className="mb-5 bg-danger-50 border border-danger-100 text-danger-500 rounded-md px-4 py-3 text-sm">
           <p className="font-medium">Your submission needs another look</p>
           <p className="mt-1 text-danger-500/90">See the steps below marked ! for what to fix.</p>
         </div>
@@ -209,7 +210,7 @@ export default function OnboardingLandingPage() {
 
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mt-8 mb-3">What&rsquo;s left</p>
 
-      <div className="bg-white rounded-2xl border border-slate-100 divide-y divide-slate-100">
+      <div className="bg-white rounded-lg border border-slate-100 divide-y divide-slate-100">
         {steps.map((s, i) => (
           <button
             key={s.key}
@@ -249,7 +250,7 @@ export default function OnboardingLandingPage() {
       <button
         onClick={() => (allDone ? handleSubmit() : router.push(`/onboarding/${firstIncomplete!.key}`))}
         disabled={submitting}
-        className="w-full mt-8 bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+        className="w-full mt-8 bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-md text-sm transition-colors flex items-center justify-center gap-2"
       >
         {submitting ? 'Submitting…' : allDone ? 'Submit for review' : 'Resume'}
         {!submitting && <span>›</span>}

@@ -25,7 +25,7 @@ export function ChatCard() {
     <Card>
       <Lead icon="chat" title="Chat with Your Doctor" text="Ask questions, get advice, or share updates." />
       {latest && latest.senderRole !== 'PATIENT' && (
-        <p className="text-xs text-slate-600 bg-slate-50 rounded-xl p-3 mt-3 line-clamp-2">
+        <p className="text-xs text-slate-600 bg-slate-50 rounded-md p-3 mt-3 line-clamp-2">
           <b className="text-ink-900">{unread ? 'New reply' : 'Last reply'} · {formatDistanceToNowStrict(new Date(latest.sentAt))} ago</b><br />“{latest.content}”
         </p>
       )}
@@ -46,9 +46,9 @@ export function AppointmentCard() {
 /** For severe symptoms: the emergency number, plus the clinic's urgent line and a 24-hour urgent request. */
 export function EmergencyCard() {
   return (
-    <section className="rounded-2xl border border-red-200 bg-red-50/70 p-5">
+    <section className="rounded-lg border border-red-200 bg-red-50/70 p-5">
       <Lead icon="alert" tone="red" title="Urgent / Emergency" text="Severe side effects? Contact us immediately." />
-      <a href={telHref(CONTACT.urgentPhone ?? EMERGENCY_NUMBER)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2.5">
+      <a href={telHref(CONTACT.urgentPhone ?? EMERGENCY_NUMBER)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2.5">
         <Icon name="phone" className="w-4 h-4" /> {CONTACT.urgentPhone ? 'Call Now (24/7)' : `Call ${EMERGENCY_NUMBER}`}
       </a>
       <Link href="/appointments?new=1&urgent=1" className="block text-center text-xs font-medium text-red-700 hover:text-red-800 mt-2.5">Not life-threatening? Request an urgent appointment (answered within 24h) →</Link>
@@ -81,7 +81,7 @@ export function ContactCard() {
         <p className="text-slate-500">{CONTACT.urgentPhone ? '(24/7 – for urgent cases only)' : '(emergency services)'}</p>
       </ContactRow>
       <ContactRow icon="chat" label="Messages"><Link href="/messages" className="hover:underline">Message your care team</Link></ContactRow>
-      <div className="mt-3 rounded-xl bg-amber-50 border border-amber-100 p-3 flex gap-2.5">
+      <div className="mt-3 rounded-md bg-amber-50 border border-amber-100 p-3 flex gap-2.5">
         <Icon name="alert" className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
         <p className="text-[11px] text-amber-900"><b>Important</b><br />This platform is for medical support and treatment management only. It does not replace emergency services.</p>
       </div>

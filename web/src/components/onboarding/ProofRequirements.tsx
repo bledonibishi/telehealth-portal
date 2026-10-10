@@ -24,7 +24,7 @@ export function ProofRequirements({ data, compact = false }: { data: ProofRequir
 
   if (compact) {
     return (
-      <div className="mt-3 rounded-xl border border-ink-100 bg-white px-3.5 py-3">
+      <div className="mt-3 rounded-md border border-ink-100 bg-white px-3.5 py-3">
         <p className="text-xs font-semibold text-ink-900">Your proof needs to show</p>
         <dl className="mt-2 grid grid-cols-[auto_auto_1fr] items-center gap-x-2.5 gap-y-1.5">
           {rows.map((r) => (
@@ -42,7 +42,7 @@ export function ProofRequirements({ data, compact = false }: { data: ProofRequir
   }
 
   return (
-    <div className="mt-5 bg-white rounded-2xl border border-ink-100">
+    <div className="mt-5 bg-white rounded-lg border border-ink-100">
       <p className="px-4 pt-4 pb-1 text-xs font-semibold text-ink-900 uppercase tracking-wide">Your proof needs to show</p>
       <ul className="divide-y divide-slate-100">
         {rows.map((r) => (

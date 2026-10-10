@@ -28,6 +28,7 @@ import {
   DECLARE_PRESCRIPTION_PROOF_UNAVAILABLE,
 } from '@/graphql/onboarding';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const PROOF_TYPES: { value: string; label: string; hint: string; fastest?: boolean }[] = [
   { value: 'MEDICINE_BOX_LABEL', label: 'Medicine box label', hint: 'Pharmacy sticker on your box, bottle, or pen', fastest: true },
@@ -111,7 +112,7 @@ export default function PrescriptionProofStepPage() {
 
   const effectivePriorUse = priorUse ?? o?.priorMedicationUse ?? null;
 
-  if (loadingOnboarding || loadingConsultations) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
+  if (loadingOnboarding || loadingConsultations) return <LoadingState label="Loading…" className="!py-12" />;
 
   const handleNo = async () => {
     setError(null);
@@ -215,7 +216,7 @@ export default function PrescriptionProofStepPage() {
   const lastFailures = ((savedReview?.checks ?? []) as ProofCheck[]).filter((c) => c.status === 'FAIL');
   const CHECK_NAME: Record<string, string> = { NAME: 'Name', MEDICINE: 'Medicine', DOSE: 'Dose', DATE: 'Date' };
   const clinicianCard = clinicianRequest ? (
-    <details className="group mt-4 rounded-xl border border-rose-200 bg-rose-50/60">
+    <details className="group mt-4 rounded-md border border-rose-200 bg-rose-50/60">
       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-rose-900">
         Why your clinician asked for this
         <span className="text-rose-400 transition-transform group-open:rotate-90">›</span>
@@ -263,7 +264,7 @@ export default function PrescriptionProofStepPage() {
           previous dose another way.
         </p>
 
-        <div className="mt-5 bg-white rounded-2xl border border-slate-100 p-4">
+        <div className="mt-5 bg-white rounded-lg border border-slate-100 p-4">
           <p className="text-sm font-medium text-slate-900">Before you decide, any of these works as proof:</p>
           <ul className="mt-2 space-y-1.5 text-sm text-slate-600 list-disc pl-5">
             <li>An old box or pen with the pharmacy label still on it</li>
@@ -285,13 +286,13 @@ export default function PrescriptionProofStepPage() {
             }
           }}
           disabled={savingNoProof}
-          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           {savingNoProof ? 'Saving…' : 'Continue without proof'}
         </button>
         <button
           onClick={() => setAskingNoProof(false)}
-          className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           I&rsquo;ll find my proof
         </button>
@@ -329,7 +330,7 @@ export default function PrescriptionProofStepPage() {
           <>
             <button
               onClick={uploadProof}
-              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
             >
               Upload proof
             </button>
@@ -344,7 +345,7 @@ export default function PrescriptionProofStepPage() {
                 }
               }}
               disabled={savingNoProof}
-              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               {savingNoProof ? 'Saving…' : 'I still don’t have any proof'}
             </button>
@@ -353,13 +354,13 @@ export default function PrescriptionProofStepPage() {
           <>
             <button
               onClick={() => router.push('/onboarding')}
-              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-5 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
             >
               Continue
             </button>
             <button
               onClick={uploadProof}
-              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               I found my proof — upload it
             </button>
@@ -368,7 +369,7 @@ export default function PrescriptionProofStepPage() {
 
         {/* The detail, folded away so the choice above stays on screen. */}
         {clinicianCard}
-        <details className="group mt-3 rounded-xl border border-slate-100 bg-white">
+        <details className="group mt-3 rounded-md border border-slate-100 bg-white">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-slate-700">
             What happens if I don’t have proof?
             <span className="text-slate-400 transition-transform group-open:rotate-90">›</span>
@@ -413,7 +414,7 @@ export default function PrescriptionProofStepPage() {
         <button
           onClick={handleNameEvidence}
           disabled={!nameEvidenceFileId}
-          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           Continue
         </button>
@@ -436,7 +437,7 @@ export default function PrescriptionProofStepPage() {
         onClick={() => router.push('/onboarding')}
         className={
           primary
-            ? 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
+            ? 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors'
             : 'w-full mt-3 text-sm text-slate-500 hover:text-slate-700 py-2'
         }
       >
@@ -459,7 +460,7 @@ export default function PrescriptionProofStepPage() {
         {checks.length > 0 && <ProofChecklist checks={checks} />}
 
         {otherIssues.length > 0 && (
-          <div className="mt-5 bg-white rounded-xl border border-amber-200 divide-y divide-slate-100">
+          <div className="mt-5 bg-white rounded-md border border-amber-200 divide-y divide-slate-100">
             {otherIssues.map((i) => (
               <p key={i.code} className="px-4 py-3 text-sm text-amber-900 leading-relaxed">{i.patientHint}</p>
             ))}
@@ -469,7 +470,7 @@ export default function PrescriptionProofStepPage() {
 
         {/* Empty when the document's issues are the whole story. */}
         {r.patientMessage && (
-          <div className={`mt-5 rounded-xl border px-4 py-4 text-sm ${style.box}`}>
+          <div className={`mt-5 rounded-md border px-4 py-4 text-sm ${style.box}`}>
             <div className="flex items-start gap-3">
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${style.iconCls}`}>
                 {style.icon}
@@ -490,7 +491,7 @@ export default function PrescriptionProofStepPage() {
                   setUploadingNameEvidence(true);
                   setUploadKey((k) => k + 1);
                 }}
-                className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+                className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
               >
                 Upload proof of name change
               </button>
@@ -499,8 +500,8 @@ export default function PrescriptionProofStepPage() {
               onClick={uploadAgain}
               className={
                 nameMismatch
-                  ? 'w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50'
-                  : 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors'
+                  ? 'w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50'
+                  : 'w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors'
               }
             >
               {nameMismatch ? 'Upload a document in my current name' : 'Upload a different document'}
@@ -518,13 +519,13 @@ export default function PrescriptionProofStepPage() {
             </p>
             <button
               onClick={() => openChat(PROOF_HELP_DRAFT)}
-              className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
             >
               Message our team
             </button>
             <button
               onClick={uploadAgain}
-              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Try another document
             </button>
@@ -540,7 +541,7 @@ export default function PrescriptionProofStepPage() {
             {r.riskLevel !== 'OK' && (
               <button
                 onClick={uploadAgain}
-                className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Upload a different document
               </button>
@@ -562,7 +563,7 @@ export default function PrescriptionProofStepPage() {
         </p>
         <button
           onClick={() => router.push('/onboarding/medical-questionnaire')}
-          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           Go to the medical questionnaire
         </button>
@@ -582,14 +583,14 @@ export default function PrescriptionProofStepPage() {
         <InlineError error={error} size="xs" className="mt-3" />
         <button
           onClick={() => router.push('/onboarding')}
-          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-6 bg-ink-700 hover:bg-ink-800 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           Continue
         </button>
         <button
           onClick={handleYes}
           disabled={savingPriorUse}
-          className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="w-full mt-3 px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           Actually, I have used it before
         </button>
@@ -612,14 +613,14 @@ export default function PrescriptionProofStepPage() {
           <button
             onClick={handleYes}
             disabled={savingPriorUse}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 hover:bg-slate-50 text-left"
+            className="w-full px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-800 hover:bg-slate-50 text-left"
           >
             Yes, I have a current prescription
           </button>
           <button
             onClick={handleNo}
             disabled={savingPriorUse}
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 hover:bg-slate-50 text-left"
+            className="w-full px-4 py-3 border border-slate-200 rounded-md text-sm font-medium text-slate-800 hover:bg-slate-50 text-left"
           >
             No, this is my first time
           </button>
@@ -681,7 +682,7 @@ export default function PrescriptionProofStepPage() {
         <button
           onClick={handleContinue}
           disabled={!proofFileId}
-          className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full mt-3 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           Continue
         </button>
@@ -707,7 +708,7 @@ export default function PrescriptionProofStepPage() {
           <button
             key={t.value}
             onClick={() => chooseType(t.value)}
-            className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
+            className={`w-full flex items-start gap-3 px-4 py-3 rounded-md border text-left transition-colors ${
               proofType === t.value ? 'border-ink-500 bg-ink-50' : 'border-slate-200 hover:bg-slate-50'
             }`}
           >

@@ -22,7 +22,7 @@ export function RecentOrders() {
     <Card labelledBy="orders-title" className="h-full flex flex-col">
       <CardHeader id="orders-title" title="Recent Orders" href="/orders" action="View All" />
       {order ? (
-        <div className="rounded-xl border border-slate-200 p-4">
+        <div className="rounded-md border border-slate-200 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ink-900 truncate">{order.prescription?.medication} {order.prescription?.dosage}</p>
@@ -43,12 +43,12 @@ export function RecentOrders() {
           )}
         </div>
       ) : (
-        <p className="text-sm text-slate-500 bg-slate-50 rounded-xl p-4">Your first order appears here once your doctor has prescribed your treatment.</p>
+        <p className="text-sm text-slate-500 bg-slate-50 rounded-md p-4">Your first order appears here once your doctor has prescribed your treatment.</p>
       )}
 
       {when && (
         <div className="mt-auto pt-4">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-md bg-slate-50 p-3">
             <Icon name="calendar" className="w-5 h-5 text-ink-700 flex-shrink-0" />
             <div className="min-w-[8rem] flex-1">
               <p className="text-xs font-semibold text-ink-900">Next order reminder</p>

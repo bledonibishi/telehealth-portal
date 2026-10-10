@@ -13,6 +13,8 @@ import { hasAccess } from '@/lib/role';
 import { openProblem, overdueSince } from '@/lib/tracking';
 import { orderMatchesSearch } from '@/lib/order-search';
 import { InlineError } from '@/components/ui/Alert';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { SkeletonList } from '@telehealth/loading';
 
 type Order = any;
 
@@ -158,7 +160,7 @@ export default function OrdersPage() {
                 type="button"
                 onClick={() => pick(tile.key)}
                 aria-pressed={on}
-                className={`text-left rounded-xl border px-4 py-3 transition-colors ${
+                className={`text-left rounded-md border px-4 py-3 transition-colors ${
                   on ? 'border-brand-500 bg-brand-50' : urgent ? 'border-danger-500 bg-danger-50' : 'border-gray-200 bg-white hover:border-gray-300'
                 }`}
               >
@@ -171,7 +173,7 @@ export default function OrdersPage() {
         </div>
 
         {isPharmacy && (
-          <details open={count('to_pack') > 0 || undefined} className="mt-4 rounded-xl bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+          <details open={count('to_pack') > 0 || undefined} className="mt-4 rounded-md bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
             <summary className="cursor-pointer font-medium text-gray-800">{t('How it works')}</summary>
             <ol className="mt-2 space-y-1.5 list-decimal list-inside">
               <li>{t('Pack the order shown under “To pack” and print its packing slip. Put the parcel code on the parcel.')}</li>
@@ -184,26 +186,7 @@ export default function OrdersPage() {
       </div>
 
       <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white">
-        <div className="relative max-w-xl">
-          <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-            <circle cx="9" cy="9" r="5.5" />
-            <path d="M13.5 13.5L17 17" strokeLinecap="round" />
-          </svg>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            placeholder={t('Search by name, parcel code or tracking number')}
-            aria-label={t('Search orders')}
-            className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-9 text-sm text-gray-900 placeholder:text-gray-400 hover:border-gray-300 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          />
-          {searching && (
-            <button type="button" onClick={() => setQuery('')} aria-label={t('Clear search')} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-700">
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" /></svg>
-            </button>
-          )}
-        </div>
+        <SearchInput className="max-w-xl" value={query} onChange={setQuery} placeholder={t('Search by name, parcel code or tracking number')} ariaLabel={t('Search orders')} clearLabel={t('Clear search')} />
         {searching && (
           <p className="mt-2 text-xs text-gray-500">
             {t('{n} in “{tab}”', { n: orders.length, tab: t(active.label) })}
@@ -240,7 +223,7 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      {loading && !data && <p className="p-6 text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && !data && <div className="p-4 sm:p-6"><SkeletonList rows={4} label={t('Loading…')} /></div>}
       <InlineError error={error} className="p-6" />
 
       <div className="divide-y divide-gray-100">

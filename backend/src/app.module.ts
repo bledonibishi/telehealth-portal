@@ -28,6 +28,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { NotifierModule } from './notifications/notifier.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PostHogModule } from './posthog/posthog.module';
+import { LangfuseModule } from './langfuse/langfuse.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { IdentityVerificationModule } from './identity-verification/identity-verification.module';
@@ -50,6 +51,7 @@ import { InsightsModule } from './insights/insights.module';
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     PostHogModule,
+    LangfuseModule,
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       // Vercel's serverless filesystem is read-only at runtime — writing to

@@ -24,7 +24,7 @@ function Row({ icon, label, value }: { icon: IconName; label: string; value: str
 export function ProfileSummaryCard({ journey }: { journey?: any }) {
   const { data } = useQuery(MY_PROFILE, { fetchPolicy: 'cache-and-network' });
   const p = data?.myProfile;
-  if (!p) return <Card><div className="h-64 rounded-xl bg-slate-50 animate-pulse" /></Card>;
+  if (!p) return <Card><div className="h-64 rounded-md bg-slate-50 animate-pulse" /></Card>;
   const dob = new Date(p.dateOfBirth);
   return (
     <Card labelledBy="profile-title">

@@ -1,7 +1,10 @@
+'use client';
+
+import { LoadingState } from '@telehealth/loading';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+
+// Shown while a page of the portal loads. Client component only so the label can be translated.
 export default function Loading() {
-  return (
-    <div className="flex items-center justify-center h-full min-h-64">
-      <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  const { t } = useI18n();
+  return <LoadingState variant="page" label={t('Loading…')} />;
 }

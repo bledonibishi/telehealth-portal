@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useQuery } from '@apollo/client';
 import { MY_CONSULTATIONS, MY_TREATMENT_PLAN } from '../../graphql/operations';
 import { careStage } from '../../lib/careStage';
 import { signOut } from '../../lib/session';
 import { ErrorNotice } from '../../components/ErrorNotice';
+import { LoadingState } from '../../components/Skeleton';
 
 // The doctor's decision arrives while the app is open: look again this often.
 const POLL_MS = 30_000;
@@ -24,7 +25,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
   // Coming back to this tab shows where things stand now.
   React.useEffect(() => navigation.addListener('focus', () => { refetch(); refetchPlan(); }), [navigation, refetch, refetchPlan]);
 
-  if (loading && !data) return <ActivityIndicator style={styles.center} />;
+  if (loading && !data) return <LoadingState fill label="Loading your treatment…" />;
   if (error && !data) return <View style={styles.errorBox}><ErrorNotice error={error} title="We couldn’t load your consultation" onRetry={() => refetch()} /></View>;
 
   const consultations = data?.myConsultations ?? [];

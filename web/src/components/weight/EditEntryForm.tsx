@@ -14,7 +14,7 @@ import { errorMessage } from '@telehealth/shared-types';
 
 const MIN_KG = 30;
 const MAX_KG = 300;
-const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
+const field = 'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
 const toLocal = (iso: string) => format(new Date(iso), "yyyy-MM-dd'T'HH:mm");
 
 /**
@@ -134,7 +134,7 @@ export function EditEntryForm({ entry, onDone }: { entry: JourneyEntry; onDone: 
       </div>
 
       <div className="flex items-center gap-3 pt-1">
-        <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-xl">
+        <button type="submit" disabled={loading || uploading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-md">
           {uploading ? 'Uploading photo…' : loading ? 'Saving…' : 'Save changes'}
         </button>
         <button type="button" onClick={onDone} className="text-sm text-slate-400 hover:text-slate-600">Cancel</button>

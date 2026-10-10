@@ -54,7 +54,7 @@ export function ProofReviewCard({ review }: { review: ProofReview }) {
   const read = review.status === 'COMPLETED';
 
   return (
-    <div className="rounded-xl border border-gray-100 p-3 space-y-2 text-xs">
+    <div className="rounded-md border border-gray-100 p-3 space-y-2 text-xs">
       <div className="flex items-center justify-between gap-2">
         <p className="font-semibold text-gray-700">{t('Automatic proof check')}</p>
         <span className={`font-medium px-2 py-0.5 rounded ${risk.cls}`}>{t(risk.label)}</span>

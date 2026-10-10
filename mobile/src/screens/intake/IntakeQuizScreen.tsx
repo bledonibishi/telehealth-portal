@@ -6,6 +6,7 @@ import { useMutation, useQuery } from '@apollo/client';
 import { CONSENT_TEXT, MY_CONSULTATIONS, MY_PRODUCT_KIND, QUESTIONNAIRE, SUBMIT_INTAKE_QUIZ } from '../../graphql/operations';
 import { ConsultationKind } from '@telehealth/shared-types';
 import { errorMessage } from '@telehealth/shared-types';
+import { LoadingState } from '../../components/Skeleton';
 
 type Question = {
   id: string;
@@ -99,7 +100,7 @@ export function IntakeQuizScreen({ navigation, route }: any) {
   };
 
   if (kindLoading || (kind && loading)) {
-    return <View style={styles.container}><ActivityIndicator /></View>;
+    return <View style={styles.container}><LoadingState label="Loading the questions…" /></View>;
   }
 
   if (!kind) {

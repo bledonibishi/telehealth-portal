@@ -7,6 +7,7 @@ import { fmtDate, money } from '../../lib/format';
 import { ORDER_POLL_MS, TRACKING_LABEL, TRACKING_PROBLEMS, expectedDelivery, shortDateTime } from '../../lib/delivery';
 import { openLink, PORTAL_URL } from '../../lib/config';
 import { colors } from '../../theme';
+import { SkeletonCard } from '../../components/Skeleton';
 
 const STEPS = ['Processing', 'Shipped', 'On the way', 'Delivered'] as const;
 const STATUS: Record<string, { label: string; tone: 'warn' | 'info' | 'good' | 'plain' | 'danger'; step: number }> = {
@@ -86,7 +87,7 @@ export function OrdersScreen({ navigation }: any) {
           </Card>
         )}
 
-        {loading && !orders.length && <Empty>Loading…</Empty>}
+        {loading && !orders.length && <><SkeletonCard lines={4} label="Loading your orders…" /><SkeletonCard lines={4} label="Loading your orders…" /></>}
         {!data && <ErrorText error={error} />}
         {!loading && !error && !orders.length && <Card><Empty>Your first supply is being prepared by the pharmacy. It shows here, with tracking, as soon as it is on its way.</Empty></Card>}
 

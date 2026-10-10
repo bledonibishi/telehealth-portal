@@ -33,7 +33,7 @@ export default function CareTeamPage() {
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-4xl">
       <PageHeader title="My Doctor" subtitle="The clinicians looking after your treatment." />
 
-      {loading && !team.length && <Card><div className="h-24 rounded-xl bg-slate-50 animate-pulse" /></Card>}
+      {loading && !team.length && <Card><div className="h-24 rounded-md bg-slate-50 animate-pulse" /></Card>}
       {!loading && !team.length && (
         <Card>
           <p className="text-sm text-slate-600">A doctor is assigned when your consultation is reviewed. You can already message our team with any question.</p>
@@ -103,7 +103,7 @@ export default function CareTeamPage() {
         </Card>
       )}
 
-      <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4 flex gap-3">
+      <div className="rounded-lg bg-amber-50 border border-amber-100 p-4 flex gap-3">
         <Icon name="alert" className="w-5 h-5 text-amber-600 flex-shrink-0" />
         <p className="text-sm text-amber-900">Messages are read by your care team during working hours and are <b>not for emergencies</b>. For chest pain, trouble breathing or severe stomach pain, call {EMERGENCY_NUMBER}.</p>
       </div>
