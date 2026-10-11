@@ -35,10 +35,10 @@ export function ComparePhotos() {
     <Card labelledBy="compare-title">
       <CardHeader id="compare-title" title="Compare photos" subtitle="Pick two photos and drag the handle between them." />
 
-      {loading && photos.length === 0 && <div className="h-40 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your photos" />}
+      {loading && photos.length === 0 && <div className="h-40 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading your photos" />}
 
       {!loading && photos.length < 2 && (
-        <div className="rounded-xl bg-slate-50 p-5 text-center">
+        <div className="rounded-md bg-slate-50 p-5 text-center">
           <p className="text-sm font-medium text-slate-700">Add at least 2 photos to compare</p>
           <p className="text-xs text-slate-500 mt-1">{photos.length === 1 ? 'You have one so far. Add another with your next weigh-in.' : 'Take one with each weigh-in and the change shows up here.'}</p>
           <button type="button" onClick={() => add('photo')} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ink-600 hover:bg-ink-700 text-white text-xs font-semibold px-3 py-2"><Icon name="camera" className="w-4 h-4" /> Add a photo</button>
@@ -65,7 +65,7 @@ export function ComparePhotos() {
               </label>
             </div>
 
-            <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3" aria-live="polite">
+            <div className="mt-4 rounded-md bg-slate-50 px-4 py-3" aria-live="polite">
               {before.key === after.key ? (
                 <p className="text-sm text-slate-500">Choose two different photos to compare.</p>
               ) : change === null ? (

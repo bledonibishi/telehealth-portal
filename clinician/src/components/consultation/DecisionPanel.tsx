@@ -18,6 +18,7 @@ import { PrescriptionForm, PrescriptionSubmission } from './PrescriptionForm';
 import { Modal } from './Modal';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { Select } from '@/components/ui/Select';
 
 type Action = 'approve' | 'decline' | 'more_info' | 'redo' | null;
 
@@ -270,9 +271,7 @@ export function DecisionPanel({
             </label>
             <label className="block">
               <span className="block text-xs font-medium text-gray-700 mb-1">{t('Message to the patient')}</span>
-              <select value={template} onChange={(e) => chooseTemplate(e.target.value)} className={`${cls} mb-2`}>
-                {DECLINE_TEMPLATES.map((tpl) => <option key={tpl.key} value={tpl.key}>{t(tpl.label)}</option>)}
-              </select>
+              <div className="mb-2"><Select ariaLabel={t('Message to the patient')} value={template} onChange={chooseTemplate} options={DECLINE_TEMPLATES.map((tpl) => ({ value: tpl.key, label: t(tpl.label) }))} /></div>
               <textarea rows={4} required value={patientMessage} onChange={(e) => setPatientMessage(e.target.value)} className={cls} />
             </label>
             <p className="text-xs text-gray-500">

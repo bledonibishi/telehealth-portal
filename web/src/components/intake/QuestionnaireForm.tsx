@@ -103,14 +103,14 @@ export function QuestionnaireForm({
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-500 bg-white';
+    'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-500 bg-white';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {visible.map((q) => {
         const selected = values[q.id] ?? [];
         return (
-          <fieldset key={q.id} className="bg-white rounded-2xl border border-slate-100 p-4">
+          <fieldset key={q.id} className="bg-white rounded-lg border border-slate-100 p-4">
             <legend className="sr-only">{q.text}</legend>
             <p className="text-sm font-medium text-slate-900">
               {q.text}
@@ -173,7 +173,7 @@ export function QuestionnaireForm({
       <button
         type="submit"
         disabled={submitting || unanswered.length > 0 || !ready}
-        className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-md text-sm transition-colors"
       >
         {submitting ? 'Sending…' : unanswered.length ? `${unanswered.length} question${unanswered.length === 1 ? '' : 's'} left` : 'Send to our clinicians'}
       </button>

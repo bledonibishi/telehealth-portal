@@ -34,7 +34,7 @@ export function AfterDoseCheck({ dose, doseName }: { dose: { id: string; takenAt
   const rough = answered === 'DIFFICULTIES' || answered === 'NOT_WELL';
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6" role="region" aria-label="How you felt after your injection">
+    <div className="bg-white rounded-lg border border-slate-100 p-5 mb-6" role="region" aria-label="How you felt after your injection">
       {answered ? (
         <div role="status">
           <p className="text-sm font-semibold text-slate-900">Thanks — your doctor can see this.</p>

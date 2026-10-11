@@ -23,6 +23,7 @@ import { WeeklySideEffectPrompt } from '@/components/doses/SideEffectTracker';
 import { lastSiteOf, SITE_LABEL, suggestNextSite, type InjectionSite } from '@/lib/injection-sites';
 import '@/styles/dose-calendar.css';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type DoseEvent = {
   id: string;
@@ -144,7 +145,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const askSite = pen && !notYet && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5">
+    <div className="bg-white rounded-lg border border-slate-100 p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-900">{doseName(dose)}</p>
@@ -185,7 +186,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       {video && <InjectionVideoDialog onClose={() => setVideo(false)} onShowSteps={() => { setVideo(false); setGuide(true); }} />}
 
       {notYet && (
-        <p className="text-sm text-slate-600 bg-slate-50 rounded-xl px-3 py-2.5 mt-4" role="status">
+        <p className="text-sm text-slate-600 bg-slate-50 rounded-md px-3 py-2.5 mt-4" role="status">
           This {isPatch ? 'patch change' : 'injection'} is due {countdown(new Date(dose.scheduledFor))}, on {format(new Date(dose.scheduledFor), 'EEEE d MMMM')}. You can log it that day.
         </p>
       )}
@@ -195,7 +196,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
           {!notYet && <button
             onClick={() => markTaken({ variables: { id: dose.id, injectionSite: pen ? site : undefined } })}
             disabled={taking}
-            className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl"
+            className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-md"
           >
             {taking ? 'Saving…' : isPatch ? 'Mark patch changed' : 'Mark as taken'}
           </button>}
@@ -204,12 +205,12 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Reason (optional)"
-              className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ink-500"
+              className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ink-500"
             />
             <button
               onClick={() => markSkipped({ variables: { id: dose.id, note: note.trim() || undefined } })}
               disabled={skipping}
-              className="flex-shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-xl px-3 whitespace-nowrap disabled:opacity-50"
+              className="flex-shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-md px-3 whitespace-nowrap disabled:opacity-50"
             >
               {skipping ? '…' : 'Skip'}
             </button>
@@ -285,7 +286,7 @@ export default function DosesPage() {
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
       <PageHeader title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} />
 
-      {loading && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && <LoadingState variant="inline" label="Loading…" />}
       <InlineError error={error} />
 
       {!loading && doses.length === 0 && (
@@ -299,7 +300,7 @@ export default function DosesPage() {
       {doses.length > 0 && (
         <>
           {needsClinician && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6" role="alert">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
               <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.missedInARow} doses in a row</p>
               <p className="text-sm text-amber-900/80 mt-1">
                 Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
@@ -309,7 +310,7 @@ export default function DosesPage() {
             </div>
           )}
           {!needsClinician && overdue && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6" role="alert">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
               <p className="text-sm font-semibold text-amber-900">Your injection from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
               <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false) ?? 'If you haven’t taken it, message your care team before taking it late.'}</p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
@@ -321,7 +322,7 @@ export default function DosesPage() {
           <WeeklySideEffectPrompt />
           {askedAbout && <AfterDoseCheck dose={{ id: askedAbout.id, takenAt: askedAbout.takenAt! }} doseName={doseName(askedAbout)} />}
           {next && (
-            <div className="bg-white rounded-2xl border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
+            <div className="bg-white rounded-lg border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Next {injections ? 'injection' : 'dose'}</p>
                 <p className="text-lg font-semibold text-slate-900 mt-1">{doseName(next)}</p>
@@ -332,7 +333,7 @@ export default function DosesPage() {
               </div>
               <button
                 onClick={() => setSelectedId(next.id)}
-                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
               >
                 Open
               </button>
@@ -349,7 +350,7 @@ export default function DosesPage() {
           </div>
 
           <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-4 dose-calendar">
+            <div className="lg:col-span-2 bg-white rounded-lg border border-slate-100 p-4 dose-calendar">
               <FullCalendar
                 ref={calendarRef}
                 plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
@@ -370,7 +371,7 @@ export default function DosesPage() {
               {selected ? (
                 <DetailPanel key={selected.id} dose={selected} needsClinician={needsClinician} lastSite={lastSite} onClose={() => setSelectedId(null)} />
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-100 p-5 text-sm text-slate-400">
+                <div className="bg-white rounded-lg border border-slate-100 p-5 text-sm text-slate-400">
                   Click a dose on the calendar to log it or see the details.
                 </div>
               )}

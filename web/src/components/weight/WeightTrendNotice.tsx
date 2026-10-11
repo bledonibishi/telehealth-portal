@@ -18,7 +18,7 @@ export function WeightTrendNotice() {
   const message = data?.myWeightTrend ? trendMessage(data.myWeightTrend) : null;
   if (!message) return null;
   return (
-    <section className={`rounded-2xl border p-4 ${TONE[message.tone]}`} aria-label="What your recent weights say" role={message.tone === 'red' ? 'alert' : 'status'}>
+    <section className={`rounded-lg border p-4 ${TONE[message.tone]}`} aria-label="What your recent weights say" role={message.tone === 'red' ? 'alert' : 'status'}>
       <p className="text-sm font-semibold"><span aria-hidden>{message.icon}</span> {message.title}</p>
       <p className="text-sm mt-1 opacity-90">{message.text}</p>
       {message.action === 'MESSAGE_DOCTOR' && <Link href="/messages" className="inline-block mt-2 text-sm font-semibold underline">Message my doctor</Link>}

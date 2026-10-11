@@ -12,6 +12,7 @@ import { WeightChart } from './WeightChart';
 import { LogWeightForm } from './LogWeightForm';
 import { Dialog } from '@/components/common/Dialog';
 import { ErrorAlert, InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type Mode = 'month' | '3M' | '6M' | '1Y' | 'All' | 'custom';
 const PRESETS: { key: Exclude<Mode, 'custom'>; label: string }[] = [
@@ -20,7 +21,7 @@ const PRESETS: { key: Exclude<Mode, 'custom'>; label: string }[] = [
 const MONTHS_BACK: Record<string, number> = { month: 0, '3M': 2, '6M': 5, '1Y': 11 };
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const card = 'bg-white rounded-2xl border border-slate-100 p-4 sm:p-5';
+const card = 'bg-white rounded-lg border border-slate-100 p-4 sm:p-5';
 const DAY = 86_400_000;
 
 export interface ExtraTab { key: string; label: string; node: React.ReactNode }
@@ -161,7 +162,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
     ? `${monthPoints.length} measurement${monthPoints.length === 1 ? '' : 's'}${monthPoints.length > 1 ? ` · ${kgChange(Math.round((monthPoints[0].w - monthPoints[monthPoints.length - 1].w) * 10) / 10)} over the month` : ''}`
     : '';
   const sel = 'border border-slate-200 rounded-lg px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
-  const navBtn = 'w-11 h-11 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center text-lg';
+  const navBtn = 'w-11 h-11 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center text-lg';
 
   const tabs: ExtraTab[] = [
     { key: 'chart', label: 'Chart', node: null },
@@ -190,7 +191,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
       {tab === 'chart' && (
         <div>
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <div role="group" aria-label="Time range" className="flex rounded-xl border border-slate-200 overflow-hidden text-xs font-medium">
+            <div role="group" aria-label="Time range" className="flex rounded-md border border-slate-200 overflow-hidden text-xs font-medium">
               {PRESETS.map((p) => (
                 <button key={p.key} type="button" onClick={() => preset(p.key)} aria-pressed={!showForecast && mode === p.key}
                   className={`px-3 py-1.5 ${!showForecast && mode === p.key ? 'bg-brand-50 text-brand-700' : 'text-slate-500 hover:bg-slate-50'}`}>{p.label}</button>
@@ -198,14 +199,14 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
             </div>
             {forecast && (
               <button type="button" onClick={toggleForecast} aria-pressed={showForecast}
-                className={`text-xs font-medium rounded-xl border px-3 py-1.5 ${showForecast ? 'bg-brand-50 border-brand-500 text-brand-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                className={`text-xs font-medium rounded-md border px-3 py-1.5 ${showForecast ? 'bg-brand-50 border-brand-500 text-brand-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
                 {showForecast ? '✓ ' : ''}Show projection
               </button>
             )}
           </div>
 
           {!ready && <ErrorAlert error={tl.error} action={retryTimeline} />}
-          {!ready && !tl.error && <div className="h-[220px] sm:h-[260px] rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your weights" />}
+          {!ready && !tl.error && <div className="h-[220px] sm:h-[260px] rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading your weights" />}
           {ready && (
             <div className="relative">
               <WeightChart points={points} view={view!} bounds={bounds} onViewChange={onChartView} onReset={reset}
@@ -214,7 +215,7 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
               {!tl.loading && points.length === 0 && (
                 <div className="absolute inset-x-0 top-1/4 flex flex-col items-center gap-3 px-4 text-center pointer-events-none">
                   <p className="text-sm text-slate-500">🎯 Log your first weight to start tracking your progress.</p>
-                  <button type="button" onClick={() => setLogging(true)} className="pointer-events-auto bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">Log your weight now</button>
+                  <button type="button" onClick={() => setLogging(true)} className="pointer-events-auto bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-md">Log your weight now</button>
                 </div>
               )}
               {!tl.loading && points.length > 0 && view && lowerBound(points, view[1] + 1) - lowerBound(points, view[0]) === 0 && !showForecast && (
@@ -270,14 +271,14 @@ export function WeightExplorer({ extraTabs = [] }: { extraTabs?: ExtraTab[] }) {
           {ready && monthPoints.length === 0 && !tl.loading && (
             <p className="text-sm text-slate-400 py-6 text-center">No weights recorded in {monthLabel}.<span className="block text-xs mt-1 md:hidden">Swipe to see other months.</span></p>
           )}
-          {!ready && !tl.error && <p className="text-sm text-slate-400 py-6 text-center">Loading…</p>}
+          {!ready && !tl.error && <LoadingState label="Loading…" className="!py-6" />}
 
           <ul className="divide-y divide-slate-100 max-h-[19rem] overflow-y-auto pr-1">
             {monthPoints.map((p) => {
               const fe = p.feeling ? feelingOf(p.feeling) : null;
               const isSel = p.id === selectedId;
               return (
-                <li key={p.id} className={`py-2.5 ${isSel ? 'bg-brand-50/60 -mx-3 px-3 rounded-xl' : ''}`}>
+                <li key={p.id} className={`py-2.5 ${isSel ? 'bg-brand-50/60 -mx-3 px-3 rounded-md' : ''}`}>
                   <button type="button" onClick={() => selectRow(p)} className="w-full text-left" aria-pressed={isSel}>
                     <div className="flex items-baseline justify-between gap-3">
                       <p className="text-sm font-medium text-slate-700">{format(p.t, 'MMM d')} · {format(p.t, 'HH:mm')}</p>

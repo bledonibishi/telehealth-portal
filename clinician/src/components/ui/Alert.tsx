@@ -45,7 +45,7 @@ export function Alert({ tone = 'info', title, children, action, className = '' }
 }) {
   const t = TONES[tone];
   return (
-    <div role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'} className={`flex gap-3 rounded-xl border px-4 py-3 text-sm ${t.box} ${className}`}>
+    <div role={tone === 'error' || tone === 'warning' ? 'alert' : 'status'} className={`flex gap-3 rounded-md border px-4 py-3 text-sm ${t.box} ${className}`}>
       <ToneIcon tone={tone} className={`mt-0.5 h-5 w-5 shrink-0 ${t.icon}`} />
       <div className="min-w-0 space-y-1">
         {title && <p className="font-semibold">{title}</p>}

@@ -26,6 +26,7 @@ import { hasAccess } from '@/lib/role';
 import PatientSnapshot, { currentMedications, treatmentStatusOf } from '@/components/patients/PatientSnapshot';
 import MedicationPill from '@/components/patients/MedicationPill';
 import { TREATMENT_STATUS } from '@/lib/patient-status';
+import { LoadingState } from '@telehealth/loading';
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -103,7 +104,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const symptomAssessments = symptomsData?.patientSymptomAssessments ?? [];
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center text-sm text-gray-400">{t('Loading…')}</div>
+    <LoadingState label={t('Loading…')} className="flex-1" />
   );
   if (!p) return null;
 
@@ -242,7 +243,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             />
 
             {/* Basic details card */}
-            <div className="bg-gray-50 rounded-xl p-4 space-y-4">
+            <div className="bg-gray-50 rounded-md p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Basic details')}</p>
                 {isAdmin && !editing && (
@@ -279,7 +280,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Consultations')}</p>
                 <div className="space-y-3">
                   {p.consultations.map((c: any) => (
-                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
+                    <div key={c.id} className="border border-gray-100 rounded-md p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex gap-2">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[c.kind]}`}>{c.kind}</span>
@@ -380,7 +381,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                   const isPatient = msg.senderRole === 'PATIENT';
                   return (
                     <div key={msg.id} className={`flex ${isPatient ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                      <div className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm ${
                         isPatient
                           ? 'bg-gray-100 text-gray-800 rounded-tl-sm'
                           : 'bg-brand-500 text-white rounded-tr-sm'
@@ -409,12 +410,12 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
-                    className="flex-1 resize-none border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="flex-1 resize-none border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                   <button
                     onClick={handleReply}
                     disabled={!reply.trim() || sending}
-                    className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-md hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {sending ? '…' : t('Send')}
                   </button>
@@ -443,7 +444,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
         {/* ── Check-in ── */}
         {tab === 'checkin' && (
           <div className="p-5">
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <div className="bg-gray-50 rounded-md p-4 mb-4">
               <p className="text-sm font-semibold text-gray-800">{t('Check-in')}</p>
               <p className="text-xs text-gray-500 mt-1">
                 {t('Every 4 weeks the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
@@ -451,11 +452,11 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             </div>
 
             {!p.activatedAt ? (
-              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
+              <div className="border border-gray-100 rounded-md p-4 text-center text-sm text-gray-400">
                 {t('Check-in schedule starts once the patient activates their account.')}
               </div>
             ) : checkIns.length === 0 ? (
-              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
+              <div className="border border-gray-100 rounded-md p-4 text-center text-sm text-gray-400">
                 {t('First check-in hasn’t been scheduled yet.')}
               </div>
             ) : (
@@ -464,7 +465,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                   const dueDate = new Date(c.dueAt);
                   const overdue = c.status !== 'COMPLETED' && dueDate < new Date();
                   return (
-                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
+                    <div key={c.id} className="border border-gray-100 rounded-md p-4">
                       <div className="flex items-center justify-between mb-3">
                         <span
                           className={`text-xs font-medium px-2 py-0.5 rounded ${

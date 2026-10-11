@@ -10,7 +10,7 @@ import { useJourneyPhotos } from './JourneyPhotos';
 export function PhotoTimeline() {
   const { photos, loading, open, add } = useJourneyPhotos();
 
-  if (loading && photos.length === 0) return <div className="h-40 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your photos" />;
+  if (loading && photos.length === 0) return <div className="h-40 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading your photos" />;
   if (photos.length === 0) {
     return (
       <div className="py-6 text-center">
@@ -26,7 +26,7 @@ export function PhotoTimeline() {
       <ol className="flex gap-4 overflow-x-auto pb-2 snap-x">
         {photos.map((p, i) => (
           <li key={p.key} className="wj-rise shrink-0 w-28 snap-start" style={{ animationDelay: `${Math.min(i, 12) * 60}ms` }}>
-            <button type="button" onClick={() => open(p)} className="block w-full rounded-xl overflow-hidden transition duration-200 hover:-translate-y-1 hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)]" aria-label={`Open the photo from ${format(new Date(p.at), 'd MMMM yyyy')} full screen`}>
+            <button type="button" onClick={() => open(p)} className="block w-full rounded-md overflow-hidden transition duration-200 hover:-translate-y-1 hover:shadow-[0_8px_25px_rgba(0,0,0,0.12)]" aria-label={`Open the photo from ${format(new Date(p.at), 'd MMMM yyyy')} full screen`}>
               <AuthedImage fileId={p.fileId!} alt="" className="w-28 h-36 object-cover" />
             </button>
             {/* The line the photos sit on, with a dot under each. */}

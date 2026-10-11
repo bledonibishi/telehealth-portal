@@ -7,6 +7,7 @@ import { GET_QUESTIONNAIRE } from '@/graphql/questionnaires';
 import QuizQuestionsFields, { autofillAnswers, buildQuizAnswerInputs, QuizAnswers, Question } from './QuizQuestionsFields';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const FIRST_NAMES = ['Amelia', 'Noah', 'Olivia', 'Liam', 'Ava', 'Elijah', 'Sophia', 'Lucas', 'Mia', 'Mason'];
 const LAST_NAMES = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Taylor'];
@@ -174,7 +175,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
   if (created) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4" onClick={onClose}>
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
           <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-gray-900">{t('Patient created')}</h2>
@@ -184,7 +185,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
           </div>
 
           <div className="px-6 pb-5 space-y-4">
-            <dl className="rounded-xl border border-gray-200 divide-y divide-gray-100">
+            <dl className="rounded-md border border-gray-200 divide-y divide-gray-100">
               <div className="px-4 py-3">
                 <dt className="text-xs text-gray-400">{t('Email')}</dt>
                 <dd className="text-sm text-gray-900 break-all mt-0.5">{created.email}</dd>
@@ -222,7 +223,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-md shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <h2 className="text-base font-semibold text-gray-900">{t('New patient')}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>
@@ -267,7 +268,7 @@ export default function CreatePatientModal({ onClose, onCreated }: { onClose: ()
                 onChange={(id, value) => setQuizAnswers((a) => ({ ...a, [id]: value }))}
               />
             ) : (
-              <p className="text-xs text-gray-400">{t('Loading questions…')}</p>
+              <LoadingState variant="inline" label={t('Loading questions…')} />
             )}
           </div>
 

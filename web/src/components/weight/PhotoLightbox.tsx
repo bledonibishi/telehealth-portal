@@ -109,15 +109,15 @@ export function PhotoLightbox({ photos, index, onIndex, onClose, onEdit, onDelet
         <button type="button" onClick={() => go(-1)} disabled={index === 0} aria-label="Previous photo" className={`${roundBtn} absolute left-2 sm:left-5 top-1/2 -translate-y-1/2 z-10`}><Icon name="left" /></button>
         <div key={photo.key} className={`max-h-full max-w-full flex ${leaving ? 'wj-leaving' : 'wj-pop'}`}>
           {src ? (
-            <img src={src} alt={`Progress photo, ${date}, ${kg(photo.weightKg)}`} draggable={false} className="max-h-[calc(100dvh-15.5rem)] max-w-full object-contain rounded-xl shadow-2xl select-none" />
+            <img src={src} alt={`Progress photo, ${date}, ${kg(photo.weightKg)}`} draggable={false} className="max-h-[calc(100dvh-15.5rem)] max-w-full object-contain rounded-md shadow-2xl select-none" />
           ) : (
-            <div className="w-56 h-72 rounded-xl bg-white/10 flex items-center justify-center text-sm text-white/70" role="status">{failed ? 'Couldn’t load this photo.' : 'Loading…'}</div>
+            <div className="w-56 h-72 rounded-md bg-white/10 flex items-center justify-center text-sm text-white/70" role="status">{failed ? 'Couldn’t load this photo.' : 'Loading…'}</div>
           )}
         </div>
         <button type="button" onClick={() => go(1)} disabled={index === photos.length - 1} aria-label="Next photo" className={`${roundBtn} absolute right-2 sm:right-5 top-1/2 -translate-y-1/2 z-10`}><Icon name="right" /></button>
       </div>
 
-      <div className={`relative w-full sm:max-w-xl sm:mx-auto sm:mb-4 bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 ${leaving ? 'wj-leaving' : 'wj-rise'}`}>
+      <div className={`relative w-full sm:max-w-xl sm:mx-auto sm:mb-4 bg-white rounded-t-lg sm:rounded-lg shadow-xl p-4 ${leaving ? 'wj-leaving' : 'wj-rise'}`}>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <p className="text-lg font-bold text-ink-900">{kg(photo.weightKg)}</p>
           <p className="text-sm text-slate-500">{date}</p>

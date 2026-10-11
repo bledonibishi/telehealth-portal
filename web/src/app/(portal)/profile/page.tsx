@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/portal/PageHeader';
 import { Avatar, Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
 
-const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink-600';
+const field = 'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink-600';
 const label = 'block text-xs font-medium text-slate-500 mb-1';
 
 function Item({ name, value, hint }: { name: string; value: React.ReactNode; hint?: string }) {

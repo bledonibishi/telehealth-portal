@@ -150,14 +150,14 @@ export function JourneyPhotosProvider({ journey, children }: { journey: any; chi
           <p className="text-xs text-slate-400 mt-2">Your care team keeps a note that this weight was recorded and removed. This can’t be undone here.</p>
           <InlineError error={deleteError} className="mt-2" />
           <div className="flex justify-end gap-2 mt-5">
-            <button type="button" onClick={() => setDeleting(null)} className="text-sm text-slate-500 hover:bg-slate-100 rounded-xl px-4 py-2.5">Keep it</button>
-            <button type="button" onClick={confirmDelete} disabled={voiding} className="text-sm font-semibold text-white bg-danger-500 hover:bg-danger-900 disabled:opacity-50 rounded-xl px-4 py-2.5">{voiding ? 'Deleting…' : 'Delete entry'}</button>
+            <button type="button" onClick={() => setDeleting(null)} className="text-sm text-slate-500 hover:bg-slate-100 rounded-md px-4 py-2.5">Keep it</button>
+            <button type="button" onClick={confirmDelete} disabled={voiding} className="text-sm font-semibold text-white bg-danger-500 hover:bg-danger-900 disabled:opacity-50 rounded-md px-4 py-2.5">{voiding ? 'Deleting…' : 'Delete entry'}</button>
           </div>
         </Dialog>
       )}
 
       {notice && (
-        <p role="status" className="wj-fade fixed z-[60] bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)] bg-slate-900 text-white text-sm rounded-xl shadow-lg px-4 py-2.5">{notice}</p>
+        <p role="status" className="wj-fade fixed z-[60] bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100vw-2rem)] bg-slate-900 text-white text-sm rounded-md shadow-lg px-4 py-2.5">{notice}</p>
       )}
     </Context.Provider>
   );

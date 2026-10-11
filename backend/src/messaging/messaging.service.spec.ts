@@ -199,20 +199,56 @@ describe('MessagingService', () => {
     it('tells the assigned clinician, with the whole clinical team as the fallback when they can no longer be reached', async () => {
       prisma.consultation.findUnique.mockResolvedValue({ patientId: 'patient-1', clinicianId: 'doc-9' });
       await patientSays();
-      expect(notifier.toStaff).toHaveBeenCalledWith({ clinicianIds: ['doc-9'], roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] }, expect.objectContaining({ kind: 'PATIENT_MESSAGE', groupKey: 'patient-msg:patient-1' }));
+      expect(notifier.toStaff).toHaveBeenCalledWith({ clinicianIds: ['doc-9'], roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'] }, expect.objectContaining({ kind: 'PATIENT_MESSAGE', groupKey: 'patient-msg:patient-1:consult-1' }));
     });
 
     it('closes the staff alert at once when a reply landed while it was being written', async () => {
       (prisma.message as any).count.mockResolvedValue(1);
       await patientSays();
-      expect(notifier.resolve).toHaveBeenCalledWith('patient-msg:patient-1');
+      expect(notifier.resolve).toHaveBeenCalledWith('patient-msg:patient-1:consult-1');
     });
 
     it('closes the patient notification at once when the chat was opened while it was being written', async () => {
       (prisma.message as any).findUnique.mockResolvedValue({ readAt: new Date() });
       await careTeamSays();
       expect(notifier.toPatient).toHaveBeenCalledTimes(1);
-      expect(notifier.resolve).toHaveBeenLastCalledWith('team-msg:patient-1');
+      expect(notifier.resolve).toHaveBeenLastCalledWith('team-msg:patient-1:consult-1');
+    });
+
+    describe('one notification per thread', () => {
+      const keysResolved = () => notifier.resolve.mock.calls.map((c) => c[0]);
+
+      it('a care-team reply closes the staff alert for that thread only, and the old per-patient one', async () => {
+        await careTeamSays(); // thread consult-1
+        expect(keysResolved()).toEqual(expect.arrayContaining(['patient-msg:patient-1:consult-1', 'patient-msg:patient-1']));
+        expect(keysResolved()).not.toContain('patient-msg:patient-1:consult-2');
+      });
+
+      it('a care-team message notifies the patient under that thread’s own key', async () => {
+        await careTeamSays();
+        expect(notifier.toPatient).toHaveBeenCalledWith('patient-1', expect.objectContaining({ groupKey: 'team-msg:patient-1:consult-1' }));
+      });
+
+      it('only a reply in the same thread closes a new staff alert at once', async () => {
+        (prisma.message as any).count.mockResolvedValue(1);
+        await patientSays();
+        expect((prisma.message as any).count).toHaveBeenCalledWith({ where: expect.objectContaining({ patientId: 'patient-1', consultationId: 'consult-1' }) });
+      });
+
+      it('reading one consultation closes that thread’s notification, never another’s', async () => {
+        await notifying.markRead({ id: 'patient-1', role: UserRole.PATIENT } as any, 'consult-1');
+        expect(keysResolved()).toEqual(['team-msg:patient-1:consult-1', 'team-msg:patient-1']);
+      });
+
+      it('reading the pre-consultation thread closes only its own notification', async () => {
+        await notifying.markPreConsultationRead({ id: 'patient-1', role: UserRole.PATIENT } as any, 'patient-1');
+        expect(keysResolved()).toEqual(['team-msg:patient-1:pre', 'team-msg:patient-1']);
+      });
+
+      it('the care team reading a thread resolves nothing: their alert closes when they reply', async () => {
+        await notifying.markRead({ id: 'doc-1', role: UserRole.CLINICIAN } as any, 'consult-1');
+        expect(notifier.resolve).not.toHaveBeenCalled();
+      });
     });
 
     it('still saves and returns the message when notifying fails', async () => {

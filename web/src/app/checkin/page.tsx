@@ -8,6 +8,7 @@ import { QUESTIONNAIRE } from '@/graphql/intake';
 import { QuestionnaireForm, SubmittedAnswer } from '@/components/intake/QuestionnaireForm';
 import { FEELINGS } from '@/lib/weight';
 import { ErrorAlert } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 function CheckInForm({ token }: { token: string }) {
   const { data, loading, error } = useQuery(CHECK_IN_BY_TOKEN, { variables: { token } });
@@ -17,11 +18,11 @@ function CheckInForm({ token }: { token: string }) {
   const [wantsToReorder, setWantsToReorder] = useState<boolean | null>(null);
   const [feeling, setFeeling] = useState<string | null>(null);
 
-  if (loading || qLoading) return <p className="text-sm text-slate-400 text-center py-12">Loading…</p>;
+  if (loading || qLoading) return <LoadingState label="Loading…" className="!py-12" />;
 
   if (error) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+      <div className="bg-white rounded-lg border border-slate-100 p-8 text-center">
         <ErrorAlert error={error} className="text-left" />
         <p className="text-sm text-slate-400 mt-4">
           If you think this is a mistake, sign in to your account and your care team will be in touch.
@@ -32,7 +33,7 @@ function CheckInForm({ token }: { token: string }) {
 
   if (submitData) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+      <div className="bg-white rounded-lg border border-slate-100 p-8 text-center">
         <div className="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-xl mx-auto mb-4">✓</div>
         <h1 className="text-lg font-semibold text-slate-900">Thanks — you&rsquo;re all set</h1>
         <p className="text-sm text-slate-500 mt-2">Your clinician will review your check-in before your next supply.</p>
@@ -52,7 +53,7 @@ function CheckInForm({ token }: { token: string }) {
 
   return (
     <div>
-      <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
+      <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4">
         <h1 className="text-xl font-bold text-slate-900">
           Hi {checkIn?.patientFirstName ?? 'there'}, let&rsquo;s check in
         </h1>
@@ -69,7 +70,7 @@ function CheckInForm({ token }: { token: string }) {
         ready={wantsToReorder !== null && feeling !== null}
         footer={
           <>
-          <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+          <fieldset className="bg-white rounded-lg border border-slate-100 p-4">
             <legend className="sr-only">How are you feeling?</legend>
             <p className="text-sm font-medium text-slate-900">How are you feeling?</p>
             <div className="space-y-2 mt-3">
@@ -79,7 +80,7 @@ function CheckInForm({ token }: { token: string }) {
                   type="button"
                   aria-pressed={feeling === f.value}
                   onClick={() => setFeeling(f.value)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm text-left transition-colors ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md border text-sm text-left transition-colors ${
                     feeling === f.value ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
                   }`}
                 >
@@ -89,7 +90,7 @@ function CheckInForm({ token }: { token: string }) {
               ))}
             </div>
           </fieldset>
-          <fieldset className="bg-white rounded-2xl border border-slate-100 p-4">
+          <fieldset className="bg-white rounded-lg border border-slate-100 p-4">
             <p className="text-sm font-medium text-slate-900">Would you like to continue your treatment next month?</p>
             <div className="flex gap-2 mt-3">
               {[true, false].map((val) => (
@@ -97,7 +98,7 @@ function CheckInForm({ token }: { token: string }) {
                   key={String(val)}
                   type="button"
                   onClick={() => setWantsToReorder(val)}
-                  className={`flex-1 px-4 py-2.5 rounded-xl border text-sm transition-colors ${
+                  className={`flex-1 px-4 py-2.5 rounded-md border text-sm transition-colors ${
                     wantsToReorder === val ? 'border-brand-500 bg-brand-50 text-brand-900 font-medium' : 'border-slate-200 hover:bg-slate-50'
                   }`}
                 >
@@ -120,7 +121,7 @@ export default function CheckInPage() {
         <div className="text-center mb-6">
           <span className="font-bold text-xl text-slate-900 tracking-tight">telehealth</span>
         </div>
-        <Suspense fallback={<p className="text-sm text-slate-400 text-center py-12">Loading…</p>}>
+        <Suspense fallback={<LoadingState label="Loading…" className="!py-12" />}>
           <CheckInPageInner />
         </Suspense>
       </div>
@@ -134,7 +135,7 @@ function CheckInPageInner() {
 
   if (!token) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+      <div className="bg-white rounded-lg border border-slate-100 p-8 text-center">
         <p className="text-danger-500 font-medium">Missing check-in link</p>
         <p className="text-sm text-slate-400 mt-2">Please use the link from your check-in email.</p>
       </div>

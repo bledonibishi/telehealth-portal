@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import { ACCEPT_TELEHEALTH_CONSENT, CONSENT_TEXT, MY_TELEHEALTH_CONSENT } from '@/graphql/intake';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 /** For a patient an admin set up: the telehealth consent, accepted by the patient themselves. */
 export default function ConsentPage() {
@@ -27,9 +28,9 @@ export default function ConsentPage() {
       <h1 className="text-xl font-bold text-slate-900 mt-4">Before we start</h1>
       <p className="text-sm text-slate-500 mt-2">Please read how your online consultation works.</p>
 
-      {loading && <p className="text-sm text-slate-400 mt-6">Loading…</p>}
+      {loading && <LoadingState variant="inline" label="Loading…" className="mt-6" />}
       {consent && (
-        <fieldset className="mt-6 bg-white rounded-2xl border border-slate-100 p-4">
+        <fieldset className="mt-6 bg-white rounded-lg border border-slate-100 p-4">
           <ul className="space-y-1.5 list-disc pl-5 text-sm text-slate-700">
             {consent.text.split('\n').map((line: string) => <li key={line}>{line}</li>)}
           </ul>
@@ -45,7 +46,7 @@ export default function ConsentPage() {
       <button
         onClick={() => { setError(null); accept({ variables: { version: consent.version } }); }}
         disabled={!consent || !agreed || saving}
-        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+        className="w-full mt-6 bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white font-semibold py-3 rounded-md text-sm transition-colors"
       >
         {saving ? 'Saving…' : 'Continue'}
       </button>

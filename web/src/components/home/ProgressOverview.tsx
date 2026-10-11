@@ -12,11 +12,11 @@ import type { Plan } from './PlanHero';
 function Tile({ href, icon, label, value, hint, tone = 'ink' }: { href: string; icon: IconName; label: string; value: string; hint?: string; tone?: 'ink' | 'green' | 'amber' }) {
   const tones = { ink: 'bg-ink-50 text-ink-700', green: 'bg-emerald-50 text-emerald-700', amber: 'bg-amber-50 text-amber-700' };
   return (
-    <Link href={href} className="bg-white rounded-2xl border border-slate-200/70 p-4 flex items-start gap-3 hover:border-ink-600/40 transition-colors min-w-0">
-      <span className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${tones[tone]}`}><Icon name={icon} /></span>
+    <Link href={href} className="bg-white rounded-lg border border-slate-200 p-4 flex items-start gap-3 hover:border-slate-300 hover:bg-slate-50/60 transition-colors min-w-0">
+      <span className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${tones[tone]}`}><Icon name={icon} /></span>
       <span className="min-w-0">
         <span className="block text-xs font-medium text-slate-500">{label}</span>
-        <span className="block text-base font-bold text-ink-900 truncate">{value}</span>
+        <span className="block text-base font-semibold text-ink-900 truncate">{value}</span>
         {hint && <span className="block text-xs text-slate-500 line-clamp-2">{hint}</span>}
       </span>
     </Link>

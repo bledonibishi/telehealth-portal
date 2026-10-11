@@ -16,13 +16,13 @@ const FOLD_AT = 12;
 function AddCard({ view }: { view: View }) {
   const { add } = useJourneyPhotos();
   return (
-    <li className={`group/add wj-rise relative rounded-xl border-2 border-dashed border-ink-600/30 bg-gradient-to-br from-ink-50 to-white hover:border-solid hover:border-ink-600 hover:from-ink-100 hover:to-ink-50 transition-colors duration-200 flex ${view === 'list' ? 'flex-row items-center gap-4 p-4' : 'flex-col items-center justify-center gap-2 p-3 min-h-[12rem]'}`}>
+    <li className={`group/add wj-rise relative rounded-md border-2 border-dashed border-ink-600/30 bg-gradient-to-br from-ink-50 to-white hover:border-solid hover:border-ink-600 hover:from-ink-100 hover:to-ink-50 transition-colors duration-200 flex ${view === 'list' ? 'flex-row items-center gap-4 p-4' : 'flex-col items-center justify-center gap-2 p-3 min-h-[12rem]'}`}>
       <span className="w-14 h-14 rounded-full bg-white shadow-sm text-ink-600 flex items-center justify-center transition-transform duration-200 group-hover/add:scale-110" aria-hidden>
         <Icon name="camera" className="w-8 h-8" />
       </span>
       <div className={view === 'list' ? '' : 'text-center'}>
         {/* The whole tile is the "Add Photo" button; "Add weight" sits above it as its own. */}
-        <button type="button" onClick={() => add('photo')} className="text-base font-bold text-ink-800 after:absolute after:inset-0 after:rounded-xl focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-brand-500">Add Photo</button>
+        <button type="button" onClick={() => add('photo')} className="text-base font-bold text-ink-800 after:absolute after:inset-0 after:rounded-md focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-brand-500">Add Photo</button>
         <p className="text-xs text-slate-500">with today’s weight</p>
         <button type="button" onClick={() => add('weight')} className="relative z-10 mt-2 inline-flex items-center gap-1 rounded-lg bg-white border border-ink-600/30 hover:border-ink-600 text-ink-700 text-xs font-semibold px-2.5 py-1.5">
           <Icon name="plus" className="w-3.5 h-3.5" /> Add weight
@@ -81,7 +81,7 @@ export function WeightCards() {
         </div>
       </div>
 
-      {loading && entries.length === 0 && <div className="h-48 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your journey" />}
+      {loading && entries.length === 0 && <div className="h-48 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading your journey" />}
 
       {/* Re-made when the filter or layout changes, so the cards fade in again instead of jumping. */}
       <ul key={`${filter}-${view}`} className={view === 'grid' ? 'grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3' : 'space-y-3'}>

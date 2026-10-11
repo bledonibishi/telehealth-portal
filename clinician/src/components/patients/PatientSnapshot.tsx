@@ -11,10 +11,11 @@ import { medicationStyle } from '@/lib/medication';
 import { STALE_WEIGH_IN_DAYS, TREATMENT_STATUS, type TreatmentStatus } from '@/lib/patient-status';
 import MedicationPill from './MedicationPill';
 import ProgressRing from './ProgressRing';
+import { LoadingState } from '@telehealth/loading';
 
 export type SnapshotTab = 'messages' | 'prescriptions' | 'labs' | 'weight';
 
-const CARD = 'bg-white border border-gray-200 rounded-2xl';
+const CARD = 'bg-white border border-gray-200 rounded-lg';
 const HEADING = 'text-xs font-semibold text-gray-500 uppercase tracking-wide';
 
 /** What the patient is on right now, read off their active prescription. */
@@ -84,7 +85,7 @@ export function WeightChart({ timeline, loading, from, height = 240 }: {
     return rows.sort((a, b) => a.at - b.at);
   }, [timeline, from, t]);
 
-  if (loading && !timeline) return <p className="text-sm text-gray-400 py-10 text-center">{t('Loading…')}</p>;
+  if (loading && !timeline) return <LoadingState label={t('Loading…')} className="!py-10" />;
   if (points.length === 0) return <p className="text-sm text-gray-400 py-10 text-center">{t('No weights recorded yet.')}</p>;
   if (width === 0) return <div ref={boxRef} className="w-full" style={{ height }} />;
 
@@ -274,7 +275,7 @@ function Adherence({ patientId }: { patientId: string }) {
         {pct !== null && <p className="text-sm font-semibold text-gray-900">{pct}%</p>}
       </div>
       {loading && !data ? (
-        <p className="text-sm text-gray-400 mt-4">{t('Loading…')}</p>
+        <LoadingState variant="inline" label={t('Loading…')} className="mt-4" />
       ) : weeks.length === 0 ? (
         <p className="text-sm text-gray-400 mt-4">{t('No doses logged yet.')}</p>
       ) : (
@@ -306,7 +307,7 @@ function Adherence({ patientId }: { patientId: string }) {
 function Stat({ label, value, tone = 'text-gray-900' }: { label: string; value: string; tone?: string }) {
   const { t } = useI18n();
   return (
-    <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+    <div className="bg-gray-50 rounded-md px-3 py-2.5">
       <p className="text-xs text-gray-400">{t(label)}</p>
       <p className={`text-sm font-semibold mt-0.5 ${tone}`}>{value}</p>
     </div>

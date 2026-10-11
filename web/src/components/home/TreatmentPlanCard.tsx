@@ -37,7 +37,7 @@ export function TreatmentPlanCard({ plan }: { plan: Plan }) {
       </div>
       {plan.supplyDosesTotal != null && <div className="mt-3"><SupplyBar used={plan.supplyDosesTaken ?? 0} total={plan.supplyDosesTotal} /></div>}
 
-      <div className="mt-4 rounded-xl border border-slate-200 p-3">
+      <div className="mt-4 rounded-md border border-slate-200 p-3">
         <p className="text-sm text-slate-600">Next injection: <b className="text-ink-900">{plan.nextDoseAt ? format(new Date(plan.nextDoseAt), 'dd MMM yyyy') : '—'}</b></p>
         <OrderEarlyButton variant="outline" className="mt-3" />
       </div>

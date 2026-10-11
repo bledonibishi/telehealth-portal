@@ -38,7 +38,7 @@ export function MeasurementsChart() {
   );
   const times = useMemo(() => [...new Set(list.map((m) => Date.parse(m.measuredAt)))].sort((a, b) => a - b), [list]);
 
-  if (loading && !data) return <div className="h-[220px] rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading your measurements" />;
+  if (loading && !data) return <div className="h-[220px] rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading your measurements" />;
   if (times.length < 2) {
     return <p className="text-sm text-slate-500 py-6 text-center">{times.length === 0 ? 'Add your waist, hips and arm measurements above to see them here.' : 'Add your measurements a second time and the lines will appear here.'}</p>;
   }

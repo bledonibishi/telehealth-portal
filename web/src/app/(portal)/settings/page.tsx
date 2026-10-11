@@ -25,7 +25,7 @@ const FAQ: Array<[string, string]> = [
   ['Something feels wrong — what should I do?', `For chest pain, trouble breathing, severe stomach pain or fainting call ${EMERGENCY_NUMBER}. Otherwise book an urgent appointment — a doctor replies within 24 hours.`],
 ];
 
-const field = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink-600';
+const field = 'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-ink-600';
 
 /** Change your own password. The current one is asked for, so someone at an unlocked screen can't lock you out. */
 function PasswordForm() {

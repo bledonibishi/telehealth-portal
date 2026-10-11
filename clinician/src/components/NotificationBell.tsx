@@ -14,6 +14,7 @@ import {
 import { getCurrentRole, type ClinicianRole } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type Notice = { id: string; kind: string; href: string | null; count: number; readAt: string | null; updatedAt: string; params: Array<{ key: string; value: string }> };
 
@@ -146,7 +147,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl shadow-lg border z-50 overflow-hidden bg-[color:var(--bg-panel)] border-[color:var(--border)]">
+        <div className="absolute right-0 top-9 w-[22rem] max-w-[calc(100vw-2rem)] rounded-md shadow-lg border z-50 overflow-hidden bg-[color:var(--bg-panel)] border-[color:var(--border)]">
           <div className="px-4 pt-3 pb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-[color:var(--t-strong)]">{t('Notifications')}</p>
             {hasInbox && tab === 'inbox' && unread > 0 && (
@@ -203,7 +204,7 @@ export function NotificationBell() {
               {error ? (
                 <InlineError error={error} className="px-4 py-3" />
               ) : loading && notices.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-[color:var(--t-dim)]">{t('Loading…')}</p>
+                <LoadingState label={t('Loading…')} className="px-4 !py-6" />
               ) : notices.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-[color:var(--t-dim)]">{t('All caught up 🎉')}</p>
               ) : (

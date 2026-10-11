@@ -97,7 +97,7 @@ function SideBad() {
 export function PoseFigure({ view, variant, className = '' }: { view: PoseView; variant: PoseVariant; className?: string }) {
   const good = variant === 'good';
   return (
-    <div className={`relative overflow-hidden rounded-2xl ${good ? 'bg-gradient-to-b from-[#e6f0ff] to-[#d4e3fb]' : 'bg-gradient-to-b from-[#fbe9ee] to-[#f4d3dc]'} ${className}`}>
+    <div className={`relative overflow-hidden rounded-lg ${good ? 'bg-gradient-to-b from-[#e6f0ff] to-[#d4e3fb]' : 'bg-gradient-to-b from-[#fbe9ee] to-[#f4d3dc]'} ${className}`}>
       <svg viewBox="0 0 100 200" className="w-full h-full" role="img" aria-label={good ? `A good ${view === 'FRONT' ? 'front' : 'side'} photo: head to toe, fitted clothes` : `Avoid: ${AVOID_CAPTION[view].toLowerCase()}`} preserveAspectRatio="xMidYMax meet">
         {view === 'FRONT' ? (good ? <FrontGood /> : <FrontBad />) : good ? <SideGood /> : <SideBad />}
       </svg>

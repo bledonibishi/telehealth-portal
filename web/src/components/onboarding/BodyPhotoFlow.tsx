@@ -26,9 +26,9 @@ const CHECKLIST: Record<PoseView, Array<[boolean, string]>> = {
 };
 
 // The same look as the other onboarding steps: plain page, white cards, the standard buttons.
-const primary = 'w-full inline-flex items-center justify-center gap-2 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors';
-const outline = 'w-full inline-flex items-center justify-center gap-2 border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 text-sm font-medium py-3 rounded-xl transition-colors';
-const card = 'bg-white rounded-2xl border border-slate-100 p-4';
+const primary = 'w-full inline-flex items-center justify-center gap-2 bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors';
+const outline = 'w-full inline-flex items-center justify-center gap-2 border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 text-sm font-medium py-3 rounded-md transition-colors';
+const card = 'bg-white rounded-lg border border-slate-100 p-4';
 
 /** The id inside "/uploads/<id>/file", which is how the API names a saved photo. */
 export const fileIdOfUrl = (url?: string | null) => url?.match(/\/uploads\/([^/]+)\/file/)?.[1] ?? null;
@@ -178,7 +178,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
           <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}. Checks like these are a regulatory requirement so we can give you the best treatment possible. Only you and your doctor can see your photos.</p>
 
           {mustRetake.includes(view) && !saved[view] && (
-            <p role="status" className="mt-4 text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">Your earlier {view === 'FRONT' ? 'front' : 'side'} photo didn’t pass our photo check, so we need a new one.</p>
+            <p role="status" className="mt-4 text-sm text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-4 py-3">Your earlier {view === 'FRONT' ? 'front' : 'side'} photo didn’t pass our photo check, so we need a new one.</p>
           )}
           {saved.FRONT && view === 'SIDE' && !saved.SIDE && (
             <p className="inline-flex items-center gap-1.5 mt-4 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-3 py-1"><Icon name="check" className="w-3.5 h-3.5" /> Front photo saved</p>
@@ -206,7 +206,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
             </ul>
           </div>
 
-          {cameraNote && <p role="status" className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">{cameraNote}</p>}
+          {cameraNote && <p role="status" className="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-4 py-3">{cameraNote}</p>}
           <InlineError error={problem} className="mt-4 px-4 py-3" />
 
           <div className="mt-6 space-y-3">
@@ -226,7 +226,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
           <h1 className="text-xl font-bold text-slate-900 mt-4">Checking your photo…</h1>
           <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}. This takes a few seconds.</p>
           <div className={`${card} mt-6`}>
-            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-xl bg-slate-50 aspect-[3/4]">
+            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-md bg-slate-50 aspect-[3/4]">
               {attempt?.previewUrl && <img src={attempt.previewUrl} alt="Your photo" className="absolute inset-0 w-full h-full object-contain" />}
               <div className="absolute inset-0 bg-ink-900/25" />
               <span className="scan-line absolute left-0 right-0 h-1 bg-white shadow-[0_0_18px_6px_rgba(255,255,255,0.7)]" style={{ animation: 'scan 1.8s ease-in-out infinite' }} />
@@ -242,10 +242,10 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
           <p className="text-sm text-slate-500 mt-2">{LABEL[view].of}</p>
 
           <div className={`${card} mt-6`}>
-            <img src={attempt.previewUrl} alt="The photo that didn’t pass" className="w-full max-h-80 object-contain bg-slate-50 rounded-xl" />
+            <img src={attempt.previewUrl} alt="The photo that didn’t pass" className="w-full max-h-80 object-contain bg-slate-50 rounded-md" />
           </div>
 
-          <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-100 p-4" role="alert">
+          <div className="mt-4 rounded-lg bg-amber-50 border border-amber-100 p-4" role="alert">
             <p className="flex items-center gap-2 text-sm font-semibold text-amber-950"><Icon name="alert" className="w-4 h-4 text-amber-700" /> {attempt.result.outcome === 'UNCHECKED' ? 'What happened' : 'What our check found'}</p>
             <ul className="mt-2 space-y-1 text-sm text-amber-950/90">
               {(attempt.result.messages.length ? attempt.result.messages : ['This photo can’t be used']).map((m) => <li key={m}>{m}</li>)}
@@ -277,7 +277,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
             {view === 'FRONT' && !saved.SIDE ? ' Next: your side photo.' : ''}
           </p>
           <div className={`${card} mt-6`}>
-            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-xl bg-slate-50 aspect-[3/4]">
+            <div className="relative mx-auto w-full max-w-xs overflow-hidden rounded-md bg-slate-50 aspect-[3/4]">
               <img src={attempt.previewUrl} alt="Your photo" className="absolute inset-0 w-full h-full object-contain" />
               <span className="absolute inset-0 bg-emerald-500/15" />
               <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xl"><Icon name="check" className="w-8 h-8" /></span>
@@ -296,7 +296,7 @@ export function BodyPhotoFlow({ initial, retake: mustRetake = [], onFinished, on
             <div className="grid grid-cols-2 gap-3">
               {(['FRONT', 'SIDE'] as const).map((v) => (
                 <figure key={v} className="text-center">
-                  {saved[v] && <AuthedImage fileId={saved[v]!} alt={`${LABEL[v].name} photo`} className="w-full aspect-[3/4] object-contain bg-slate-50 rounded-xl border border-slate-100" />}
+                  {saved[v] && <AuthedImage fileId={saved[v]!} alt={`${LABEL[v].name} photo`} className="w-full aspect-[3/4] object-contain bg-slate-50 rounded-md border border-slate-100" />}
                   <figcaption className="mt-2 text-sm font-medium text-slate-700">{LABEL[v].name}</figcaption>
                   <button type="button" onClick={() => retakeView(v)} className="text-xs font-medium text-ink-600 hover:text-ink-800 mt-0.5">Retake</button>
                 </figure>

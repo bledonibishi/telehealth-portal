@@ -308,7 +308,7 @@ export function WeightChart({ points, view, bounds, onViewChange, onReset, targe
       {active && (
         <div
           role="status"
-          className="absolute z-10 pointer-events-none bg-slate-900 text-white rounded-xl shadow-lg px-3 py-2 text-xs leading-snug min-w-[9.5rem] max-w-[14rem]"
+          className="absolute z-10 pointer-events-none bg-slate-900 text-white rounded-md shadow-lg px-3 py-2 text-xs leading-snug min-w-[9.5rem] max-w-[14rem]"
           style={{
             top: Math.max(y(active.w) - 112, 4),
             ...(flip ? { right: width - x(active.t) + 14 } : { left: x(active.t) + 14 }),

@@ -59,8 +59,8 @@ function Skeleton() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl space-y-6 animate-pulse">
       <div className="h-4 w-40 rounded bg-slate-200" />
-      <div className="h-48 rounded-3xl bg-slate-100" />
-      <div className="h-64 rounded-3xl bg-slate-100" />
+      <div className="h-48 rounded-xl bg-slate-100" />
+      <div className="h-64 rounded-xl bg-slate-100" />
     </div>
   );
 }
@@ -100,9 +100,9 @@ export default function ConsultationPage({ params }: { params: { id: string } })
           <Link href="/consultations" className="text-xs text-slate-400 hover:text-slate-600">← My consultations</Link>
 
           {/* Where things stand */}
-          <section className={`rounded-3xl border bg-gradient-to-br p-5 sm:p-8 shadow-sm ${hero.tone}`}>
+          <section className={`rounded-xl border bg-gradient-to-br p-5 sm:p-8 shadow-sm ${hero.tone}`}>
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 shrink-0 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl">
+              <div className="w-12 h-12 shrink-0 rounded-lg bg-white shadow-sm border border-slate-100 flex items-center justify-center text-2xl">
                 {hero.emoji}
               </div>
               <div className="min-w-0">
@@ -115,7 +115,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
                   {c.status === 'MORE_INFO_REQUESTED' && (
                     <Link
                       href="/onboarding/medical-questionnaire?from=dashboard"
-                      className="text-sm font-medium bg-ink-700 hover:bg-ink-800 text-white rounded-xl px-4 py-2 transition-colors"
+                      className="text-sm font-medium bg-ink-700 hover:bg-ink-800 text-white rounded-md px-4 py-2 transition-colors"
                     >
                       Update my answers
                     </Link>
@@ -123,7 +123,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
                   <button
                     type="button"
                     onClick={() => chat.setOpen(true)}
-                    className="text-sm font-medium bg-white border border-slate-200 hover:border-ink-500 text-slate-700 rounded-xl px-4 py-2 transition-colors"
+                    className="text-sm font-medium bg-white border border-slate-200 hover:border-ink-500 text-slate-700 rounded-md px-4 py-2 transition-colors"
                   >
                     Open chat{chat.unread > 0 ? ` · ${chat.unread} new` : ''}
                   </button>
@@ -140,7 +140,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
             {/* Their answers */}
             <div className="flex-[2_1_420px] min-w-0">
               {c.quizAnswers?.length > 0 && (
-                <details open className="group bg-white rounded-3xl border border-slate-100 shadow-sm">
+                <details open className="group bg-white rounded-xl border border-slate-100 shadow-sm">
                   <summary className="flex items-center justify-between cursor-pointer list-none px-5 sm:px-6 py-4">
                     <div>
                       <h2 className="text-sm font-semibold text-slate-900">Your answers</h2>
@@ -152,7 +152,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
                   </summary>
                   <div className="px-5 sm:px-6 pb-5 grid gap-3 sm:grid-cols-2">
                     {c.quizAnswers.map((a: any) => (
-                      <div key={a.questionId} className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <div key={a.questionId} className="rounded-lg bg-slate-50 px-4 py-3">
                         <p className="text-xs text-slate-400">{a.question}</p>
                         <p className="text-sm font-medium text-slate-800 mt-1 whitespace-pre-wrap">{a.answer}</p>
                       </div>
@@ -167,7 +167,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
               <button
                 type="button"
                 onClick={() => chat.setOpen(true)}
-                className="w-full text-left bg-white rounded-3xl border border-slate-100 shadow-sm p-5 hover:border-ink-100 hover:shadow transition"
+                className="w-full text-left bg-white rounded-xl border border-slate-100 shadow-sm p-5 hover:border-ink-100 hover:shadow transition"
               >
                 <div className="flex items-center gap-3">
                   <div className="relative w-10 h-10 rounded-full bg-ink-50 text-ink-700 flex items-center justify-center">
@@ -184,7 +184,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
                   </div>
                 </div>
                 {latest && (
-                  <div className="mt-3 rounded-2xl bg-slate-50 px-3.5 py-2.5">
+                  <div className="mt-3 rounded-lg bg-slate-50 px-3.5 py-2.5">
                     <p className="text-sm text-slate-700 line-clamp-2">
                       {latest.senderId === currentUserId && <span className="text-slate-400">You: </span>}
                       {latest.content}
@@ -197,7 +197,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
 
               {/* Treatment */}
               {c.prescription ? (
-                <div className="bg-white rounded-3xl border border-emerald-100 shadow-sm p-5">
+                <div className="bg-white rounded-xl border border-emerald-100 shadow-sm p-5">
                   <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-4">Your treatment</h3>
                   <dl className="space-y-3 text-sm">
                     <div>
@@ -230,7 +230,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
                   )}
                 </div>
               ) : c.status !== 'DECLINED' ? (
-                <div className="rounded-3xl border border-dashed border-ink-100 bg-ink-50/50 p-5 text-center">
+                <div className="rounded-xl border border-dashed border-ink-100 bg-ink-50/50 p-5 text-center">
                   <p className="text-2xl">🌱</p>
                   <p className="text-sm font-semibold text-slate-800 mt-1">Your treatment plan</p>
                   <p className="text-xs text-slate-500 mt-1">It will appear here as soon as your clinician approves your request.</p>
@@ -238,7 +238,7 @@ export default function ConsultationPage({ params }: { params: { id: string } })
               ) : null}
 
               {waiting && (
-                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">While you wait</h3>
                   <ul className="space-y-2.5 text-sm text-slate-600">
                     <li className="flex gap-2.5"><span className="text-ink-700">✓</span> Keep an eye on chat — your clinician will message you there if they need anything.</li>

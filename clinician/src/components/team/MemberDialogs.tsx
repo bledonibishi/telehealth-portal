@@ -51,7 +51,7 @@ export function AddMemberDialog({ onCreated, onClose }: { onCreated: (r: InviteR
           <legend className="text-xs font-medium text-gray-600 mb-1.5">{t('Role')}</legend>
           <div className="grid sm:grid-cols-2 gap-2">
             {ROLES.map((r) => (
-              <label key={r} className={`rounded-xl border p-3 cursor-pointer text-sm ${form.role === r ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <label key={r} className={`rounded-md border p-3 cursor-pointer text-sm ${form.role === r ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 hover:bg-gray-50'}`}>
                 <input type="radio" name="role" value={r} checked={form.role === r} onChange={set('role')} className="sr-only" />
                 <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_META[r].badge}`}>{t(ROLE_META[r].label)}</span>
                 <span className="block text-xs text-gray-500 mt-1.5"><RoleHint role={r} /></span>
@@ -113,7 +113,7 @@ function RoleSection({ c, isSelf }: { c: any; isSelf: boolean }) {
     <div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-2">
         {ROLES.map((r) => (
-          <label key={r} className={`rounded-xl border p-3 text-sm ${isSelf ? 'opacity-60' : 'cursor-pointer'} ${role === r ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 hover:bg-gray-50'}`}>
+          <label key={r} className={`rounded-md border p-3 text-sm ${isSelf ? 'opacity-60' : 'cursor-pointer'} ${role === r ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 hover:bg-gray-50'}`}>
             <input type="radio" name={`role-${c.id}`} value={r} checked={role === r} disabled={isSelf} onChange={() => { setSaved(false); setRole(r); }} className="sr-only" />
             <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_META[r].badge}`}>{t(ROLE_META[r].label)}</span>
             <span className="block text-xs text-gray-500 mt-1.5"><RoleHint role={r} /></span>
@@ -140,7 +140,7 @@ function LicenceSection({ c }: { c: any }) {
     <div className="space-y-3">
       <p className="text-xs text-gray-500">{t('Doctors and admins can only prescribe after you have checked their medical licence and marked them verified.')}</p>
       {c.isVerified ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-green-50 border border-green-100 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-green-50 border border-green-100 px-4 py-3">
           <div className="text-sm text-green-800">
             <p className="font-medium flex items-center gap-1.5"><Icon name="shield" className="w-4 h-4" />{t('Verified')} · {c.licenseNumber}</p>
             <p className="text-xs text-green-700/80 mt-0.5">{c.licensingBody}{c.verifiedAt ? ` · ${timeAgo(c.verifiedAt)}` : ''}</p>

@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/Select';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 export type QuestionOption = { value: string; label: string; exclusive: boolean };
 export type Question = {
@@ -120,12 +121,7 @@ export default function QuizQuestionsFields({
           {q.help && <p className="text-xs text-gray-400 mb-1">{q.help}</p>}
 
           {q.type === 'single' && (
-            <select className={inputCls} value={(answers[q.id] as string) ?? ''} onChange={(e) => onChange(q.id, e.target.value)}>
-              <option value="">{t('Select…')}</option>
-              {q.options?.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <Select ariaLabel={q.text} value={(answers[q.id] as string) ?? ''} onChange={(v) => onChange(q.id, v)} options={[{ value: '', label: t('Select…') }, ...(q.options ?? []).map((o) => ({ value: o.value, label: o.label }))]} />
           )}
 
           {q.type === 'multi' && (

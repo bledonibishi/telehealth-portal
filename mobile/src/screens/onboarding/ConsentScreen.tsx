@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useMutation, useQuery } from '@apollo/client';
 import { ACCEPT_TELEHEALTH_CONSENT, CONSENT_TEXT, MY_TELEHEALTH_CONSENT } from '../../graphql/operations';
 import { ErrorText } from '../../components/ui';
+import { LoadingState } from '../../components/Skeleton';
 
 /** For a patient an admin set up: the telehealth consent, accepted by the patient themselves. */
 export function ConsentScreen({ navigation }: any) {
@@ -17,7 +18,7 @@ export function ConsentScreen({ navigation }: any) {
     onError: (e) => setError(e),
   });
 
-  if (loading) return <View style={styles.container}><ActivityIndicator /></View>;
+  if (loading) return <View style={styles.container}><LoadingState label="Loading…" /></View>;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

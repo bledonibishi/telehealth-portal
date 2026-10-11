@@ -8,6 +8,8 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import type { CsvColumn } from '@/lib/csv';
 import { Alert, InlineError } from '@/components/ui/Alert';
+import { Select } from '@/components/ui/Select';
+import { LoadingState } from '@telehealth/loading';
 
 type Money = { currency: string; amountCents: number };
 type Row = {
@@ -37,7 +39,7 @@ function Delta({ now, before, label }: { now: number; before?: number; label: st
 function Card({ label, value, children }: { label: string; value: string | number; children?: React.ReactNode }) {
   const { t } = useI18n();
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 min-w-0">
+    <div className="bg-white rounded-md border border-gray-200 p-4 min-w-0">
       <p className="text-xs text-gray-500">{t(label)}</p>
       <p className="text-2xl font-bold text-gray-900 mt-1 truncate">{value}</p>
       <div className="mt-0.5 min-h-[1rem]">{children}</div>
@@ -79,15 +81,15 @@ function Report() {
           <p className="text-sm text-gray-500 mt-0.5">{t('The clinic month by month: patients, revenue, check-in decisions and weight lost.')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" aria-label={t('Months to show')}>
-            {MONTH_OPTIONS.map((n) => <option key={n} value={n}>{t('Last {n} months', { n })}</option>)}
-          </select>
+          <div className="w-44">
+            <Select size="sm" ariaLabel={t('Months to show')} value={String(months)} onChange={(v) => setMonths(Number(v))} options={MONTH_OPTIONS.map((n) => ({ value: String(n), label: t('Last {n} months', { n }) }))} />
+          </div>
           <ExportCsvButton resource="monthly-report" rows={rows} columns={columns} />
         </div>
       </div>
 
       {!report && <InlineError error={error} />}
-      {loading && !report && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+      {loading && !report && <LoadingState variant="inline" label={t('Loading…')} />}
       {report && !report.revenueConfigured && <p className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2">{t('Stripe is not set up, so revenue is not shown. Everything else is counted from your own records.')}</p>}
       {report?.revenueError && <Alert tone="warning">{t('Stripe refused the request, so revenue is not shown: {error}', { error: report.revenueError })}</Alert>}
       {report?.revenueTruncated && <p className="text-xs bg-amber-50 text-amber-800 rounded-lg px-3 py-2">{t('Stripe has more invoices than one request reads, so the oldest months of revenue may be short.')}</p>}
@@ -107,7 +109,7 @@ function Report() {
       )}
 
       {rows.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <div className="bg-white border border-gray-200 rounded-md overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs text-gray-500 uppercase tracking-wide">

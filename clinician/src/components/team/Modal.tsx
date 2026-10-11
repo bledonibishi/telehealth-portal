@@ -32,7 +32,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`bg-white w-full ${wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'} max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl shadow-xl`}
+        className={`bg-white w-full ${wide ? 'sm:max-w-2xl' : 'sm:max-w-lg'} max-h-[92vh] overflow-y-auto rounded-t-lg sm:rounded-lg shadow-xl`}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-white/95 backdrop-blur px-5 py-4 border-b border-gray-100">
           <h2 id={titleId} className="text-base font-semibold text-gray-900">{title}</h2>

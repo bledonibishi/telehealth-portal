@@ -46,7 +46,7 @@ export default function TreatmentPlanPage() {
       <PageHeader title="My Treatment" subtitle="Your medicine, your schedule and your next supply." />
 
       {!plan ? (
-        loading ? <Card><div className="h-28 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading" /></Card>
+        loading ? <Card><div className="h-28 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading" /></Card>
           : <EmptyState icon="plan" what="Your treatment plan" whenTreating={{ text: 'Your plan is being set up.' }} />
       ) : (
         <div className="space-y-5">
@@ -74,7 +74,7 @@ export default function TreatmentPlanPage() {
               {upcoming.length ? (
                 <ul className="space-y-2.5">
                   {upcoming.map((d, i) => (
-                    <li key={d.id} className={`flex items-center gap-3 rounded-xl p-3 ${i === 0 ? 'bg-ink-50' : 'bg-slate-50'}`}>
+                    <li key={d.id} className={`flex items-center gap-3 rounded-md p-3 ${i === 0 ? 'bg-ink-50' : 'bg-slate-50'}`}>
                       <Icon name="syringe" className="w-5 h-5 text-ink-700" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-ink-900">{dayLabel(new Date(d.scheduledFor))}</p>

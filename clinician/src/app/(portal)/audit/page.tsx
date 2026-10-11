@@ -11,6 +11,8 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { hasAccess } from '@/lib/role';
 import type { CsvColumn } from '@/lib/csv';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
+import { BusyLabel } from '@telehealth/loading';
 
 const PAGE_SIZE = 50;
 
@@ -128,7 +130,7 @@ function AuditLog() {
 
       <InlineError error={error} />
 
-      <div className="overflow-x-auto rounded-xl border border-[color:var(--border)] bg-[color:var(--bg-card)]">
+      <div className="overflow-x-auto rounded-md border border-[color:var(--border)] bg-[color:var(--bg-card)]">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-[color:var(--t-muted)] border-b border-[color:var(--border)]">
@@ -168,10 +170,10 @@ function AuditLog() {
         </table>
       </div>
 
-      {loading && !data && <p className="text-sm text-[color:var(--t-dim)]">{t('Loading…')}</p>}
+      {loading && !data && <LoadingState variant="inline" label={t('Loading…')} />}
       {nextCursor && (
         <button onClick={loadMore} disabled={loadingMore} className={`${inputCls} hover:border-[color:var(--border-strong)] disabled:opacity-50`}>
-          {loadingMore ? t('Loading…') : t('Load more')}
+          <BusyLabel busy={loadingMore} busyText={t('Loading…')}>{t('Load more')}</BusyLabel>
         </button>
       )}
     </div>

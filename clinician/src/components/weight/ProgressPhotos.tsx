@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@apollo/client';
 import { PROGRESS_PHOTOS_FOR_PATIENT } from '@/graphql/weight';
 import AuthedImage from '@/components/AuthedImage';
+import { Select } from '@/components/ui/Select';
 import { kg } from '@/lib/weight';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -30,16 +31,15 @@ export default function ProgressPhotos({ patientId }: { patientId: string }) {
   const after = photos.find((p) => p.entryId === afterId) ?? photos[photos.length - 1];
   if (!before || !after) return null;
   const label = (p: Photo) => `${fmt(p.measuredAt, 'dd MMM yyyy')} · ${kg(p.weightKg)}`;
-  const sel = 'border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-full';
 
   return (
     <div>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Progress photos')} · {photos.length}</p>
       {photos.length === 1 ? (
-        <AuthedImage path={pathOf(photos[0])} alt={label(photos[0])} className="w-full max-w-xs aspect-[3/4] object-cover rounded-xl" />
+        <AuthedImage path={pathOf(photos[0])} alt={label(photos[0])} className="w-full max-w-xs aspect-[3/4] object-cover rounded-md" />
       ) : (
         <>
-          <div className="relative w-full max-w-sm aspect-[3/4] overflow-hidden rounded-xl bg-gray-100 select-none">
+          <div className="relative w-full max-w-sm aspect-[3/4] overflow-hidden rounded-md bg-gray-100 select-none">
             <AuthedImage path={pathOf(after)} alt={`${t('After')}: ${label(after)}`} className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
               <AuthedImage path={pathOf(before)} alt={`${t('Before')}: ${label(before)}`} className="w-full h-full object-cover" />
@@ -51,10 +51,10 @@ export default function ProgressPhotos({ patientId }: { patientId: string }) {
           </div>
           <div className="grid grid-cols-2 gap-2 mt-2 max-w-sm">
             <label className="text-xs text-gray-500">{t('Before')}
-              <select className={sel} value={before.entryId} onChange={(e) => setBeforeId(e.target.value)}>{photos.map((p) => <option key={p.entryId} value={p.entryId}>{label(p)}</option>)}</select>
+              <Select size="sm" ariaLabel={t('Before')} value={before.entryId} onChange={setBeforeId} options={photos.map((p) => ({ value: p.entryId, label: label(p) }))} />
             </label>
             <label className="text-xs text-gray-500">{t('After')}
-              <select className={sel} value={after.entryId} onChange={(e) => setAfterId(e.target.value)}>{photos.map((p) => <option key={p.entryId} value={p.entryId}>{label(p)}</option>)}</select>
+              <Select size="sm" ariaLabel={t('After')} value={after.entryId} onChange={setAfterId} options={photos.map((p) => ({ value: p.entryId, label: label(p) }))} />
             </label>
           </div>
         </>

@@ -6,6 +6,7 @@ import { Modal } from '@/components/consultation/Modal';
 import { ORDER_PARTNER_PAYLOAD, PARTNER_INTEGRATION_STATUS, SEND_ORDER_TO_PARTNER } from '@/graphql/orders';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 /**
  * Where an order stands with the external pharmacy: sent, failed (with the reason), or waiting.
@@ -77,7 +78,7 @@ export default function PartnerStatus({ order }: { order: any }) {
       {showPayload && (
         <Modal title={t('Order for the pharmacy partner')} subtitle={t('Structured summary — exactly what is sent to the partner')} wide onClose={() => setShowPayload(false)}>
           {loadingPayload && !payload ? (
-            <p className="text-sm text-gray-500">{t('Loading…')}</p>
+            <LoadingState variant="inline" label={t('Loading…')} />
           ) : (
             <>
               <pre className="max-h-96 overflow-auto rounded-lg bg-gray-50 border border-gray-200 p-3 text-xs text-gray-800 whitespace-pre-wrap">{payload}</pre>

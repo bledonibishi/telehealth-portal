@@ -11,6 +11,7 @@ import { Icon } from '@/components/portal/Icon';
 import { btnBlue } from '@/components/portal/Card';
 import Link from 'next/link';
 import { InlineError } from '@/components/common/Alert';
+import { SkeletonMessages } from '@telehealth/loading';
 
 const dayOf = (iso: string) => {
   const d = new Date(iso);
@@ -59,9 +60,9 @@ export default function MessagesPage() {
         <p className="text-sm text-slate-500 mt-1">Talk to your care team in real time. Only you and your clinicians can read this conversation.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/70 flex flex-col h-[calc(100vh-12rem)] min-h-[420px]">
+      <div className="bg-white rounded-lg border border-slate-200/70 flex flex-col h-[calc(100vh-12rem)] min-h-[420px]">
         <div ref={scroller} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-3" aria-live="polite">
-          {chat.loading && !chat.messages.length && <p className="text-sm text-slate-400">Loading…</p>}
+          {chat.loading && !chat.messages.length && <SkeletonMessages label="Loading your messages…" />}
           {!chat.loading && !chat.messages.length && (
             <div className="h-full flex flex-col items-center justify-center text-center text-slate-500">
               <span className="w-12 h-12 rounded-full bg-ink-50 text-ink-700 flex items-center justify-center mb-3"><Icon name="chat" /></span>
@@ -78,7 +79,7 @@ export default function MessagesPage() {
               <div key={m.id}>
                 {divider && <p className="text-center text-[11px] text-slate-400 my-3">{day}</p>}
                 <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${mine ? 'bg-ink-700 text-white rounded-br-md' : 'bg-slate-100 text-slate-800 rounded-bl-md'}`}>
+                  <div className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm ${mine ? 'bg-ink-700 text-white rounded-br-md' : 'bg-slate-100 text-slate-800 rounded-bl-md'}`}>
                     {!mine && <p className="text-[11px] font-semibold text-ink-700 mb-0.5">Your care team</p>}
                     <p className="whitespace-pre-wrap break-words">{m.content}</p>
                     <p className={`text-[10px] mt-1 flex items-center gap-1.5 ${mine ? 'justify-end text-white/60' : 'text-slate-400'}`}>
@@ -97,7 +98,7 @@ export default function MessagesPage() {
             <label htmlFor="msg" className="sr-only">Your message</label>
             <textarea id="msg" rows={1} value={content} maxLength={2000} onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e as any); } }}
-              placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
+              placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
             <button type="submit" disabled={!content.trim()} className={btnBlue}>Send</button>
           </div>
           <InlineError error={problem} size="xs" className="mt-2" />

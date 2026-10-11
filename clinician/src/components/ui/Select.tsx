@@ -15,6 +15,7 @@ export function Select({
   placeholder = 'Select…',
   disabled = false,
   ariaLabel,
+  size = 'md',
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -22,6 +23,8 @@ export function Select({
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  /** `sm` for filter rows and toolbars. */
+  size?: 'md' | 'sm';
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -101,7 +104,7 @@ export function Select({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKeyDown}
-        className={`flex w-full items-center justify-between gap-2 h-10 rounded-lg border bg-white px-3 text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 ${
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 text-left transition-colors ${size === 'sm' ? 'h-9 text-[13px]' : 'h-10 text-sm'} focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 ${
           open ? 'border-brand-500 ring-2 ring-brand-500' : 'border-gray-200 hover:border-gray-300'
         }`}
       >
@@ -116,7 +119,7 @@ export function Select({
           ref={list}
           id={listId}
           role="listbox"
-          className={`absolute left-0 right-0 z-30 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
+          className={`absolute left-0 z-30 min-w-full w-max max-w-xs max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}
         >
           {options.map((o, i) => (
             <li
@@ -127,11 +130,11 @@ export function Select({
               onMouseEnter={() => !o.disabled && setActive(i)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(i)}
-              className={`flex items-center justify-between gap-3 px-3 py-2 text-sm ${
+              className={`flex items-center justify-between gap-3 px-3 ${size === 'sm' ? 'py-1.5 text-[13px]' : 'py-2 text-sm'} ${
                 o.disabled ? 'cursor-not-allowed text-gray-300' : 'cursor-pointer text-gray-800'
               } ${i === active && !o.disabled ? 'bg-brand-50' : ''}`}
             >
-              <span>{o.label}</span>
+              <span className="whitespace-nowrap">{o.label}</span>
               {o.value === value && (
                 <svg className="h-4 w-4 shrink-0 text-brand-500" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path d="M4 10.5l4 4 8-9" strokeLinecap="round" strokeLinejoin="round" />

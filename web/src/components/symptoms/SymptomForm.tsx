@@ -33,7 +33,7 @@ export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; 
   };
 
   return (
-    <form onSubmit={submit} className="bg-white rounded-2xl border border-slate-100 p-5 sm:p-6 mb-6">
+    <form onSubmit={submit} className="bg-white rounded-lg border border-slate-100 p-5 sm:p-6 mb-6">
       <h2 className="text-base font-semibold text-slate-900">{scale.name}</h2>
       <p className="text-sm text-slate-500 mt-1 mb-5">{scale.intro}</p>
 
@@ -73,7 +73,7 @@ export function SymptomForm({ scale, previous, onDone }: { scale: SymptomScale; 
 
       <InlineError error={problem} className="mb-3" />
       <div className="flex items-center gap-3">
-        <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">
+        <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-md">
           {loading ? 'Saving…' : 'Save'}
         </button>
         <button type="button" onClick={onDone} className="text-sm text-slate-500 hover:text-slate-700">Cancel</button>

@@ -9,7 +9,7 @@ import { ErrorAlert } from '@/components/common/Alert';
 import { InlineError } from '@/components/common/Alert';
 
 /** The portal's navy, so the scheduler's buttons match the page around it. */
-const BRAND = '#132f6f';
+const BRAND = '#0f766e';
 
 /**
  * Pick a time for something — an appointment request today, anything with a booking purpose tomorrow.
@@ -22,7 +22,7 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
   const moving = !!move.uid;
   const [problem, setProblem] = useState<unknown>(null);
 
-  if (b.loading && !b.session) return <div className="h-24 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />;
+  if (b.loading && !b.session) return <div className="h-24 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />;
   if (b.error) return <ErrorAlert error={b.error} title="We couldn’t load the available times" />;
   if (!b.session) return <>{fallback}</>;
 
@@ -37,7 +37,7 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
 
   if (b.confirming) {
     return (
-      <div role="status" className="rounded-xl bg-ink-50 p-4 text-sm text-ink-900">
+      <div role="status" className="rounded-md bg-ink-50 p-4 text-sm text-ink-900">
         <b>Saving your time…</b>
         {b.picked?.startTime && <span className="text-slate-600"> {format(new Date(b.picked.startTime), 'EEEE d MMMM · HH:mm')}</span>}
       </div>
@@ -47,7 +47,7 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
   if (b.current && !moving) {
     const c = b.current;
     return (
-      <div className="rounded-xl bg-ink-50 p-4">
+      <div className="rounded-md bg-ink-50 p-4">
         <p className="text-sm font-semibold text-ink-900 flex items-center gap-2">
           <Icon name="calendar" className="w-4 h-4" /> {format(new Date(c.startsAt), 'EEEE d MMMM · HH:mm')}–{format(new Date(c.endsAt), 'HH:mm')}
           {c.status === 'PENDING' && <span className="text-[11px] font-semibold rounded-full bg-amber-50 text-amber-700 px-2 py-0.5">Waiting for your doctor to confirm</span>}
@@ -70,10 +70,10 @@ export function BookingCard({ purpose, referenceId, onChange, fallback = null }:
         <p className="text-sm font-semibold text-ink-900">{moving ? 'Choose a new time' : `Pick a time · ${b.session.label}`}</p>
         {moving && <button type="button" onClick={move.stop} className="text-xs text-slate-500 hover:text-ink-800">Keep my current time</button>}
       </div>
-      {moving && move.loading && <div className="h-24 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />}
+      {moving && move.loading && <div className="h-24 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />}
       {moving && move.unavailable && <p className="text-sm text-slate-500">This appointment can’t be moved any more.</p>}
       {(moving ? move.session : b.session) && (
-        <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+        <div className="rounded-md border border-slate-200 overflow-hidden bg-white">
           <BookingScheduler session={(moving ? move.session : b.session)!} brandColor={BRAND} onPicked={(t) => { move.stop(); b.onPicked(t); }} />
         </div>
       )}

@@ -10,6 +10,7 @@ import { LOGIN_CLINICIAN, VERIFY_MFA } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
 import { getCurrentRole, landingPathFor } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { BusyLabel } from '@telehealth/loading';
 
 export default function LoginPage() {
   const { t } = useI18n();
@@ -93,7 +94,7 @@ export default function LoginPage() {
               disabled={loginLoading}
               className="w-full bg-brand-500 text-white rounded px-4 py-2 text-sm font-medium hover:bg-brand-900 disabled:opacity-50"
             >
-              {loginLoading ? t('Signing in…') : t('Sign in')}
+              <BusyLabel busy={loginLoading} busyText={t('Signing in…')}>{t('Sign in')}</BusyLabel>
             </button>
           </form>
         ) : (
@@ -117,7 +118,7 @@ export default function LoginPage() {
               disabled={mfaLoading}
               className="w-full bg-brand-500 text-white rounded px-4 py-2 text-sm font-medium hover:bg-brand-900 disabled:opacity-50"
             >
-              {mfaLoading ? t('Verifying…') : t('Verify')}
+              <BusyLabel busy={mfaLoading} busyText={t('Verifying…')}>{t('Verify')}</BusyLabel>
             </button>
           </form>
         )}

@@ -41,7 +41,7 @@ export default function PhotoUploadField({
   };
 
   return (
-    <div className="border border-slate-200 rounded-2xl p-4">
+    <div className="border border-slate-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-sm font-medium text-slate-900">{label}</p>
@@ -54,14 +54,14 @@ export default function PhotoUploadField({
 
       {!previewUrl && existingFileId ? (
         <div>
-          <AuthedImage fileId={existingFileId} alt={label} className="w-full max-h-64 object-cover rounded-xl border border-slate-100" />
+          <AuthedImage fileId={existingFileId} alt={label} className="w-full max-h-64 object-cover rounded-md border border-slate-100" />
           <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-medium text-ink-600 hover:text-ink-800">Replace photo</button>
         </div>
       ) : previewUrl ? (
         <div className="relative">
-          <img src={previewUrl} alt={label} className="w-full max-h-72 object-contain bg-slate-50 rounded-xl border border-slate-100" />
+          <img src={previewUrl} alt={label} className="w-full max-h-72 object-contain bg-slate-50 rounded-md border border-slate-100" />
           {status === 'uploading' && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl">
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-md">
               <span className="text-xs text-slate-500">Uploading…</span>
             </div>
           )}
@@ -81,14 +81,14 @@ export default function PhotoUploadField({
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 px-3 py-2.5 bg-ink-700 hover:bg-ink-800 text-white text-sm font-medium rounded-xl transition-colors"
+            className="flex-1 px-3 py-2.5 bg-ink-700 hover:bg-ink-800 text-white text-sm font-medium rounded-md transition-colors"
           >
             Take photo
           </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 px-3 py-2.5 border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors"
+            className="flex-1 px-3 py-2.5 border border-slate-200 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
           >
             Upload file
           </button>

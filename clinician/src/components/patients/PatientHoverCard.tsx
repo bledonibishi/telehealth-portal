@@ -22,7 +22,7 @@ export default function PatientHoverCard({ patient }: { patient: any }) {
 
   return (
     <div
-      className="w-[300px] rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-panel)] shadow-xl shadow-black/40 p-4 flex flex-col gap-3 cursor-pointer"
+      className="w-[300px] rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-panel)] shadow-xl shadow-black/40 p-4 flex flex-col gap-3 cursor-pointer"
       style={{ minHeight: HOVER_CARD_HEIGHT }}
     >
       <div className="flex items-center gap-3">

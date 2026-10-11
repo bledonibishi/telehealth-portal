@@ -6,6 +6,7 @@ import { REVENUE_OVERVIEW, SALES_FUNNEL } from '@/graphql/insights';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import PeriodSelect, { type Period } from './PeriodSelect';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const STAGE_LABEL: Record<string, string> = {
   LANDING_VISITORS: 'Visited the landing page',
@@ -20,7 +21,7 @@ const STAGE_LABEL: Record<string, string> = {
 
 function Card({ label, value, sub, tone = 'text-gray-900' }: { label: string; value: string | string[]; sub?: string; tone?: string }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-1">
+    <div className="bg-white rounded-md border border-gray-200 p-5 flex flex-col gap-1">
       <p className="text-sm font-medium text-gray-700">{label}</p>
       {Array.isArray(value) ? (
         // One line per currency: they can't be added together, so none may stand in for the total.
@@ -96,7 +97,7 @@ export default function RevenuePanel() {
         </>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mt-4">
+      <div className="bg-white rounded-md border border-gray-200 p-5 mt-4">
         <p className="text-sm font-medium text-gray-700 mb-4">{t('From the landing page to the first shipment')}</p>
         <InlineError error={funnel.error} />
         {funnelData && !funnelData.visitorsConfigured && (
@@ -109,7 +110,7 @@ export default function RevenuePanel() {
             {t('PostHog could not be read: {message}', { message: funnelData.visitorsError })}
           </p>
         )}
-        {funnel.loading && !stages.length && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+        {funnel.loading && !stages.length && <LoadingState variant="inline" label={t('Loading…')} />}
         <ol className="space-y-3">
           {stages.map((s, i) => (
             <li key={s.key} className="grid grid-cols-[minmax(160px,260px)_1fr_auto] items-center gap-3">

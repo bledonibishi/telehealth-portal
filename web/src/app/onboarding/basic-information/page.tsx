@@ -24,7 +24,7 @@ const EMPTY: Form = {
   phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '', country: 'Kosovo',
 };
 
-const inputCls = 'w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-500 bg-white';
+const inputCls = 'w-full border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-500 bg-white';
 const labelCls = 'block text-sm font-medium text-slate-900 mb-1';
 
 function toDateInputValue(iso?: string | null) {
@@ -103,7 +103,7 @@ export default function BasicInformationStepPage() {
       <p className="text-xs text-slate-400 mt-1">Your answers save as you go, so you can leave and come back.</p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
+        <div className="bg-white rounded-lg border border-slate-100 p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Personal details</p>
           <label className="block">
             <span className={labelCls}>First name</span>
@@ -126,7 +126,7 @@ export default function BasicInformationStepPage() {
           </label>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
+        <div className="bg-white rounded-lg border border-slate-100 p-4 space-y-3">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Delivery address</p>
           {ADDRESS_FIELDS.map((f) => (
             <label key={f.key} className="block">
@@ -148,7 +148,7 @@ export default function BasicInformationStepPage() {
         <button
           type="submit"
           disabled={!complete || loading}
-          className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+          className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-40 text-white font-semibold py-3 rounded-md text-sm transition-colors"
         >
           {loading ? 'Saving…' : 'Continue'}
         </button>

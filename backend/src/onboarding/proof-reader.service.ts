@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
+import { LlmTracingService } from '../langfuse/llm-tracing.service';
 import { DocumentReading, NameEvidenceReading } from './prior-dose-assessment';
 
 // Reading a pharmacy label or prescription is extraction, not judgement — the
@@ -87,7 +88,8 @@ export class ProofReaderService {
   private readonly logger = new Logger(ProofReaderService.name);
   private client: Anthropic | null = null;
 
-  constructor(private config: ConfigService) {}
+  // Tracing is optional: without it (tests, scripts) the reads run untraced.
+  constructor(private config: ConfigService, @Optional() private tracing: LlmTracingService = new LlmTracingService()) {}
 
   /** The model this service calls. */
   get model(): string {
@@ -103,15 +105,24 @@ export class ProofReaderService {
     return this.client;
   }
 
-  async read(file: Buffer, mimeType: string): Promise<ReadOutcome> {
-    const out = await this.extract(file, mimeType, SYSTEM, READING_SCHEMA, 'Read this document.');
-    return out.status === 'COMPLETED' ? { status: 'COMPLETED', reading: toReading(out.raw) } : out;
+  async read(file: Buffer, mimeType: string, patientId?: string): Promise<ReadOutcome> {
+    return this.traced('read-prescription-document', patientId, 'Read this document.', 'prescription-proof', async () => {
+      const out = await this.extract(file, mimeType, SYSTEM, READING_SCHEMA, 'Read this document.');
+      return out.status === 'COMPLETED' ? ({ status: 'COMPLETED', reading: toReading(out.raw) } as ReadOutcome) : out;
+    }, (o) => (o.status === 'COMPLETED' ? { status: o.status, ...describeReading(o.reading) } : { status: o.status, reason: o.reason }));
   }
 
   /** Reads a name-change document for the names it shows. */
-  async readNameEvidence(file: Buffer, mimeType: string): Promise<NameEvidenceOutcome> {
-    const out = await this.extract(file, mimeType, NAME_EVIDENCE_SYSTEM, NAME_EVIDENCE_SCHEMA, 'List the patient’s names on this document.');
-    return out.status === 'COMPLETED' ? { status: 'COMPLETED', reading: toNameEvidence(out.raw) } : out;
+  async readNameEvidence(file: Buffer, mimeType: string, patientId?: string): Promise<NameEvidenceOutcome> {
+    return this.traced('read-name-change-document', patientId, 'List the patient’s names on this document.', 'name-change-document', async () => {
+      const out = await this.extract(file, mimeType, NAME_EVIDENCE_SYSTEM, NAME_EVIDENCE_SCHEMA, 'List the patient’s names on this document.');
+      return out.status === 'COMPLETED' ? ({ status: 'COMPLETED', reading: toNameEvidence(out.raw) } as NameEvidenceOutcome) : out;
+    }, (o) => (o.status === 'COMPLETED' ? { status: o.status, readable: o.reading.readable, names_found: o.reading.names.length } : { status: o.status, reason: o.reason }));
+  }
+
+  /** One trace per document. What is recorded about the document and the reading is spelled out here and nowhere else. */
+  private traced<T>(name: string, patientId: string | undefined, instruction: string, feature: string, run: () => Promise<T>, summarise: (outcome: T) => unknown): Promise<T> {
+    return this.tracing.trace(name, { userId: patientId, tags: ['onboarding', feature], input: { instruction }, output: summarise }, run);
   }
 
   private async extract(
@@ -134,26 +145,40 @@ export class ProofReaderService {
 
     try {
       const model = this.model;
-      const response = await this.getClient().beta.messages.create({
+      const response = await this.tracing.generation('extract-document-fields', {
         model,
-        max_tokens: 16000,
-        // On a safety-classifier decline, the API retries on its recommended
-        // fallback model instead of returning nothing.
-        ...(SUPPORTS_FALLBACKS.test(model) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-        output_config: { ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' as const } : {}), format: { type: 'json_schema', schema } },
-        system,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mimeType as SupportedType, data: file.toString('base64') } },
-              { type: 'text', text: instruction },
-            ],
-          },
-        ],
-      // The patient waits on the upload for this: past the deadline (retries included) give up and
-      // let a clinician check it, rather than holding the request open past client and proxy timeouts.
-      }, { signal: AbortSignal.timeout(READ_DEADLINE_MS) });
+        // The system prompt and instruction, but never the image: only its type and size.
+        input: [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'image', media_type: mimeType, bytes: file.length }, { type: 'text', text: instruction }] }],
+        modelParameters: { max_tokens: 16000, ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' } : {}) },
+      }, async (record) => {
+        const res = await this.getClient().beta.messages.create({
+          model,
+          max_tokens: 16000,
+          // On a safety-classifier decline, the API retries on its recommended
+          // fallback model instead of returning nothing.
+          ...(SUPPORTS_FALLBACKS.test(model) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+          output_config: { ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' as const } : {}), format: { type: 'json_schema', schema } },
+          system,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: mimeType as SupportedType, data: file.toString('base64') } },
+                { type: 'text', text: instruction },
+              ],
+            },
+          ],
+        // The patient waits on the upload for this: past the deadline (retries included) give up and
+        // let a clinician check it, rather than holding the request open past client and proxy timeouts.
+        }, { signal: AbortSignal.timeout(READ_DEADLINE_MS) });
+        record({
+          model: res.model,
+          usage: res.usage,
+          output: { stop_reason: res.stop_reason, ...safeFields(res.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text) },
+          warning: res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens' ? `Stopped: ${res.stop_reason}` : undefined,
+        });
+        return res;
+      });
 
       if (response.stop_reason === 'refusal') {
         return { status: 'FAILED', reason: 'The model declined to read this document' };
@@ -173,6 +198,29 @@ export class ProofReaderService {
       return { status: 'FAILED', reason: 'Automatic check failed' };
     }
   }
+}
+
+/** The few fields of the model's JSON answer that say nothing about the patient: the rest (names, medicine, dose, dates, notes) stay out of traces. */
+function safeFields(text: string | undefined) {
+  try {
+    const raw = JSON.parse(text ?? '');
+    return { readable: raw.readable, is_prescription_evidence: raw.is_prescription_evidence, date_kind: raw.date_kind, names_found: Array.isArray(raw.names) ? raw.names.length : undefined, authenticity_concerns: Array.isArray(raw.authenticity_concerns) ? raw.authenticity_concerns.length : undefined };
+  } catch {
+    return {};
+  }
+}
+
+/** What a trace says about a reading: how it went, not what the document says (no name, medicine, dose or date). */
+function describeReading(r: DocumentReading) {
+  return {
+    readable: r.readable,
+    is_prescription_evidence: r.isPrescriptionEvidence,
+    molecule_found: r.molecule !== 'not_found',
+    dose_found: r.doseMg !== null,
+    date_found: r.documentDate !== null,
+    patient_name_found: !!r.patientName,
+    authenticity_concerns: r.authenticityConcerns.length,
+  };
 }
 
 export function toNameEvidence(raw: any): NameEvidenceReading {

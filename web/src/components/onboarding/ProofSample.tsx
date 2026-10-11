@@ -58,10 +58,10 @@ export function ProofSample({ type, flagged = [] }: { type: string; flagged?: Fi
   };
 
   return (
-    <figure className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+    <figure className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
       <figcaption className="text-xs font-semibold text-slate-500">Example — what we need to see</figcaption>
 
-      <div className="mt-2 rounded-xl bg-slate-50 p-2.5" aria-hidden>
+      <div className="mt-2 rounded-md bg-slate-50 p-2.5" aria-hidden>
         {type === 'PRESCRIPTION_DOCUMENT' ? (
           <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4 text-[13px] text-slate-700 space-y-2.5">
             <div className="flex justify-between text-[11px] text-slate-400 uppercase tracking-wide">

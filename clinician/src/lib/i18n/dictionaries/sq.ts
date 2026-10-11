@@ -1,5 +1,10 @@
 // English is the source language and its text is the key: wrap UI text in t("...") and add the translation here (and in the other two files). A missing key simply shows the English text.
 export const sq: Record<string, string> = {
+  "The patient hasn’t finished onboarding yet": "Pacienti nuk e ka përfunduar ende regjistrimin",
+  "Waiting for the patient to redo the steps you asked them to": "Në pritje që pacienti të përsërisë hapat që i kërkuat",
+  "The identity check hasn’t been approved yet": "Kontrolli i identitetit nuk është miratuar ende",
+  "Fulfilment": "Dërgesat",
+  "Clinical": "Klinike",
   "(lower is better)": "(më e ulët është më mirë)",
   "+ Add another medicine": "+ Shto një ilaç tjetër",
   "+ New patient": "+ Pacient i ri",

@@ -43,7 +43,7 @@ export default function ExportCsvButton<T>({ resource, rows, columns, className 
         onClick={run}
         disabled={loading || rows.length === 0}
         title={rows.length === 0 ? t('Nothing to export') : undefined}
-        className={`px-3 py-1.5 text-xs font-medium rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)] text-[color:var(--t-body)] hover:border-[color:var(--border-strong)] disabled:opacity-50 ${className}`}
+        className={`h-9 px-3 text-[13px] font-medium rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)] text-[color:var(--t-body)] hover:border-[color:var(--border-strong)] disabled:opacity-50 ${className}`}
       >
         {loading ? t('Exporting…') : t('Export CSV')}
       </button>

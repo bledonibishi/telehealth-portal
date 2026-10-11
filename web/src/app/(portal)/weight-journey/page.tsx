@@ -15,6 +15,7 @@ import { PhotoTimeline } from '@/components/weight/PhotoTimeline';
 import { MeasurementsChart } from '@/components/weight/MeasurementsChart';
 import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
 import { InlineError } from '@/components/common/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 export default function WeightJourneyPage() {
   const { data, loading, error } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
@@ -24,10 +25,10 @@ export default function WeightJourneyPage() {
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
       <PageHeader title="Weight Journey" subtitle="Your weigh-ins and photos over time, with the date of each." />
 
-      {loading && !journey && <p className="text-sm text-slate-400">Loading…</p>}
+      {loading && !journey && <LoadingState variant="inline" label="Loading…" />}
       {!journey && <InlineError error={error} />}
       {!loading && !error && !journey && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-500">
+        <div className="bg-white rounded-lg border border-slate-100 p-8 text-center text-sm text-slate-500">
           The Weight Journey is available on our weight-management programme.
         </div>
       )}

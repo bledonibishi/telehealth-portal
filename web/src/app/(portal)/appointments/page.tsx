@@ -12,6 +12,7 @@ import { BookingCard } from '@/components/booking/BookingCard';
 import { BookedAppointments } from '@/components/booking/BookedAppointments';
 import { PastAppointments } from '@/components/booking/PastAppointments';
 import { InlineError } from '@/components/common/Alert';
+import { SkeletonText } from '@telehealth/loading';
 
 const REASONS: Array<{ value: string; label: string; icon: IconName; hint: string }> = [
   { value: 'QUESTION', label: 'A question', icon: 'help', hint: 'About your treatment, dose or diet' },
@@ -44,11 +45,11 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 
 function EmergencyNotice({ text }: { text: string }) {
   return (
-    <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 flex gap-3">
+    <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 flex gap-3">
       <Icon name="alert" className="w-6 h-6 text-red-600 flex-shrink-0" />
       <div>
         <p className="text-sm font-semibold text-red-800">{text}</p>
-        <a href={telHref(EMERGENCY_NUMBER)} className="mt-3 inline-flex items-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2"><Icon name="phone" className="w-4 h-4" /> Call {EMERGENCY_NUMBER}</a>
+        <a href={telHref(EMERGENCY_NUMBER)} className="mt-3 inline-flex items-center gap-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2"><Icon name="phone" className="w-4 h-4" /> Call {EMERGENCY_NUMBER}</a>
       </div>
     </div>
   );
@@ -84,7 +85,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         <legend className="text-sm font-semibold text-ink-900 mb-2">What is it about?</legend>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {REASONS.map((r) => (
-            <label key={r.value} className={`rounded-xl border p-3 cursor-pointer ${reason === r.value ? 'border-ink-600 bg-ink-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+            <label key={r.value} className={`rounded-md border p-3 cursor-pointer ${reason === r.value ? 'border-ink-600 bg-ink-50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <input type="radio" name="reason" value={r.value} checked={reason === r.value} onChange={() => setReason(r.value)} className="sr-only" />
               <span className="flex items-center gap-2 text-sm font-medium text-ink-900"><Icon name={r.icon} className="w-4 h-4 text-ink-700" />{r.label}</span>
               <span className="block text-[11px] text-slate-500 mt-0.5">{r.hint}</span>
@@ -101,7 +102,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         </div>
       )}
 
-      <fieldset className="rounded-2xl border border-red-100 bg-red-50/50 p-4">
+      <fieldset className="rounded-lg border border-red-100 bg-red-50/50 p-4">
         <legend className="text-sm font-semibold text-red-800 px-1">Do you have any of these right now?</legend>
         <div className="grid sm:grid-cols-2 gap-2 mt-1">
           {RED_FLAGS.map(([k, l]) => (
@@ -113,7 +114,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         {flags.length > 0 && <p className="text-sm font-semibold text-red-700 mt-3">Please call {EMERGENCY_NUMBER} or go to the nearest emergency department now. You can still send this so your doctor knows.</p>}
       </fieldset>
 
-      <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 cursor-pointer">
+      <label className="flex items-start gap-3 rounded-md border border-slate-200 p-3 cursor-pointer">
         <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} className="mt-0.5 accent-ink-700" />
         <span>
           <span className="block text-sm font-medium text-ink-900">It can’t wait</span>
@@ -121,7 +122,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         </span>
       </label>
 
-      <div className={`rounded-xl p-3 text-sm ${willBeUrgent ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-600'}`}>
+      <div className={`rounded-md p-3 text-sm ${willBeUrgent ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-600'}`}>
         <b>{willBeUrgent ? 'Urgent' : 'Routine'}:</b> {willBeUrgent ? 'a doctor will get back to you within 24 hours.' : 'a doctor will get back to you within 3 days. Questions can also go straight to Messages.'}
       </div>
 
@@ -157,7 +158,7 @@ export default function AppointmentsPage() {
       <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem] gap-5 items-start">
         <div className="space-y-5 min-w-0">
           {sent && (sent.advice ? <EmergencyNotice text={sent.advice} /> : (
-            <div role="status" className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-800"><b>Request sent.</b> {picking ? 'Pick a time that suits you below.' : 'Your doctor will reply with a time — you’ll get an email, and it will show below.'}</div>
+            <div role="status" className="rounded-lg bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-800"><b>Request sent.</b> {picking ? 'Pick a time that suits you below.' : 'Your doctor will reply with a time — you’ll get an email, and it will show below.'}</div>
           ))}
 
           <BookedAppointments onChange={() => refetch()} />
@@ -173,7 +174,7 @@ export default function AppointmentsPage() {
 
           <Card>
             <CardHeader title="Your requests" subtitle="What you’ve asked to see a doctor about." />
-            {loading && !list.length && <p className="text-sm text-slate-400">Loading…</p>}
+            {loading && !list.length && <SkeletonText lines={4} label="Loading your requests…" />}
             {!loading && !list.length && <p className="text-sm text-slate-500">No appointments yet.</p>}
             <ul className="divide-y divide-slate-100">
               {list.map((a) => (
@@ -198,7 +199,7 @@ export default function AppointmentsPage() {
                     </button>
                   ) : null}
                   {a.status === 'SCHEDULED' && a.scheduledFor && picking !== a.id && (
-                    <div className="mt-3 rounded-xl bg-ink-50 p-3 text-sm">
+                    <div className="mt-3 rounded-md bg-ink-50 p-3 text-sm">
                       <p className="font-semibold text-ink-900">{format(new Date(a.scheduledFor), 'EEEE d MMMM · HH:mm')}{a.clinicianName ? ` with ${a.clinicianName}` : ''}</p>
                       {a.meetingUrl && <a href={a.meetingUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-ink-600 font-medium mt-1">Join video call <Icon name="arrow" className="w-4 h-4" /></a>}
                     </div>
@@ -221,10 +222,10 @@ export default function AppointmentsPage() {
         </div>
 
         <div className="space-y-5">
-          <section className="rounded-2xl border border-red-200 bg-red-50/70 p-5">
+          <section className="rounded-lg border border-red-200 bg-red-50/70 p-5">
             <p className="text-sm font-semibold text-red-700 flex items-center gap-2"><Icon name="alert" className="w-4 h-4" /> Emergency?</p>
             <p className="text-xs text-red-700/80 mt-1">Chest pain, trouble breathing, severe stomach pain or fainting: don’t book — call now.</p>
-            <a href={telHref(EMERGENCY_NUMBER)} className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2.5"><Icon name="phone" className="w-4 h-4" /> Call {EMERGENCY_NUMBER}</a>
+            <a href={telHref(EMERGENCY_NUMBER)} className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2.5"><Icon name="phone" className="w-4 h-4" /> Call {EMERGENCY_NUMBER}</a>
             {CONTACT.urgentPhone && <a href={telHref(CONTACT.urgentPhone)} className="block text-center text-xs font-medium text-red-700 mt-2">Clinic urgent line: {CONTACT.urgentPhone}</a>}
           </section>
           <Card>

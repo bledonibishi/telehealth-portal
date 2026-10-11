@@ -9,6 +9,7 @@ import { LOGIN_PATIENT } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
 import { ErrorAlert } from '@/components/common/Alert';
 import { ErrorCode, describeError } from '@telehealth/shared-types';
+import { BusyLabel } from '@telehealth/loading';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
             >
-              {loading ? 'Signing in…' : 'Sign in'}
+              <BusyLabel busy={loading} busyText="Signing in…">Sign in</BusyLabel>
             </button>
           </form>
 

@@ -386,17 +386,27 @@ export class OrdersService {
     order: { id: string; patientId: string; patient: { email: string; firstName: string; lastName?: string }; carrier: string | null; trackingNumber: string | null; trackingUrl: string | null; estimatedDeliveryFrom: Date | null; estimatedDeliveryTo: Date | null },
     kind: 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_FAILED',
   ) {
-    // The app and the phone are told even when email isn't set up, and the two never hold each other up.
-    void this.notifier?.toPatient(order.patientId, { kind: NOTICE[kind], params: { orderId: order.id }, href: '/orders', groupKey: `order:${order.id}` });
+    // The app and the phone are told even when email isn't set up, and the two never hold each other up. These are
+    // waited for, one after another where order matters: an alert written late would otherwise land after the delivery
+    // that closes it (a failed attempt then a delivery in quick succession), and an un-awaited write can be cut off on a
+    // serverless host. A failure here is logged and never fails the step.
+    await this.quietly(`tell the patient about order ${order.id}`, () =>
+      this.notifier?.toPatient(order.patientId, { kind: NOTICE[kind], params: { orderId: order.id }, href: '/orders', groupKey: `order:${order.id}` }),
+    );
     if (kind === 'DELIVERY_FAILED') {
-      void this.notifier?.toStaff({ roles: [ClinicianRole.ADMIN] }, {
-        kind: NotificationKind.ORDER_PROBLEM,
-        params: { patient: `${order.patient.firstName} ${order.patient.lastName ?? ''}`.trim() },
-        href: '/orders',
-        groupKey: `order-problem:${order.id}`,
+      await this.quietly(`raise the problem alert for order ${order.id}`, async () => {
+        await this.notifier?.toStaff({ roles: [ClinicianRole.ADMIN] }, {
+          kind: NotificationKind.ORDER_PROBLEM,
+          params: { patient: `${order.patient.firstName} ${order.patient.lastName ?? ''}`.trim() },
+          href: '/orders',
+          groupKey: `order-problem:${order.id}`,
+        });
+        // Another update may have delivered the order while the alert was being written: then it is already handled.
+        const now = await this.prisma.order.findUnique({ where: { id: order.id }, select: { status: true } });
+        if (now?.status === 'DELIVERED') await this.notifier?.resolve(`order-problem:${order.id}`);
       });
     } else if (kind === 'DELIVERED') {
-      void this.notifier?.resolve(`order-problem:${order.id}`);
+      await this.quietly(`close the problem alert for order ${order.id}`, () => this.notifier?.resolve(`order-problem:${order.id}`));
     }
     if (!this.email) return;
     try {
@@ -410,6 +420,15 @@ export class OrdersService {
       });
     } catch (err: any) {
       this.logger.error(`Order ${kind.toLowerCase()} email failed: ${err?.message}`);
+    }
+  }
+
+  /** Runs a notification step and logs a failure instead of throwing: the order has moved whether or not anyone was told. */
+  private async quietly(what: string, run: () => Promise<unknown> | undefined) {
+    try {
+      await run();
+    } catch (err: any) {
+      this.logger.error(`Could not ${what}: ${err?.message}`, err?.stack);
     }
   }
 

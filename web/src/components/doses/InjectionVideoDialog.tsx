@@ -8,7 +8,7 @@ export function InjectionVideoDialog({ onClose, onShowSteps }: { onClose: () => 
   return (
     <Dialog title="How to inject: video" onClose={onClose}>
       {INJECTION_VIDEO_EMBED ? (
-        <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-100">
+        <div className="aspect-video w-full rounded-md overflow-hidden bg-slate-100">
           <iframe
             src={INJECTION_VIDEO_EMBED}
             title="How to inject your pen"
@@ -19,7 +19,7 @@ export function InjectionVideoDialog({ onClose, onShowSteps }: { onClose: () => 
           />
         </div>
       ) : (
-        <div className="rounded-xl bg-slate-50 p-6 text-center">
+        <div className="rounded-md bg-slate-50 p-6 text-center">
           <p className="text-sm font-semibold text-slate-900">Our video is coming soon</p>
           <p className="text-sm text-slate-500 mt-1">Until then, the step-by-step guide covers the same ground.</p>
         </div>

@@ -10,6 +10,7 @@ import { ConversationWatchers } from '@/components/consultation/ConversationWatc
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { getToken } from '@/lib/auth';
+import { SkeletonMessages } from '@telehealth/loading';
 
 type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
@@ -172,7 +173,7 @@ export default function PatientChatWindow({
   return (
     <aside
       aria-label={t('Chat with {name}', { name: patientName })}
-      className={`fixed bottom-5 right-6 z-30 w-[384px] max-w-[calc(100vw-2rem)] flex flex-col overflow-hidden rounded-3xl border border-sky-200/80 bg-[#f4f9ff] shadow-[0_24px_60px_-12px_rgba(14,80,160,0.5)] animate-slide-in-right ${
+      className={`fixed bottom-5 right-6 z-30 w-[384px] max-w-[calc(100vw-2rem)] flex flex-col overflow-hidden rounded-xl border border-sky-200/80 bg-[#f4f9ff] shadow-[0_24px_60px_-12px_rgba(14,80,160,0.5)] animate-slide-in-right ${
         minimised ? '' : 'h-[min(560px,calc(100vh-6rem))]'
       }`}
     >
@@ -211,7 +212,7 @@ export default function PatientChatWindow({
       {!minimised && (
         <>
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-1 bg-[#eaf3ff]">
-            {loading && messages.length === 0 && <p className="text-xs text-slate-400 text-center">{t('Loading…')}</p>}
+            {loading && messages.length === 0 && <SkeletonMessages label={t('Loading…')} />}
             {!loading && messages.length === 0 && (
               <p className="h-full flex items-center justify-center text-sm text-slate-400 text-center px-6">
                 {t('No messages yet. Messages you send go straight to the patient’s portal.')}
@@ -267,7 +268,7 @@ export default function PatientChatWindow({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
               }}
-              className="flex-1 resize-none rounded-2xl border border-sky-200 bg-[#ffffff] px-3.5 py-2.5 text-[15px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-400 focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="flex-1 resize-none rounded-lg border border-sky-200 bg-[#ffffff] px-3.5 py-2.5 text-[15px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-400 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <button
               type="submit"

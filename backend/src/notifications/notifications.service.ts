@@ -88,15 +88,18 @@ export class NotificationsService {
   }
 
   /**
-   * One row per patient conversation, counted in the database: the newest message of each patient, kept when the
-   * patient wrote it. With a clinician, only conversations on a consultation nobody has picked up or that is theirs.
+   * One row per conversation thread, counted in the database: the newest message of each thread, kept when the patient
+   * wrote it. A thread is a consultation, or the pre-consultation messages (consultation_id null, which DISTINCT ON groups
+   * together). So a patient with two consultations counts twice when both are waiting, and an answer in one thread never
+   * hides a question in another. With a clinician, only threads on a consultation nobody has picked up or that is theirs
+   * (the pre-consultation thread belongs to nobody yet).
    */
   private async countAwaitingReply(forClinicianId?: string): Promise<number> {
     const rows = await this.prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
       SELECT count(*)::int AS n FROM (
-        SELECT DISTINCT ON (m.patient_id) m.sender_role, c.clinician_id
+        SELECT DISTINCT ON (m.patient_id, m.consultation_id) m.sender_role, c.clinician_id
         FROM messages m LEFT JOIN consultations c ON c.id = m.consultation_id
-        ORDER BY m.patient_id, m.sent_at DESC
+        ORDER BY m.patient_id, m.consultation_id, m.sent_at DESC
       ) latest
       WHERE latest.sender_role = 'PATIENT'
       ${forClinicianId ? Prisma.sql`AND (latest.clinician_id IS NULL OR latest.clinician_id = ${forClinicianId})` : Prisma.empty}

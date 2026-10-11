@@ -111,25 +111,25 @@ export default function RewardsPage() {
 
       {!loading && referral && (
         <>
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
+          <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4">
             <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Your referral link</p>
             <div className="flex items-center gap-2 mt-2">
               <input
                 readOnly
                 value={referral.link}
                 onFocus={(e) => e.target.select()}
-                className="flex-1 min-w-0 text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 truncate"
+                className="flex-1 min-w-0 text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-md px-3 py-2 truncate"
               />
               <button
                 onClick={handleCopy}
-                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2 rounded-xl"
+                className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2 rounded-md"
               >
                 {copied ? 'Copied!' : 'Copy link'}
               </button>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4 flex items-center justify-between gap-4">
+          <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-slate-900">Automatically apply my rewards</p>
               <p className="text-xs text-slate-400 mt-0.5">When off, new rewards wait on this page until you apply them yourself.</p>
@@ -151,7 +151,7 @@ export default function RewardsPage() {
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
+          <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4">
             <p className="text-sm font-semibold text-slate-900 mb-1">Your rewards</p>
             {vouchers.length === 0 ? (
               <p className="text-sm text-slate-400 py-3">No rewards yet — share your link to start earning.</p>
@@ -160,7 +160,7 @@ export default function RewardsPage() {
             )}
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+          <div className="bg-white rounded-lg border border-slate-100 p-6">
             <p className="text-sm font-semibold text-slate-900 mb-1">Friends you've referred</p>
             {referrals.length === 0 ? (
               <p className="text-sm text-slate-400 py-3">No referrals yet.</p>

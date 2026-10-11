@@ -13,7 +13,7 @@ import { LogWeightForm } from './LogWeightForm';
 function CheckInLine({ journey }: { journey: any }) {
   if (journey.checkInState === 'READY') {
     return (
-      <div className="bg-brand-50 border border-brand-100 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+      <div className="bg-brand-50 border border-brand-100 rounded-md px-3 py-2 flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-brand-900">Your check-in is ready</p>
         {journey.checkInUrl && (
           <a href={journey.checkInUrl} className="flex-shrink-0 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2 rounded-lg">Start</a>
@@ -47,7 +47,7 @@ export function WeightJourneyCard({ journey, showLink = true, allowLog = true }:
   const hasProgress = journey.progressPercentage !== null && journey.progressPercentage !== undefined;
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-100 p-4 sm:p-5" aria-labelledby="weight-journey-title">
+    <section className="bg-white rounded-lg border border-slate-100 p-4 sm:p-5" aria-labelledby="weight-journey-title">
       <div className="flex items-center justify-between mb-3">
         <h2 id="weight-journey-title" className="text-xs font-semibold text-brand-700 uppercase tracking-wide">Weight journey</h2>
         <div className="flex items-center gap-3">
@@ -83,7 +83,7 @@ export function WeightJourneyCard({ journey, showLink = true, allowLog = true }:
           </div>
         </div>
       ) : (
-        <div className="mt-3 bg-slate-50 rounded-xl p-3">
+        <div className="mt-3 bg-slate-50 rounded-md p-3">
           {journey.startingWeightKg ? <TargetWeightForm currentKg={journey.currentWeightKg} startKg={journey.startingWeightKg} /> : <p className="text-sm text-slate-500">Complete your medical questionnaire and we’ll set up your journey.</p>}
         </div>
       )}

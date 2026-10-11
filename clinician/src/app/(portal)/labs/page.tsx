@@ -9,6 +9,7 @@ import { KIND_LABEL, type TrtMonitoring } from '@/components/labs/labs-format';
 import ExportCsvButton from '@/components/ExportCsvButton';
 import type { CsvColumn } from '@/lib/csv';
 import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 type TrtRow = { patientName: string; monitoring: TrtMonitoring };
 
@@ -68,9 +69,9 @@ export default function LabsPage() {
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t('Testosterone monitoring')} · {trt.length}</h2>
           <ExportCsvButton resource="trt-monitoring" rows={trt} columns={TRT_COLUMNS} />
         </div>
-        {trtLoading && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+        {trtLoading && <LoadingState variant="inline" label={t('Loading…')} />}
         {!trtLoading && trt.length === 0 && <p className="text-sm text-gray-400">{t('Every patient on testosterone is up to date.')}</p>}
-        <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+        <div className="bg-white border border-gray-200 rounded-md divide-y divide-gray-100">
           {trt.map(({ patientName, monitoring: p }) => {
             const next = [...p.labs].sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
             return (
@@ -97,9 +98,9 @@ export default function LabsPage() {
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{t('Out-of-range results to review')} · {flagged.length}</h2>
           <ExportCsvButton resource="lab-results" rows={flagged} columns={FLAGGED_COLUMNS} />
         </div>
-        {flaggedLoading && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+        {flaggedLoading && <LoadingState variant="inline" label={t('Loading…')} />}
         {!flaggedLoading && flagged.length === 0 && <p className="text-sm text-gray-400">{t('Nothing waiting for review.')}</p>}
-        <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
+        <div className="bg-white border border-gray-200 rounded-md divide-y divide-gray-100">
           {flagged.map((r) => (
             <div key={r.id} className="px-4 py-3 flex items-center justify-between gap-4">
               <div>

@@ -25,7 +25,7 @@ export function PhotoTile({ path, caption, height = 'h-48' }: { path?: string | 
         type="button"
         onClick={() => path && setOpen(true)}
         disabled={!path}
-        className={`group relative block w-full ${height} rounded-xl border border-gray-100 bg-gray-50 overflow-hidden disabled:cursor-default`}
+        className={`group relative block w-full ${height} rounded-md border border-gray-100 bg-gray-50 overflow-hidden disabled:cursor-default`}
         aria-label={t('Open {item} full screen', { item: caption })}
       >
         <AuthedImage path={path} alt={caption} className="w-full h-full object-contain" />

@@ -18,7 +18,7 @@ export function EmptyState({ icon, what, whenTreating }: {
   whenTreating: { text: string; action?: { href: string; label: string } };
 }) {
   const next = useCareStage();
-  if (next.stage === 'LOADING') return <Card><div className="h-28 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading" /></Card>;
+  if (next.stage === 'LOADING') return <Card><div className="h-28 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading" /></Card>;
   const treating = next.stage === 'TREATING';
   const title = treating ? `${what} isn’t ready yet` : next.title;
   const text = treating ? whenTreating.text : `${what} appears here once your treatment starts. ${next.text}`;

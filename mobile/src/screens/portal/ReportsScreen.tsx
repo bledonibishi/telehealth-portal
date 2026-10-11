@@ -6,6 +6,7 @@ import { Button, Card, Empty, ErrorText, Screen } from '../../components/ui';
 import { openAuthedPdf } from '../../lib/documents';
 import { fmtDate } from '../../lib/format';
 import { colors } from '../../theme';
+import { SkeletonCard } from '../../components/Skeleton';
 
 /** One PDF after each check-in with the doctor: weight, dose and their note. */
 export function ReportsScreen() {
@@ -28,7 +29,7 @@ export function ReportsScreen() {
 
   return (
     <Screen title="Check-in reports" subtitle="After each check-in with your doctor: your weight, your dose and their note." refreshing={loading} onRefresh={() => refetch()}>
-      {loading && !data && <Empty>Loading…</Empty>}
+      {loading && !data && <SkeletonCard lines={3} label="Loading your reports…" />}
       {!data && <ErrorText error={error} />}
       {data && reports.length === 0 && <Card><Empty>Your first report appears here once your doctor has reviewed your first check-in.</Empty></Card>}
       <ErrorText error={problem} />

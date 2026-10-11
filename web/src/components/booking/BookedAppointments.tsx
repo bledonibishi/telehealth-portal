@@ -8,7 +8,7 @@ import { Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
 import { errorMessage } from '@telehealth/shared-types';
 
-const BRAND = '#132f6f';
+const BRAND = '#0f766e';
 
 const dayOf = (d: Date) => (isToday(d) ? 'Today' : isTomorrow(d) ? 'Tomorrow' : format(d, 'EEEE d MMMM'));
 
@@ -45,10 +45,10 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
           const start = new Date(c.startsAt);
           const moving = move.uid === c.uid;
           return (
-            <li key={c.uid} className="rounded-xl border border-slate-200 p-4">
+            <li key={c.uid} className="rounded-md border border-slate-200 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
-                  <span className="w-12 h-12 rounded-xl bg-ink-50 text-ink-800 flex flex-col items-center justify-center flex-shrink-0 leading-none">
+                  <span className="w-12 h-12 rounded-md bg-ink-50 text-ink-800 flex flex-col items-center justify-center flex-shrink-0 leading-none">
                     <span className="text-[10px] font-semibold uppercase">{format(start, 'MMM')}</span>
                     <span className="text-lg font-bold">{format(start, 'd')}</span>
                   </span>
@@ -65,7 +65,7 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
               </div>
 
               {confirming === c.uid ? (
-                <div className="mt-3 rounded-xl bg-red-50 border border-red-100 p-3 flex flex-wrap items-center gap-3">
+                <div className="mt-3 rounded-md bg-red-50 border border-red-100 p-3 flex flex-wrap items-center gap-3">
                   <p className="text-sm text-red-800 flex-1 min-w-[12rem]">Cancel this appointment? The time will be given up.</p>
                   <button type="button" onClick={() => cancel(c)} disabled={b.cancelling === c.uid} className="rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5">
                     {b.cancelling === c.uid ? 'Cancelling…' : 'Yes, cancel it'}
@@ -87,11 +87,11 @@ export function BookedAppointments({ onChange }: { onChange?: () => void }) {
                     <p className="text-sm font-semibold text-ink-900">Choose a new time</p>
                     <button type="button" onClick={move.stop} className="text-xs text-slate-500 hover:text-ink-800">Keep my current time</button>
                   </div>
-                  {move.loading && <div className="h-24 rounded-xl bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />}
+                  {move.loading && <div className="h-24 rounded-md bg-slate-50 animate-pulse" role="status" aria-label="Loading available times" />}
                   <InlineError error={move.error} />
                   {move.unavailable && <p className="text-sm text-slate-500">This appointment can’t be moved any more. You can cancel it and book a new one.</p>}
                   {move.session && (
-                    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                    <div className="rounded-md border border-slate-200 overflow-hidden bg-white">
                       <BookingScheduler session={move.session} brandColor={BRAND} onPicked={() => { move.stop(); b.settle(); }} />
                     </div>
                   )}
