@@ -17,15 +17,16 @@ function build() {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ email: 'arta@example.com', firstName: 'Arta' }) },
+    patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ email: 'arta@example.com', firstName: 'Arta' }), findUnique: jest.fn().mockResolvedValue({ firstName: 'Arta', lastName: 'K' }) },
   };
   prisma.$transaction = (fn: any) => fn(prisma);
   const audit = { log: jest.fn() };
   const email = { sendConsultationUpdateEmail: jest.fn() };
   const bookings: any = { register: jest.fn(), available: jest.fn().mockReturnValue(false), cancelFor: jest.fn() };
-  const service = new AppointmentsService(prisma, audit as any, email as any, { get: jest.fn() } as any, bookings);
+  const notifier = { toStaff: jest.fn().mockResolvedValue(undefined), toPatient: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(undefined) };
+  const service = new AppointmentsService(prisma, audit as any, email as any, { get: jest.fn() } as any, bookings, notifier as any);
   service.onModuleInit();
-  return { service, prisma, audit, email, bookings };
+  return { service, prisma, audit, email, bookings, notifier };
 }
 
 describe('AppointmentsService', () => {
@@ -165,6 +166,28 @@ describe('AppointmentsService', () => {
       const { service, bookings } = build();
       await service.cancelMine('p-1', 'a-1');
       expect(bookings.cancelFor).toHaveBeenCalledWith(['APPOINTMENT_ROUTINE', 'APPOINTMENT_URGENT'], 'a-1', expect.objectContaining({ actorId: 'p-1' }), expect.any(String), 'p-1');
+    });
+
+    it('tells the doctors again when an urgent request goes back to waiting, and keeps its alert open', async () => {
+      const { prisma, bookings, notifier } = build();
+      prisma.appointmentRequest.findUnique.mockResolvedValue(row({ urgency: 'URGENT', status: 'SCHEDULED', scheduledFor: new Date('2026-10-07T09:30:00Z') }));
+      await purpose(bookings, 'APPOINTMENT_URGENT').onChange(booking({ status: 'CANCELLED' }));
+      expect(notifier.resolve).not.toHaveBeenCalled();
+      expect(notifier.toStaff).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'URGENT_APPOINTMENT', groupKey: 'appt:a-1', email: true }));
+    });
+
+    it('does not alert anyone when a routine request goes back to waiting', async () => {
+      const { prisma, bookings, notifier } = build();
+      prisma.appointmentRequest.findUnique.mockResolvedValue(row({ status: 'SCHEDULED', scheduledFor: new Date('2026-10-07T09:30:00Z') }));
+      await purpose(bookings, 'APPOINTMENT_ROUTINE').onChange(booking({ status: 'CANCELLED' }));
+      expect(notifier.toStaff).not.toHaveBeenCalled();
+    });
+
+    it('closes the alert once the request is booked', async () => {
+      const { prisma, bookings, notifier } = build();
+      prisma.appointmentRequest.findUnique.mockResolvedValue(row({ urgency: 'URGENT' }));
+      await purpose(bookings, 'APPOINTMENT_URGENT').onChange(booking({ status: 'CONFIRMED' }));
+      expect(notifier.resolve).toHaveBeenCalledWith('appt:a-1');
     });
   });
 });

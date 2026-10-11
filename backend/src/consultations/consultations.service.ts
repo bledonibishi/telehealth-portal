@@ -321,7 +321,7 @@ export class ConsultationsService {
       metadata: { questionnaireVersion: data.questionnaireVersion, redFlags: flags.length },
     });
 
-    await this.notifier?.toStaff(open?.clinicianId ? { clinicianIds: [open.clinicianId] } : { roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+    await this.notifier?.toStaff({ clinicianIds: open?.clinicianId ? [open.clinicianId] : undefined, roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
       kind: NotificationKind.CONSULTATION_SUBMITTED,
       params: { patient: `${consultation.patient.firstName} ${consultation.patient.lastName}` },
       href: `/consultation/${consultation.id}`,

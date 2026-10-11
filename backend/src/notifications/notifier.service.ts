@@ -2,7 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
-import { NOTIFICATION_TEXT, NotificationKind, notificationCategory, notificationText, type NotificationParams } from '@telehealth/shared-types';
+import { NOTIFICATION_TEXT, NotificationKind, notificationCategory, notificationText, type NotificationParams, type NotificationTone } from '@telehealth/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { EmailService } from '../email/email.service';
@@ -48,6 +48,14 @@ const LEGACY_PUSH_TYPE: Partial<Record<NotificationKind, string>> = {
   [NotificationKind.REFUND_DECLINED]: 'refund',
 };
 
+// When a new event joins an unread row of a different kind, the more urgent one wins: a mild side-effect report must not
+// turn an unacknowledged severe one into an ordinary notification.
+const TONE_RANK: Record<NotificationTone, number> = { success: 0, info: 1, warning: 2, urgent: 3 };
+const urgencyOf = (kind: string) => TONE_RANK[NOTIFICATION_TEXT[kind as NotificationKind]?.tone ?? 'info'];
+
+// An email to a doctor must never keep a patient's request waiting for a slow mail provider.
+const STAFF_EMAIL_TIMEOUT_MS = 5000;
+
 /**
  * The one way the platform tells a person something happened. Writes the notification into their inbox (the bell in
  * every app), then reaches them outside the app: a push to a patient's phone, an email to staff for urgent things.
@@ -65,43 +73,58 @@ export class NotifierService {
   ) {}
 
   async toPatient(patientId: string, input: NotificationInput): Promise<void> {
-    try {
-      if (input.once && input.groupKey && (await this.prisma.notification.count({ where: { patientId, groupKey: input.groupKey } }))) return;
-      const { row } = await this.record({ patientId }, input);
-      const text = notificationText(row.kind, row.params as NotificationParams, row.count);
+    const ctx = `${input.kind} to patient ${patientId}`;
+    if (input.once && input.groupKey) {
+      const already = await this.attempt(`${ctx}: checking it was sent`, () => this.prisma.notification.count({ where: { patientId, groupKey: input.groupKey } }));
+      if (already === undefined || already > 0) return;
+    }
+    const recorded = await this.attempt(`${ctx}: writing the inbox row`, () => this.record({ patientId }, input));
+    if (!recorded) return;
+    const { row } = recorded;
+    await this.attempt(`${ctx}: push`, async () => {
       // The app shows it either way; the phone only if the patient has not switched that kind off.
       if (!(await this.mayPush(patientId, input.kind))) return;
+      const text = notificationText(row.kind, row.params as NotificationParams, row.count);
       await this.push?.sendToPatient(patientId, {
         title: text.title,
         body: text.body,
         data: { type: LEGACY_PUSH_TYPE[input.kind] ?? input.kind, kind: input.kind, notificationId: row.id, ...(input.href ? { href: input.href } : {}) },
       });
-    } catch (err: any) {
-      this.logger.warn(`Notification ${input.kind} to patient ${patientId} failed: ${err?.message}`);
-    }
+    });
   }
 
   /**
-   * To the staff members named, or else to every active member with one of `roles`. `email` sends urgent ones by email
-   * too: for a new row, or when an unread row becomes a different kind (mild side effects, then severe ones), but not
-   * for every further event joining an unread row.
+   * To the staff members named, or else to every active member with one of `roles`. When both are given, `roles` is the
+   * fallback if none of the named people can be reached (deactivated, left): the notification must never reach no one.
+   * `email` sends urgent ones by email too: for a new row, or when an unread row becomes a more urgent kind (mild side
+   * effects, then severe ones), but not for every further event joining an unread row. Everyone is written to and emailed
+   * at the same time, so the caller waits for the slowest one, not the sum.
    */
   async toStaff(to: { clinicianIds?: string[]; roles?: ClinicianRole[] }, input: NotificationInput & { email?: boolean }): Promise<void> {
+    const ctx = `${input.kind} to staff`;
+    const find = (where: Prisma.ClinicianWhereInput) =>
+      this.prisma.clinician.findMany({ where: { deactivatedAt: null, passwordSetAt: { not: null }, ...where }, select: { id: true, email: true, firstName: true } });
+    let staff = to.clinicianIds?.length ? await this.attempt(`${ctx}: finding the named staff`, () => find({ id: { in: to.clinicianIds } })) : undefined;
+    if (!staff?.length && to.roles?.length) staff = await this.attempt(`${ctx}: finding staff by role`, () => find({ role: { in: to.roles } }));
+    if (!staff?.length) {
+      this.logger.warn(`${ctx}: nobody active to tell (${JSON.stringify({ clinicianIds: to.clinicianIds, roles: to.roles })})`);
+      return;
+    }
+    await Promise.all(
+      staff.map(async (member) => {
+        const recorded = await this.attempt(`${ctx}: writing the inbox row for ${member.id}`, () => this.record({ clinicianId: member.id }, input));
+        if (recorded?.changed && input.email) await this.attempt(`${ctx}: email to ${member.id}`, () => this.emailStaff(member, input));
+      }),
+    );
+  }
+
+  /** Runs one step of a notification and logs a failure with its stack and which step it was; never throws. */
+  private async attempt<T>(step: string, fn: () => Promise<T>): Promise<T | undefined> {
     try {
-      const staff = await this.prisma.clinician.findMany({
-        where: {
-          deactivatedAt: null,
-          passwordSetAt: { not: null },
-          ...(to.clinicianIds?.length ? { id: { in: to.clinicianIds } } : { role: { in: to.roles ?? [] } }),
-        },
-        select: { id: true, email: true, firstName: true },
-      });
-      for (const member of staff) {
-        const { changed } = await this.record({ clinicianId: member.id }, input);
-        if (input.email && changed) await this.emailStaff(member, input);
-      }
+      return await fn();
     } catch (err: any) {
-      this.logger.warn(`Notification ${input.kind} to staff failed: ${err?.message}`);
+      this.logger.error(`Notification step failed: ${step}: ${err?.message}`, err?.stack);
+      return undefined;
     }
   }
 
@@ -146,13 +169,12 @@ export class NotifierService {
       if (!n.patient) continue;
       const claim = await this.prisma.notification.updateMany({ where: { id: n.id, emailedAt: null, readAt: null }, data: { emailedAt: new Date() } });
       if (claim.count === 0) continue;
-      try {
-        await this.email.sendConsultationUpdateEmail(n.patient.email, n.patient.firstName, 'You have an unread message from your care team', `${portal}/messages`);
-        sent++;
-      } catch (err: any) {
-        await this.prisma.notification.updateMany({ where: { id: n.id }, data: { emailedAt: null } });
-        this.logger.warn(`Unread-message email failed: ${err?.message}`);
-      }
+      // Only a provider that accepted it counts: otherwise the claim is given back and the next run tries again.
+      const delivered = await this.attempt(`unread-message email to patient for notification ${n.id}`, () =>
+        this.email!.sendUnreadMessageEmail(n.patient!.email, n.patient!.firstName, `${portal}/messages`),
+      );
+      if (delivered) sent++;
+      else await this.prisma.notification.updateMany({ where: { id: n.id }, data: { emailedAt: null } });
     }
     return sent;
   }
@@ -193,26 +215,44 @@ export class NotifierService {
     const { count } = await this.prisma.notification.deleteMany({
       where: {
         OR: [
-          { readAt: { not: null }, updatedAt: { lt: new Date(now.getTime() - KEEP_READ_DAYS * day) } },
-          { updatedAt: { lt: new Date(now.getTime() - KEEP_UNREAD_DAYS * day) } },
+          // Counted from when it was read, so an old notification read today is not deleted at the next run.
+          { readAt: { lt: new Date(now.getTime() - KEEP_READ_DAYS * day) } },
+          { readAt: null, updatedAt: { lt: new Date(now.getTime() - KEEP_UNREAD_DAYS * day) } },
         ],
       },
     });
     return count;
   }
 
-  /** Adds the row, or joins the reader's unread row about the same thing. `changed`: new, or now a different kind. */
+  /**
+   * Adds the row, or joins the reader's unread row about the same thing. `changed`: new, or now a more urgent kind.
+   * The database allows one unread row per reader and group (see the notifications_open_group migration), so two events
+   * at the same moment cannot each create one: the loser joins the winner's row.
+   */
   private async record(recipient: Recipient, input: NotificationInput) {
-    const data = { kind: input.kind, params: (input.params ?? {}) as Prisma.InputJsonValue, href: input.href ?? null, updatedAt: new Date() };
-    if (input.groupKey) {
+    const data = { params: (input.params ?? {}) as Prisma.InputJsonValue, href: input.href ?? null, updatedAt: new Date() };
+    const join = async () => {
       const open = await this.prisma.notification.findFirst({ where: { ...recipient, groupKey: input.groupKey, readAt: null }, select: { id: true, kind: true } });
-      if (open) {
-        const row = await this.prisma.notification.update({ where: { id: open.id }, data: { ...data, count: { increment: 1 } } });
-        return { row, changed: open.kind !== input.kind };
-      }
+      if (!open) return null;
+      const kind = urgencyOf(input.kind) >= urgencyOf(open.kind) ? input.kind : open.kind;
+      const row = await this.prisma.notification.update({ where: { id: open.id }, data: { ...data, kind, count: { increment: 1 } } });
+      return { row, changed: kind !== open.kind };
+    };
+    if (input.groupKey) {
+      const joined = await join();
+      if (joined) return joined;
     }
-    const row = await this.prisma.notification.create({ data: { ...recipient, ...data, groupKey: input.groupKey ?? null } });
-    return { row, changed: true };
+    try {
+      const row = await this.prisma.notification.create({ data: { ...recipient, ...data, kind: input.kind, groupKey: input.groupKey ?? null } });
+      return { row, changed: true };
+    } catch (err) {
+      // Someone else created the unread row between our look and our write: join theirs.
+      if (input.groupKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const joined = await join();
+        if (joined) return joined;
+      }
+      throw err;
+    }
   }
 
   private async emailStaff(member: { email: string; firstName: string }, input: NotificationInput) {
@@ -221,10 +261,15 @@ export class NotifierService {
     const title = NOTIFICATION_TEXT[input.kind].title;
     const headline = title.includes('{') ? 'Something urgent needs you' : title;
     const portal = (this.config?.get<string>('CLINICIAN_APP_URL')?.trim() || 'http://localhost:3002').replace(/\/$/, '');
+    // A failure is logged, with its stack, by the caller (see `attempt`).
+    let timer: NodeJS.Timeout | undefined;
     try {
-      await this.email.sendStaffAlertEmail(member.email, member.firstName, headline, `${portal}${input.href ?? '/'}`);
-    } catch (err: any) {
-      this.logger.warn(`Staff alert email (${input.kind}) failed: ${err?.message}`);
+      await Promise.race([
+        this.email.sendStaffAlertEmail(member.email, member.firstName, headline, `${portal}${input.href ?? '/'}`),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${STAFF_EMAIL_TIMEOUT_MS} ms`)), STAFF_EMAIL_TIMEOUT_MS); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

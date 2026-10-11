@@ -96,6 +96,8 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "EmailVerificationResolver.verifyEmailCode",
   "IdentityVerificationController.handleWebhook",
   "LeadsResolver.createLead",
+  "NotificationsCronController.pruneNotifications",
+  "NotificationsCronController.unreadMessageEmails",
   "PartnerOrdersCronController.sweep",
   "QuestionnairesResolver.questionnaire",
   "StripeWebhookController.handleWebhook",
