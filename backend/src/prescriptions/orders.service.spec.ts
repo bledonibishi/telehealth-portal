@@ -205,6 +205,42 @@ describe('OrdersService', () => {
       expect(email.sendOrderUpdateEmail).toHaveBeenCalledWith('p@example.com', 'Emma', 'DELIVERY_FAILED', expect.anything());
     });
 
+    describe('the order-problem alert', () => {
+      let notifier: { toPatient: jest.Mock; toStaff: jest.Mock; resolve: jest.Mock };
+      let notifying: OrdersService;
+      beforeEach(() => {
+        notifier = { toPatient: jest.fn().mockResolvedValue(undefined), toStaff: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(undefined) };
+        notifying = new OrdersService(prisma, audit as any, trtMonitoring as any, partner as any, { get: () => undefined } as any, undefined, undefined, notifier as any);
+      });
+
+      it('is recorded before the step returns, so a delivery that follows cannot be closed before it exists', async () => {
+        const order: string[] = [];
+        // A slow alert write: with the old fire-and-forget code the delivery would resolve first and the alert would stay open.
+        notifier.toStaff.mockImplementation(async () => { await new Promise((r) => setTimeout(r, 20)); order.push('alert recorded'); });
+        notifier.resolve.mockImplementation(async () => { order.push('alert closed'); });
+        prisma.order.findUnique.mockResolvedValue(base({ status: 'OUT_FOR_DELIVERY' }));
+        await notifying.applyTracking('o-1', event({ status: 'DELIVERY_FAILED' }));
+        // The courier tries again and delivers: the order is still out for delivery when that event arrives.
+        await notifying.applyTracking('o-1', event({ status: 'DELIVERED', externalId: 'e2' }));
+        expect(order).toEqual(['alert recorded', 'alert closed']);
+      });
+
+      it('is closed at once when the order was delivered while the alert was being written', async () => {
+        prisma.order.findUnique.mockResolvedValue(base({ status: 'OUT_FOR_DELIVERY' }));
+        // The first read (the step itself) sees the order out for delivery; the re-check after the alert sees it delivered.
+        prisma.order.findUnique.mockResolvedValueOnce(base({ status: 'OUT_FOR_DELIVERY' })).mockResolvedValueOnce(base({ status: 'OUT_FOR_DELIVERY' })).mockResolvedValue(base({ status: 'DELIVERED' }));
+        await notifying.applyTracking('o-1', event({ status: 'DELIVERY_FAILED' }));
+        expect(notifier.resolve).toHaveBeenCalledWith('order-problem:o-1');
+      });
+
+      it('never fails the step when telling someone fails', async () => {
+        notifier.toStaff.mockRejectedValue(new Error('boom'));
+        notifier.toPatient.mockRejectedValue(new Error('boom'));
+        prisma.order.findUnique.mockResolvedValue(base({ status: 'OUT_FOR_DELIVERY' }));
+        await expect(notifying.applyTracking('o-1', event({ status: 'DELIVERY_FAILED' }))).resolves.toBe('APPLIED');
+      });
+    });
+
     it('updates the courier link and expected window without changing the status', async () => {
       prisma.order.findUnique.mockResolvedValue(base({ status: 'DISPATCHED' }));
       await tracking.applyTracking('o-1', event({ status: 'IN_TRANSIT', trackingUrl: 'https://c.example/T1', estimatedDeliveryTo: new Date('2026-10-15') }));

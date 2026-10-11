@@ -12,9 +12,16 @@ import { ClinicianRole } from '../common/enums';
 
 const pubSub = new PubSub();
 
-// One notification per conversation and side (see NotifierService groupKey).
-const patientMessageKey = (patientId: string) => `team-msg:${patientId}`;
-const staffMessageKey = (patientId: string) => `patient-msg:${patientId}`;
+// One notification per conversation thread and side (see NotifierService groupKey). A thread is a consultation, or the
+// pre-consultation thread; a patient can have several, and each keeps its own notification, so reading or answering one
+// never closes the alert for another.
+const threadId = (consultationId: string | null) => consultationId ?? 'pre';
+const patientMessageKey = (patientId: string, consultationId: string | null) => `team-msg:${patientId}:${threadId(consultationId)}`;
+const staffMessageKey = (patientId: string, consultationId: string | null) => `patient-msg:${patientId}:${threadId(consultationId)}`;
+// Before threads had their own notification, one was kept per patient. Any still unread is closed along with the thread
+// it was about, so it cannot be left open for good.
+const legacyPatientMessageKey = (patientId: string) => `team-msg:${patientId}`;
+const legacyStaffMessageKey = (patientId: string) => `patient-msg:${patientId}`;
 
 @Injectable()
 export class MessagingService {
@@ -109,11 +116,12 @@ export class MessagingService {
     if (!this.notifier) return;
     const { patientId } = message;
     if (message.senderRole !== UserRole.PATIENT) {
-      await this.notifier.resolve(staffMessageKey(patientId));
-      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId) });
+      // The care team answered this thread: its "waiting for a reply" alert is done. Other threads stay as they are.
+      await this.resolveStaffAlert(patientId, consultationId);
+      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId, consultationId) });
       // The patient may have opened the chat while the notification was being written: then it is already handled.
       const stored = await this.prisma.message.findUnique({ where: { id: message.id }, select: { readAt: true } });
-      if (stored?.readAt) await this.notifier.resolve(patientMessageKey(patientId));
+      if (stored?.readAt) await this.notifier.resolve(patientMessageKey(patientId, consultationId));
       return;
     }
     const [patient, consultation] = await Promise.all([
@@ -129,12 +137,25 @@ export class MessagingService {
         kind: NotificationKind.PATIENT_MESSAGE,
         params: { patient: `${patient.firstName} ${patient.lastName}` },
         href: `/patients?patient=${patientId}&tab=messages`,
-        groupKey: staffMessageKey(patientId),
+        groupKey: staffMessageKey(patientId, consultationId),
       },
     );
     // Someone from the care team may have replied while the notification was being written: then it is answered.
-    const replied = await this.prisma.message.count({ where: { patientId, senderRole: { not: UserRole.PATIENT }, sentAt: { gt: message.sentAt } } });
-    if (replied > 0) await this.notifier.resolve(staffMessageKey(patientId));
+    // Only a reply in this same thread counts.
+    const replied = await this.prisma.message.count({ where: { patientId, consultationId, senderRole: { not: UserRole.PATIENT }, sentAt: { gt: message.sentAt } } });
+    if (replied > 0) await this.notifier.resolve(staffMessageKey(patientId, consultationId));
+  }
+
+  /** The staff alert for one thread is done, and so is any older per-patient one. */
+  private async resolveStaffAlert(patientId: string, consultationId: string | null) {
+    await this.notifier?.resolve(staffMessageKey(patientId, consultationId));
+    await this.notifier?.resolve(legacyStaffMessageKey(patientId));
+  }
+
+  /** The patient has read one thread: its notification is done, and so is any older per-patient one. */
+  private async resolvePatientNotification(patientId: string, consultationId: string | null) {
+    await this.notifier?.resolve(patientMessageKey(patientId, consultationId));
+    await this.notifier?.resolve(legacyPatientMessageKey(patientId));
   }
 
   /** Messages a patient sent or received before they had a consultation. */
@@ -149,7 +170,7 @@ export class MessagingService {
       where: { patientId, consultationId: null, readAt: null, senderRole: byPatient ? { not: UserRole.PATIENT } : UserRole.PATIENT },
       data: { readAt: new Date() },
     });
-    if (byPatient) await this.notifier?.resolve(patientMessageKey(patientId));
+    if (byPatient) await this.resolvePatientNotification(patientId, null);
     return count;
   }
 
@@ -173,7 +194,10 @@ export class MessagingService {
       data: { readAt },
     });
     if (count > 0) pubSub.publish(`MESSAGES_READ.${consultationId}`, { messagesRead: { consultationId, byPatient, readAt } });
-    if (byPatient) await this.notifier?.resolve(patientMessageKey(user.id));
+    if (byPatient) {
+      const thread = await this.prisma.consultation.findUnique({ where: { id: consultationId }, select: { patientId: true } });
+      await this.resolvePatientNotification(thread?.patientId ?? user.id, consultationId);
+    }
     return count;
   }
 

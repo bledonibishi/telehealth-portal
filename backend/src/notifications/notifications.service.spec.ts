@@ -60,3 +60,15 @@ describe('NotificationsService.getCounts — order problems', () => {
     expect(counts.pendingOrders).toBe(3);
   });
 });
+
+describe('NotificationsService.getCounts — messages awaiting a reply', () => {
+  // The count is one SQL query, so what matters is its shape: one row per thread, not per patient.
+  it('counts each conversation thread of a patient, not just their newest message', async () => {
+    const prisma = makePrisma();
+    const service = new NotificationsService(prisma as any, { missedDoseAlerts: jest.fn() } as any, shipments as any);
+    await service.getCounts();
+    const sql = prisma.$queryRaw.mock.calls.map((c: any[]) => (c[0].strings ?? c[0]).join(' ')).find((q: string) => q.includes('DISTINCT ON'));
+    expect(sql).toContain('DISTINCT ON (m.patient_id, m.consultation_id)');
+    expect(sql).toContain('ORDER BY m.patient_id, m.consultation_id, m.sent_at DESC');
+  });
+});
