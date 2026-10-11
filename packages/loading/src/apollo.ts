@@ -1,5 +1,6 @@
 'use client';
 import { ApolloLink, Observable } from '@apollo/client';
+import { getMainDefinition } from '@apollo/client/utilities';
 import { progress } from './progress';
 
 /**
@@ -7,12 +8,15 @@ import { progress } from './progress';
  *
  *   link: createLoadingLink().concat(restOfTheChain)
  *
- * To keep one call off the bar (a background refresh the reader did not ask for), pass `context: { silentLoading: true }`
- * to that `useQuery` or `useMutation`.
+ * Subscriptions are never counted: they stay open for as long as a screen listens (a chat), so counting them would leave
+ * the bar on. To keep one more call off the bar (a background refresh the reader did not ask for), pass
+ * `context: { silentLoading: true }` to that `useQuery` or `useMutation`.
  */
 export function createLoadingLink() {
   return new ApolloLink((operation, forward) => {
-    if (operation.getContext().silentLoading) return forward(operation);
+    const definition = getMainDefinition(operation.query);
+    const isSubscription = definition.kind === 'OperationDefinition' && definition.operation === 'subscription';
+    if (isSubscription || operation.getContext().silentLoading) return forward(operation);
     return new Observable((observer) => {
       let ended = false;
       const end = () => {
