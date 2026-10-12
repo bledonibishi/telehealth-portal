@@ -19,6 +19,10 @@
     "mark-body-photos-done": "ts-node scripts/mark-body-photos-done.ts",
     "make-proof-test-set": "ts-node -T -P tsconfig.json eval/proof-reader/make-test-set.ts",
     "seed-test-orders": "ts-node scripts/seed-test-orders.ts",
+    "seed-examples": "ts-node scripts/seed-examples.ts",
+    "seed-labs": "ts-node scripts/seed-labs-for.ts",
+    "sample-lab-report": "ts-node scripts/sample-lab-report.ts",
+    "lead-reminders-now": "ts-node scripts/lead-reminders-now.ts",
     "pharmacy-costs": "ts-node -T -P tsconfig.json scripts/pharmacy-costs.ts",    "pose-model": "mkdir -p models && curl -L --fail -o models/yolov8n-pose.onnx https://huggingface.co/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx"
   },
   "prisma": {

@@ -107,6 +107,9 @@ export class CheckInReviewService {
         if (!input.items?.length) throw new BadRequestException('Choose the medicine for the new prescription');
         await this.prescribing.assertCanPrescribe(clinicianId);
         await this.prescribing.assertIdentityVerified(patient.id);
+        // The next supply is a new prescription, not a repeat, so the blood-test hold that repeats are subject to
+        // applies here too. A doctor who records a clinical reason (for example changing the dose because of the results) can go on.
+        if (rx && !input.overrideReason?.trim()) await this.orders.assertTrtMonitoring(rx.id);
         if (!checkIn.kind) throw new BadRequestException('This check-in has no programme recorded');
         const kind = checkIn.kind as ConsultationKind;
 

@@ -21,7 +21,8 @@ export function safeFilename(original: string) {
 }
 
 // Photos of a patient's body: only the patient and doctors may see them — not support or fulfilment staff.
-const BODY_PHOTO_KINDS: UploadKind[] = [UploadKind.BODY_PHOTO_FRONT, UploadKind.BODY_PHOTO_SIDE, UploadKind.PROGRESS_PHOTO];
+// Lab reports are clinical documents: the patient and doctors only, like body photos.
+const BODY_PHOTO_KINDS: UploadKind[] = [UploadKind.BODY_PHOTO_FRONT, UploadKind.BODY_PHOTO_SIDE, UploadKind.PROGRESS_PHOTO, UploadKind.LAB_REPORT];
 
 /** Whether a staff member may open a file of this kind. Patients' own access is decided separately. */
 export function staffMayView(kind: UploadKind, user: Pick<AuthUser, 'role' | 'clinicianRole'>): boolean {
@@ -29,6 +30,10 @@ export function staffMayView(kind: UploadKind, user: Pick<AuthUser, 'role' | 'cl
   if (!role || role === 'PATIENT') return false;
   return (BODY_PHOTO_KINDS.includes(kind) ? PRESCRIBERS : CLINICAL_STAFF).includes(role);
 }
+
+/** The file starts the way a PDF does. */
+export const looksLikePdf = (buf: Buffer) => buf.subarray(0, 5).toString() === '%PDF-';
+const MAX_LAB_REPORT_BYTES = 15 * 1024 * 1024;
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_PROGRESS_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -71,6 +76,13 @@ export class UploadsService {
         throw new BadRequestException('Please upload a photo (JPEG, PNG, WebP or HEIC)');
       }
       if (file.buffer.length > MAX_PROGRESS_PHOTO_BYTES) throw new BadRequestException('That photo is too large — please use one under 10 MB');
+    }
+
+    if (kind === UploadKind.LAB_REPORT) {
+      const isPdf = file.mimetype === 'application/pdf' && looksLikePdf(file.buffer);
+      const isPhoto = IMAGE_TYPES.includes(file.mimetype) && looksLikeImage(file.buffer);
+      if (!isPdf && !isPhoto) throw new BadRequestException('Please upload the lab report as a PDF or a photo (JPEG, PNG, WebP or HEIC)');
+      if (file.buffer.length > MAX_LAB_REPORT_BYTES) throw new BadRequestException('That file is too large — please use one under 15 MB');
     }
 
     const storageKey = `${patientId}/${randomUUID()}-${safeFilename(file.originalname)}`;

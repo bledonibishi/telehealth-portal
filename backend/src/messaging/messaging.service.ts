@@ -9,6 +9,7 @@ import { PostHogService } from '../posthog/posthog.service';
 import { AuthUser } from '../auth/access-roles';
 import { NotifierService } from '../notifications/notifier.service';
 import { ClinicianRole } from '../common/enums';
+import { MessageUrgencyService } from '../ai/message-urgency.service';
 
 const pubSub = new PubSub();
 
@@ -32,6 +33,7 @@ export class MessagingService {
     private audit: AuditService,
     private posthog: PostHogService,
     @Optional() private notifier?: NotifierService,
+    @Optional() private urgency?: MessageUrgencyService,
   ) {}
 
   // Staff can reach any thread; a patient only threads on their own consultations.
@@ -104,6 +106,9 @@ export class MessagingService {
     // Waited for, so the notification is recorded before this request ends (an un-awaited write can be cut off on a
     // serverless host, or land after the message was already read). It never throws: the message is saved.
     await this.notifyOtherSide(message, consultationId).catch((err) => this.logger.error(`Notifying about message ${message.id} failed: ${err?.message}`, err?.stack));
+    // A patient's message is also checked for urgency, in the background so sending never waits on it: the mark only ever
+    // adds visibility, and a check that fails leaves the message as it was. (It never throws.)
+    if (senderRole === UserRole.PATIENT) void this.urgency?.check(message.id);
     return message;
   }
 

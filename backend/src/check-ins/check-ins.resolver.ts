@@ -66,6 +66,21 @@ export class CheckInsResolver {
     return this.checkInsService.reschedule(id, dueAt);
   }
 
+  @Authorized(...PRESCRIBERS)
+  @Mutation(() => CheckInModel, { nullable: true, description: 'Development only: ships the prescription’s waiting order as the pharmacy would, and schedules the patient’s check-in straight away.' })
+  processPrescriptionNow(@CurrentUser() user: AuthUser, @Args('prescriptionId', { type: () => ID }) prescriptionId: string) {
+    return this.checkInsService.processNow(user.id, prescriptionId);
+  }
+
+  @Authorized(...CLINICAL_STAFF)
+  @Mutation(() => CheckInModel, { description: 'Creates (or returns) the patient’s check-in link now, and emails it as well when sendEmail is set.' })
+  issueCheckInLink(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('sendEmail', { defaultValue: false }) sendEmail: boolean,
+  ) {
+    return this.checkInsService.issueLink(id, sendEmail);
+  }
+
   @ResolveField(() => String, { nullable: true })
   reportUrl(@Parent() checkIn: { id: string; reviewedAt?: Date | null; kind?: string | null }) {
     return checkIn.reviewedAt && checkIn.kind === 'GLP1' ? `/check-ins/${checkIn.id}/report` : null;

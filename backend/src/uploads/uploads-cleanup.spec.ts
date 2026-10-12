@@ -33,6 +33,15 @@ describe('UploadsCleanupService', () => {
     expect(where.createdAt.lt).toEqual(new Date(NOW.getTime() - ORPHAN_AFTER_MS));
   });
 
+  it('also clears lab reports that were uploaded but never sent in', async () => {
+    const { service, prisma, storage } = fakeDb();
+    expect(await service.purgeOrphanedLabReports(NOW)).toBe(1);
+    const where = prisma.uploadedFile.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ kind: 'LAB_REPORT', labReport: null });
+    expect(where.createdAt.lt).toEqual(new Date(NOW.getTime() - ORPHAN_AFTER_MS));
+    expect(storage.delete).toHaveBeenCalled();
+  });
+
   it('removes the stored bytes and then the record, and notes it against the patient', async () => {
     const { service, prisma, storage, audit } = fakeDb();
     expect(await service.purgeOrphanedProgressPhotos(NOW)).toBe(1);
@@ -99,7 +108,7 @@ describe('UploadsCleanupService.purgeOrphanedBodyPhotos', () => {
 
 describe('UploadsCleanupController', () => {
   const build = (secret?: string) => {
-    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2), purgeOrphanedBodyPhotos: jest.fn().mockResolvedValue(1) };
+    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2), purgeOrphanedBodyPhotos: jest.fn().mockResolvedValue(1), purgeOrphanedLabReports: jest.fn().mockResolvedValue(0) };
     return { controller: new UploadsCleanupController({ get: jest.fn().mockReturnValue(secret) } as any, cleanup as any), cleanup };
   };
 

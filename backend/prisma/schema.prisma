@@ -123,6 +123,20 @@ enum UploadKind {
   PRESCRIPTION_PROOF
   // A photo taken alongside a weighing, to see progress over time.
   PROGRESS_PHOTO
+  // A lab's report (PDF or photo) a patient or a doctor attached, kept as the source of the results typed from it.
+  LAB_REPORT
+}
+
+enum LabReportSource {
+  PATIENT
+  STAFF
+}
+
+// PENDING: nobody has entered its results yet. ENTERED: results were saved from it. REJECTED: not usable (blurry, not a lab report).
+enum LabReportStatus {
+  PENDING
+  ENTERED
+  REJECTED
 }
 
 enum BodyPhotoView {
@@ -332,6 +346,10 @@ model Lead {
   intakeConsentUserAgent String?          @map("intake_consent_user_agent")
   intakeSavedAt          DateTime?        @map("intake_saved_at")
   convertedAt            DateTime?        @map("converted_at")
+  // "Finish your order" reminders sent to a lead who hasn't paid (see LeadRemindersService), and when they asked to stop.
+  reminderCount          Int              @default(0) @map("reminder_count")
+  lastReminderAt         DateTime?        @map("last_reminder_at")
+  remindersStoppedAt     DateTime?        @map("reminders_stopped_at")
   createdAt              DateTime         @default(now()) @map("created_at")
   updatedAt              DateTime         @updatedAt @map("updated_at")
 
@@ -477,6 +495,7 @@ model Patient {
   doseEvents            DoseEvent[]
   symptomAssessments    SymptomAssessment[]
   labResults            LabResult[]
+  labReports            LabReport[]
   referralsMade         Referral[]             @relation("ReferralsMade")
   referralsReceived     Referral?              @relation("ReferralsReceived")
   vouchers              Voucher[]
@@ -807,10 +826,13 @@ model LabResult {
   reviewedAt         DateTime?     @map("reviewed_at")
   reviewedById       String?       @map("reviewed_by_id")
   reviewNote         String?       @map("review_note")
+  // The lab report these were typed from, when there is one.
+  reportId           String?       @map("report_id")
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
   patient    Patient    @relation(fields: [patientId], references: [id])
+  report     LabReport? @relation(fields: [reportId], references: [id])
   enteredBy  Clinician? @relation("LabResultEnteredBy", fields: [enteredById], references: [id])
   reviewedBy Clinician? @relation("LabResultReviewedBy", fields: [reviewedById], references: [id])
 
@@ -859,6 +881,11 @@ model Message {
   sentAt         DateTime  @default(now()) @map("sent_at")
   // When the other side first had the conversation open with this message in it. Null until then.
   readAt         DateTime? @map("read_at")
+  // A patient's message the AI check thought might be urgent (see MessageUrgencyService). It only ever raises a message's
+  // priority for the care team: a message the check missed or failed on is left exactly as it was.
+  aiUrgent       Boolean   @default(false) @map("ai_urgent")
+  aiUrgentReason String?   @map("ai_urgent_reason")
+  aiCheckedAt    DateTime? @map("ai_checked_at")
 
   patient      Patient       @relation(fields: [patientId], references: [id])
   consultation Consultation? @relation(fields: [consultationId], references: [id])
@@ -898,6 +925,7 @@ model UploadedFile {
 
   patient     Patient      @relation(fields: [patientId], references: [id])
   weightEntry WeightEntry?
+  labReport   LabReport?
 
   @@map("uploaded_files")
 }
@@ -966,6 +994,48 @@ model CheckIn {
   // The Weight Journey reads a patient's completed check-ins by date.
   @@index([patientId, completedAt])
   @@map("check_ins")
+}
+
+// What an AI feature produced for something (a check-in brief, a message translation), kept so the same request isn't paid
+// for twice and so there is a record of what staff were shown. `inputHash` is a hash of what the model was given, so a
+// changed record gets a fresh answer.
+model AiOutput {
+  id          String   @id @default(cuid())
+  kind        String
+  subjectId   String   @map("subject_id")
+  inputHash   String   @map("input_hash")
+  output      Json
+  model       String
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([kind, subjectId, inputHash])
+  @@index([subjectId])
+  @@map("ai_outputs")
+}
+
+// A lab report someone attached: the file (kept encrypted like other uploads) and where it stands. A patient's upload
+// waits here as PENDING until a doctor types in its results; those results then point back at it.
+model LabReport {
+  id            String          @id @default(cuid())
+  patientId     String          @map("patient_id")
+  fileId        String          @unique @map("file_id")
+  source        LabReportSource
+  status        LabReportStatus @default(PENDING)
+  // What the patient wrote with it, or the doctor's reason for rejecting it.
+  note          String?
+  uploadedById  String?         @map("uploaded_by_id")
+  handledById   String?         @map("handled_by_id")
+  handledAt     DateTime?       @map("handled_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  patient    Patient      @relation(fields: [patientId], references: [id])
+  file       UploadedFile @relation(fields: [fileId], references: [id])
+  results    LabResult[]
+
+  @@index([patientId, createdAt])
+  @@index([status, createdAt])
+  @@map("lab_reports")
 }
 
 // A patient's Weight Journey endpoints. The starting weight is snapshotted from

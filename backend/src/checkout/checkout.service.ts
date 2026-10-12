@@ -1,3 +1,4 @@
+import { INTAKE_MAX_AGE_DAYS, intakeIsFresh } from '../leads/intake-age';
 import { Injectable, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -311,6 +312,10 @@ export class CheckoutService {
     }
     // The medical questionnaire comes before payment; the website sends people to it, and this is the same check here.
     if (!lead.intakeSavedAt) throw new BadRequestException('Please answer the health questions before paying.');
+    // Health answers go stale: someone who comes back after a while answers them again rather than paying on old ones.
+    if (!intakeIsFresh(lead.intakeSavedAt)) {
+      throw new BadRequestException(`Your health answers are more than ${INTAKE_MAX_AGE_DAYS} days old. Please answer the health questions again before paying.`);
+    }
     const patient = await this.prisma.patient.findFirst({
       where: { email: { equals: lead.email, mode: 'insensitive' } },
       select: { id: true },

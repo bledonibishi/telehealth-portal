@@ -162,6 +162,11 @@ export class OrdersService {
   }
 
   /** Another supply against a prescription's repeats. */
+  /** Throws when a testosterone supply must wait for blood tests. The same hold a repeat is subject to. */
+  assertTrtMonitoring(prescriptionId: string, db: Db = this.prisma) {
+    return this.trtMonitoring.assertRepeatAllowed(prescriptionId, db);
+  }
+
   async createRepeat(actorId: string, prescriptionId: string, db: Db = this.prisma) {
     const rx = await db.prescription.findUnique({
       where: { id: prescriptionId },
@@ -179,7 +184,7 @@ export class OrdersService {
     }
     const repeatsUsed = Math.max(live.length - 1, 0);
     if (repeatsUsed >= rx.refillsAllowed) {
-      throw new BadRequestException('All repeats on this prescription have been used — it needs a new prescription');
+      throw new BadRequestException('This prescription has no repeats left — issue a new prescription for the next order');
     }
     await this.trtMonitoring.assertRepeatAllowed(prescriptionId, db);
 

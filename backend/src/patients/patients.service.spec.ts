@@ -514,3 +514,31 @@ describe('PatientsService.createByStaff', () => {
     );
   });
 });
+
+describe('PatientsService.findByRecordId', () => {
+  const build = () => {
+    const prisma = {
+      prescription: { findMany: jest.fn().mockResolvedValue([{ id: 'cmuyax2xval74', patientId: 'p-1' }]) },
+      checkIn: { findMany: jest.fn().mockResolvedValue([{ id: 'cmabcdicf7b7m', patientId: 'p-2' }]) },
+      order: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    return { prisma, service: new PatientsService(prisma as any, ...noopDeps()) };
+  };
+
+  it('finds the owner of a prescription or check-in from the short id shown on screen', async () => {
+    const { prisma, service } = build();
+    const result = await service.findByRecordId('  #X2XVAL74 ');
+    expect(prisma.prescription.findMany.mock.calls[0][0].where).toEqual({ id: { endsWith: 'x2xval74' } });
+    expect(result).toEqual([
+      { patientId: 'p-1', kind: 'PRESCRIPTION', recordId: 'cmuyax2xval74' },
+      { patientId: 'p-2', kind: 'CHECK_IN', recordId: 'cmabcdicf7b7m' },
+    ]);
+  });
+
+  it('matches nothing for too little to go on, or for something that is not an id', async () => {
+    const { prisma, service } = build();
+    expect(await service.findByRecordId('abc')).toEqual([]);
+    expect(await service.findByRecordId('emma smith')).toEqual([]);
+    expect(prisma.prescription.findMany).not.toHaveBeenCalled();
+  });
+});

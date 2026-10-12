@@ -102,3 +102,61 @@ describe('LeadsService.upsert with the health answers', () => {
     await expect(svc.upsert(withIntake)).rejects.toThrow(ConflictException);
   });
 });
+
+describe('LeadsService.previousAssessment / resumeLead', () => {
+  const DAY = 86_400_000;
+  const ask = { email: 'a@b.com', productKind: 'GLP1', emailVerificationToken: 'tok' } as any;
+  const earlier = (over: object = {}) => ({
+    id: 'lead-1',
+    email: 'a@b.com',
+    productKind: 'GLP1',
+    convertedAt: null,
+    updatedAt: new Date(Date.now() - 14 * DAY),
+    intakeSavedAt: new Date(Date.now() - 14 * DAY),
+    quizAnswers: [{ questionId: 'age', question: 'How old are you?', answer: '40 to 54' }],
+    intakeAnswers: [{ questionId: 'weight_kg', answer: '95', value: '95' }],
+    ...over,
+  });
+  const make = (lead: any, patient: any = null) => {
+    const b = build({ patient });
+    (b.prisma.lead as any).findFirst = jest.fn().mockResolvedValue(lead);
+    return b;
+  };
+
+  it('returns the earlier answers, with the health questions worded, once the email is proved', async () => {
+    const { svc, verification } = make(earlier());
+    const result = await svc.previousAssessment(ask);
+    expect(verification.assertVerified).toHaveBeenCalledWith('a@b.com', 'tok');
+    expect(result).toMatchObject({ productKind: 'GLP1', canKeep: true, eligibility: [{ questionId: 'age', answer: '40 to 54' }] });
+    expect(result!.health[0]).toMatchObject({ questionId: 'weight_kg', answer: '95' });
+    expect(result!.health[0].question).not.toBe('weight_kg');
+  });
+
+  it('gives nothing without the proof, for someone who has paid, for another treatment, or for a lead that never got to the health questions', async () => {
+    const noProof = make(earlier());
+    noProof.verification.assertVerified.mockRejectedValue(new BadRequestException('Please verify your email address first.'));
+    await expect(noProof.svc.previousAssessment(ask)).rejects.toThrow(/verify your email/);
+
+    await expect(make(earlier(), { id: 'p-1' }).svc.previousAssessment(ask)).rejects.toThrow(ConflictException);
+    expect(await make(earlier({ productKind: 'HRT' })).svc.previousAssessment(ask)).toBeNull();
+    expect(await make(earlier({ intakeSavedAt: null })).svc.previousAssessment(ask)).toBeNull();
+    expect(await make(null).svc.previousAssessment(ask)).toBeNull();
+  });
+
+  it('shows old answers but will not let them be kept once the health answers are over 30 days old', async () => {
+    const old = earlier({ intakeSavedAt: new Date(Date.now() - 31 * DAY) });
+    const { svc } = make(old);
+    expect(await svc.previousAssessment(ask)).toMatchObject({ canKeep: false, keepBlockedReason: expect.stringMatching(/30 days/) });
+    await expect(svc.resumeLead(ask)).rejects.toThrow(/30 days/);
+  });
+
+  it('goes on with the earlier answers without changing them, and counts the visit as activity', async () => {
+    const { svc, prisma } = make(earlier());
+    await svc.resumeLead(ask);
+    expect(prisma.lead.update).toHaveBeenCalledWith({ where: { id: 'lead-1' }, data: { updatedAt: expect.any(Date) } });
+  });
+
+  it('cannot resume when there is nothing saved to go back to', async () => {
+    await expect(make(null).svc.resumeLead(ask)).rejects.toThrow(/couldn’t find your earlier answers/);
+  });
+});

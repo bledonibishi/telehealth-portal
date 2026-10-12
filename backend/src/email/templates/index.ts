@@ -6,6 +6,7 @@ export { consultationUpdateEmail } from './consultation-update';
 export { doseReminderEmail } from './dose-reminder';
 export { type OrderUpdateKind, orderUpdateEmail } from './order-update';
 export { partnerOrderEmail } from './partner-order';
+export { leadReminderEmail } from './lead-reminder';
 export { passwordChangedEmail } from './password-changed';
 export { passwordResetEmail } from './password-reset';
 export { paymentReceiptEmail } from './payment-receipt';
