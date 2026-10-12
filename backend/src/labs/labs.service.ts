@@ -97,6 +97,13 @@ export class LabsService {
         const report = await tx.labReport.findUnique({ where: { id: input.reportId } });
         if (!report || report.patientId !== input.patientId) throw new BadRequestException('That lab report belongs to a different patient');
         if (report.status === LabReportStatus.REJECTED) throw new BadRequestException('That lab report was rejected, so results can’t be saved from it');
+        // Claimed before anything is written, so a stale dialog, a retry or a second doctor saving the same report
+        // can't add its results a second time: whoever gets here first enters them, the rest are turned away.
+        const { count } = await tx.labReport.updateMany({
+          where: { id: input.reportId, status: LabReportStatus.PENDING },
+          data: { status: LabReportStatus.ENTERED, handledById: enteredById, handledAt: new Date() },
+        });
+        if (count === 0) throw new ConflictException('The results from this report have already been entered');
       }
       const saved = [];
       for (const r of input.results) {
@@ -122,9 +129,6 @@ export class LabsService {
           tx,
         );
         saved.push(created);
-      }
-      if (input.reportId) {
-        await tx.labReport.updateMany({ where: { id: input.reportId, status: LabReportStatus.PENDING }, data: { status: LabReportStatus.ENTERED, handledById: enteredById, handledAt: new Date() } });
       }
       return saved;
     });

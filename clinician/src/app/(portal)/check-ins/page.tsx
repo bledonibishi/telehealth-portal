@@ -12,6 +12,7 @@ import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
 import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
 import SideEffectSummary from '@/components/checkins/SideEffectSummary';
 import LatestLabs from '@/components/labs/LatestLabs';
+import { PATIENT_TRT_MONITORING } from '@/graphql/labs';
 import { CheckInBrief } from '@/components/ai/CheckInBrief';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
@@ -73,6 +74,10 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const { data: seData, loading: seLoading, error: seError } = useQuery(SIDE_EFFECT_SUMMARY, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
   const sideEffects = seData?.sideEffectSummary;
   const [seReviewed, setSeReviewed] = useState(false);
+  // A testosterone patient whose blood tests are overdue (or whose haematocrit is too high) is on hold: a new prescription then needs its own reason.
+  const { data: trtData } = useQuery(PATIENT_TRT_MONITORING, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
+  const hold = trtData?.patientTrtMonitoring?.refillsOnHold ? (trtData.patientTrtMonitoring.holdReasons as string[]) : [];
+  const [holdReason, setHoldReason] = useState('');
   const approving = outcome === 'REPEAT' || outcome === 'NEW_PRESCRIPTION';
   // A failed load must not strand the doctor, so only a loaded summary that flags something (or a load still under way) holds approval back.
   const holdForSideEffects = approving && !seError && (seLoading || (!!sideEffects?.needsAttention && !seReviewed));
@@ -98,6 +103,8 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
           messageToPatient: message.trim() || undefined,
           // The server refuses an approval without this when the summary flags something.
           sideEffectsReviewed: seReviewed || undefined,
+          // Only sent when there is a hold, and only with its own reason.
+          monitoringOverrideReason: outcome === 'NEW_PRESCRIPTION' && hold.length > 0 ? holdReason.trim() || undefined : undefined,
           ...extra,
         },
       },
@@ -149,6 +156,17 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
 
       <InlineError error={error} />
 
+      {outcome === 'NEW_PRESCRIPTION' && hold.length > 0 && (
+        <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3 space-y-2">
+          <p className="text-sm font-semibold text-danger-500">{t('Testosterone blood-test hold')}</p>
+          <ul className="text-xs text-gray-800 list-disc pl-4 space-y-0.5">{hold.map((r) => <li key={r}>{r}</li>)}</ul>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-700 mb-1">{t('Reason to go ahead despite the hold (recorded in the audit log)')}</span>
+            <textarea rows={2} value={holdReason} onChange={(e) => setHoldReason(e.target.value)} className={inputCls} />
+          </label>
+        </div>
+      )}
+
       {holdForSideEffects && (
         <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3">
           {seLoading ? (
@@ -162,7 +180,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
         </div>
       )}
 
-      {outcome === 'NEW_PRESCRIPTION' && !holdForSideEffects && (
+      {outcome === 'NEW_PRESCRIPTION' && !holdForSideEffects && (hold.length === 0 || holdReason.trim().length > 0) && (
         consultationId ? (
           <PrescriptionForm
             consultationId={consultationId}

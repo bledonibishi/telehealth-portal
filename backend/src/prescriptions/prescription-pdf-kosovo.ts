@@ -21,6 +21,40 @@ const FORM_LABEL: Record<string, string> = {
   PELLET: 'pellet',
 };
 
+/**
+ * What sits below the last medicine box on the same page: the date and signature, the pharmacy's own boxes and the
+ * fingerprint line. Measured from how they are drawn below, with a little to spare.
+ */
+export const BELOW_RP = 250;
+
+/**
+ * Where the medicine boxes go. A box that cannot hold the next medicine continues on a fresh page, and the last box is
+ * kept clear of the sections that follow it: if it would crowd them, its last medicine moves to a new page, and if even
+ * that is not enough those sections start a page of their own. Nothing is ever drawn past the bottom of a page.
+ */
+export function planRpPages(heights: number[], firstTop: number, bottom = BOTTOM, margin = MARGIN, pad = 14) {
+  const chunks: Array<{ top: number; items: number[]; height: number }> = [];
+  const room = (c: { top: number }) => bottom - c.top - 10;
+  let cur = { top: firstTop, items: [] as number[], height: pad };
+  heights.forEach((h, i) => {
+    if (cur.items.length && cur.height + h > room(cur)) {
+      chunks.push(cur);
+      cur = { top: margin, items: [], height: pad };
+    }
+    cur.items.push(i);
+    cur.height += h;
+  });
+  while (cur.height + BELOW_RP > room(cur) && cur.items.length > 1) {
+    const moved = cur.items.pop()!;
+    cur.height -= heights[moved];
+    chunks.push(cur);
+    cur = { top: margin, items: [moved], height: pad + heights[moved] };
+  }
+  chunks.push(cur);
+  const last = chunks[chunks.length - 1];
+  return { chunks, sectionsOnNewPage: Math.max(last.height, 150) + BELOW_RP > room(last) };
+}
+
 const SEX: Record<string, string> = { FEMALE: 'F', MALE: 'M' };
 
 const date = (d: Date) =>
@@ -85,10 +119,8 @@ export function renderKosovoPrescriptionPdf(rx: PrescriptionPdfInput, clinic: { 
   y += 34 + gap + 4;
 
   // ── Rp. ───────────────────────────────────────────────────────────────────
-  const rpTop = y;
   const textX = MARGIN + 74;
   const textW = WIDTH - 74 - 12;
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(INK).text('Rp.', MARGIN + 12, rpTop + 10, { lineBreak: false });
 
   const lines =
     rx.items.length > 0
@@ -99,40 +131,46 @@ export function renderKosovoPrescriptionPdf(rx: PrescriptionPdfInput, clinic: { 
         })
       : [{ head: rx.medication, meta: rx.dosage, directions: rx.instructions, cold: false }];
 
-  // The box height is worked out first so the line below it sits in the right place.
-  let measure = 14;
-  for (const l of lines) {
-    measure += doc.font('Helvetica-Bold').fontSize(12).heightOfString(l.head, { width: textW });
-    measure += doc.font('Helvetica').fontSize(9.5).heightOfString(l.meta, { width: textW }) + 2;
-    measure += doc.font('Helvetica').fontSize(10.5).heightOfString(l.directions, { width: textW }) + 2;
-    if (l.cold) measure += 14;
-    measure += 12;
-  }
-  const rpH = Math.max(measure, 150);
-  // A long list moves to a fresh page rather than running into the pharmacy boxes.
-  const top = rpTop + rpH > BOTTOM - 150 ? MARGIN : rpTop;
-  if (top !== rpTop) {
-    doc.addPage();
-    doc.font('Helvetica-Bold').fontSize(22).fillColor(INK).text('Rp.', MARGIN + 12, top + 10, { lineBreak: false });
-  }
-  doc.rect(MARGIN, top, WIDTH, rpH).lineWidth(0.8).strokeColor(LINE).stroke();
-  doc.moveTo(MARGIN + 64, top + 6).lineTo(MARGIN + 64, top + rpH - 6).lineWidth(0.8).strokeColor(LINE).stroke();
-
-  let ly = top + 10;
-  lines.forEach((l, i) => {
-    doc.font('Helvetica-Bold').fontSize(12).fillColor(INK).text(`${i + 1}. ${l.head}`, textX, ly, { width: textW });
-    ly = doc.y;
-    doc.font('Helvetica').fontSize(9.5).fillColor(MUTED).text(l.meta, textX, ly + 1, { width: textW });
-    ly = doc.y + 2;
-    doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(l.directions, textX, ly, { width: textW });
-    ly = doc.y + 2;
-    if (l.cold) {
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text('Cold chain: keep refrigerated (2–8 °C) and deliver same or next day.', textX, ly, { width: textW });
-      ly = doc.y + 2;
-    }
-    ly += 10;
+  // Each medicine's height is measured first, so the boxes can be placed (and split across pages) before anything is drawn.
+  const heights = lines.map((l) => {
+    let h = doc.font('Helvetica-Bold').fontSize(12).heightOfString(l.head, { width: textW });
+    h += doc.font('Helvetica').fontSize(9.5).heightOfString(l.meta, { width: textW }) + 2;
+    h += doc.font('Helvetica').fontSize(10.5).heightOfString(l.directions, { width: textW }) + 2;
+    if (l.cold) h += 14;
+    return h + 12;
   });
-  y = top + rpH + gap;
+  const plan = planRpPages(heights, y);
+
+  plan.chunks.forEach((chunk, c) => {
+    if (c > 0) doc.addPage();
+    const last = c === plan.chunks.length - 1;
+    const boxH = last ? Math.max(chunk.height, 150) : chunk.height;
+    // The label is drawn once the page and position are known, so it always sits with its own box.
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(INK).text('Rp.', MARGIN + 12, chunk.top + 10, { lineBreak: false });
+    doc.rect(MARGIN, chunk.top, WIDTH, boxH).lineWidth(0.8).strokeColor(LINE).stroke();
+    doc.moveTo(MARGIN + 64, chunk.top + 6).lineTo(MARGIN + 64, chunk.top + boxH - 6).lineWidth(0.8).strokeColor(LINE).stroke();
+
+    let ly = chunk.top + 10;
+    for (const i of chunk.items) {
+      const l = lines[i];
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(INK).text(`${i + 1}. ${l.head}`, textX, ly, { width: textW });
+      ly = doc.y;
+      doc.font('Helvetica').fontSize(9.5).fillColor(MUTED).text(l.meta, textX, ly + 1, { width: textW });
+      ly = doc.y + 2;
+      doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(l.directions, textX, ly, { width: textW });
+      ly = doc.y + 2;
+      if (l.cold) {
+        doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text('Cold chain: keep refrigerated (2–8 °C) and deliver same or next day.', textX, ly, { width: textW });
+        ly = doc.y + 2;
+      }
+      ly += 10;
+    }
+    if (last) y = chunk.top + boxH + gap;
+  });
+  if (plan.sectionsOnNewPage) {
+    doc.addPage();
+    y = MARGIN;
+  }
 
   // ── Date, validity and prescriber's signature ─────────────────────────────
   const sigH = 78;

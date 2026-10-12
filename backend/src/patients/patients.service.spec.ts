@@ -535,6 +535,14 @@ describe('PatientsService.findByRecordId', () => {
     ]);
   });
 
+  it('does not scan the tables for something that is only letters, like a name, unless it is marked as an id', async () => {
+    const { prisma, service } = build();
+    expect(await service.findByRecordId('smithson')).toEqual([]);
+    expect(prisma.prescription.findMany).not.toHaveBeenCalled();
+    await service.findByRecordId('#smithson');
+    expect(prisma.prescription.findMany).toHaveBeenCalled();
+  });
+
   it('matches nothing for too little to go on, or for something that is not an id', async () => {
     const { prisma, service } = build();
     expect(await service.findByRecordId('abc')).toEqual([]);

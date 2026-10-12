@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { CURRENT_CONSENTS } from '../consents/consent-texts';
+import { ConsentType } from '../common/enums';
+import { findQuestionnaire } from '../questionnaires/definitions';
 import { LeadsService } from './leads.service';
 
 function build(over: { patient?: any; lead?: any } = {}) {
@@ -115,8 +117,21 @@ describe('LeadsService.previousAssessment / resumeLead', () => {
     intakeSavedAt: new Date(Date.now() - 14 * DAY),
     quizAnswers: [{ questionId: 'age', question: 'How old are you?', answer: '40 to 54' }],
     intakeAnswers: [{ questionId: 'weight_kg', answer: '95', value: '95' }],
+    intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version,
     ...over,
   });
+  // Answers the current questionnaire accepts, for the tests that need a lead that really can be kept.
+  const validIntake = () => {
+    const out: Array<{ questionId: string; answer: string; value: string }> = [];
+    const chosen: Record<string, string[]> = {};
+    for (const q of findQuestionnaire('GLP1' as any, 'INTAKE').questions) {
+      if (q.showIf && !(chosen[q.showIf.questionId] ?? []).some((v) => q.showIf!.anyOf.includes(v))) continue;
+      const v = q.type === 'single' ? (q.options!.find((o) => !o.flag) ?? q.options![0]).value : q.type === 'multi' ? (q.options!.find((o) => !o.flag && !o.exclusive) ?? q.options![0]).value : q.type === 'number' ? String(q.min ?? 0) : q.quickAnswer ?? 'None';
+      chosen[q.id] = v.split('|');
+      out.push({ questionId: q.id, answer: v, value: v });
+    }
+    return out;
+  };
   const make = (lead: any, patient: any = null) => {
     const b = build({ patient });
     (b.prisma.lead as any).findFirst = jest.fn().mockResolvedValue(lead);
@@ -124,12 +139,12 @@ describe('LeadsService.previousAssessment / resumeLead', () => {
   };
 
   it('returns the earlier answers, with the health questions worded, once the email is proved', async () => {
-    const { svc, verification } = make(earlier());
+    const { svc, verification } = make(earlier({ intakeAnswers: validIntake() }));
     const result = await svc.previousAssessment(ask);
     expect(verification.assertVerified).toHaveBeenCalledWith('a@b.com', 'tok');
     expect(result).toMatchObject({ productKind: 'GLP1', canKeep: true, eligibility: [{ questionId: 'age', answer: '40 to 54' }] });
-    expect(result!.health[0]).toMatchObject({ questionId: 'weight_kg', answer: '95' });
-    expect(result!.health[0].question).not.toBe('weight_kg');
+    expect(result!.health[0].questionId).toBe(validIntake()[0].questionId);
+    expect(result!.health[0].question).not.toBe(result!.health[0].questionId);
   });
 
   it('gives nothing without the proof, for someone who has paid, for another treatment, or for a lead that never got to the health questions', async () => {
@@ -151,9 +166,20 @@ describe('LeadsService.previousAssessment / resumeLead', () => {
   });
 
   it('goes on with the earlier answers without changing them, and counts the visit as activity', async () => {
-    const { svc, prisma } = make(earlier());
+    const { svc, prisma } = make(earlier({ intakeAnswers: validIntake() }));
     await svc.resumeLead(ask);
     expect(prisma.lead.update).toHaveBeenCalledWith({ where: { id: 'lead-1' }, data: { updatedAt: expect.any(Date) } });
+  });
+
+  it('will not keep answers the questionnaire or the consent wording has moved on from, so the visitor is not asked again after paying', async () => {
+    const consent = make(earlier({ intakeAnswers: validIntake(), intakeConsentVersion: 'old-consent' }));
+    expect(await consent.svc.previousAssessment(ask)).toMatchObject({ canKeep: false, keepBlockedReason: expect.stringMatching(/consent statement has changed/) });
+    await expect(consent.svc.resumeLead(ask)).rejects.toThrow(/consent statement has changed/);
+
+    // The default test answers (a lone weight) no longer satisfy the current health questions.
+    const questions = make(earlier());
+    expect(await questions.svc.previousAssessment(ask)).toMatchObject({ canKeep: false, keepBlockedReason: expect.stringMatching(/health questions have changed/) });
+    await expect(questions.svc.resumeLead(ask)).rejects.toThrow(/health questions have changed/);
   });
 
   it('cannot resume when there is nothing saved to go back to', async () => {

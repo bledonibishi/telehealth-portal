@@ -93,6 +93,9 @@ export class CheckInReviewService {
     let resultOrderId: string | null = null;
     let resultPrescriptionId: string | null = null;
     let billingNote: string;
+    const monitoringOverride = input.monitoringOverrideReason?.trim() || null;
+    // Set when a testosterone blood-test hold was on and the doctor went ahead anyway: it is written to the audit log.
+    let overriddenHold: string | null = null;
 
     switch (input.outcome) {
       case CheckInOutcome.REPEAT: {
@@ -107,9 +110,17 @@ export class CheckInReviewService {
         if (!input.items?.length) throw new BadRequestException('Choose the medicine for the new prescription');
         await this.prescribing.assertCanPrescribe(clinicianId);
         await this.prescribing.assertIdentityVerified(patient.id);
-        // The next supply is a new prescription, not a repeat, so the blood-test hold that repeats are subject to
-        // applies here too. A doctor who records a clinical reason (for example changing the dose because of the results) can go on.
-        if (rx && !input.overrideReason?.trim()) await this.orders.assertTrtMonitoring(rx.id);
+        // The next supply is a new prescription, not a repeat, so the blood-test hold that repeats are subject to applies here
+        // too. Going ahead anyway (for example lowering the dose because of the results) needs its own recorded reason, which
+        // is not the reason that answers the prescribing rules: justifying one of those never lifts this hold.
+        if (rx) {
+          try {
+            await this.orders.assertTrtMonitoring(rx.id);
+          } catch (hold) {
+            if (!monitoringOverride) throw hold;
+            overriddenHold = (hold as Error).message;
+          }
+        }
         if (!checkIn.kind) throw new BadRequestException('This check-in has no programme recorded');
         const kind = checkIn.kind as ConsultationKind;
 
@@ -188,6 +199,7 @@ export class CheckInReviewService {
             resultPrescriptionId,
             billingNote,
             ...(sideEffectSummary?.needsAttention ? { sideEffectsFlagged: sideEffectSummary.reasons, sideEffectsReviewed: true } : {}),
+            ...(overriddenHold ? { trtHoldOverridden: { hold: overriddenHold, reason: monitoringOverride } } : {}),
           },
         },
         tx,

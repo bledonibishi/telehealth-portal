@@ -335,6 +335,8 @@ export const sq: Record<string, string> = {
   "{n} per page": "{n} për faqe",
   "Previous page": "Faqja e mëparshme",
   "Next page": "Faqja tjetër",
+  "Testosterone blood-test hold": "Pezullimi për analizat e gjakut të testosteronit",
+  "Reason to go ahead despite the hold (recorded in the audit log)": "Arsyeja për të vazhduar pavarësisht pezullimit (regjistrohet në regjistrin e auditimit)",
   "Edit due date": "Ndrysho afatin",
   "Email": "Email",
   "Enter the 6-digit code from your authenticator app.": "Fut kodin 6-shifror nga aplikacioni yt i autentifikimit.",

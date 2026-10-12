@@ -108,8 +108,13 @@ export class LeadsService {
     return lead && lead.productKind === input.productKind && lead.intakeSavedAt ? { ...lead, intakeSavedAt: lead.intakeSavedAt } : null;
   }
 
-  private keepVerdict(lead: { intakeSavedAt: Date; productKind: string; quizAnswers: unknown }) {
+  private keepVerdict(lead: { intakeSavedAt: Date; productKind: string; quizAnswers: unknown; intakeAnswers: unknown; intakeConsentVersion: string | null }) {
     if (!intakeIsFresh(lead.intakeSavedAt)) return `Your earlier health answers are more than ${INTAKE_MAX_AGE_DAYS} days old, so we need current ones.`;
+    // The same checks saving a quiz makes (checkedIntake). Without them a visitor could keep answers, pay, and then be asked
+    // the health questions again in the portal because the questionnaire or the consent wording changed in the meantime.
+    if (lead.intakeConsentVersion !== CURRENT_CONSENTS[ConsentType.TELEHEALTH].version) return 'The consent statement has changed since you answered, so please answer the health questions again.';
+    const intake = Array.isArray(lead.intakeAnswers) ? (lead.intakeAnswers as Array<{ questionId: string; answer: string; value?: string | null }>) : [];
+    if (evaluateAnswers(findQuestionnaire(lead.productKind as ConsultationKind, 'INTAKE'), intake, true).errors.length > 0) return 'The health questions have changed since you answered, so please answer them again.';
     const triage = triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]);
     if (triage.riskTag === RiskTag.RED) return 'Your earlier answers mean we can’t offer this treatment online.';
     return null;

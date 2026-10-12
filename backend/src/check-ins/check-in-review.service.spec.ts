@@ -132,14 +132,26 @@ describe('CheckInReviewService.review', () => {
     expect(saved()).toMatchObject({ resultPrescriptionId: 'rx-2', resultOrderId: 'o-new' });
   });
 
-  it('keeps the blood-test hold on a testosterone supply that is now a new prescription, unless the doctor records a reason', async () => {
-    orders.assertTrtMonitoring.mockRejectedValue(new Error('Testosterone repeat on hold'));
+  it('keeps the blood-test hold on a testosterone supply that is now a new prescription, and the prescribing-rule reason does not lift it', async () => {
+    orders.assertTrtMonitoring.mockRejectedValue(new Error('Testosterone repeat on hold: haematocrit too high'));
     const items = [{ productId: 'sema', strengthId: 'step3', quantity: 1, directions: 'Weekly' }];
     await expect(service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items })).rejects.toThrow(/on hold/);
+    // A reason given for some other prescribing rule is not a reason to skip the hold.
+    await expect(service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items, overrideReason: 'Unrelated rule justified' })).rejects.toThrow(/on hold/);
     expect(prescribing.issue).not.toHaveBeenCalled();
+  });
 
-    await service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items, overrideReason: 'Dose lowered because haematocrit is high' });
+  it('goes ahead only with its own reason, and records the hold and the reason in the audit log', async () => {
+    const audit = { log: jest.fn() };
+    (service as any).audit = audit;
+    orders.assertTrtMonitoring.mockRejectedValue(new Error('Testosterone repeat on hold: haematocrit too high'));
+    const items = [{ productId: 'sema', strengthId: 'step3', quantity: 1, directions: 'Weekly' }];
+    await service.review('doc-1', { checkInId: 'ci-1', outcome: 'NEW_PRESCRIPTION' as any, items, monitoringOverrideReason: ' Dose lowered because haematocrit is high ' });
     expect(prescribing.issue).toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ trtHoldOverridden: { hold: 'Testosterone repeat on hold: haematocrit too high', reason: 'Dose lowered because haematocrit is high' } }) }),
+      expect.anything(),
+    );
   });
 
   it('HOLD pauses billing without ordering anything', async () => {

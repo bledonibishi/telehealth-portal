@@ -7,9 +7,11 @@ import { MessageAssistService } from './message-assist.service';
 import { MessageUrgencyService } from './message-urgency.service';
 import { PatientSearchService } from './patient-search.service';
 import { AiResolver } from './ai.resolver';
+import { UrgencyCronController } from './urgency-cron.controller';
 
 @Module({
   imports: [PrismaModule, SideEffectsModule],
+  controllers: [UrgencyCronController],
   providers: [AiAssistService, CheckInBriefService, MessageAssistService, MessageUrgencyService, PatientSearchService, AiResolver],
   exports: [MessageUrgencyService, AiAssistService],
 })

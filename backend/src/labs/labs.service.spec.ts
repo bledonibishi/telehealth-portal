@@ -225,6 +225,17 @@ describe('LabsService lab reports', () => {
     expect(tx.labReport.updateMany).toHaveBeenCalledWith({ where: { id: 'r-1', status: 'PENDING' }, data: expect.objectContaining({ status: 'ENTERED', handledById: 'doc-1' }) });
   });
 
+  it('claims the report before writing anything, and turns away a second save of the same report', async () => {
+    const { tx, service } = make();
+    tx.labReport.updateMany.mockResolvedValue({ count: 0 }); // somebody else entered it first, or this is a retry
+    await expect(service.recordMany('doc-1', { patientId: 'p-1', reportId: 'r-1', results: [row()] })).rejects.toThrow(/already been entered/);
+    expect(tx.labResult.create).not.toHaveBeenCalled();
+
+    const ok = make();
+    await ok.service.recordMany('doc-1', { patientId: 'p-1', reportId: 'r-1', results: [row()] });
+    expect(ok.tx.labReport.updateMany.mock.invocationCallOrder[0]).toBeLessThan(ok.tx.labResult.create.mock.invocationCallOrder[0]);
+  });
+
   it('flags each saved result against its own range', async () => {
     const { tx, service } = make();
     await service.recordMany('doc-1', { patientId: 'p-1', reportId: 'r-1', results: [row({ value: 780 }), row({ value: 300 })] });

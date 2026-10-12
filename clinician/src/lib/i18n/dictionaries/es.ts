@@ -335,6 +335,8 @@ export const es: Record<string, string> = {
   "{n} per page": "{n} por página",
   "Previous page": "Página anterior",
   "Next page": "Página siguiente",
+  "Testosterone blood-test hold": "Bloqueo por análisis de sangre de testosterona",
+  "Reason to go ahead despite the hold (recorded in the audit log)": "Motivo para continuar pese al bloqueo (se registra en el registro de auditoría)",
   "Edit due date": "Editar fecha de vencimiento",
   "Email": "Correo electrónico",
   "Enter the 6-digit code from your authenticator app.": "Introduce el código de 6 dígitos de tu aplicación de autenticación.",

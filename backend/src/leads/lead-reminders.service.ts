@@ -15,6 +15,9 @@ export const SECOND_REMINDER_AFTER_MS = 4 * DAY;
 export const STOP_AFTER_MS = 30 * DAY;
 export const MAX_REMINDERS = 2;
 const BATCH = 50;
+/** Leads are read in pages of this size, up to MAX_PAGES, until BATCH reminders have gone out. */
+const PAGE = 200;
+const MAX_PAGES = 10;
 
 // Where each programme's own website page starts. The link says which programme it is, but nothing about the person.
 const START_PATH: Record<string, string> = { GLP1: '/glp1-eligibility', HRT: '/hrt-eligibility', TRT: '/trt-eligibility' };
@@ -59,42 +62,71 @@ export class LeadRemindersService {
   }
 
   @Cron(CronExpression.EVERY_HOUR)
-  /** `onlyEmailStartingWith` narrows a run to some leads (the dev test command uses it so only example leads are ever touched). */
+  async runHourly() {
+    await this.sendDue();
+  }
+
+  /**
+   * One pass. Each lead is claimed with a conditional update (its count moves from what was read to one more) before
+   * its email goes out, so two runs that overlap (two instances, or the in-process timer and the Vercel cron) can't both
+   * email the same lead; a claim whose email is not accepted is handed back. Leads that are due are found by the query itself
+   * (including the wait before the second reminder), and ones the triage ruled out are skipped while paging on, so they
+   * never crowd out everyone else. `onlyEmailStartingWith` narrows a run to some leads (the dev test command uses it so
+   * only example leads are ever touched).
+   */
   async sendDue(now = new Date(), onlyEmailStartingWith?: string) {
     if (!this.enabled) return 0;
     const site = (this.config.get<string>('WEBFLOW_SITE_URL') ?? 'http://localhost:3000').replace(/\/$/, '');
-    const leads = await this.prisma.lead.findMany({
-      where: {
-        ...(onlyEmailStartingWith ? { email: { startsWith: onlyEmailStartingWith } } : {}),
-        convertedAt: null,
-        remindersStoppedAt: null,
-        reminderCount: { lt: MAX_REMINDERS },
-        // They reached the plans: the health questions are done. Anyone who already has an account is not a lead any more.
-        intakeSavedAt: { not: null },
-        patient: null,
-        updatedAt: { gte: new Date(now.getTime() - STOP_AFTER_MS), lte: new Date(now.getTime() - FIRST_REMINDER_AFTER_MS) },
-      },
-      orderBy: { updatedAt: 'asc' },
-      take: BATCH,
-    });
+    const due = {
+      ...(onlyEmailStartingWith ? { email: { startsWith: onlyEmailStartingWith } } : {}),
+      convertedAt: null,
+      remindersStoppedAt: null,
+      reminderCount: { lt: MAX_REMINDERS },
+      // They reached the plans: the health questions are done. Anyone who already has an account is not a lead any more.
+      intakeSavedAt: { not: null },
+      patient: null,
+      updatedAt: { gte: new Date(now.getTime() - STOP_AFTER_MS), lte: new Date(now.getTime() - FIRST_REMINDER_AFTER_MS) },
+      // Not reminded yet, or last reminded long enough ago for the next one.
+      OR: [{ reminderCount: 0 }, { lastReminderAt: { lte: new Date(now.getTime() - SECOND_REMINDER_AFTER_MS) } }],
+    };
 
     let sent = 0;
-    for (const lead of leads) {
-      if (triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]).riskTag === RiskTag.RED) continue;
-      if (lead.reminderCount > 0 && (!lead.lastReminderAt || now.getTime() - lead.lastReminderAt.getTime() < SECOND_REMINDER_AFTER_MS)) continue;
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_PAGES && sent < BATCH; page++) {
+      const leads = await this.prisma.lead.findMany({
+        where: due,
+        orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+        take: PAGE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (leads.length === 0) break;
+      cursor = leads[leads.length - 1].id;
 
-      const last = lead.reminderCount + 1 >= MAX_REMINDERS;
-      const accepted = await this.email.sendLeadReminderEmail(
-        lead.email,
-        lead.firstName,
-        `${site}${START_PATH[lead.productKind] ?? '/'}`,
-        this.unsubscribeUrl(lead.id),
-        last,
-      );
-      if (!accepted) continue;
-      // Keep the lead's own "last activity" as it was: sending a reminder isn't the lead doing anything.
-      await this.prisma.lead.update({ where: { id: lead.id }, data: { reminderCount: { increment: 1 }, lastReminderAt: now, updatedAt: lead.updatedAt } });
-      sent++;
+      for (const lead of leads) {
+        if (sent >= BATCH) break;
+        if (triageEligibility(lead.productKind as ConsultationKind, lead.quizAnswers as any[]).riskTag === RiskTag.RED) continue;
+
+        // The claim. Another run that read the same lead changes nothing here, and goes on to the next.
+        const claimed = await this.prisma.lead.updateMany({
+          where: { id: lead.id, reminderCount: lead.reminderCount, remindersStoppedAt: null, convertedAt: null },
+          // Keep the lead's own "last activity" as it was: sending a reminder isn't the lead doing anything.
+          data: { reminderCount: { increment: 1 }, lastReminderAt: now, updatedAt: lead.updatedAt },
+        });
+        if (claimed.count === 0) continue;
+
+        let accepted = false;
+        try {
+          accepted = await this.email.sendLeadReminderEmail(lead.email, lead.firstName, `${site}${START_PATH[lead.productKind] ?? '/'}`, this.unsubscribeUrl(lead.id), lead.reminderCount + 1 >= MAX_REMINDERS);
+        } catch (err) {
+          this.logger.error(`Lead reminder for ${lead.id} failed: ${(err as Error)?.message}`);
+        }
+        if (accepted) {
+          sent++;
+        } else {
+          // Not delivered: the claim is given back, so the next run tries this lead again.
+          await this.prisma.lead.updateMany({ where: { id: lead.id, reminderCount: lead.reminderCount + 1 }, data: { reminderCount: lead.reminderCount, lastReminderAt: lead.lastReminderAt, updatedAt: lead.updatedAt } });
+        }
+      }
     }
     if (sent) this.logger.log(`Sent ${sent} lead reminder${sent === 1 ? '' : 's'}`);
     return sent;

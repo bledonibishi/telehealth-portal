@@ -35,6 +35,7 @@ export function staffMayView(kind: UploadKind, user: Pick<AuthUser, 'role' | 'cl
 export const looksLikePdf = (buf: Buffer) => buf.subarray(0, 5).toString() === '%PDF-';
 const MAX_LAB_REPORT_BYTES = 15 * 1024 * 1024;
 
+const LAB_REPORT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_PROGRESS_PHOTO_BYTES = 10 * 1024 * 1024;
 
@@ -80,8 +81,9 @@ export class UploadsService {
 
     if (kind === UploadKind.LAB_REPORT) {
       const isPdf = file.mimetype === 'application/pdf' && looksLikePdf(file.buffer);
-      const isPhoto = IMAGE_TYPES.includes(file.mimetype) && looksLikeImage(file.buffer);
-      if (!isPdf && !isPhoto) throw new BadRequestException('Please upload the lab report as a PDF or a photo (JPEG, PNG, WebP or HEIC)');
+      // HEIC (the iPhone default) is left out: the AI reader can't read it, so a report sent that way could never be read.
+      const isPhoto = LAB_REPORT_IMAGE_TYPES.includes(file.mimetype) && looksLikeImage(file.buffer);
+      if (!isPdf && !isPhoto) throw new BadRequestException('Please upload the lab report as a PDF or a photo (JPEG, PNG or WebP). On an iPhone, choose “Most Compatible” in the camera settings or share it as a PDF.');
       if (file.buffer.length > MAX_LAB_REPORT_BYTES) throw new BadRequestException('That file is too large — please use one under 15 MB');
     }
 

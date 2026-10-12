@@ -7,10 +7,11 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { LeadRemindersService } from './lead-reminders.service';
 import { LeadRemindersController } from './lead-reminders.controller';
+import { LeadRemindersCronController } from './lead-reminders-cron.controller';
 
 @Module({
   imports: [PrismaModule, ReferralsModule, AuthModule, EmailModule],
-  controllers: [LeadRemindersController],
+  controllers: [LeadRemindersController, LeadRemindersCronController],
   providers: [LeadsService, LeadsResolver, LeadRemindersService],
   exports: [LeadsService],
 })

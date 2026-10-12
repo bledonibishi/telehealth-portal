@@ -335,6 +335,8 @@ export const de: Record<string, string> = {
   "{n} per page": "{n} pro Seite",
   "Previous page": "Vorherige Seite",
   "Next page": "Nächste Seite",
+  "Testosterone blood-test hold": "Sperre wegen Testosteron-Bluttests",
+  "Reason to go ahead despite the hold (recorded in the audit log)": "Grund, trotz der Sperre fortzufahren (wird im Audit-Log festgehalten)",
   "Edit due date": "Fälligkeitsdatum ändern",
   "Email": "E-Mail",
   "Enter the 6-digit code from your authenticator app.": "Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein.",

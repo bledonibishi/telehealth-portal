@@ -30,7 +30,7 @@ describe('CheckInBriefService.brief', () => {
       status: 'COMPLETED',
       model: 'm',
       data: {
-        headline: 'Weight is down since last time.',
+        headline: { text: 'Weight is down since last time.', sources: ['w1'], importance: 'high' },
         bullets: [
           { text: 'Weight is down 5 kg since the last check-in.', sources: ['w1'], importance: 'high' },
           { text: 'Weight is down 9 kg since the last check-in.', sources: ['w1'], importance: 'normal' },
@@ -47,8 +47,22 @@ describe('CheckInBriefService.brief', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AI_BRIEF_GENERATED', patientId: 'p-1', metadata: { removed: 2, language: 'en' } }));
   });
 
+  it('never shows a headline the record does not back: a bad one is replaced by a plain title and counted', async () => {
+    const bad = (headline: any) => build({ status: 'COMPLETED', model: 'm', data: { headline, bullets: [] } });
+    const invented = await bad({ text: 'Weight is down 8 kg since last time.', sources: ['w1'], importance: 'high' }).svc.brief('doc-1', 'ci-1', 'en');
+    expect(invented.headline).toBe('Brief of this check-in');
+    expect(invented.removed).toBe(1);
+
+    const uncited = await bad({ text: 'Looks like a good month.', sources: [], importance: 'normal' }).svc.brief('doc-1', 'ci-1', 'sq');
+    expect(uncited.headline).toBe('Përmbledhje e këtij kontrolli');
+
+    const backed = await bad({ text: 'Weight is down 5 kg since the last check-in.', sources: ['w1'], importance: 'high' }).svc.brief('doc-1', 'ci-1', 'en');
+    expect(backed.headline).toBe('Weight is down 5 kg since the last check-in.');
+    expect(backed.removed).toBe(0);
+  });
+
   it('gives the AI the facts as a numbered list and the language to write in, nothing identifying', async () => {
-    const { svc, ai } = build({ status: 'COMPLETED', model: 'm', data: { headline: 'x', bullets: [] } });
+    const { svc, ai } = build({ status: 'COMPLETED', model: 'm', data: { headline: { text: 'x', sources: ['w1'], importance: 'normal' }, bullets: [] } });
     await svc.brief('doc-1', 'ci-1', 'sq');
     const sent = ai.json.mock.calls[0][0].user as string;
     expect(sent).toContain('Write the brief in Albanian');

@@ -54,8 +54,14 @@ describe('LabReaderService without a key or with a file it cannot read', () => {
     expect(await service().read(Buffer.from('x'), 'application/pdf')).toMatchObject({ status: 'NOT_CONFIGURED' });
   });
 
+  it('does not read anything just because a key is set: the "labs" helper has to be switched on', async () => {
+    expect(await service({ ANTHROPIC_API_KEY: 'k' }).read(Buffer.from('x'), 'application/pdf')).toMatchObject({ status: 'NOT_CONFIGURED' });
+    expect(await service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'brief,reply' }).read(Buffer.from('x'), 'application/pdf')).toMatchObject({ status: 'NOT_CONFIGURED' });
+    expect(await service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'labs', AI_DISABLED_FEATURES: 'labs' }).read(Buffer.from('x'), 'application/pdf')).toMatchObject({ status: 'NOT_CONFIGURED' });
+  });
+
   it('refuses a type it cannot read, and an oversized file, before calling anything', async () => {
-    const s = service({ ANTHROPIC_API_KEY: 'k' });
+    const s = service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'labs' });
     expect(await s.read(Buffer.from('x'), 'image/heic')).toMatchObject({ status: 'UNSUPPORTED_FILE' });
     expect(await s.read(Buffer.alloc(16 * 1024 * 1024), 'application/pdf')).toMatchObject({ status: 'UNSUPPORTED_FILE' });
   });

@@ -65,7 +65,7 @@ export function LabReportCard() {
         <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => input.current?.click()} className={btnOutline}>{file ? 'Choose a different file' : 'Choose a file'}</button>
           <span className="text-sm text-slate-600 truncate">{file ? file.name : 'A PDF or a clear photo, up to 15 MB'}</span>
-          <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setSent(false); }} />
+          <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setSent(false); }} />
         </div>
         {file && (
           <label className="block">

@@ -15,6 +15,7 @@ import { DosingService } from '../dosing/dosing.service';
 // One prescription covers one supply (a month), so it is valid for about as long as that supply lasts.
 export const DEFAULT_VALIDITY_DAYS = 30;
 const MAX_VALIDITY_DAYS = 365;
+const MAX_DIRECTIONS = 1000;
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -165,6 +166,8 @@ export class PrescribingService {
     const refillsAllowed = 0;
     for (const item of input.items) {
       if (!item.directions.trim()) throw new BadRequestException('Every medicine needs directions for the patient');
+      // They are printed on the prescription and the label, so they have to fit.
+      if (item.directions.trim().length > MAX_DIRECTIONS) throw new BadRequestException(`Directions can be at most ${MAX_DIRECTIONS} characters`);
     }
 
     const issuedAt = new Date();

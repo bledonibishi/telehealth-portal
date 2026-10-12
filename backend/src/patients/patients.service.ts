@@ -83,8 +83,12 @@ export class PatientsService {
    * (the short form shown on screen, as "#x2xval74"). Too little to go on (under 6 characters) matches nothing.
    */
   async findByRecordId(code: string) {
-    const id = code.trim().replace(/^#/, '').replace(/^th-/i, '').toLowerCase();
+    const typed = code.trim();
+    const id = typed.replace(/^#/, '').replace(/^th-/i, '').toLowerCase();
     if (!/^[a-z0-9]{6,40}$/.test(id)) return [];
+    // An id is looked up with a "ends with" match, which can't use an index and scans the tables, so it is only done for
+    // something that looks like an id: marked with # or TH-, or holding a digit. An ordinary name or email never does.
+    if (!/^(#|th-)/i.test(typed) && !/\d/.test(id)) return [];
     const where = { id: { endsWith: id } };
     const select = { id: true, patientId: true };
     const [prescriptions, checkIns, orders] = await Promise.all([

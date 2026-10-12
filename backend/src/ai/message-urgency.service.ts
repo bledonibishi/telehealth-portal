@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '../common/enums';
 import { AiAssistService } from './ai-assist.service';
+
+const SWEEP_BATCH = 20;
 
 const SYSTEM = `You help the care team of an online clinic (hormone therapy and weight-management medicines) notice when a patient's message might be urgent, so a clinician sees it sooner. You only ever raise a message's priority; a person reads every message.
 
@@ -54,6 +57,30 @@ export class MessageUrgencyService {
       this.logger.error(`Urgency check for message ${messageId} failed: ${(err as Error)?.message}`);
       return false;
     }
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async runSweep() {
+    await this.sweep();
+  }
+
+  /**
+   * Checks patient messages the immediate check never got to: it runs after the send has returned, and a host that stops
+   * the process then (serverless) can cut it off. Picks up messages between 2 minutes and 6 hours old that have no
+   * result yet, a few at a time, so one that can't be checked is retried a bounded number of times and then left alone.
+   * Called by the in-process timer and by the Vercel cron endpoint.
+   */
+  async sweep(now = new Date()): Promise<number> {
+    if (!this.ai.isEnabled('urgency')) return 0;
+    const rows = await this.prisma.message.findMany({
+      where: { senderRole: UserRole.PATIENT, aiCheckedAt: null, sentAt: { lte: new Date(now.getTime() - 2 * 60_000), gte: new Date(now.getTime() - 6 * 3_600_000) } },
+      select: { id: true },
+      orderBy: { sentAt: 'desc' },
+      take: SWEEP_BATCH,
+    });
+    let marked = 0;
+    for (const { id } of rows) if (await this.check(id)) marked++;
+    return marked;
   }
 
   /** The patient's messages from the last 30 days that were marked urgent (read or not), so the mark stays on them in the thread. */

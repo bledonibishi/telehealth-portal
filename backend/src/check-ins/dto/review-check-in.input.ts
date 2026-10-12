@@ -34,4 +34,7 @@ export class ReviewCheckInInput {
 
   @Field({ nullable: true })
   overrideReason?: string;
+
+  @Field({ nullable: true, description: 'Why a new testosterone prescription goes ahead although its blood-test hold is on. Separate from overrideReason, which answers the prescribing rules.' })
+  monitoringOverrideReason?: string;
 }

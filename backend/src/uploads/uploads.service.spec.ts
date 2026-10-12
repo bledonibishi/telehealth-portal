@@ -217,6 +217,11 @@ describe('lab reports', () => {
     await expect(service.save('p-1', 'LAB_REPORT' as any, file('application/pdf', Buffer.concat([pdf, Buffer.alloc(15 * 1024 * 1024)])))).rejects.toThrow(/under 15 MB/);
   });
 
+  it('turns away an iPhone HEIC photo, which the AI reader can’t open, and says what to do instead', async () => {
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic'), Buffer.alloc(16)]);
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('image/heic', heic, 'blood.heic'))).rejects.toThrow(/Most Compatible/);
+  });
+
   it('is shown to doctors and the patient, not to support or pharmacy staff', () => {
     const staff = (clinicianRole: string) => ({ role: 'CLINICIAN', clinicianRole }) as any;
     expect(staffMayView('LAB_REPORT' as any, staff('DOCTOR'))).toBe(true);

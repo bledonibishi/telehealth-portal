@@ -230,8 +230,14 @@ function Patients() {
   const all = data?.patients ?? [];
 
   // A prescription, check-in or order id (or its short form, "#x2xval74") finds the patient it belongs to.
-  const code = search.trim();
-  const looksLikeId = /^#?[a-z0-9]{6,40}$/i.test(code);
+  // Looked up only once typing pauses, and only for something that looks like an id (marked with # or TH-, or holding a digit):
+  // an ordinary name or email never triggers it.
+  const [code, setCode] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setCode(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  const looksLikeId = /^(#|th-)?[a-z0-9]{6,40}$/i.test(code) && (/^(#|th-)/i.test(code) || /\d/.test(code));
   const { data: matchData } = useQuery(RECORD_MATCHES, { variables: { code }, skip: !looksLikeId });
   const matches: { patientId: string; kind: string; recordId: string }[] = looksLikeId ? matchData?.recordMatches ?? [] : [];
   const matchedPatients = new Set(matches.map((m) => m.patientId));

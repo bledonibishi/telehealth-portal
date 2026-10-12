@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { LlmTracingService } from '../langfuse/llm-tracing.service';
 import { SUPPORTS_EFFORT, SUPPORTS_FALLBACKS } from '../onboarding/proof-reader.service';
+import { featureSwitchedOn } from '../ai/ai-assist.service';
 
 // Reading a lab report is extraction: pulling printed values off a page, never judging them. A doctor checks every row
 // before anything is saved. The mid-tier model is enough; override with LAB_READER_MODEL.
@@ -149,8 +150,9 @@ export class LabReaderService {
     return this.config.get<string>('LAB_READER_MODEL')?.trim() || DEFAULT_LAB_READER_MODEL;
   }
 
+  /** A key, and the "labs" helper switched on in AI_ENABLED_FEATURES: the key alone (set for the document readers) is not enough. */
   get isConfigured(): boolean {
-    return !!this.config.get<string>('ANTHROPIC_API_KEY');
+    return !!this.config.get<string>('ANTHROPIC_API_KEY') && featureSwitchedOn({ get: (k) => this.config.get<string>(k) }, 'labs');
   }
 
   private getClient(): Anthropic {
@@ -172,7 +174,7 @@ export class LabReaderService {
   }
 
   private async extract(file: Buffer, mimeType: string): Promise<LabReadOutcome> {
-    if (!this.isConfigured) return { status: 'NOT_CONFIGURED', reason: 'Reading reports automatically isn’t set up' };
+    if (!this.isConfigured) return { status: 'NOT_CONFIGURED', reason: 'Reading reports automatically isn’t switched on' };
     const isPdf = mimeType === 'application/pdf';
     if (!isPdf && !IMAGE_TYPES.includes(mimeType as ImageType)) return { status: 'UNSUPPORTED_FILE', reason: `A ${mimeType} file can’t be read automatically. A PDF, JPEG, PNG or WebP works.` };
     if (file.length > MAX_BYTES) return { status: 'UNSUPPORTED_FILE', reason: 'The file is over 15 MB and can’t be read automatically' };

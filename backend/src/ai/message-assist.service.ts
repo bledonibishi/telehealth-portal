@@ -61,8 +61,18 @@ export class MessageAssistService {
   async draftReply(user: AuthUser, input: { patientId: string; consultationId?: string | null }) {
     if (!this.ai.isEnabled('reply')) throw new BadRequestException('Reply drafting isn’t switched on');
     const consultationId = input.consultationId ?? null;
-    // The patient's conversation is one thing to them, however many consultations it is stored on: the latest messages across all of it.
-    const thread = await this.prisma.message.findMany({ where: { patientId: input.patientId }, orderBy: { sentAt: 'desc' }, take: THREAD_LIMIT });
+    if (consultationId) {
+      const own = await this.prisma.consultation.findFirst({ where: { id: consultationId, patientId: input.patientId }, select: { id: true } });
+      if (!own) throw new BadRequestException('That conversation isn’t this patient’s');
+    }
+    // With a conversation named, only that one is read (plus the messages from before the patient had a consultation, which
+    // are moved onto it): another consultation's messages never shape a draft that is placed in this one. Without one, the
+    // patient's latest messages across everything.
+    const thread = await this.prisma.message.findMany({
+      where: { patientId: input.patientId, ...(consultationId ? { consultationId: { in: [consultationId, null as unknown as string] } } : {}) },
+      orderBy: { sentAt: 'desc' },
+      take: THREAD_LIMIT,
+    });
     if (!thread.some((m) => m.senderRole === UserRole.PATIENT)) throw new BadRequestException('There is no patient message to reply to');
     // Only the patient's side since the team last wrote needs answering; the rest is context.
     const ordered = thread.reverse();

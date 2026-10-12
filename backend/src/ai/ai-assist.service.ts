@@ -4,12 +4,24 @@ import Anthropic from '@anthropic-ai/sdk';
 import { LlmTracingService } from '../langfuse/llm-tracing.service';
 import { SUPPORTS_EFFORT, SUPPORTS_FALLBACKS } from '../onboarding/proof-reader.service';
 
-/** The AI helpers for staff. Each can be switched off on its own with AI_DISABLED_FEATURES (comma separated). */
-export type AiFeature = 'brief' | 'reply' | 'translate' | 'urgency' | 'search';
-export const AI_FEATURES: AiFeature[] = ['brief', 'reply', 'translate', 'urgency', 'search'];
+/**
+ * The AI helpers. None is on until it is named in AI_ENABLED_FEATURES (comma separated, or "all"): an API key that is
+ * already set for another feature (the document readers) never switches these on, because they send patients' messages
+ * and records to an outside AI service. AI_DISABLED_FEATURES can still veto one that "all" would turn on.
+ */
+export type AiFeature = 'brief' | 'reply' | 'translate' | 'urgency' | 'search' | 'labs';
+export const AI_FEATURES: AiFeature[] = ['brief', 'reply', 'translate', 'urgency', 'search', 'labs'];
+
+const list = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+/** Whether a helper has been switched on, and not vetoed. (Whether there is a key is checked separately.) */
+export function featureSwitchedOn(config: { get: (key: string) => string | undefined }, feature: AiFeature): boolean {
+  const on = list(config.get('AI_ENABLED_FEATURES'));
+  return (on.includes('all') || on.includes(feature)) && !list(config.get('AI_DISABLED_FEATURES')).includes(feature);
+}
 
 // These tasks are summarising, drafting and translating short texts, with a person checking the result. The mid-tier model
-// is enough. Override with AI_ASSIST_MODEL.
+// is enough. Override all with AI_ASSIST_MODEL, or one helper with AI_MODEL_<HELPER> (BRIEF, REPLY, TRANSLATE, URGENCY, SEARCH).
 export const DEFAULT_AI_ASSIST_MODEL = 'claude-sonnet-5-5';
 const DEADLINE_MS = 60_000;
 
@@ -18,7 +30,7 @@ export type AiResult<T> = { status: 'COMPLETED'; data: T; model: string } | { st
 /**
  * The one place the AI helpers call Claude from: it knows whether a feature is on, asks for JSON that fits a schema,
  * and never lets what the model said or was sent reach a trace (a trace records how a call went, not what it was about).
- * Without ANTHROPIC_API_KEY, or with a feature switched off, nothing is sent anywhere and callers get DISABLED.
+ * Without ANTHROPIC_API_KEY, or with a feature not switched on, nothing is sent anywhere and callers get DISABLED.
  *
  * What goes in: the text of a message, a record's facts. That is health data going to an outside AI service, so these
  * features need the provider agreement and patient-facing wording to be in place before they are switched on in production.
@@ -30,19 +42,23 @@ export class AiAssistService {
 
   constructor(private config: ConfigService, @Optional() private tracing: LlmTracingService = new LlmTracingService()) {}
 
+  /** The model for one helper: AI_MODEL_<HELPER> (for example AI_MODEL_SEARCH), else AI_ASSIST_MODEL, else the default. */
+  modelFor(feature: AiFeature): string {
+    return this.config.get<string>(`AI_MODEL_${feature.toUpperCase()}`)?.trim() || this.config.get<string>('AI_ASSIST_MODEL')?.trim() || DEFAULT_AI_ASSIST_MODEL;
+  }
+
   get model(): string {
-    return this.config.get<string>('AI_ASSIST_MODEL')?.trim() || DEFAULT_AI_ASSIST_MODEL;
+    return this.modelFor('brief');
   }
 
   get configured(): boolean {
     return !!this.config.get<string>('ANTHROPIC_API_KEY');
   }
 
-  /** Which helpers are on right now: none without a key, otherwise all except those listed in AI_DISABLED_FEATURES. */
+  /** Which helpers are on right now: those named in AI_ENABLED_FEATURES, and only with a key. */
   enabledFeatures(): AiFeature[] {
     if (!this.configured) return [];
-    const off = new Set((this.config.get<string>('AI_DISABLED_FEATURES') ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-    return AI_FEATURES.filter((f) => !off.has(f));
+    return AI_FEATURES.filter((f) => featureSwitchedOn({ get: (k) => this.config.get<string>(k) }, f));
   }
 
   isEnabled(feature: AiFeature): boolean {
@@ -68,7 +84,7 @@ export class AiAssistService {
     summarise?: (data: T) => unknown;
   }): Promise<AiResult<T>> {
     if (!this.isEnabled(opts.feature)) return { status: 'DISABLED', reason: 'This AI helper isn’t switched on' };
-    const model = this.model;
+    const model = this.modelFor(opts.feature);
     const maxTokens = opts.maxTokens ?? 4000;
 
     return this.tracing.trace(

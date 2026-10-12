@@ -14,7 +14,7 @@ describe('MessageAssistService.draftReply', () => {
     { senderRole: 'CLINICIAN', content: 'Hello Alma, let me check.' },
   ];
   const build = (aiMock: any, messages: any[] = [...thread].reverse()) => {
-    const prisma: any = { message: { findMany: jest.fn().mockResolvedValue(messages) }, patient: { findUnique: jest.fn().mockResolvedValue({ firstName: 'Alma' }) } };
+    const prisma: any = { message: { findMany: jest.fn().mockResolvedValue(messages) }, patient: { findUnique: jest.fn().mockResolvedValue({ firstName: 'Alma' }) }, consultation: { findFirst: jest.fn().mockResolvedValue({ id: 'c-1' }) } };
     return { prisma, svc: new MessageAssistService(prisma, aiMock, audit(), { get: () => 'Omo' } as any) };
   };
 
@@ -26,6 +26,22 @@ describe('MessageAssistService.draftReply', () => {
     expect(sent.indexOf('<Patient>Hi, can I')).toBeLessThan(sent.indexOf('<Team>Hello Alma'));
     expect(sent).toContain('customer-support team member');
     expect(out).toEqual({ draft: 'Hi Alma, your doctor will reply.', language: 'en', needsClinician: true, reason: 'Asks about dose timing' });
+  });
+
+  it('reads only the conversation it was asked about (and the one from before it), and only if it is this patient’s', async () => {
+    const mock = ai(ok({ draft: 'Hi', language: 'en', needs_clinician: false, reason: '' }));
+    const { svc, prisma } = build(mock);
+    await svc.draftReply(user, { patientId: 'p-1', consultationId: 'c-1' });
+    expect(prisma.consultation.findFirst).toHaveBeenCalledWith({ where: { id: 'c-1', patientId: 'p-1' }, select: { id: true } });
+    expect(prisma.message.findMany.mock.calls[0][0].where).toEqual({ patientId: 'p-1', consultationId: { in: ['c-1', null] } });
+
+    prisma.consultation.findFirst.mockResolvedValue(null);
+    await expect(svc.draftReply(user, { patientId: 'p-1', consultationId: 'someone-elses' })).rejects.toThrow(/isn’t this patient’s/);
+
+    // Without a conversation, everything the patient wrote.
+    const all = build(ai(ok({ draft: 'Hi', language: 'en', needs_clinician: false, reason: '' })));
+    await all.svc.draftReply(user, { patientId: 'p-1' });
+    expect(all.prisma.message.findMany.mock.calls[0][0].where).toEqual({ patientId: 'p-1' });
   });
 
   it('refuses when switched off, or when the patient has not written', async () => {
@@ -104,6 +120,31 @@ describe('MessageUrgencyService.check', () => {
     prisma.message.update.mockRejectedValue(new Error('db down'));
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(svc.check('m-1')).resolves.toBe(false);
+  });
+});
+
+describe('MessageUrgencyService.sweep', () => {
+  const build = (aiMock: any, rows: any[]) => {
+    const prisma: any = { message: { findMany: jest.fn().mockResolvedValue(rows), findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) } };
+    const svc = new MessageUrgencyService(prisma, aiMock);
+    jest.spyOn(svc, 'check').mockImplementation(async (id: string) => id === 'm-urgent');
+    return { prisma, svc };
+  };
+
+  it('picks up patient messages with no result yet, between two minutes and six hours old, a few at a time', async () => {
+    const now = new Date('2026-10-12T12:00:00Z');
+    const { prisma, svc } = build(ai(ok({})), [{ id: 'm-1' }, { id: 'm-urgent' }]);
+    expect(await svc.sweep(now)).toBe(1);
+    const where = prisma.message.findMany.mock.calls[0][0];
+    expect(where.where).toMatchObject({ senderRole: 'PATIENT', aiCheckedAt: null });
+    expect(where.where.sentAt).toEqual({ lte: new Date('2026-10-12T11:58:00Z'), gte: new Date('2026-10-12T06:00:00Z') });
+    expect(where.take).toBe(20);
+  });
+
+  it('does nothing when the helper is off', async () => {
+    const { prisma, svc } = build(ai(ok({}), false), [{ id: 'm-1' }]);
+    expect(await svc.sweep()).toBe(0);
+    expect(prisma.message.findMany).not.toHaveBeenCalled();
   });
 });
 

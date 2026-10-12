@@ -16,6 +16,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { findQuestionnaire, type Question } from '../src/questionnaires/definitions';
 import { evaluateAnswers } from '../src/questionnaires/evaluate';
 import { triageEligibility } from '../src/questionnaires/triage';
+import { CURRENT_CONSENTS } from '../src/consents/consent-texts';
+import { ConsentType } from '../src/common/enums';
 
 const DAY = 86_400_000;
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY);
@@ -120,24 +122,24 @@ async function main() {
       prisma.lead.create({ data: { email, firstName: first, lastName: last, productKind: 'HRT', quizAnswers: ok, ...create } });
 
     await lead('demo.returning@example.com', 'Rina', 'Returning', {
-      intakeAnswers: intake('HRT'), intakeConsentVersion: '1', intakeSavedAt: daysAgo(14), createdAt: daysAgo(14), updatedAt: daysAgo(14),
+      intakeAnswers: intake('HRT'), intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version, intakeSavedAt: daysAgo(14), createdAt: daysAgo(14), updatedAt: daysAgo(14),
     });
     await lead('demo.stale@example.com', 'Stela', 'Stale', {
-      intakeAnswers: intake('HRT'), intakeConsentVersion: '1', intakeSavedAt: daysAgo(45), createdAt: daysAgo(45), updatedAt: daysAgo(45),
+      intakeAnswers: intake('HRT'), intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version, intakeSavedAt: daysAgo(45), createdAt: daysAgo(45), updatedAt: daysAgo(45),
     });
     await lead('demo.checkout@example.com', 'Celina', 'Checkout', {
-      intakeAnswers: intake('HRT'), intakeConsentVersion: '1', intakeSavedAt: daysAgo(6), createdAt: daysAgo(6), updatedAt: daysAgo(3),
+      intakeAnswers: intake('HRT'), intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version, intakeSavedAt: daysAgo(6), createdAt: daysAgo(6), updatedAt: daysAgo(3),
       checkoutDetails: { name: 'Celina Checkout', line1: 'Rr. Demo 1', city: 'Prizren', postalCode: '20000', country: 'Kosovo' },
       reminderCount: 1, lastReminderAt: daysAgo(3), referralCode: 'DEMO-FRIEND',
     });
     await lead('demo.quizonly@example.com', 'Quira', 'Quizonly', { createdAt: daysAgo(2), updatedAt: daysAgo(2) });
     await lead('demo.stopped@example.com', 'Stefi', 'Stopped', {
-      intakeAnswers: intake('HRT'), intakeConsentVersion: '1', intakeSavedAt: daysAgo(9), createdAt: daysAgo(9), updatedAt: daysAgo(9),
+      intakeAnswers: intake('HRT'), intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version, intakeSavedAt: daysAgo(9), createdAt: daysAgo(9), updatedAt: daysAgo(9),
       reminderCount: 1, lastReminderAt: daysAgo(7), remindersStoppedAt: daysAgo(7),
     });
     const ruledOut = eligibility('HRT', { medical_history: 'breast_cancer' });
     if (triageEligibility('HRT' as any, ruledOut as any).riskTag !== 'RED') console.warn('Note: the "ruled out" example lead did not come out as high risk; check the option value.');
-    await lead('demo.ruledout@example.com', 'Rhea', 'Ruledout', { quizAnswers: ruledOut, intakeAnswers: intake('HRT'), intakeConsentVersion: '1', intakeSavedAt: daysAgo(5), createdAt: daysAgo(5), updatedAt: daysAgo(5) });
+    await lead('demo.ruledout@example.com', 'Rhea', 'Ruledout', { quizAnswers: ruledOut, intakeAnswers: intake('HRT'), intakeConsentVersion: CURRENT_CONSENTS[ConsentType.TELEHEALTH].version, intakeSavedAt: daysAgo(5), createdAt: daysAgo(5), updatedAt: daysAgo(5) });
 
     // ── Alma: HRT patient with a chain of prescriptions, check-ins and lab results ───────────────────────────
     const address = { addressLine1: 'Rruga Demo 12', city: 'Prishtinë', postcode: '10000', country: 'Kosovo', phone: '+383 44 000 111' };

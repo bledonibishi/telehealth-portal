@@ -176,7 +176,7 @@ export default function LabReportDialog({
               <span className="block text-sm font-medium text-gray-800">{file ? file.name : t('Choose a file')}</span>
               <span className="block text-xs text-gray-400 mt-1">{file ? `${Math.max(1, Math.round(file.size / 1024))} KB` : t('PDF, JPEG, PNG or WebP, up to 15 MB')}</span>
             </button>
-            <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={input} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <label className="block">
               <span className="block text-xs text-gray-500 mb-1">{t('Note (optional)')}</span>
               <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={cell} />

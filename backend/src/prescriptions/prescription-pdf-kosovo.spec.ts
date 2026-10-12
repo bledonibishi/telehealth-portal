@@ -1,4 +1,4 @@
-import { renderKosovoPrescriptionPdf } from './prescription-pdf-kosovo';
+import { BELOW_RP, planRpPages, renderKosovoPrescriptionPdf } from './prescription-pdf-kosovo';
 import { PrescriptionPdfInput } from './prescription-pdf';
 
 const item = (n: number, over: object = {}) => ({
@@ -49,6 +49,50 @@ describe('renderKosovoPrescriptionPdf', () => {
 
   it('moves a long medicine list to a new page', async () => {
     const pdf = await renderKosovoPrescriptionPdf(rx({ items: Array.from({ length: 9 }, (_, i) => item(i + 1)) }), clinic);
+    expect(pages(pdf)).toBeGreaterThan(1);
+  });
+});
+
+describe('planRpPages', () => {
+  const BOTTOM = 841.89 - 50;
+  // Where the first box starts on a normal prescription (below the institution, patient and allergy boxes).
+  const FIRST_TOP = 302;
+
+  it('keeps a short list in one box, clear of the sections below it', () => {
+    const plan = planRpPages([90, 90], FIRST_TOP);
+    expect(plan.chunks).toHaveLength(1);
+    expect(plan.sectionsOnNewPage).toBe(false);
+    const c = plan.chunks[0];
+    expect(c.top + Math.max(c.height, 150) + BELOW_RP).toBeLessThanOrEqual(BOTTOM);
+  });
+
+  it('moves the last medicine to a new page when the box would crowd the signature and pharmacy sections', () => {
+    // Three medicines that fit the page on their own, but leave less than the sections below need.
+    const plan = planRpPages([150, 150, 150], FIRST_TOP);
+    expect(plan.chunks.map((c) => c.items)).toEqual([[0, 1], [2]]);
+    for (const c of plan.chunks.slice(0, -1)) expect(c.top + c.height).toBeLessThanOrEqual(BOTTOM);
+    const last = plan.chunks[plan.chunks.length - 1];
+    expect(last.top + Math.max(last.height, 150) + BELOW_RP).toBeLessThanOrEqual(BOTTOM);
+  });
+
+  it('starts a continuation box at the top of each new page, and never leaves a box with nothing in it', () => {
+    const plan = planRpPages(Array.from({ length: 12 }, () => 150), FIRST_TOP);
+    expect(plan.chunks.length).toBeGreaterThan(1);
+    expect(plan.chunks.slice(1).every((c) => c.top === 40)).toBe(true);
+    expect(plan.chunks.every((c) => c.items.length > 0)).toBe(true);
+    expect(plan.chunks.flatMap((c) => c.items)).toEqual(Array.from({ length: 12 }, (_, i) => i));
+  });
+
+  it('gives the sections a page of their own when even one medicine in the last box leaves no room for them', () => {
+    expect(planRpPages([380], FIRST_TOP).sectionsOnNewPage).toBe(true);
+  });
+});
+
+describe('renderKosovoPrescriptionPdf with long directions', () => {
+  it('draws a long prescription as a valid PDF over more pages, with nothing lost', async () => {
+    const long = 'Take one capsule by mouth at bedtime every night. '.repeat(18);
+    const pdf = await renderKosovoPrescriptionPdf(rx({ items: Array.from({ length: 6 }, (_, i) => item(i + 1, { directions: long })) }), clinic);
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     expect(pages(pdf)).toBeGreaterThan(1);
   });
 });

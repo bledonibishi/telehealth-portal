@@ -13,7 +13,7 @@ export const LANGUAGES: Record<string, string> = { en: 'English', sq: 'Albanian'
 const SYSTEM = `You write a short brief for a doctor who is about to review a patient's monthly check-in at an online clinic. The doctor decides everything; you only save them time reading.
 
 You are given a numbered list of FACTS about the patient, already worked out. Write:
-- headline: one sentence saying what stands out most. If nothing does, say it was an uneventful check-in.
+- headline: one sentence saying what stands out most, with the ids of the facts it rests on in sources, held to exactly the same rules as a bullet. If nothing stands out, say it was an uneventful check-in and cite the facts that show it.
 - bullets: 3 to 7 short bullets about what a doctor would want to know first: changes since last time, anything that raises concern (flags, side effects, missed doses, out-of-range results), and anything notable the patient said. Order them by importance and mark the important ones "high".
 
 Rules, all of them strict:
@@ -27,7 +27,12 @@ Rules, all of them strict:
 const SCHEMA = {
   type: 'object',
   properties: {
-    headline: { type: 'string' },
+    headline: {
+      type: 'object',
+      properties: { text: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } }, importance: { type: 'string', enum: ['high', 'normal'] } },
+      required: ['text', 'sources', 'importance'],
+      additionalProperties: false,
+    },
     bullets: {
       type: 'array',
       items: {
@@ -41,6 +46,9 @@ const SCHEMA = {
   required: ['headline', 'bullets'],
   additionalProperties: false,
 };
+
+/** Shown in place of a headline that couldn't be backed by the record: it claims nothing. */
+const PLAIN_HEADLINE: Record<string, string> = { en: 'Brief of this check-in', sq: 'Përmbledhje e këtij kontrolli', de: 'Kurzfassung dieses Check-ins', es: 'Resumen de este control' };
 
 const SOURCE_LABEL: Record<FactKind, string> = { weight: 'Weight', answers: 'Answers', flags: 'Flags', side_effects: 'Side effects', doses: 'Doses', labs: 'Labs', treatment: 'Treatment', orders: 'Orders', patient: 'Patient' };
 
@@ -135,7 +143,7 @@ export class CheckInBriefService {
       if (hit) return this.view(hit.output as any, facts, hit.model, hit.createdAt, true);
     }
 
-    const result = await this.ai.json<{ headline: string; bullets: Bullet[] }>({
+    const result = await this.ai.json<{ headline: Bullet; bullets: Bullet[] }>({
       feature: 'brief',
       system: SYSTEM,
       user: `Write the brief in ${LANGUAGES[lang]}.\n\nFACTS:\n${facts.map((f) => `${f.id}: ${f.text}`).join('\n')}`,
@@ -146,7 +154,10 @@ export class CheckInBriefService {
     if (result.status !== 'COMPLETED') throw new BadRequestException(result.reason);
 
     const { kept, dropped } = verifyBullets(Array.isArray(result.data.bullets) ? result.data.bullets : [], facts);
-    const stored = { headline: String(result.data.headline ?? '').slice(0, 300), bullets: kept, removed: dropped };
+    // The headline is shown most prominently, so it is checked like any bullet: cited facts that exist, and no number they don't hold.
+    // One that fails is replaced by a plain title, never shown.
+    const headline = verifyBullets(result.data.headline ? [result.data.headline] : [], facts).kept[0];
+    const stored = { headline: headline?.text.slice(0, 300) ?? PLAIN_HEADLINE[lang], bullets: kept, removed: dropped + (headline ? 0 : 1) };
     const row = await this.prisma.aiOutput.upsert({
       where: { kind_subjectId_inputHash: { kind: 'check-in-brief', subjectId: checkInId, inputHash } },
       create: { kind: 'check-in-brief', subjectId: checkInId, inputHash, output: stored as any, model: result.model, createdById: actorId },
