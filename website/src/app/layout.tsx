@@ -4,7 +4,7 @@ import ReferralCapture from '@/components/ReferralCapture';
 import Analytics from '@/components/Analytics';
 
 export const metadata: Metadata = {
-  title: 'Primavera Healthcare – Doctor-led menopause, weight and men’s health care',
+  title: 'Omo Pharmacy – Doctor-led menopause, weight and men’s health care',
   description:
     'Licensed clinicians. Prescription treatment only if your doctor decides it is right for you. Free delivery to Kosovo. Check your eligibility in about 5 minutes.',
 };

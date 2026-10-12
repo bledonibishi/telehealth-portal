@@ -346,7 +346,7 @@ export default function HomePage() {
                   </a>
                 </div>
                 <p className="pv-info-note">
-                  Primavera Healthcare operates under Kosovo healthcare regulations.
+                  Omo Pharmacy operates under Kosovo healthcare regulations.
                   All prescriptions are issued by licensed clinicians and dispensed by registered pharmacies.
                 </p>
               </div>
@@ -360,7 +360,10 @@ export default function HomePage() {
       <footer className="pv-footer">
         <div className="pv-footer-inner">
           <div>
-            <div className="pv-footer-logo">Primavera <span>Health</span></div>
+            <div className="pv-footer-logo">
+              <img src="/omo-logo.png?v=2" alt="" width={30} height={30} />
+              <span>Omo <span>Pharmacy</span></span>
+            </div>
             <p className="pv-footer-tagline">
               Licensed prescription healthcare for HRT and weight management, delivered online to Kosovo.
             </p>
@@ -383,7 +386,7 @@ export default function HomePage() {
         </div>
         <div className="pv-footer-bottom">
           <span style={{ color: 'rgba(255,255,255,.4)' }}>
-            © {new Date().getFullYear()} Primavera Healthcare. All rights reserved.
+            © {new Date().getFullYear()} Omo Pharmacy. All rights reserved.
           </span>
           <div className="pv-footer-legal">
             <a href="#">Privacy Policy</a>
