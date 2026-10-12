@@ -4,13 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import { PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MessageTicks, tickStateOf } from '@/components/consultation/MessageTicks';
 import { ConversationWatchers } from '@/components/consultation/ConversationWatchers';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { getToken } from '@/lib/auth';
+import { SkeletonMessages } from '@telehealth/loading';
+import { DraftReplyButton, TranslateMessage, UrgentTag, useUrgentMessages } from '@/components/ai/MessageAiTools';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -42,6 +45,7 @@ export default function PatientChatWindow({
   const me = useMemo(currentUserId, []);
   const [minimised, setMinimised] = useState(false);
   const [content, setContent] = useState('');
+  const urgent = useUrgentMessages(patientId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -52,9 +56,12 @@ export default function PatientChatWindow({
   });
   const connected = useRealtimeConnected(realtime);
   const consultations: Array<{ id: string; messages: Message[] }> = data?.patient?.consultations ?? [];
+  // Messages from before the patient had a consultation; replies go there until they have one.
+  const preConsultation: Message[] = data?.preConsultationMessages ?? [];
   const messages: Message[] = useMemo(() => {
     const byId = new Map<string, Message>();
     consultations.forEach((c) => (c.messages ?? []).forEach((m) => byId.set(m.id, m)));
+    preConsultation.forEach((m) => byId.set(m.id, m));
     return [...byId.values()].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -66,28 +73,73 @@ export default function PatientChatWindow({
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
       return {
+        ...existing,
         patient: {
           ...existing.patient,
           consultations: existing.patient.consultations.map((c: any) =>
             c.id !== consultationId || c.messages.some((m: Message) => m.id === message.id)
               ? c
-              : { ...c, messages: [...c.messages, message] },
+              : { ...c, messages: [...c.messages, { readAt: null, ...message }] },
           ),
         },
       };
     });
   };
 
+  const patchPre = (change: (messages: Message[]) => Message[]) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) =>
+      existing ? { ...existing, preConsultationMessages: change(existing.preConsultationMessages ?? []) } : existing,
+    );
+  };
+
+  // Change every message of one consultation in the cached conversation.
+  const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
+      if (!existing?.patient) return existing;
+      return { ...existing, patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+    });
+  };
+
+  // Having the conversation open reads it: the patient's ticks turn blue. One request per consultation
+  // with something unread; a minimised window is not "reading".
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const [markPreRead] = useMutation(MARK_PRE_CONSULTATION_READ);
+  const marking = useRef(new Set<string>());
   useEffect(() => {
-    if (connected) return;
+    if (minimised) return;
+    for (const c of consultations) {
+      if (marking.current.has(c.id) || !(c.messages ?? []).some((m) => m.senderRole === 'PATIENT' && !m.readAt)) continue;
+      marking.current.add(c.id);
+      const readAt = new Date().toISOString();
+      markRead({ variables: { consultationId: c.id } })
+        .then(() => patchMessages(c.id, (m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m)))
+        .catch(() => undefined) // still unread on the server; tried again next time the window is open
+        .finally(() => marking.current.delete(c.id));
+    }
+    if (!marking.current.has('pre') && preConsultation.some((m) => m.senderRole === 'PATIENT' && !m.readAt)) {
+      marking.current.add('pre');
+      const readAt = new Date().toISOString();
+      markPreRead({ variables: { patientId } })
+        .then(() => patchPre((ms) => ms.map((m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m))))
+        .catch(() => undefined)
+        .finally(() => marking.current.delete('pre'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minimised, data]);
+
+  // The pre-consultation thread has no live channel, so it is always polled.
+  const live = connected && consultations.length > 0;
+  useEffect(() => {
+    if (live) return;
     startPolling(FALLBACK_POLL_MS);
     return stopPolling;
-  }, [connected, startPolling, stopPolling]);
+  }, [live, startPolling, stopPolling]);
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     onCompleted({ sendMessage: message }) {
       if (replyTo) addToCache(replyTo, message);
+      else patchPre((ms) => (ms.some((m) => m.id === message.id) ? ms : [...ms, { readAt: null, ...message }]));
       setContent('');
       if (inputRef.current) inputRef.current.style.height = 'auto';
       onActivity();
@@ -103,8 +155,8 @@ export default function PatientChatWindow({
 
   const submit = () => {
     const text = content.trim();
-    if (!text || sending || !replyTo) return;
-    sendMessage({ variables: { input: { consultationId: replyTo, content: text } } });
+    if (!text || sending) return;
+    sendMessage({ variables: { input: replyTo ? { consultationId: replyTo, content: text } : { patientId, content: text } } });
   };
 
   // Group the thread by day, and collapse the sender label for consecutive messages.
@@ -123,7 +175,7 @@ export default function PatientChatWindow({
   return (
     <aside
       aria-label={t('Chat with {name}', { name: patientName })}
-      className={`fixed bottom-5 right-6 z-30 w-[384px] max-w-[calc(100vw-2rem)] flex flex-col overflow-hidden rounded-3xl border border-sky-200/80 bg-[#f4f9ff] shadow-[0_24px_60px_-12px_rgba(14,80,160,0.5)] animate-slide-in-right ${
+      className={`fixed bottom-5 right-6 z-30 w-[384px] max-w-[calc(100vw-2rem)] flex flex-col overflow-hidden rounded-xl border border-sky-200/80 bg-[#f4f9ff] shadow-[0_24px_60px_-12px_rgba(14,80,160,0.5)] animate-slide-in-right ${
         minimised ? '' : 'h-[min(560px,calc(100vh-6rem))]'
       }`}
     >
@@ -133,6 +185,8 @@ export default function PatientChatWindow({
           addToCache(consultationId, message);
           onActivity();
         }}
+        // The patient opened the chat: what the care team sent is now read.
+        onRead={(r) => r.byPatient && patchMessages(r.consultationId, (m) => (m.senderRole !== 'PATIENT' && !m.readAt ? { ...m, readAt: r.readAt } : m))}
       />
 
       <div
@@ -160,7 +214,7 @@ export default function PatientChatWindow({
       {!minimised && (
         <>
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-1 bg-[#eaf3ff]">
-            {loading && messages.length === 0 && <p className="text-xs text-slate-400 text-center">{t('Loading…')}</p>}
+            {loading && messages.length === 0 && <SkeletonMessages label={t('Loading…')} />}
             {!loading && messages.length === 0 && (
               <p className="h-full flex items-center justify-center text-sm text-slate-400 text-center px-6">
                 {t('No messages yet. Messages you send go straight to the patient’s portal.')}
@@ -180,6 +234,7 @@ export default function PatientChatWindow({
                       {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : t('Care team')}
                     </span>
                   )}
+                  {urgent.has(row.m.id) && <div className="mb-1 px-1"><UrgentTag reason={urgent.get(row.m.id) ?? ''} /></div>}
                   <div
                     className={`max-w-[82%] rounded-[20px] px-3.5 py-2 text-[15px] leading-snug whitespace-pre-wrap break-words ${
                       row.isMe
@@ -188,25 +243,29 @@ export default function PatientChatWindow({
                     }`}
                   >
                     {row.m.content}
-                    <span className={`block text-[10px] mt-0.5 text-right ${row.isMe ? 'text-sky-100' : 'text-slate-400'}`}>
+                    <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-0.5 ${row.isMe ? 'text-sky-100' : 'text-slate-400'}`}>
                       {fmt(row.m.sentAt, 'HH:mm')}
+                      {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}
                     </span>
                   </div>
+                  {row.m.senderRole === 'PATIENT' && <div className="max-w-[82%] px-1"><TranslateMessage messageId={row.m.id} /></div>}
                 </div>
               ),
             )}
           </div>
 
+          <div className="shrink-0 border-t border-sky-100 bg-[#f4f9ff] px-3 pt-2">
+            <DraftReplyButton patientId={patientId} consultationId={replyTo ?? null} onDraft={(text) => { setContent(text); inputRef.current?.focus(); }} />
+          </div>
           <form
             onSubmit={(e) => { e.preventDefault(); submit(); }}
-            className="shrink-0 border-t border-sky-100 bg-[#f4f9ff] p-3 flex items-end gap-2"
+            className="shrink-0 bg-[#f4f9ff] p-3 flex items-end gap-2"
           >
             <textarea
               ref={inputRef}
               rows={1}
               value={content}
-              disabled={!replyTo && !loading}
-              placeholder={!replyTo && !loading ? t('No consultation to message against') : t('Write a message…')}
+              placeholder={t('Write a message…')}
               onChange={(e) => setContent(e.target.value)}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -216,11 +275,11 @@ export default function PatientChatWindow({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
               }}
-              className="flex-1 resize-none rounded-2xl border border-sky-200 bg-[#ffffff] px-3.5 py-2.5 text-[15px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-400 focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="flex-1 resize-none rounded-lg border border-sky-200 bg-[#ffffff] px-3.5 py-2.5 text-[15px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-400 focus-visible:ring-0 focus-visible:ring-offset-0"
             />
             <button
               type="submit"
-              disabled={sending || !content.trim() || !replyTo}
+              disabled={sending || !content.trim()}
               aria-label={t('Send message')}
               className="w-10 h-10 shrink-0 rounded-full bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 hover:bg-sky-400 transition-colors disabled:bg-sky-200 disabled:text-white disabled:shadow-none"
             >

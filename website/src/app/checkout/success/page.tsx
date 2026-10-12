@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG } from '@/lib/config';
 import { loadAssessment } from '@/lib/storage';
+import { clearReferralCode } from '@/lib/referral';
 
 interface SuccessInfo {
   ready: boolean;
@@ -28,6 +29,11 @@ function SuccessInner() {
   const [storedEmail, setStoredEmail] = useState<string | undefined>();
 
   useEffect(() => setStoredEmail(loadAssessment()?.email), []);
+
+  // The friend's link did its job with this order; it must not attach to the next quiz started in this browser.
+  useEffect(() => {
+    if (!failed && (sessionId || paymentIntent)) clearReferralCode();
+  }, [failed, sessionId, paymentIntent]);
 
   useEffect(() => {
     if (failed || (!sessionId && !paymentIntent)) return;
@@ -108,9 +114,9 @@ function SuccessInner() {
           </a>
         </div>
 
-        <div className="th-success-card">
-          <h2>Give $20, get $20</h2>
-          <p>Share your link. When a friend joins, they get $20 off their first order and you get $20 off your next one.</p>
+        <div className="th-success-card referral">
+          <h2>Give <span className="th-price">$20</span>, get <span className="th-price">$20</span></h2>
+          <p>Share your link. When a friend joins, they get <span className="th-price">$20</span> off their first order and you get <span className="th-price">$20</span> off your next one.</p>
           {info?.referralLink ? (
             <div className="th-ref-row">
               <input className="th-ref-input" readOnly value={info.referralLink} onFocus={(e) => e.target.select()} />

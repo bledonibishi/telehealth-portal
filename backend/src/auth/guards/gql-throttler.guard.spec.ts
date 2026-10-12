@@ -22,7 +22,7 @@ class FakeStorage {
   }
 }
 
-type Mutation = 'loginClinician' | 'loginPatient' | 'verifyMfa';
+type Mutation = 'loginClinician' | 'loginPatient' | 'verifyMfa' | 'acceptClinicianInvite';
 
 describe('GqlThrottlerGuard', () => {
   let storage: FakeStorage;
@@ -94,6 +94,16 @@ describe('GqlThrottlerGuard', () => {
     }
     expect(await attempt('verifyMfa', { pendingToken: 'clinician-1:new', totpCode: '123456' }, true)).toBe('throttled');
     expect(await attempt('verifyMfa', { pendingToken: 'clinician-2:a', totpCode: '123456' }, true)).toBe('ok');
+  });
+
+  it('counts invitation links one by one: bad attempts on some links do not lock out a clinician using their own', async () => {
+    for (let i = 0; i < 6; i++) {
+      await attempt('acceptClinicianInvite', { token: `guess-${i}`, password: 'a-long-enough-password' }, false);
+    }
+    expect(await attempt('acceptClinicianInvite', { token: 'their-real-link', password: 'a-long-enough-password' }, true)).toBe('ok');
+    // The same link tried over and over is still stopped.
+    for (let i = 0; i < 5; i++) await attempt('acceptClinicianInvite', { token: 'one-link', password: `guess-number-${i}` }, false);
+    expect(await attempt('acceptClinicianInvite', { token: 'one-link', password: 'a-long-enough-password' }, true)).toBe('throttled');
   });
 
   it('does not count a forged pending token against the clinician it names', async () => {

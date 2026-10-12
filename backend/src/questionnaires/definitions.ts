@@ -30,6 +30,10 @@ export interface Question {
   min?: number;
   max?: number;
   unit?: string;
+  // A text question with a ready answer the patient can tap instead of typing (e.g. “None”).
+  quickAnswer?: string;
+  // Single choice only: turns an answer that isn't one of the options (a figure the client worked out) into the value of the option it falls under.
+  interpret?: (raw: string) => string | undefined;
   // Asked only when an earlier single/multi question has one of these values.
   showIf?: { questionId: string; anyOf: string[] };
 }
@@ -122,6 +126,14 @@ const HRT_ELIGIBILITY: Questionnaire = {
   ],
 };
 
+/** The band of a calculated BMI answer ("BMI 34.2 (calculated from 168 cm, 92 kg)"); nothing for any other text or an impossible figure. */
+export function bmiBandOf(raw: string): string | undefined {
+  const m = /^BMI (\d+(?:\.\d+)?)\b/.exec(raw.trim());
+  const bmi = m ? Number(m[1]) : NaN;
+  if (!Number.isFinite(bmi) || bmi < 10 || bmi > 100) return undefined;
+  return bmi >= 30 ? '30_plus' : bmi >= 27 ? '27_29' : 'under_27';
+}
+
 const GLP1_ELIGIBILITY: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'ELIGIBILITY',
@@ -144,6 +156,9 @@ const GLP1_ELIGIBILITY: Questionnaire = {
       id: 'bmi',
       text: 'What is your BMI?',
       type: 'single',
+      // The website asks for height and weight and sends "BMI 34.2 (calculated from 168 cm, 92 kg)": sorted into the
+      // same bands here, so the server enforces the BMI rules itself and not only the browser.
+      interpret: bmiBandOf,
       options: [
         { value: '30_plus', label: '30 or above' },
         { value: '27_29', label: '27 to 29.9' },
@@ -280,8 +295,9 @@ const COMMON_INTAKE: Question[] = [
     text: 'Which medicines, supplements or remedies do you take?',
     help: 'Include the dose if you know it. Write “None” if you take nothing.',
     type: 'text',
+    quickAnswer: 'None',
   },
-  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text' },
+  { id: 'allergies', text: 'Do you have any allergies to medicines?', help: 'Write “None” if you have none.', type: 'text', quickAnswer: 'None' },
   { id: 'other_conditions', text: 'Any other medical conditions we should know about?', type: 'text', optional: true },
   {
     id: 'gp_details',
@@ -398,10 +414,15 @@ const HRT_INTAKE: Questionnaire = {
   ],
 };
 
+// Prior GLP-1 use is asked as fixed options, not free text: the prescription
+// proof review (onboarding/prior-dose-assessment.ts) reads these values to
+// compare the dose the patient was on with the dose they bought.
+const doseOptions = (labels: string[]): Option[] => labels.map((l) => ({ value: l, label: l }));
+
 const GLP1_INTAKE: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'INTAKE',
-  version: 1,
+  version: 2,
   title: 'Weight management medical questionnaire',
   derive: deriveVitals(ConsultationKind.GLP1),
   questions: [
@@ -413,11 +434,60 @@ const GLP1_INTAKE: Questionnaire = {
       options: yesNo(),
     },
     {
-      id: 'glp1_prior_details',
-      text: 'Which medicine, what dose, and when did you last inject?',
-      help: 'You’ll upload proof in the next step. Without it, treatment restarts on the lowest dose.',
-      type: 'text',
+      id: 'glp1_prior_medicine',
+      text: 'Which medicine were you using most recently?',
+      help: 'You’ll upload proof in a later step. Without it, treatment restarts on the lowest dose.',
+      type: 'single',
       showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'mounjaro', label: 'Mounjaro (tirzepatide)' },
+        { value: 'wegovy', label: 'Wegovy (semaglutide)' },
+        { value: 'ozempic', label: 'Ozempic (semaglutide)' },
+        { value: 'other', label: 'Something else', flag: warning('Previously used a GLP-1 we don’t supply — check the switch dose') },
+      ],
+    },
+    {
+      id: 'glp1_prior_dose_tirzepatide',
+      text: 'What was your most recent weekly dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['mounjaro'] },
+      options: doseOptions(['2.5 mg', '5 mg', '7.5 mg', '10 mg', '12.5 mg', '15 mg']),
+    },
+    {
+      id: 'glp1_prior_dose_semaglutide',
+      text: 'What was your most recent weekly dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['wegovy', 'ozempic'] },
+      options: doseOptions(['0.25 mg', '0.5 mg', '1 mg', '1.7 mg', '2 mg', '2.4 mg']),
+    },
+    {
+      id: 'glp1_prior_other_details',
+      text: 'Which medicine and what dose?',
+      type: 'text',
+      showIf: { questionId: 'glp1_prior_medicine', anyOf: ['other'] },
+    },
+    {
+      id: 'glp1_last_dose',
+      text: 'When did you last inject?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'under_1_week', label: 'In the last week' },
+        { value: '1_2_weeks', label: '1 to 2 weeks ago' },
+        { value: '2_4_weeks', label: '2 to 4 weeks ago' },
+        { value: '4_8_weeks', label: '4 to 8 weeks ago' },
+        { value: 'over_8_weeks', label: 'More than 8 weeks ago' },
+      ],
+    },
+    {
+      id: 'glp1_weeks_on_dose',
+      text: 'How long have you been on that dose?',
+      type: 'single',
+      showIf: { questionId: 'glp1_prior_use', anyOf: ['yes'] },
+      options: [
+        { value: 'under_4_weeks', label: 'Less than 4 weeks' },
+        { value: '4_plus_weeks', label: '4 weeks or more' },
+      ],
     },
     {
       id: 'diabetes_medicines',
@@ -520,8 +590,8 @@ const TRT_INTAKE: Questionnaire = {
   ],
 };
 
-// ── Monthly check-in ────────────────────────────────────────────────────────
-// Answered each month before the next supply; a doctor reviews it and decides
+// ── Check-in ───────────────────────────────────────────────────────────
+// Answered every 4 weeks before the next supply; a doctor reviews it and decides
 // whether to repeat, change the dose, hold or stop.
 
 const URGENT = 'If this is severe or getting worse, don’t wait for us — call 112 or go to your nearest emergency department.';
@@ -541,7 +611,7 @@ const GLP1_CHECKIN: Questionnaire = {
   kind: ConsultationKind.GLP1,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     { id: 'weight_kg', text: 'What is your weight today?', type: 'number', unit: 'kg', min: 30, max: 300 },
     {
@@ -607,7 +677,7 @@ const HRT_CHECKIN: Questionnaire = {
   kind: ConsultationKind.HRT,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     {
       id: 'symptom_control',
@@ -670,7 +740,7 @@ const TRT_CHECKIN: Questionnaire = {
   kind: ConsultationKind.TRT,
   stage: 'CHECKIN',
   version: 1,
-  title: 'Monthly check-in',
+  title: 'Check-in',
   questions: [
     {
       id: 'symptom_control',

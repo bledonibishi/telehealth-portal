@@ -4,7 +4,9 @@ import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_DASHBOARD_METRICS } from '@/graphql/dashboard';
 import { getCurrentRole } from '@/lib/role';
+import RevenuePanel from '@/components/insights/RevenuePanel';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { SkeletonStat } from '@telehealth/loading';
 
 type Metrics = {
   totalLeads: number;
@@ -40,7 +42,7 @@ function StatCard({ label, value, sub, href, accent = 'blue' }: StatCardProps) {
   const { bar, num } = accentMap[accent];
 
   const inner = (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-2 hover:shadow-sm transition-shadow">
+    <div className="bg-white rounded-md border border-gray-200 p-5 flex flex-col gap-2 hover:shadow-sm transition-shadow">
       <div className={`w-8 h-1 rounded-full ${bar}`} />
       <p className={`text-3xl font-bold ${num}`}>{value}</p>
       <p className="text-sm font-medium text-gray-700">{t(label)}</p>
@@ -59,16 +61,6 @@ function Section({ title, children }: SectionProps) {
     <div>
       <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t(title)}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{children}</div>
-    </div>
-  );
-}
-
-function SkeletonCard() {
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
-      <div className="w-8 h-1 bg-gray-200 rounded-full mb-3" />
-      <div className="h-8 w-20 bg-gray-200 rounded mb-2" />
-      <div className="h-4 w-32 bg-gray-100 rounded" />
     </div>
   );
 }
@@ -100,9 +92,11 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
 
+      <RevenuePanel />
+
       <Section title="Leads">
         {loading ? (
-          [1, 2, 3].map((k) => <SkeletonCard key={k} />)
+          [1, 2, 3].map((k) => <SkeletonStat key={k} />)
         ) : (
           <>
             <StatCard
@@ -132,7 +126,7 @@ export default function DashboardPage() {
 
       <Section title="Patients">
         {loading ? (
-          [1, 2, 3, 4].map((k) => <SkeletonCard key={k} />)
+          [1, 2, 3, 4].map((k) => <SkeletonStat key={k} />)
         ) : (
           <>
             <StatCard
@@ -168,7 +162,7 @@ export default function DashboardPage() {
 
       <Section title="Consultations">
         {loading ? (
-          [1, 2].map((k) => <SkeletonCard key={k} />)
+          [1, 2].map((k) => <SkeletonStat key={k} />)
         ) : (
           <>
             <StatCard
@@ -191,7 +185,7 @@ export default function DashboardPage() {
 
       <Section title="Orders">
         {loading ? (
-          [1, 2].map((k) => <SkeletonCard key={k} />)
+          [1, 2].map((k) => <SkeletonStat key={k} />)
         ) : (
           <>
             <StatCard

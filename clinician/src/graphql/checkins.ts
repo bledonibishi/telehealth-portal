@@ -7,6 +7,32 @@ export const RESCHEDULE_CHECK_IN = gql`
       id
       status
       dueAt
+      sentAt
+      tokenExpiresAt
+      checkInUrl
+    }
+  }
+`;
+
+export const PROCESS_PRESCRIPTION_NOW = gql`
+  mutation ProcessPrescriptionNow($prescriptionId: ID!) {
+    processPrescriptionNow(prescriptionId: $prescriptionId) {
+      id
+      status
+      dueAt
+    }
+  }
+`;
+
+export const ISSUE_CHECK_IN_LINK = gql`
+  mutation IssueCheckInLink($id: ID!, $sendEmail: Boolean!) {
+    issueCheckInLink(id: $id, sendEmail: $sendEmail) {
+      id
+      status
+      dueAt
+      sentAt
+      tokenExpiresAt
+      checkInUrl
     }
   }
 `;
@@ -109,6 +135,60 @@ export const MISSED_DOSE_ALERTS = gql`
       missedInARow
       missedSince
       lastTakenAt
+    }
+  }
+`;
+
+export const SIDE_EFFECT_ALERTS = gql`
+  query SideEffectAlerts {
+    sideEffectAlerts {
+      id
+      patientId
+      patientName
+      effects
+      severity
+      note
+      medication
+      createdAt
+    }
+  }
+`;
+
+export const ACKNOWLEDGE_SIDE_EFFECT = gql`
+  mutation AcknowledgeSideEffect($id: ID!) {
+    acknowledgeSideEffect(id: $id) {
+      id
+      acknowledgedAt
+    }
+  }
+`;
+
+export const SIDE_EFFECT_SUMMARY = gql`
+  query SideEffectSummary($patientId: ID!) {
+    sideEffectSummary(patientId: $patientId) {
+      lastLoggedAt
+      daysSinceLastLog
+      stale
+      needsAttention
+      reasons
+      roughDoses
+      scores {
+        key
+        label
+        latest
+        previous
+        peak
+        flagged
+        rising
+      }
+      reports {
+        id
+        effects
+        severity
+        note
+        createdAt
+        acknowledgedAt
+      }
     }
   }
 `;

@@ -10,10 +10,13 @@ describe('ConsultationsService', () => {
   let prisma: any;
   let billing: { cancelAndRefund: jest.Mock };
   let config: { get: jest.Mock };
-  let prescribing: { issue: jest.Mock; assertCanPrescribe: jest.Mock; assertIdentityVerified: jest.Mock };
+  let prescribing: { issue: jest.Mock; assertCanPrescribe: jest.Mock; assertReadyForDecision: jest.Mock; approveOnboarding: jest.Mock; notReadyReason: jest.Mock; notReadyReasons: jest.Mock };
   let messaging: { send: jest.Mock };
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let consents: { record: jest.Mock };
+  let audit: { log: jest.Mock };
+  let proofReview: { reassess: jest.Mock };
+  let dosePricing: { priceIdsFor: jest.Mock };
   let service: ConsultationsService;
 
   beforeEach(() => {
@@ -28,23 +31,32 @@ describe('ConsultationsService', () => {
           Promise.resolve({ id: 'new-1', status: 'SUBMITTED', kind: data.kind, redFlags: data.redFlags.create })),
       },
       patient: { findUnique: jest.fn().mockResolvedValue({ ...PATIENT, lead: null }) },
+      message: { updateMany: jest.fn().mockResolvedValue({ count: 0 }), findMany: jest.fn().mockResolvedValue([]) },
       clinician: { findUnique: jest.fn().mockResolvedValue(VERIFIED_DOCTOR) },
-      onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }) },
+      onboardingSubmission: { findUnique: jest.fn().mockResolvedValue({ status: 'APPROVED' }), upsert: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
+      // The claim's check that the clinician's account is still on.
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 'doc-1' }]),
     };
     prescribing = {
       issue: jest.fn().mockResolvedValue({ id: 'rx-1', medication: 'Estradiol', dosage: '0.06% × 1', contentHash: 'abc' }),
       assertCanPrescribe: jest.fn(),
-      assertIdentityVerified: jest.fn(),
+      assertReadyForDecision: jest.fn(),
+      approveOnboarding: jest.fn().mockResolvedValue(true),
+      notReadyReason: jest.fn().mockResolvedValue(null),
+      notReadyReasons: jest.fn().mockResolvedValue(new Map()),
     };
     billing = { cancelAndRefund: jest.fn().mockResolvedValue({ status: 'REFUNDED', subscriptionId: 'sub_1', refundId: 're_1' }) };
     config = { get: jest.fn((_key: string, fallback: string) => fallback) };
     messaging = { send: jest.fn() };
     email = { sendConsultationUpdateEmail: jest.fn() };
     consents = { record: jest.fn() };
+    audit = { log: jest.fn() };
+    proofReview = { reassess: jest.fn().mockResolvedValue(null) };
+    dosePricing = { priceIdsFor: jest.fn().mockReturnValue(null) };
     service = new ConsultationsService(
       prisma,
-      { log: jest.fn() } as any,
+      audit as any,
       { capture: jest.fn() } as any,
       { info: jest.fn() } as any,
       billing as any,
@@ -53,6 +65,9 @@ describe('ConsultationsService', () => {
       messaging as any,
       email as any,
       consents as any,
+      { trySendForPrescription: jest.fn() } as any,
+      proofReview as any,
+      dosePricing as any,
     );
   });
 
@@ -82,6 +97,25 @@ describe('ConsultationsService', () => {
       );
     });
 
+    it('records the approval against the patient, in the same transaction as the decision', async () => {
+      await service.approve('doc-1', approveInput);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CONSULTATION_APPROVED',
+          actorId: 'doc-1',
+          resourceId: 'consult-1',
+          patientId: PATIENT.id,
+          metadata: expect.objectContaining({ prescriptionId: 'rx-1', contentHash: 'abc' }),
+        }),
+        prisma,
+      );
+    });
+
+    it('fails the approval when the audit row cannot be written', async () => {
+      audit.log.mockRejectedValue(new Error('Audit log write failed'));
+      await expect(service.approve('doc-1', approveInput)).rejects.toThrow('Audit log write failed');
+    });
+
     it('does not approve when the prescription is rejected', async () => {
       prescribing.issue.mockRejectedValue(new Error('Record a clinical reason'));
       await expect(service.approve('doc-1', approveInput)).rejects.toThrow('Record a clinical reason');
@@ -91,7 +125,23 @@ describe('ConsultationsService', () => {
     it('checks the prescriber and the patient’s identity before issuing', async () => {
       await service.approve('doc-1', approveInput);
       expect(prescribing.assertCanPrescribe).toHaveBeenCalledWith('doc-1');
-      expect(prescribing.assertIdentityVerified).toHaveBeenCalledWith(PATIENT.id);
+      expect(prescribing.assertReadyForDecision).toHaveBeenCalledWith(PATIENT.id);
+    });
+
+    it('approves the patient’s onboarding in the same transaction, so there is one decision', async () => {
+      await service.approve('doc-1', approveInput);
+      expect(prescribing.approveOnboarding).toHaveBeenCalledWith(prisma, PATIENT.id, 'doc-1');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'CONSULTATION_APPROVED', metadata: expect.objectContaining({ onboardingApproved: true }) }),
+        prisma,
+      );
+    });
+
+    it('does not approve while the patient hasn’t finished onboarding', async () => {
+      prescribing.assertReadyForDecision.mockRejectedValue(new ForbiddenException('The patient hasn’t finished onboarding yet'));
+      await expect(service.approve('doc-1', approveInput)).rejects.toThrow(/finished onboarding/);
+      expect(prescribing.issue).not.toHaveBeenCalled();
+      expect(prisma.consultation.update).not.toHaveBeenCalled();
     });
 
     it('does not approve when the prescriber check fails', async () => {
@@ -99,6 +149,53 @@ describe('ConsultationsService', () => {
       await expect(service.approve('doc-1', approveInput)).rejects.toThrow('licence');
       expect(prescribing.issue).not.toHaveBeenCalled();
       expect(prisma.consultation.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('billing the prescribed dose on approval', () => {
+    beforeEach(() => {
+      dosePricing.priceIdsFor.mockReturnValue(['price_low']);
+      prisma.prescriptionItem = {
+        findMany: jest.fn().mockResolvedValue([
+          { product: { category: 'GLP1', name: 'Mounjaro', brandName: 'Mounjaro' }, strength: { titrationStep: 1, label: '2.5 mg', stripePriceId: 'price_low' } },
+        ]),
+      };
+      prisma.prescription = { count: jest.fn().mockResolvedValue(0) };
+      (billing as any).moveToPrescribedPrice = jest.fn().mockResolvedValue('Billing moved');
+    });
+
+    it('moves the first prescription onto the prescribed dose’s price', async () => {
+      const result: any = await service.approve('doc-1', approveInput);
+      expect((billing as any).moveToPrescribedPrice).toHaveBeenCalledWith(expect.objectContaining({ id: PATIENT.id }), ['price_low'], 'Mounjaro 2.5 mg');
+      expect(result.billingNote).toBe('Billing moved');
+    });
+
+    it('leaves billing alone on a later prescription, so no paid month is refunded', async () => {
+      prisma.prescription.count.mockResolvedValue(1);
+      const result: any = await service.approve('doc-1', approveInput);
+      expect(prisma.prescription.count).toHaveBeenCalledWith({ where: { patientId: PATIENT.id, id: { not: 'rx-1' } } });
+      expect((billing as any).moveToPrescribedPrice).not.toHaveBeenCalled();
+      expect(result.billingNote).toMatch(/not the patient’s first prescription/);
+    });
+  });
+
+  describe('findQueue', () => {
+    it('puts RED first, then ORANGE, then GREEN, keeping the longest wait first within a tag', async () => {
+      const row = (id: string, ...severities: string[]) => ({ id, redFlags: severities.map((severity) => ({ severity, description: id })) });
+      prisma.consultation.findMany = jest.fn().mockResolvedValue([
+        row('green-old'), row('orange-old', 'WARNING'), row('red-new', 'WARNING', 'CRITICAL'), row('green-new'), row('red-newest', 'CRITICAL'),
+      ]);
+      const queue = await service.findQueue();
+      expect(queue.map((c: any) => c.id)).toEqual(['red-new', 'red-newest', 'orange-old', 'green-old', 'green-new']);
+    });
+
+    it('works out which rows can’t be decided yet once for the whole queue', async () => {
+      const row = (id: string, patientId: string) => ({ id, patientId, redFlags: [] });
+      prisma.consultation.findMany = jest.fn().mockResolvedValue([row('a', 'p1'), row('b', 'p2')]);
+      prescribing.notReadyReasons.mockResolvedValue(new Map([['p1', null], ['p2', 'The patient hasn’t finished onboarding yet']]));
+      const queue: any[] = await service.findQueue();
+      expect(prescribing.notReadyReasons).toHaveBeenCalledTimes(1);
+      expect(queue.map((c) => c.decisionBlockedReason)).toEqual([null, 'The patient hasn’t finished onboarding yet']);
     });
   });
 
@@ -112,6 +209,32 @@ describe('ConsultationsService', () => {
           data: expect.objectContaining({ declineReason: 'Contraindicated', refundStatus: 'REFUNDED' }),
         }),
       );
+    });
+
+    it('records the decline with its reason and refund against the patient', async () => {
+      await service.decline('doc-1', { consultationId: 'consult-1', reason: 'Contraindicated' });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CONSULTATION_DECLINED',
+          patientId: PATIENT.id,
+          metadata: expect.objectContaining({ reason: 'Contraindicated' }),
+        }),
+        prisma,
+      );
+    });
+
+    it('closes the onboarding too, so the patient isn’t left "under review"', async () => {
+      await service.decline('doc-1', { consultationId: 'consult-1', reason: 'Contraindicated' });
+      expect(prisma.onboardingSubmission.updateMany).toHaveBeenCalledWith({
+        where: { patientId: PATIENT.id, status: { in: ['IN_PROGRESS', 'PENDING_REVIEW', 'REJECTED'] } },
+        data: expect.objectContaining({ status: 'DECLINED', reviewedByClinicianId: 'doc-1' }),
+      });
+    });
+
+    it('leaves the onboarding alone when the patient has another request that isn’t declined', async () => {
+      prisma.consultation.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1); // nothing approved elsewhere; one still open
+      await service.decline('doc-1', { consultationId: 'consult-1', reason: 'Contraindicated' });
+      expect(prisma.onboardingSubmission.updateMany).not.toHaveBeenCalled();
     });
 
     it('does not touch billing when the patient has another approved consultation', async () => {
@@ -151,11 +274,28 @@ describe('ConsultationsService', () => {
       expect(prisma.consultation.create).not.toHaveBeenCalled();
     });
 
+    it('a GLP-1 “no” to prior use marks the proof step as not needed', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers: glp1Intake() });
+      expect(prisma.onboardingSubmission.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: expect.objectContaining({ priorMedicationUse: false, prescriptionProofFileId: null }) }),
+      );
+      expect(proofReview.reassess).not.toHaveBeenCalled();
+    });
+
+    it('a GLP-1 “yes” requires proof and re-checks any proof already uploaded against the answers', async () => {
+      await service.submitIntakeQuiz('patient-1', {
+        kind: 'GLP1' as any,
+        answers: glp1Intake({ glp1_prior_use: 'yes', glp1_prior_medicine: 'mounjaro', glp1_prior_dose_tirzepatide: '5 mg', glp1_last_dose: 'under_1_week', glp1_weeks_on_dose: '4_plus_weeks' }),
+      });
+      expect(prisma.onboardingSubmission.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { priorMedicationUse: true } }));
+      expect(proofReview.reassess).toHaveBeenCalledWith('patient-1');
+    });
+
     it('creates the consultation even with critical answers, as red flags', async () => {
       await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers: glp1Intake({ eating_disorder: 'yes' }) });
 
       const { data } = prisma.consultation.create.mock.calls[0][0];
-      expect(data.questionnaireVersion).toBe('GLP1-intake@1');
+      expect(data.questionnaireVersion).toBe('GLP1-intake@2');
       expect(data.redFlags.create).toEqual(
         expect.arrayContaining([{ severity: 'CRITICAL', description: 'History of eating disorder' }]),
       );
@@ -228,6 +368,119 @@ describe('ConsultationsService', () => {
     });
   });
 
+  describe('requestOnboardingRedo', () => {
+    const submission = { status: 'PENDING_REVIEW', identityViaVerifyService: true, priorMedicationUse: false, stepFeedback: [] as any[] };
+    beforeEach(() => {
+      prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+      prisma.onboardingSubmission.findUnique.mockResolvedValue(submission);
+      prisma.onboardingSubmission.update = jest.fn().mockResolvedValue({});
+      prisma.consultation.findUnique.mockResolvedValue({ ...CONSULTATION, patient: PATIENT, clinician: null });
+    });
+
+    it('sends the onboarding back with the reason beside that step, and tells the patient', async () => {
+      await service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, ' The side photo is blurred ');
+      expect(prisma.onboardingSubmission.update).toHaveBeenCalledWith({
+        where: { patientId: PATIENT.id },
+        data: expect.objectContaining({ status: 'REJECTED', stepFeedback: [{ step: 'BODY_PHOTO', approved: false, reason: 'The side photo is blurred', files: [null, null] }], reviewedByClinicianId: 'doc-1' }),
+      });
+      expect(messaging.send).toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'ONBOARDING_REDO_REQUESTED' }), prisma);
+    });
+
+    it('remembers which files the step rested on, so sending the same ones back isn’t taken as a redo', async () => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue({ ...submission, bodyPhotoFrontFileId: 'front', bodyPhotoSideFileId: 'side' });
+      await service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, 'Blurred');
+      const { stepFeedback } = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+      expect(stepFeedback[0]).toMatchObject({ step: 'BODY_PHOTO', files: ['front', 'side'] });
+    });
+
+    it('adds to an earlier request the patient hasn’t answered yet', async () => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue({
+        ...submission, status: 'REJECTED', priorMedicationUse: true,
+        stepFeedback: [{ step: 'BODY_PHOTO', approved: false, reason: 'Blurred' }],
+      });
+      await service.requestOnboardingRedo('doc-1', 'consult-1', 'PRESCRIPTION_PROOF' as any, 'Wrong dose on the label');
+      const { stepFeedback } = prisma.onboardingSubmission.update.mock.calls[0][0].data;
+      expect(stepFeedback.map((f: any) => f.step)).toEqual(['BODY_PHOTO', 'PRESCRIPTION_PROOF']);
+    });
+
+    it('refuses a step that isn’t part of this patient’s review, and a missing reason', async () => {
+      await expect(service.requestOnboardingRedo('doc-1', 'consult-1', 'ID_PHOTO' as any, 'x')).rejects.toThrow(/not part of the current review/);
+      await expect(service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, '  ')).rejects.toThrow(/what to fix/);
+      expect(prisma.onboardingSubmission.update).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the patient has no onboarding waiting for a decision', async () => {
+      prisma.onboardingSubmission.findUnique.mockResolvedValue({ ...submission, status: 'IN_PROGRESS' });
+      await expect(service.requestOnboardingRedo('doc-1', 'consult-1', 'BODY_PHOTO' as any, 'x')).rejects.toThrow(/no onboarding waiting/);
+    });
+  });
+
+  describe('decisionBlockedReason', () => {
+    it('says why a waiting consultation can’t be decided, and nothing for one already decided', async () => {
+      prescribing.notReadyReason.mockResolvedValue('The patient hasn’t finished onboarding yet');
+      expect(await service.decisionBlockedReason({ patientId: 'p', status: 'SUBMITTED' })).toMatch(/finished onboarding/);
+      expect(await service.decisionBlockedReason({ patientId: 'p', status: 'APPROVED' })).toBeNull();
+    });
+  });
+
+  describe('submitIntakeQuiz consent', () => {
+    const answers = Object.entries({
+      height_cm: '170', weight_kg: '95', bp_known: 'yes', bp_systolic: '120', bp_diastolic: '80', smoking: 'never',
+      current_medications: 'None', allergies: 'None', glp1_prior_use: 'no',
+      diabetes_medicines: 'none', eating_disorder: 'no', gallbladder: 'no', kidney_disease: 'no', bariatric_surgery: 'no',
+    }).map(([questionId, v]) => ({ questionId, answer: v, value: v }));
+
+    it('records the consent the patient accepted with their answers', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers, telehealthConsentVersion: 'v1' });
+      expect(consents.record).toHaveBeenCalledWith('patient-1', 'TELEHEALTH', 'v1', {});
+    });
+
+    it('records none when it was entered by staff for the patient', async () => {
+      await service.submitIntakeQuiz('patient-1', { kind: 'GLP1' as any, answers }, {}, { consentRecordedElsewhere: true });
+      expect(consents.record).not.toHaveBeenCalled();
+      expect(prisma.consultation.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('submitFromLead', () => {
+    const answers = Object.entries({
+      height_cm: '170', weight_kg: '95', bp_known: 'yes', bp_systolic: '120', bp_diastolic: '80', smoking: 'never',
+      current_medications: 'None', allergies: 'None', glp1_prior_use: 'no',
+      diabetes_medicines: 'none', eating_disorder: 'no', gallbladder: 'no', kidney_disease: 'no', bariatric_surgery: 'no',
+    }).map(([questionId, v]) => ({ questionId, answer: v, value: v }));
+    const lead = { id: 'lead-1', productKind: 'GLP1', quizAnswers: [], intakeAnswers: answers, intakeConsentVersion: 'v1', intakeConsentIp: '1.2.3.4', intakeConsentUserAgent: 'UA' };
+    const withLead = (over: Record<string, unknown> = {}) =>
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, lead: { ...lead, ...over } });
+
+    it('creates the consultation from the answers given before payment, with the consent they accepted', async () => {
+      withLead();
+      const result = await service.submitFromLead('patient-1');
+      expect(result).toEqual(expect.objectContaining({ id: 'new-1' }));
+      expect(prisma.consultation.create).toHaveBeenCalled();
+      expect(consents.record).toHaveBeenCalledWith('patient-1', 'TELEHEALTH', 'v1', { ip: '1.2.3.4', userAgent: 'UA' });
+    });
+
+    it('does nothing when the lead has no website answers, so the portal still asks', async () => {
+      withLead({ intakeAnswers: null });
+      expect(await service.submitFromLead('patient-1')).toBeNull();
+      expect(prisma.consultation.create).not.toHaveBeenCalled();
+    });
+
+    it('does not create a second consultation', async () => {
+      withLead();
+      prisma.consultation.findFirst.mockResolvedValue({ id: 'existing' });
+      expect(await service.submitFromLead('patient-1')).toBeNull();
+      expect(prisma.consultation.create).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the portal when the answers are refused (for instance the consent wording changed)', async () => {
+      withLead();
+      consents.record.mockRejectedValue(new Error('The consent statement has been updated'));
+      expect(await service.submitFromLead('patient-1')).toBeNull();
+    });
+  });
+
   describe('claiming', () => {
     const claimedBy = (id: string) => ({ ...CONSULTATION, status: 'IN_REVIEW', clinicianId: id, clinician: { firstName: 'Ana', lastName: 'Berisha' } });
 
@@ -237,6 +490,20 @@ describe('ConsultationsService', () => {
         where: { id: 'consult-1', OR: [{ status: 'SUBMITTED' }] },
         data: { status: 'IN_REVIEW', clinicianId: 'doc-1' },
       });
+    });
+
+    it('is refused once the account has been deactivated, so a request already on its way cannot leave a review with them', async () => {
+      prisma.$queryRaw.mockResolvedValue([]); // no active clinician row to hold
+      await expect(service.claim('doc-1', 'consult-1')).rejects.toThrow(/deactivated/);
+      expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('holds the clinician’s row while it claims, in one transaction with the claim', async () => {
+      await service.claim('doc-1', 'consult-1');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      const [sql, id] = prisma.$queryRaw.mock.calls[0];
+      expect(sql.join('?')).toMatch(/FROM clinicians WHERE id = \? AND deactivated_at IS NULL FOR SHARE/);
+      expect(id).toBe('doc-1');
     });
 
     it('reports a lost race', async () => {

@@ -4,15 +4,14 @@ export interface QuizOption {
   l: string;
   dq?: string;
   x?: boolean;
-  band?: string;
-  calc?: boolean;
 }
 
 export interface QuizQuestion {
   id: string;
   q: string;
   help?: string;
-  type: 'single' | 'multi';
+  /** 'measure' asks for height and weight and works the BMI out from them; it has no options. */
+  type: 'single' | 'multi' | 'measure';
   options: QuizOption[];
   showIf?: (state: { bmiBand: string | null }) => boolean;
 }
@@ -83,6 +82,13 @@ export const QUIZZES: Record<ProductKind, QuizQuestion[]> = {
   ],
   GLP1: [
     {
+      id: 'bmi',
+      q: 'What are your height and weight?',
+      help: "We'll work out your BMI from these.",
+      type: 'measure',
+      options: [],
+    },
+    {
       id: 'age',
       q: 'What is your age?',
       type: 'single',
@@ -92,18 +98,6 @@ export const QUIZZES: Record<ProductKind, QuizQuestion[]> = {
         { l: '40 to 59' },
         { l: '60 to 75' },
         { l: 'Over 75', dq: 'GLP-1 treatment through our service is only available to adults aged 18 to 75.' },
-      ],
-    },
-    {
-      id: 'bmi',
-      q: 'What is your BMI?',
-      help: "Not sure? Choose \"I don't know\" and we'll work it out from your height and weight.",
-      type: 'single',
-      options: [
-        { l: '30 or above', band: '30+' },
-        { l: '27 to 29.9', band: '27-29' },
-        { l: 'Under 27', dq: 'GLP-1 treatment is only prescribed for a BMI of 27 or above.' },
-        { l: "I don't know", calc: true },
       ],
     },
     {

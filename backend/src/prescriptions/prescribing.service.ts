@@ -1,17 +1,21 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { findGlp1Dose, orderedTreatmentText } from '../catalog/ordered-dose';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConsultationKind, OnboardingStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { ConsultationKind, IdentityVerificationStatus, OnboardingStatus, PrescriptionStatus, ProductCategory } from '../common/enums';
+import { requiredReviewSteps } from '../onboarding/required-steps';
+import { lockPatientIdentity } from '../identity-verification/identity-verification.service';
 import { PrescriptionItemInput } from './dto/prescription-item.input';
 import { RuleItem, RuleViolation, checkPrescribingRules } from './prescribing-rules';
 import { OrdersService } from './orders.service';
 import { DosingService } from '../dosing/dosing.service';
 
-export const DEFAULT_VALIDITY_DAYS = 180;
+// One prescription covers one supply (a month), so it is valid for about as long as that supply lasts.
+export const DEFAULT_VALIDITY_DAYS = 30;
 const MAX_VALIDITY_DAYS = 365;
-const MAX_REFILLS = 11;
+const MAX_DIRECTIONS = 1000;
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -27,6 +31,20 @@ export interface IssueInput {
   validityDays?: number;
   refillsAllowed?: number;
   overrideReason?: string;
+}
+
+/** Why a patient's first decision has to wait, or null when it can be made (see notReadyReason). */
+function notReady(
+  onboarding: { status: string; identityViaVerifyService: boolean } | null,
+  identityStatus: string | null,
+): string | null {
+  if (onboarding?.status === OnboardingStatus.APPROVED) return null;
+  if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
+  if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
+  if (onboarding.identityViaVerifyService && identityStatus !== IdentityVerificationStatus.APPROVED) {
+    return 'The identity check hasn’t been approved yet';
+  }
+  return null;
 }
 
 type ResolvedItem = RuleItem & { input: PrescriptionItemInput; product: RuleItem['product'] & { brandName: string | null } };
@@ -63,6 +81,62 @@ export class PrescribingService {
 
 
 
+  /**
+   * Why a patient's first consultation can't be decided yet, or null when it can. The approval is the single
+   * decision on the application, so it needs onboarding finished and sent in (or already approved, for a later
+   * consultation). Where identity is checked by the verification service, that automated result stays a hard
+   * gate: a clinician's approval never stands in for it.
+   */
+  async notReadyReason(patientId: string, db: Db = this.prisma): Promise<string | null> {
+    const onboarding = await db.onboardingSubmission.findUnique({ where: { patientId } });
+    const idv = onboarding?.identityViaVerifyService
+      ? await db.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } })
+      : null;
+    return notReady(onboarding, idv?.status ?? null);
+  }
+
+  /** notReadyReason for many patients at once (the review queue): two queries however many there are. */
+  async notReadyReasons(patientIds: string[]): Promise<Map<string, string | null>> {
+    const ids = [...new Set(patientIds)];
+    const [submissions, identities] = await Promise.all([
+      this.prisma.onboardingSubmission.findMany({ where: { patientId: { in: ids } } }),
+      this.prisma.identityVerification.findMany({ where: { patientId: { in: ids } }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    const onboardingOf = new Map(submissions.map((o) => [o.patientId, o]));
+    const latestIdentity = new Map<string, string>();
+    for (const i of identities) if (!latestIdentity.has(i.patientId)) latestIdentity.set(i.patientId, i.status);
+    return new Map(ids.map((id) => [id, notReady(onboardingOf.get(id) ?? null, latestIdentity.get(id) ?? null)]));
+  }
+
+  async assertReadyForDecision(patientId: string) {
+    const reason = await this.notReadyReason(patientId);
+    if (reason) throw new ForbiddenException(`${reason} — you can decide once they have.`);
+  }
+
+  /**
+   * Approving the consultation approves the onboarding with it, in the same transaction, so there is one
+   * decision and one record of who made it. Re-checked under the identity lock so an identity rejection
+   * landing at the same moment can't be approved over.
+   */
+  async approveOnboarding(tx: Prisma.TransactionClient, patientId: string, clinicianId: string): Promise<boolean> {
+    await lockPatientIdentity(tx, patientId);
+    const reason = await this.notReadyReason(patientId, tx);
+    if (reason) throw new ForbiddenException(`${reason} — you can decide once they have.`);
+    const submission = await tx.onboardingSubmission.findUnique({ where: { patientId } });
+    if (!submission || submission.status === OnboardingStatus.APPROVED) return false;
+    const steps = requiredReviewSteps(submission, submission.identityViaVerifyService);
+    await tx.onboardingSubmission.update({
+      where: { patientId },
+      data: {
+        status: OnboardingStatus.APPROVED,
+        reviewedAt: new Date(),
+        reviewedByClinicianId: clinicianId,
+        stepFeedback: steps.map((step) => ({ step, approved: true })) as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return true;
+  }
+
   /** Dry run: what would stop (or need justifying for) this prescription. */
   async check(input: Pick<IssueInput, 'patientId' | 'kind' | 'answers' | 'items' | 'supersedesId'>, db: Db = this.prisma) {
     const items = await this.resolveItems(input.items, db);
@@ -87,12 +161,13 @@ export class PrescribingService {
     if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > MAX_VALIDITY_DAYS) {
       throw new BadRequestException(`Validity must be between 1 and ${MAX_VALIDITY_DAYS} days`);
     }
-    const refillsAllowed = input.refillsAllowed ?? 0;
-    if (!Number.isInteger(refillsAllowed) || refillsAllowed < 0 || refillsAllowed > MAX_REFILLS) {
-      throw new BadRequestException(`Refills must be between 0 and ${MAX_REFILLS}`);
-    }
+    // Every order gets its own prescription, so the doctor signs each supply. Repeats are not issued.
+    if (input.refillsAllowed) throw new BadRequestException('Every order needs its own prescription, so repeats cannot be added');
+    const refillsAllowed = 0;
     for (const item of input.items) {
       if (!item.directions.trim()) throw new BadRequestException('Every medicine needs directions for the patient');
+      // They are printed on the prescription and the label, so they have to fit.
+      if (item.directions.trim().length > MAX_DIRECTIONS) throw new BadRequestException(`Directions can be at most ${MAX_DIRECTIONS} characters`);
     }
 
     const issuedAt = new Date();
@@ -169,16 +244,28 @@ export class PrescribingService {
     items: ResolvedItem[],
     db: Db,
   ): Promise<RuleViolation[]> {
-    const [onboarding, current] = await Promise.all([
+    const [onboarding, current, patient] = await Promise.all([
       db.onboardingSubmission.findUnique({ where: { patientId: input.patientId } }),
       this.currentGlp1Step(input.patientId, db),
+      db.patient.findUnique({ where: { id: input.patientId }, select: { lead: { select: { quizAnswers: true } } } }),
     ]);
+    const ordered = await findGlp1Dose(db, orderedTreatmentText(patient?.lead?.quizAnswers));
+    const proof = onboarding?.prescriptionProofReview as
+      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null } }
+      | null
+      | undefined;
+    // A patient who said they have no proof isn't verified, whatever an earlier upload showed.
+    const noProof = onboarding?.prescriptionProofUnavailable === true;
+    const proofCurrent = !noProof && !!proof && proof.fileId === onboarding?.prescriptionProofFileId;
     return checkPrescribingRules({
       kind: input.kind,
       items,
       answers: input.answers,
-      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED',
+      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof,
       currentGlp1Step: current,
+      priorDoseSafeMaxStep: proofCurrent ? proof!.assessment?.safeMaxStep ?? null : null,
+      priorDoseSafeMaxLabel: proofCurrent ? proof!.assessment?.safeMaxDoseLabel ?? null : null,
+      orderedGlp1: ordered && { productId: ordered.productId, productName: ordered.productName, label: ordered.label, step: ordered.step },
     });
   }
 

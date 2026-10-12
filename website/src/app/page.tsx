@@ -55,7 +55,7 @@ const STEPS = [
   {
     num: '1',
     title: 'Complete the eligibility quiz',
-    desc: 'Answer a few simple questions about your health. Takes about 2 minutes. No account needed.',
+    desc: 'Answer a few simple questions about your health. Takes about 5 minutes. No account needed.',
   },
   {
     num: '2',
@@ -74,21 +74,6 @@ const STATS = [
   { num: '98%', label: 'Patient satisfaction' },
   { num: '24h', label: 'Average prescription time' },
   { num: '5★', label: 'Average trust rating' },
-];
-
-const TRUST = [
-  {
-    title: 'Licensed, practising clinicians',
-    desc: 'Every prescription is authorised by a qualified, registered doctor — not an algorithm.',
-  },
-  {
-    title: 'Regulated, branded medications',
-    desc: 'Estradiol, progesterone, and semaglutide — all from licensed, recognised manufacturers.',
-  },
-  {
-    title: 'End-to-end data security',
-    desc: 'Your health information is encrypted and handled under strict GDPR principles.',
-  },
 ];
 
 export default function HomePage() {
@@ -110,15 +95,15 @@ export default function HomePage() {
                 <em>from Kosovo doctors</em>
               </h1>
               <p className="pv-hero-sub">
-                Licensed clinicians. Regulated HRT and GLP-1 medications. Free delivery to your door.
-                Start your assessment in 2 minutes.
+                Licensed clinicians. Prescription treatment, only if your doctor decides it is right for you.
+                Free delivery to your door. Check your eligibility in about 5 minutes.
               </p>
               <div className="pv-hero-ctas">
                 <Link href="/hrt-eligibility" className="btn-primary">
-                  Start HRT assessment →
+                  Check eligibility →
                 </Link>
                 <Link href="/glp1-eligibility" className="btn-secondary">
-                  Start GLP-1 assessment
+                  Weight management
                 </Link>
               </div>
               <div className="pv-hero-trust">
@@ -178,8 +163,8 @@ export default function HomePage() {
               <div className="th-section-tag">Treatments</div>
               <h2 className="th-section-h2">Three paths to better health</h2>
               <p className="th-section-lead">
-                We specialise in three evidence-based prescription treatments, assessed and prescribed
-                by our licensed clinicians.
+                We specialise in three areas of care. Whether treatment is right for you is always
+                decided by a licensed clinician, after an assessment.
               </p>
             </div>
           </div>
@@ -190,24 +175,17 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['p-hrt-starter']})` }}
               >
-                <div className="th-product-badge">From £49/mo</div>
+                <div className="th-product-badge">Menopause</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">HRT</span>
                 <h3 className="th-product-name">Hormone Replacement Therapy</h3>
                 <p className="th-product-desc">
-                  Personalised HRT for women experiencing menopause symptoms — hot flushes, mood
-                  changes, brain fog, low libido, and more. Estradiol gel and micronised progesterone,
-                  prescribed to your needs.
+                  Care for women experiencing menopause symptoms — hot flushes, mood changes, brain
+                  fog, low libido, and more. Your doctor decides whether treatment is appropriate for
+                  you.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Estradiol gel 0.1%</span>
-                  <span className="th-product-med">Micronised progesterone</span>
-                </div>
                 <div className="th-product-cta">
-                  <div className="th-product-price">
-                    <sup>£</sup>49<small>/mo</small>
-                  </div>
                   <Link href="/hrt-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
                   </Link>
@@ -221,24 +199,16 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['p-wegovy']})` }}
               >
-                <div className="th-product-badge">From £149/mo</div>
+                <div className="th-product-badge">Weight management</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">GLP-1</span>
                 <h3 className="th-product-name">GLP-1 Weight Management</h3>
                 <p className="th-product-desc">
-                  Weekly semaglutide injections for weight management in adults with a BMI of 27 or
-                  above. Clinically proven to reduce body weight and support long-term metabolic health.
+                  Medical weight management for adults with a BMI of 27 or above. Your doctor
+                  decides whether treatment is appropriate for you, after reviewing your health history.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Wegovy</span>
-                  <span className="th-product-med">Mounjaro</span>
-                  <span className="th-product-med">Ozempic</span>
-                </div>
                 <div className="th-product-cta">
-                  <div className="th-product-price">
-                    <sup>£</sup>149<small>/mo</small>
-                  </div>
                   <Link href="/glp1-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
                   </Link>
@@ -252,19 +222,16 @@ export default function HomePage() {
                 className="th-product-img"
                 style={{ backgroundImage: `url(${CONFIG.IMAGES['products']})` }}
               >
-                <div className="th-product-badge">Testosterone</div>
+                <div className="th-product-badge">Men&apos;s health</div>
               </div>
               <div className="th-product-body">
                 <span className="th-product-tag">TRT</span>
-                <h3 className="th-product-name">Testosterone Replacement Therapy</h3>
+                <h3 className="th-product-name">Low testosterone care</h3>
                 <p className="th-product-desc">
                   For men with symptoms of low testosterone — low energy, low libido, loss of muscle
-                  and mood changes. Clinician-led assessment, monitored treatment.
+                  and mood changes. Clinician-led assessment, and your doctor decides whether treatment
+                  is appropriate for you.
                 </p>
-                <div className="th-product-meds">
-                  <span className="th-product-med">Tostran gel</span>
-                  <span className="th-product-med">Sustanon 250</span>
-                </div>
                 <div className="th-product-cta">
                   <Link href="/trt-eligibility" className="btn-primary btn-sm">
                     Check eligibility →
@@ -276,7 +243,7 @@ export default function HomePage() {
         </section>
 
         {/* ── HOW IT WORKS ── */}
-        <section className="section" id="how-it-works" style={{ background: 'var(--c-bg-light)' }}>
+        <section className="section" id="how-it-works" style={{ background: 'var(--c-sand)' }}>
           <div className="container">
             <div className="th-section-head pv-anim">
               <div className="th-section-tag">How it works</div>
@@ -317,55 +284,21 @@ export default function HomePage() {
           <div className="pv-bmi-shell pv-anim">
             <div className="pv-bmi-inner">
               <div className="pv-bmi-copy">
-                <div className="pv-bmi-tag">GLP-1 eligibility</div>
-                <h2 className="pv-bmi-h2">Check your BMI in seconds</h2>
+                <div className="pv-bmi-tag">Quick check</div>
+                <h2 className="pv-bmi-h2">Could GLP-1 treatment be right for you?</h2>
                 <p className="pv-bmi-sub">
-                  GLP-1 treatment is available for adults with a BMI of 27 or above. Use our
-                  calculator to see if you could qualify.
+                  Move the sliders to see your BMI. It&apos;s the first thing your doctor looks at,
+                  alongside your full medical history.
                 </p>
-                <div className="pv-bmi-feat">
-                  <div className="pv-bmi-feat-item">BMI 27+ may qualify for GLP-1 treatment</div>
-                  <div className="pv-bmi-feat-item">BMI 27–29.9 with a weight-related condition</div>
-                  <div className="pv-bmi-feat-item">Reviewed by a licensed doctor</div>
+                <div className="pv-bmi-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={CONFIG.IMAGES.bmi} alt="" loading="lazy" />
                 </div>
               </div>
               <div className="pv-bmi-widget">
                 <BmiWidget />
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* ── TRUST BAND ── */}
-        <section className="th-trust-band">
-          <div className="th-trust-inner">
-            {TRUST.map((t, i) => (
-              <div key={t.title} className="th-trust-item pv-anim">
-                <div className="pv-trust-ico">
-                  {i === 0 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/>
-                      <path d="M8 15v1a6 6 0 0 0 6 6 6 6 0 0 0 6-6v-4"/>
-                      <circle cx="20" cy="10" r="2"/>
-                    </svg>
-                  )}
-                  {i === 1 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                      <path d="m9 12 2 2 4-4"/>
-                    </svg>
-                  )}
-                  {i === 2 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  )}
-                </div>
-                <h3 className="th-trust-title">{t.title}</h3>
-                <p className="th-trust-desc">{t.desc}</p>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -412,7 +345,7 @@ export default function HomePage() {
                   </a>
                 </div>
                 <p className="pv-info-note">
-                  Primavera Healthcare operates under Kosovo healthcare regulations.
+                  Omo Pharmacy operates under Kosovo healthcare regulations.
                   All prescriptions are issued by licensed clinicians and dispensed by registered pharmacies.
                 </p>
               </div>
@@ -426,7 +359,10 @@ export default function HomePage() {
       <footer className="pv-footer">
         <div className="pv-footer-inner">
           <div>
-            <div className="pv-footer-logo">Primavera <span>Health</span></div>
+            <div className="pv-footer-logo">
+              <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
+              <span>Omo <span>Pharmacy</span></span>
+            </div>
             <p className="pv-footer-tagline">
               Licensed prescription healthcare for HRT and weight management, delivered online to Kosovo.
             </p>
@@ -449,7 +385,7 @@ export default function HomePage() {
         </div>
         <div className="pv-footer-bottom">
           <span style={{ color: 'rgba(255,255,255,.4)' }}>
-            © {new Date().getFullYear()} Primavera Healthcare. All rights reserved.
+            © {new Date().getFullYear()} Omo Pharmacy. All rights reserved.
           </span>
           <div className="pv-footer-legal">
             <a href="#">Privacy Policy</a>

@@ -1,17 +1,18 @@
-import { Resolver, Query, Mutation, Subscription, Args, ID } from '@nestjs/graphql';
+import { BadRequestException } from '@nestjs/common';
+import { Resolver, Query, Mutation, Subscription, Args, ID, Int } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { MessagingService } from './messaging.service';
-import { MessageModel } from './models/message.model';
+import { MessageModel, MessagesReadModel } from './models/message.model';
 import { SendMessageInput } from './dto/send-message.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 
 @Resolver(() => MessageModel)
 export class MessagingResolver {
   constructor(private messagingService: MessagingService) {}
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Consultation', 'consultationId')
   @Query(() => [MessageModel])
   async messages(@CurrentUser() user: AuthUser, @Args('consultationId', { type: () => ID }) consultationId: string) {
@@ -19,14 +20,56 @@ export class MessagingResolver {
     return this.messagingService.findByConsultation(consultationId);
   }
 
-  @Authorized(...STAFF, 'PATIENT')
-  @Mutation(() => MessageModel)
-  async sendMessage(@CurrentUser() user: AuthUser, @Args('input') input: SendMessageInput) {
-    await this.messagingService.assertCanAccess(user, input.consultationId);
-    return this.messagingService.send(user.id, user.role as any, input);
+  @Authorized('PATIENT')
+  @Query(() => [MessageModel], { description: 'Messages from before the patient had a consultation (e.g. help asked for during onboarding)' })
+  myPreConsultationMessages(@CurrentUser() user: AuthUser) {
+    return this.messagingService.findPreConsultation(user.id);
   }
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF)
+  @AuditRead('Patient', 'patientId')
+  @Query(() => [MessageModel], { description: 'A patient’s messages from before they had a consultation' })
+  preConsultationMessages(@CurrentUser() user: AuthUser, @Args('patientId', { type: () => ID }) patientId: string) {
+    return this.messagingService.findPreConsultation(patientId);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
+  @Mutation(() => MessageModel)
+  sendMessage(@CurrentUser() user: AuthUser, @Args('input') input: SendMessageInput) {
+    // resolveThread checks the sender may write to that thread.
+    return this.messagingService.sendAs(user, input);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
+  @Mutation(() => Int, { description: 'Marks the pre-consultation thread read for the caller; patients pass no patientId' })
+  markPreConsultationMessagesRead(
+    @CurrentUser() user: AuthUser,
+    @Args('patientId', { type: () => ID, nullable: true }) patientId?: string,
+  ) {
+    const id = user.role === 'PATIENT' ? user.id : patientId;
+    if (!id) throw new BadRequestException('patientId is required');
+    return this.messagingService.markPreConsultationRead(user, id);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
+  @Mutation(() => Int, { description: 'Marks what the other side sent in this conversation as read; returns how many messages that was' })
+  async markMessagesRead(@CurrentUser() user: AuthUser, @Args('consultationId', { type: () => ID }) consultationId: string) {
+    await this.messagingService.assertCanAccess(user, consultationId);
+    return this.messagingService.markRead(user, consultationId);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
+  @Subscription(() => MessagesReadModel, {
+    filter: (payload, variables) => payload.messagesRead.consultationId === variables.consultationId,
+    // Dates don't survive the in-memory bus as Dates on every transport; make sure the client gets one.
+    resolve: (payload) => ({ ...payload.messagesRead, readAt: new Date(payload.messagesRead.readAt) }),
+  })
+  async messagesRead(@CurrentUser() user: AuthUser, @Args('consultationId', { type: () => ID }) consultationId: string) {
+    await this.messagingService.assertCanAccess(user, consultationId);
+    return this.messagingService.subscribeToMessagesRead(consultationId);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @Subscription(() => MessageModel, {
     filter: (payload, variables) =>
       payload.newMessage.consultationId === variables.consultationId,

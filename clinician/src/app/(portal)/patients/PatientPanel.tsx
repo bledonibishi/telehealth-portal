@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useSubscription } from '@apollo/client';
+import Link from 'next/link';
 import { differenceInYears } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { openAuthedDocument } from '@/lib/documents';
 import { GET_PATIENT, UPDATE_PATIENT, GET_PATIENTS } from '@/graphql/patients';
 import { SEND_MESSAGE, NEW_MESSAGE_SUBSCRIPTION } from '@/graphql/messaging';
 import { realtime } from '@/lib/apollo';
@@ -12,25 +14,22 @@ import { GET_ORDERS, PATIENT_ORDERS } from '@/graphql/orders';
 import { OrderCard } from '@/components/orders/OrderCard';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
-import { GET_ONBOARDING_SUBMISSION, REVIEW_ONBOARDING_STEP } from '@/graphql/onboarding';
-import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
-import AuthedImage from '@/components/AuthedImage';
+import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
+import CheckInTab from '@/components/patients/CheckInTab';
+import { DraftReplyButton, TranslateMessage, UrgentTag, useUrgentMessages } from '@/components/ai/MessageAiTools';
+import { OnboardingReview } from '@/components/onboarding/OnboardingReview';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
+import { PATIENT_LAB_REPORTS } from '@/graphql/labs';
 import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
 import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
 import PatientSnapshot, { currentMedications, treatmentStatusOf } from '@/components/patients/PatientSnapshot';
 import MedicationPill from '@/components/patients/MedicationPill';
 import { TREATMENT_STATUS } from '@/lib/patient-status';
-
-const PROOF_TYPE_LABEL: Record<string, string> = {
-  MEDICINE_BOX_LABEL: 'Medicine box label',
-  PRESCRIPTION_DOCUMENT: 'Prescription document',
-  PHARMACY_RECORD: 'Pharmacy record',
-  ORDER_CONFIRMATION: 'Order confirmation',
-};
+import { LoadingState } from '@telehealth/loading';
+import { SearchInput } from '@/components/ui/SearchInput';
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -46,111 +45,7 @@ const KIND_BADGE: Record<string, string> = {
 };
 
 export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
-
-function OnboardingStepSection({
-  title,
-  savedDecision,
-  reviewable = true,
-  inReview,
-  editing,
-  draftReason,
-  saving,
-  error,
-  onApprove,
-  onStartReject,
-  onCancelReject,
-  onDraftReasonChange,
-  onSaveRejection,
-  children,
-}: {
-  title: string;
-  savedDecision?: { approved: boolean; reason?: string };
-  reviewable?: boolean;
-  inReview: boolean;
-  editing: boolean;
-  draftReason: string;
-  saving: boolean;
-  error?: string;
-  onApprove: () => void;
-  onStartReject: () => void;
-  onCancelReject: () => void;
-  onDraftReasonChange: (reason: string) => void;
-  onSaveRejection: () => void;
-  children: React.ReactNode;
-}) {
-  const { t } = useI18n();
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t(title)}</p>
-        {savedDecision && !savedDecision.approved && (
-          <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">{t('Changes requested')}</span>
-        )}
-        {savedDecision && savedDecision.approved && (
-          <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">{t('Approved')}</span>
-        )}
-      </div>
-      {children}
-      {savedDecision && !savedDecision.approved && savedDecision.reason && (
-        <p className="mt-2 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{savedDecision.reason}</p>
-      )}
-      {inReview && reviewable && (
-        <div className="mt-2 space-y-2">
-          {editing ? (
-            <div className="space-y-2">
-              <textarea
-                rows={2}
-                autoFocus
-                placeholder={t('What does the patient need to fix for {item}?', { item: t(title).toLowerCase() })}
-                value={draftReason}
-                onChange={(e) => onDraftReasonChange(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={onSaveRejection}
-                  disabled={!draftReason.trim() || saving}
-                  className="px-3 py-1 text-xs font-medium rounded-lg bg-amber-500 text-white disabled:opacity-40"
-                >
-                  {saving ? t('Saving…') : t('Save')}
-                </button>
-                <button onClick={onCancelReject} disabled={saving} className="text-xs text-gray-400 hover:text-gray-600">
-                  {t('Cancel')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                onClick={onApprove}
-                disabled={saving}
-                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
-                  savedDecision?.approved
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {saving ? t('Saving…') : t('Approve')}
-              </button>
-              <button
-                onClick={onStartReject}
-                disabled={saving}
-                className={`px-3 py-1 text-xs font-medium rounded-lg border ${
-                  savedDecision && !savedDecision.approved
-                    ? 'bg-amber-500 text-white border-amber-500'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {t('Request changes')}
-              </button>
-            </div>
-          )}
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
+export const TABS: Tab[] = ['overview', 'prescriptions', 'orders', 'onboarding', 'messages', 'checkin', 'weight', 'symptoms', 'labs'];
 
 // A patient's messages live in each consultation's thread, so listen to every one of them
 // and reload the patient when anything arrives.
@@ -165,13 +60,8 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
-  const [editingSteps, setEditingSteps] = useState<Record<string, boolean>>({});
-  const [draftReasons, setDraftReasons] = useState<Record<string, string>>({});
-  const [savingStep, setSavingStep] = useState<string | null>(null);
-  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
-  const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
-  const [checkInDate, setCheckInDate] = useState('');
-  const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
+  const [rxQuery, setRxQuery] = useState('');
+  const urgentMessages = useUrgentMessages(patientId);
 
   const isAdmin = hasAccess(['ADMIN']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
@@ -204,22 +94,19 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const { data: ordersData } = useQuery(PATIENT_ORDERS, { variables: { patientId } });
   const { data: prescriptionsData } = useQuery(PATIENT_PRESCRIPTIONS, { variables: { patientId } });
   // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
-  const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId } });
+  const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId }, skip: !hasAccess(['ADMIN', 'DOCTOR']) });
   const { data: symptomsData } = useQuery(PATIENT_SYMPTOM_ASSESSMENTS, { variables: { patientId } });
-  const [reviewOnboardingStep] = useMutation(REVIEW_ONBOARDING_STEP, {
-    refetchQueries: [{ query: GET_ONBOARDING_SUBMISSION, variables: { patientId } }],
-  });
-  const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
-    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
-  });
 
   const p = data?.patient;
+  // Lab reports a patient has sent in that nobody has entered yet, shown on the Labs tab.
+  const { data: labReportData } = useQuery(PATIENT_LAB_REPORTS, { variables: { patientId }, skip: !canReviewOnboarding, pollInterval: 60_000 });
+  const waitingLabReports = (labReportData?.patientLabReports ?? []).filter((r: any) => r.status === 'PENDING').length;
   const onboarding = onboardingData?.onboardingSubmission;
   const weightJourney = weightData?.weightJourneyForPatient;
   const symptomAssessments = symptomsData?.patientSymptomAssessments ?? [];
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center text-sm text-gray-400">{t('Loading…')}</div>
+    <LoadingState label={t('Loading…')} className="flex-1" />
   );
   if (!p) return null;
 
@@ -232,6 +119,21 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     (a: any, b: any) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
   );
   const checkIns = p.checkIns ?? [];
+  // Numbered oldest first, so "Check-in 2" means the same thing on the prescription and on the Check-in tab.
+  const numberedCheckIns = [...checkIns].sort((a: any, b: any) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()).map((c: any, i: number) => ({ ...c, number: i + 1 }));
+  // A prescription matches its own id (full or the short "#x2xval74"), its medicine, or the id of a check-in tied to it:
+  // the one held while it was current, the one that led to it, or (for the current one) the one still to come.
+  const rxq = rxQuery.trim().toLowerCase().replace(/^#/, '');
+  const openCheckIn = numberedCheckIns.filter((c: any) => c.status !== 'COMPLETED').slice(-1)[0];
+  const shownPrescriptions = !rxq
+    ? allPrescriptions
+    : allPrescriptions.filter(
+        (rx: any) =>
+          rx.id.toLowerCase().includes(rxq) ||
+          rx.medication?.toLowerCase().includes(rxq) ||
+          numberedCheckIns.some((c: any) => c.id.toLowerCase().includes(rxq) && (c.prescription?.id === rx.id || c.resultPrescriptionId === rx.id)) ||
+          (rx.status === 'ACTIVE' && !!openCheckIn && openCheckIn.id.toLowerCase().includes(rxq)),
+      );
   const latestConsultId = p.consultations?.[0]?.id;
   const status = TREATMENT_STATUS[treatmentStatusOf(p, allPrescriptions)];
 
@@ -239,42 +141,6 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
-  };
-
-  const savedStepDecision = (step: string) =>
-    onboarding?.stepFeedback?.find((f: { step: string; approved: boolean; reason?: string }) => f.step === step);
-
-  const handleStartReject = (step: string) => {
-    setDraftReasons((prev) => ({ ...prev, [step]: '' }));
-    setEditingSteps((prev) => ({ ...prev, [step]: true }));
-  };
-
-  const handleCancelReject = (step: string) => {
-    setEditingSteps((prev) => ({ ...prev, [step]: false }));
-  };
-
-  const handleSaveStepDecision = async (step: string, approved: boolean) => {
-    const reason = draftReasons[step] ?? '';
-    if (!approved && !reason.trim()) return;
-    setSavingStep(step);
-    setStepErrors((prev) => ({ ...prev, [step]: '' }));
-    try {
-      await reviewOnboardingStep({
-        variables: { input: { patientId, step, approved, reason: approved ? null : reason.trim() } },
-      });
-      setEditingSteps((prev) => ({ ...prev, [step]: false }));
-    } catch (err: any) {
-      setStepErrors((prev) => ({ ...prev, [step]: err.message ?? t('Failed to save') }));
-    } finally {
-      setSavingStep(null);
-    }
-  };
-
-  const handleRescheduleCheckIn = async (id: string) => {
-    if (!checkInDate) return;
-    await rescheduleCheckIn({ variables: { id, dueAt: new Date(checkInDate).toISOString() } });
-    setEditingCheckInId(null);
-    setCheckInDate('');
   };
 
   const handleSave = async () => {
@@ -319,7 +185,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     { key: 'orders',        label: `${t('Orders')} (${orders.length})` },
     { key: 'messages',      label: `${t('Messages')} (${allMessages.length})` },
     { key: 'checkin',       label: t('Check-in') },
-    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: t('Labs') }] : []),
+    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: waitingLabReports ? `${t('Labs')} (${waitingLabReports} ${t('new')})` : t('Labs') }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: t('Weight') }] : []),
     // Hormone programmes track symptoms instead of weight.
     ...(symptomAssessments.length > 0 || ['HRT', 'TRT'].includes(latestConsult?.kind)
@@ -387,7 +253,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             />
 
             {/* Basic details card */}
-            <div className="bg-gray-50 rounded-xl p-4 space-y-4">
+            <div className="bg-gray-50 rounded-md p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Basic details')}</p>
                 {isAdmin && !editing && (
@@ -424,7 +290,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Consultations')}</p>
                 <div className="space-y-3">
                   {p.consultations.map((c: any) => (
-                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
+                    <div key={c.id} className="border border-gray-100 rounded-md p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex gap-2">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[c.kind]}`}>{c.kind}</span>
@@ -466,96 +332,15 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
               </div>
             ) : (
               <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      onboarding.status === 'PENDING_REVIEW'
-                        ? 'bg-amber-50 text-amber-700'
-                        : onboarding.status === 'APPROVED'
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-red-50 text-red-700'
-                    }`}
-                  >
-                    {t(onboarding.status.replace(/_/g, ' '))}
-                  </span>
-                  {onboarding.submittedAt && (
-                    <span className="text-xs text-gray-400">
-                      {t('Submitted {when}', { when: timeAgo(onboarding.submittedAt) })}
-                    </span>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
-                    <p className="text-sm text-gray-800">
-                      {onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Manual review') : t(onboarding.personaStatus.replace(/_/g, ' '))}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Photo compliance')}</p>
-                    <p className="text-sm text-gray-800">{t(onboarding.photoReviewStatus.replace(/_/g, ' '))}</p>
-                  </div>
-                </div>
-
-                {(() => {
-                  const inReview = canReviewOnboarding && onboarding.status === 'PENDING_REVIEW';
-
-                  const stepProps = (step: string) => ({
-                    savedDecision: savedStepDecision(step),
-                    inReview,
-                    editing: !!editingSteps[step],
-                    draftReason: draftReasons[step] ?? '',
-                    saving: savingStep === step,
-                    error: stepErrors[step],
-                    onApprove: () => handleSaveStepDecision(step, true),
-                    onStartReject: () => handleStartReject(step),
-                    onCancelReject: () => handleCancelReject(step),
-                    onDraftReasonChange: (reason: string) => setDraftReasons((prev) => ({ ...prev, [step]: reason })),
-                    onSaveRejection: () => handleSaveStepDecision(step, false),
-                  });
-
-                  return (
-                    <>
-                      <OnboardingStepSection title="ID document & selfie" {...stepProps('ID_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.idDocumentUrl} alt={t('ID document')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.selfieUrl} alt={t('Selfie')} className="w-full h-40 object-cover rounded-xl border border-gray-100" />
-                        </div>
-                      </OnboardingStepSection>
-
-                      <OnboardingStepSection title="Full body photos" {...stepProps('BODY_PHOTO')}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <AuthedImage path={onboarding.bodyPhotoFrontUrl} alt={t('Front-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                          <AuthedImage path={onboarding.bodyPhotoSideUrl} alt={t('Side-facing')} className="w-full h-52 object-cover rounded-xl border border-gray-100" />
-                        </div>
-                      </OnboardingStepSection>
-
-                      <OnboardingStepSection
-                        title="Prior medication use"
-                        reviewable={!!onboarding.priorMedicationUse}
-                        {...stepProps('PRESCRIPTION_PROOF')}
-                      >
-                        {onboarding.priorMedicationUse ? (
-                          <div>
-                            <p className="text-sm text-gray-800 mb-2">
-                              {t('Yes — proof provided: {proof}', { proof: t(PROOF_TYPE_LABEL[onboarding.prescriptionProofType] ?? onboarding.prescriptionProofType) })}
-                            </p>
-                            <AuthedImage path={onboarding.prescriptionProofUrl} alt={t('Prescription proof')} className="w-full max-h-52 object-cover rounded-xl border border-gray-100" />
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">{t('No — first time using this medication.')}</p>
-                        )}
-                      </OnboardingStepSection>
-
-                      {inReview && (
+                <OnboardingReview onboarding={onboarding} />
+                <div>
+                  {onboarding.status === 'PENDING_REVIEW' && (
                         <p className="text-xs text-gray-400 border-t border-gray-100 pt-4">
-                          {t('Each step saves as soon as you approve it or send a change request. The patient moves to Approved or Rejected automatically once every step has a decision.')}
+                          {t('Onboarding is approved together with the consultation, in the review queue.')}{' '}
+                          <Link href="/queue" className="font-medium text-brand-500 hover:underline">{t('Open the queue →')}</Link>
                         </p>
                       )}
-                    </>
-                  );
-                })()}
+                </div>
               </div>
             )}
           </div>
@@ -568,7 +353,11 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
               <div className="py-12 text-center text-sm text-gray-400">{t('No prescriptions issued yet.')}</div>
             ) : (
               <div className="space-y-4">
-                {allPrescriptions.map((rx: any) => <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} />)}
+                <SearchInput className="w-full sm:w-80" value={rxQuery} onChange={setRxQuery} placeholder={t('Search by prescription or check-in ID…')} ariaLabel={t('Search by prescription or check-in ID…')} clearLabel={t('Clear search')} />
+                {shownPrescriptions.length === 0 && <div className="py-8 text-center text-sm text-gray-400">{t('No prescriptions match.')}</div>}
+                {shownPrescriptions.map((rx: any) => (
+                  <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} orders={orders} checkIns={numberedCheckIns} siblings={allPrescriptions} onOpenCheckIn={() => setTab('checkin')} />
+                ))}
               </div>
             )}
           </div>
@@ -606,7 +395,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                   const isPatient = msg.senderRole === 'PATIENT';
                   return (
                     <div key={msg.id} className={`flex ${isPatient ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                      <div className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm ${
                         isPatient
                           ? 'bg-gray-100 text-gray-800 rounded-tl-sm'
                           : 'bg-brand-500 text-white rounded-tr-sm'
@@ -614,10 +403,12 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                         <p className={`text-xs mb-1 font-medium ${isPatient ? 'text-gray-500' : 'text-blue-100'}`}>
                           {isPatient ? p.firstName : t('Clinician team')}
                         </p>
+                        {urgentMessages.has(msg.id) && <p className="mb-1"><UrgentTag reason={urgentMessages.get(msg.id) ?? ''} /></p>}
                         <p>{msg.content}</p>
                         <p className={`text-xs mt-1 ${isPatient ? 'text-gray-400' : 'text-blue-200'}`}>
                           {timeAgo(msg.sentAt)}
                         </p>
+                        {isPatient && <TranslateMessage messageId={msg.id} />}
                       </div>
                     </div>
                   );
@@ -628,6 +419,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             {/* Reply input */}
             {latestConsultId ? (
               <div className="border-t border-gray-100 p-4 bg-white">
+                <DraftReplyButton patientId={patientId} consultationId={latestConsultId} onDraft={setReply} className="mb-2" />
                 <div className="flex gap-2">
                   <textarea
                     rows={2}
@@ -635,12 +427,12 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
-                    className="flex-1 resize-none border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="flex-1 resize-none border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                   <button
                     onClick={handleReply}
                     disabled={!reply.trim() || sending}
-                    className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="self-end px-4 py-2 bg-brand-500 text-white text-sm rounded-md hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {sending ? '…' : t('Send')}
                   </button>
@@ -664,178 +456,10 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
         {tab === 'symptoms' && <SymptomsPanel assessments={symptomAssessments} />}
 
         {/* ── Labs ── */}
-        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} />}
+        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} patientName={`${p.firstName} ${p.lastName}`} gender={p.gender} />}
 
         {/* ── Check-in ── */}
-        {tab === 'checkin' && (
-          <div className="p-5">
-            <div className="bg-gray-50 rounded-xl p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">{t('Monthly check-in')}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                {t('Every 30 days the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
-              </p>
-            </div>
-
-            {!p.activatedAt ? (
-              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
-                {t('Check-in schedule starts once the patient activates their account.')}
-              </div>
-            ) : checkIns.length === 0 ? (
-              <div className="border border-gray-100 rounded-xl p-4 text-center text-sm text-gray-400">
-                {t('First check-in hasn’t been scheduled yet.')}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {checkIns.map((c: any) => {
-                  const dueDate = new Date(c.dueAt);
-                  const overdue = c.status !== 'COMPLETED' && dueDate < new Date();
-                  return (
-                    <div key={c.id} className="border border-gray-100 rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span
-                          className={`text-xs font-medium px-2 py-0.5 rounded ${
-                            c.status === 'COMPLETED'
-                              ? 'bg-green-50 text-green-700'
-                              : overdue
-                                ? 'bg-red-50 text-red-700'
-                                : c.status === 'SENT'
-                                  ? 'bg-blue-50 text-blue-700'
-                                  : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {c.status === 'COMPLETED' ? t('Completed') : overdue ? t('Overdue') : c.status === 'SENT' ? t('Sent — awaiting response') : t('Scheduled')}
-                        </span>
-                        <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <p className="text-xs text-gray-400">{t('Scheduled')}</p>
-                          <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.createdAt, 'dd MMM yyyy')}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-400">{t('Due')}</p>
-                          <p className={`text-xs font-medium mt-0.5 ${overdue ? 'text-red-600' : 'text-gray-800'}`}>
-                            {fmt(dueDate, 'dd MMM yyyy')}
-                          </p>
-                        </div>
-                        {c.sentAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Sent')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {timeAgo(c.sentAt)}
-                            </p>
-                          </div>
-                        )}
-                        {c.status === 'SENT' && c.tokenExpiresAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Link expires')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.tokenExpiresAt, 'dd MMM yyyy')}</p>
-                          </div>
-                        )}
-                        {c.completedAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Completed')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {timeAgo(c.completedAt)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {c.status === 'SENT' && c.checkInUrl && (
-                        <div className="mb-3">
-                          <p className="text-xs text-gray-400 mb-1">{t('Check-in link')}</p>
-                          <div className="flex items-center gap-2">
-                            <input
-                              readOnly
-                              value={c.checkInUrl}
-                              onClick={(e) => e.currentTarget.select()}
-                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-gray-50 truncate"
-                            />
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(c.checkInUrl);
-                                setCopiedCheckInId(c.id);
-                                setTimeout(() => setCopiedCheckInId((cur) => (cur === c.id ? null : cur)), 2000);
-                              }}
-                              className="shrink-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-700"
-                            >
-                              {copiedCheckInId === c.id ? t('Copied!') : t('Copy')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {c.status === 'COMPLETED' ? (
-                        <div className="space-y-2 mt-2">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-gray-400">{t('Reorder prescription:')}</p>
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.wantsToReorder ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {c.wantsToReorder ? t('Yes') : t('No')}
-                            </span>
-                          </div>
-                          {c.answers?.map((a: any) => (
-                            <div key={a.questionId} className="bg-gray-50 rounded-lg px-3 py-2">
-                              <p className="text-xs text-gray-400">{a.question}</p>
-                              <p className="text-xs font-medium text-gray-800 mt-0.5">{a.answer}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-xs text-gray-400">
-                            {c.status === 'SENT' ? t('Waiting for the patient to complete their check-in.') : t('Will be emailed automatically once due.')}
-                          </p>
-                          {c.status === 'SCHEDULED' && canReviewOnboarding && (
-                            editingCheckInId === c.id ? (
-                              <div className="mt-2 flex items-center gap-2">
-                                <input
-                                  type="datetime-local"
-                                  value={checkInDate}
-                                  onChange={(e) => setCheckInDate(e.target.value)}
-                                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => handleRescheduleCheckIn(c.id)}
-                                  disabled={!checkInDate || rescheduling}
-                                  className="text-xs px-2.5 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40"
-                                >
-                                  {rescheduling ? '…' : t('Save')}
-                                </button>
-                                <button
-                                  onClick={() => { setEditingCheckInId(null); setCheckInDate(''); }}
-                                  className="text-xs text-gray-400 hover:text-gray-600"
-                                >
-                                  {t('Cancel')}
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setEditingCheckInId(c.id);
-                                  const now = new Date();
-                                  const pad = (n: number) => String(n).padStart(2, '0');
-                                  setCheckInDate(
-                                    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`,
-                                  );
-                                }}
-                                className="mt-2 text-xs text-brand-500 hover:text-brand-900"
-                              >
-                                {t('Edit due date')}
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {tab === 'checkin' && <CheckInTab patient={p} orders={orders} prescriptions={allPrescriptions} onOpenPrescriptions={() => setTab('prescriptions')} />}
 
       </div>
     </div>

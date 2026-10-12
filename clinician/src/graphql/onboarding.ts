@@ -5,6 +5,7 @@ export const ONBOARDING_FIELDS = gql`
     id
     status
     personaStatus
+    identityViaVerifyService
     photoReviewStatus
     priorMedicationUse
     prescriptionProofType
@@ -13,8 +14,48 @@ export const ONBOARDING_FIELDS = gql`
     bodyPhotoFrontUrl
     bodyPhotoSideUrl
     prescriptionProofUrl
+    prescriptionProofUnavailable
+    prescriptionProofReview {
+      status
+      reason
+      riskLevel
+      findings {
+        severity
+        message
+      }
+      documentIssues {
+        code
+        patientHint
+      }
+      failedAttempts
+      nextStep
+      nameEvidenceUrl
+      nameEvidenceDocumentType
+      nameEvidenceNames
+      reportedMedicine
+      reportedDoseLabel
+      reportedLastDose
+      reportedWeeksOnDose
+      doseClarification
+      requestedDoseLabel
+      suggestedDoseLabel
+      nameMatch
+      patientNameOnDocument
+      medicineName
+      doseMg
+      documentDate
+      dateKind
+      notes
+      model
+      reviewedAt
+    }
     submittedAt
     reviewedAt
+    bodyPhotoChecks {
+      view
+      outcome
+      issues
+    }
     stepFeedback {
       step
       approved
@@ -26,15 +67,6 @@ export const ONBOARDING_FIELDS = gql`
 export const GET_ONBOARDING_SUBMISSION = gql`
   query GetOnboardingSubmission($patientId: ID!) {
     onboardingSubmission(patientId: $patientId) {
-      ...ClinicianOnboardingFields
-    }
-  }
-  ${ONBOARDING_FIELDS}
-`;
-
-export const REVIEW_ONBOARDING_STEP = gql`
-  mutation ReviewOnboardingStep($input: ReviewOnboardingStepInput!) {
-    reviewOnboardingStep(input: $input) {
       ...ClinicianOnboardingFields
     }
   }

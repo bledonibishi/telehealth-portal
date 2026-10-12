@@ -3,26 +3,49 @@ import { AuditRead } from '../audit/audit-read.interceptor';
 import { ForbiddenException } from '@nestjs/common';
 import { PatientsService } from './patients.service';
 import { PatientModel } from './models/patient.model';
-import { PatientListItemModel } from './models/patient-list-item.model';
+import { PatientListItemModel, RecordMatchModel } from './models/patient-list-item.model';
 import { UpdatePatientInput } from './dto/update-patient.input';
 import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
 import { CreatePatientInput } from './dto/create-patient.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
-import { AuthUser, STAFF } from '../auth/access-roles';
+import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 import { ClinicianRole, ConsultationKind } from '../common/enums';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PatientProfileService } from './patient-profile.service';
+import { PatientProfileModel, UpdateMyProfileInput } from './models/patient-profile.model';
 
 @Resolver(() => PatientModel)
 export class PatientsResolver {
-  constructor(private patientsService: PatientsService) {}
+  constructor(
+    private patientsService: PatientsService,
+    private profile: PatientProfileService,
+  ) {}
 
-  @Authorized(...STAFF)
+  @Authorized('PATIENT')
+  @Query(() => PatientProfileModel, { description: 'The signed-in patient’s profile: contact and body details' })
+  myProfile(@CurrentUser() user: AuthUser) {
+    return this.profile.mine(user.id);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => PatientProfileModel, { description: 'Update gender, height or phone. Audited.' })
+  updateMyProfile(@CurrentUser() user: AuthUser, @Args('input') input: UpdateMyProfileInput) {
+    return this.profile.update(user.id, input);
+  }
+
+  @Authorized(...CLINICAL_STAFF)
   @Query(() => [PatientListItemModel])
   patients() {
     return this.patientsService.findAll();
   }
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF)
+  @Query(() => [RecordMatchModel], { description: 'Which patient a prescription, check-in or order id belongs to (the full id, or its last 6 or more characters)' })
+  recordMatches(@Args('code') code: string) {
+    return this.patientsService.findByRecordId(code);
+  }
+
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Patient')
   @Query(() => PatientModel, { nullable: true })
   patient(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
@@ -50,7 +73,7 @@ export class PatientsResolver {
     return this.patientsService.productKindOf(user.id);
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @Mutation(() => PatientModel)
   updatePatient(@Args('input') input: UpdatePatientInput) {
     const { id, ...data } = input;

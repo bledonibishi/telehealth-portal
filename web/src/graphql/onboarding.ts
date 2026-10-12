@@ -13,8 +13,38 @@ export const ONBOARDING_FIELDS = gql`
     bodyPhotoFrontUrl
     bodyPhotoSideUrl
     prescriptionProofUrl
+    prescriptionProofUnavailable
+    proofRequirements {
+      name
+      medicine
+      dose
+      notBefore
+    }
+    prescriptionProofReview {
+      status
+      riskLevel
+      patientMessage
+      requestedDoseLabel
+      suggestedDoseLabel
+      documentIssues {
+        code
+        patientHint
+      }
+      checks {
+        key
+        status
+        value
+        hint
+      }
+      doseMg
+      reportedDoseLabel
+      doseClarification
+      failedAttempts
+      nextStep
+    }
     submittedAt
     reviewedAt
+    bodyPhotosToRetake
     stepFeedback {
       step
       reason
@@ -67,6 +97,33 @@ export const SAVE_PRESCRIPTION_PROOF_STEP = gql`
   ${ONBOARDING_FIELDS}
 `;
 
+export const SAVE_PRESCRIPTION_NAME_EVIDENCE = gql`
+  mutation SavePrescriptionNameEvidence($fileId: ID!) {
+    savePrescriptionNameEvidence(fileId: $fileId) {
+      ...OnboardingFields
+    }
+  }
+  ${ONBOARDING_FIELDS}
+`;
+
+export const DECLARE_PRESCRIPTION_PROOF_UNAVAILABLE = gql`
+  mutation DeclarePrescriptionProofUnavailable {
+    declarePrescriptionProofUnavailable {
+      ...OnboardingFields
+    }
+  }
+  ${ONBOARDING_FIELDS}
+`;
+
+export const CLARIFY_PRESCRIPTION_DOSE = gql`
+  mutation ClarifyPrescriptionDose($choice: String!) {
+    clarifyPrescriptionDose(choice: $choice) {
+      ...OnboardingFields
+    }
+  }
+  ${ONBOARDING_FIELDS}
+`;
+
 export const SUBMIT_ONBOARDING = gql`
   mutation SubmitOnboarding {
     submitOnboarding {
@@ -74,4 +131,59 @@ export const SUBMIT_ONBOARDING = gql`
     }
   }
   ${ONBOARDING_FIELDS}
+`;
+
+export const CHECK_BODY_PHOTO = gql`
+  mutation CheckBodyPhoto($fileId: ID!, $view: BodyPhotoView!) {
+    checkBodyPhoto(fileId: $fileId, view: $view) {
+      outcome
+      issues
+      messages
+      canSendForReview
+    }
+  }
+`;
+
+export const SAVE_BODY_PHOTO = gql`
+  mutation SaveBodyPhoto($input: SaveBodyPhotoInput!) {
+    saveBodyPhoto(input: $input) {
+      ...OnboardingFields
+    }
+  }
+  ${ONBOARDING_FIELDS}
+`;
+
+export const DISCARD_BODY_PHOTO = gql`
+  mutation DiscardBodyPhoto($fileId: ID!) {
+    discardBodyPhoto(fileId: $fileId)
+  }
+`;
+
+export const CHECK_PHOTO_FRAME = gql`
+  mutation CheckPhotoFrame($view: BodyPhotoView!, $image: String!) {
+    checkPhotoFrame(view: $view, image: $image) {
+      available
+      ready
+      messages
+    }
+  }
+`;
+
+export const MY_IDENTITY_VERIFICATION = gql`
+  query MyIdentityVerification {
+    myIdentityVerification {
+      configured
+      status
+      expiresAt
+    }
+  }
+`;
+
+export const START_IDENTITY_VERIFICATION = gql`
+  mutation StartIdentityVerification {
+    startIdentityVerification {
+      hostedUrl
+      expiresAt
+    }
+  }
 `;

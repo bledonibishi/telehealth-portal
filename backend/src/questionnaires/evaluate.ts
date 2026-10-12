@@ -56,7 +56,9 @@ export function evaluateAnswers(questionnaire: Questionnaire, submitted: Submitt
     }
 
     if (q.type === 'single') {
-      const option = matchOption(q, rawValue || rawAnswer);
+      const given = rawValue || rawAnswer;
+      const interpreted = q.interpret?.(given);
+      const option = matchOption(q, given) ?? (interpreted ? matchOption(q, interpreted) : undefined);
       if (!option) {
         fail(q, '— please choose one of the options.');
         if (!strict) result.answers.push({ questionId: q.id, question: q.text, answer: rawAnswer, value: null, section });

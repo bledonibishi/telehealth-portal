@@ -1,0 +1,79 @@
+import { gql } from '@apollo/client';
+
+export const REVENUE_OVERVIEW = gql`
+  query RevenueOverview($days: Int) {
+    revenueOverview(days: $days) {
+      configured
+      periodDays
+      asOf
+      activeSubscribers
+      pastDueSubscribers
+      mrr { currency amountCents }
+      newSubscribers
+      cancellations
+      clinicalDeclines
+      churnRate
+      truncated
+      error
+    }
+  }
+`;
+
+export const SALES_FUNNEL = gql`
+  query SalesFunnel($days: Int) {
+    salesFunnel(days: $days) {
+      periodDays
+      visitorsConfigured
+      visitorsError
+      stages { key count percentOfPrevious percentOfFirst }
+    }
+  }
+`;
+
+export const CLINICIAN_PERFORMANCE = gql`
+  query ClinicianPerformance($days: Int) {
+    clinicianPerformance(days: $days) {
+      clinicianId
+      name
+      email
+      role
+      isVerified
+      status
+      casesDecided
+      approved
+      declined
+      moreInfoRequests
+      approvalRate
+      avgDecisionMinutes
+      medianDecisionMinutes
+      prescriptionsIssued
+      checkInsReviewed
+      openCases
+    }
+  }
+`;
+
+export const MONTHLY_REPORT = gql`
+  query MonthlyReport($months: Int) {
+    monthlyReport(months: $months) {
+      revenueConfigured
+      revenueError
+      revenueTruncated
+      months {
+        month
+        newLeads
+        newPatients
+        subscriptionsEnded
+        ordersDispatched
+        checkInsReviewed
+        continued
+        held
+        stopped
+        revenue { currency amountCents }
+        weighedPatients
+        avgLossPct
+        successRatePct
+      }
+    }
+  }
+`;

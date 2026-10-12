@@ -47,6 +47,9 @@ export class LabResultModel {
   @Field({ nullable: true })
   reviewNote?: string;
 
+  @Field(() => ID, { nullable: true, description: 'The lab report this was typed from' })
+  reportId?: string;
+
   @Field(() => PatientModel, { nullable: true })
   patient?: PatientModel;
 

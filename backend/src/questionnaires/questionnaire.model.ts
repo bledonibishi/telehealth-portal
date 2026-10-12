@@ -67,6 +67,9 @@ export class QuestionModel {
   @Field({ nullable: true })
   unit?: string;
 
+  @Field({ nullable: true, description: 'Text questions: a ready answer to offer as one tap, e.g. “None”' })
+  quickAnswer?: string;
+
   @Field(() => QuestionConditionModel, { nullable: true, description: 'Ask only when an earlier answer has one of these values' })
   showIf?: QuestionConditionModel;
 }

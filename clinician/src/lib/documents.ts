@@ -1,4 +1,5 @@
 import { getToken } from './auth';
+import { ApiError, errorMessage } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
@@ -6,13 +7,13 @@ const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
 /**
  * Opens an authenticated document (e.g. a prescription PDF) in a new tab. The
  * endpoint needs the JWT, so a plain link can't load it. The tab is opened
- * synchronously, inside the click, so popup blockers allow it.
+ * synchronously, inside the click, so popup blockers allow it. A failure is shown in an alert, translated with `t`.
  */
-export function openAuthedDocument(path: string) {
+export function openAuthedDocument(path: string, t: (text: string) => string) {
   const tab = window.open('', '_blank');
   fetch(`${API_ROOT}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } })
     .then((res) => {
-      if (!res.ok) throw new Error(`Could not load document (${res.status})`);
+      if (!res.ok) throw ApiError.fromResponse(res.status, '', res.status === 403 ? 'You don’t have access to that document.' : 'Could not load the document. Please try again.');
       return res.blob();
     })
     .then((blob) => {
@@ -24,6 +25,6 @@ export function openAuthedDocument(path: string) {
     })
     .catch((err) => {
       tab?.close();
-      alert(err.message);
+      alert(t(errorMessage(err)));
     });
 }

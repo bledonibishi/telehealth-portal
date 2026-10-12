@@ -6,6 +6,8 @@ import { onError } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
 import { print } from 'graphql';
+import { createLoadingLink } from '@telehealth/loading';
+import { sessionEndReason } from '@telehealth/shared-types';
 import { REFRESH_ACCESS_TOKEN } from '@/graphql/auth';
 import { clearToken, getRefreshToken, getToken, setToken } from './auth';
 import { createRealtime } from './realtime';
@@ -56,15 +58,17 @@ function endSession() {
 // refresh token) instead of logging the patient out — this is what keeps them
 // signed in across the 15-minute access token lifetime without re-entering
 // their password, for as long as the 7-day refresh token is still valid.
+// Sign-in, activation and password-reset answer "unauthenticated" for a wrong password or a spent link. That is a message
+// for their form to show, not a session that ended: treating it as one redirected the reset page away before it could say so.
+const PUBLIC_OPERATIONS = new Set(['LoginPatient', 'ActivateAccount', 'RequestActivationLink', 'RequestPatientPasswordReset', 'ResetPassword', 'RefreshAccessToken']);
+
 const errorLink = onError(({ graphQLErrors, response, operation, forward }) => {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || PUBLIC_OPERATIONS.has(operation.operationName)) return;
 
-  const reason = graphQLErrors
-    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
-    .find(Boolean);
-
-  const isAuthError = !!reason || graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED');
-  if (!isAuthError) return;
+  // Only an error that says the session ended signs the patient out. Any other "unauthenticated" (a wrong current
+  // password) is a message for the screen that asked.
+  const reason = sessionEndReason(graphQLErrors);
+  if (!reason) return;
 
   if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {
     endSession();
@@ -110,7 +114,8 @@ const splitLink =
     : httpChain;
 
 export const apolloClient = new ApolloClient({
-  link: splitLink,
+  // First in the chain, so every call (and its retries) is counted for the loading bar.
+  link: createLoadingLink().concat(splitLink),
   cache: new InMemoryCache({
     typePolicies: {
       // Symptom questionnaire items and domains share ids across scales (e.g. "sleep"

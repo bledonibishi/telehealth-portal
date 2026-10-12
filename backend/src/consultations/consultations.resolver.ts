@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, Context } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Context, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { ForbiddenException } from '@nestjs/common';
 import { ConsultationsService } from './consultations.service';
@@ -8,8 +8,9 @@ import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
-import { ClinicianRole } from '../common/enums';
+import { AuthUser, PRESCRIBERS, CLINICAL_STAFF } from '../auth/access-roles';
+import { ClinicianRole, OnboardingStepKey, RiskTag } from '../common/enums';
+import { triage } from '../questionnaires/triage';
 
 const isAdmin = (user: AuthUser) => user.clinicianRole === ClinicianRole.ADMIN;
 
@@ -17,13 +18,28 @@ const isAdmin = (user: AuthUser) => user.clinicianRole === ClinicianRole.ADMIN;
 export class ConsultationsResolver {
   constructor(private consultationsService: ConsultationsService) {}
 
+  // From the stored flags, so it can never disagree with what the doctor sees listed.
+  @ResolveField(() => RiskTag)
+  riskTag(@Parent() consultation: ConsultationModel) {
+    return triage(consultation.redFlags ?? []).riskTag;
+  }
+
+  // Looked up per consultation, only for ones still waiting for a decision and only for staff.
+  @ResolveField(() => String, { nullable: true })
+  decisionBlockedReason(@Parent() consultation: ConsultationModel & { patientId: string }, @CurrentUser() user: AuthUser) {
+    if (user.role === 'PATIENT') return null;
+    // The queue works it out for all its rows at once.
+    if (consultation.decisionBlockedReason !== undefined) return consultation.decisionBlockedReason;
+    return this.consultationsService.decisionBlockedReason(consultation);
+  }
+
   @Authorized(...PRESCRIBERS)
-  @Query(() => [ConsultationModel], { description: 'Review queue — critical red flags pinned first, then sorted by wait time' })
+  @Query(() => [ConsultationModel], { description: 'Review queue — RED first, then ORANGE, then GREEN, each by wait time' })
   consultationQueue() {
     return this.consultationsService.findQueue();
   }
 
-  @Authorized(...STAFF, 'PATIENT')
+  @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Consultation')
   @Query(() => ConsultationModel)
   async consultation(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
@@ -32,7 +48,7 @@ export class ConsultationsResolver {
     return consultation;
   }
 
-  @Authorized(...STAFF)
+  @Authorized(...CLINICAL_STAFF)
   @AuditRead('Patient', 'patientId')
   @Query(() => [ConsultationModel], { description: 'Prior consultations for a patient, newest first' })
   patientHistory(@Args('patientId', { type: () => ID }) patientId: string) {
@@ -82,6 +98,17 @@ export class ConsultationsResolver {
     @Args('message', { nullable: true, description: 'What the patient needs to tell us; sent as a message' }) message?: string,
   ) {
     return this.consultationsService.requestMoreInfo(user.id, consultationId, message, isAdmin(user));
+  }
+
+  @Authorized(...PRESCRIBERS)
+  @Mutation(() => ConsultationModel, { description: 'Ask the patient to redo one onboarding step, with the reason; the consultation can’t be approved until they have' })
+  requestOnboardingRedo(
+    @CurrentUser() user: AuthUser,
+    @Args('consultationId', { type: () => ID }) consultationId: string,
+    @Args('step', { type: () => OnboardingStepKey }) step: OnboardingStepKey,
+    @Args('reason') reason: string,
+  ) {
+    return this.consultationsService.requestOnboardingRedo(user.id, consultationId, step, reason, isAdmin(user));
   }
 
   @Authorized(...PRESCRIBERS)

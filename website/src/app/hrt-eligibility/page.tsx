@@ -2,8 +2,8 @@ import Navbar from '@/components/Navbar';
 import Quiz from '@/components/Quiz';
 
 export const metadata = {
-  title: 'HRT Eligibility Assessment – Primavera Healthcare',
-  description: 'Complete our 2-minute eligibility quiz to find out if HRT is right for you.',
+  title: 'HRT Eligibility Assessment – Omo Pharmacy',
+  description: 'Complete our 5-minute eligibility quiz to find out if HRT is right for you.',
 };
 
 export default function HrtEligibilityPage() {

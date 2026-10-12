@@ -38,9 +38,31 @@ describe('checkPrescribingRules', () => {
     expect(codes(ctx({ items: [item(3)], verifiedPriorGlp1Use: true }))).toEqual([]);
   });
 
+  it('flags a first prescription above the safe dose from the prescription proof review', () => {
+    const verified = { verifiedPriorGlp1Use: true, priorDoseSafeMaxStep: 2, priorDoseSafeMaxLabel: '5 mg' };
+    expect(codes(ctx({ items: [item(2)], ...verified }))).toEqual([]);
+    expect(codes(ctx({ items: [item(4)], ...verified }))).toEqual(['GLP1_ABOVE_PRIOR_DOSE:soft']);
+    // Once we prescribe, our own prescription history is what counts.
+    expect(codes(ctx({ items: [item(3)], currentGlp1Step: 2, ...verified }))).toEqual([]);
+  });
+
   it('allows stepping up one titration step, flags skipping steps', () => {
     expect(codes(ctx({ items: [item(3)], currentGlp1Step: 2 }))).toEqual([]);
     expect(codes(ctx({ items: [item(4)], currentGlp1Step: 2 }))).toEqual(['GLP1_STEP_JUMP:soft']);
+  });
+
+  it('refuses a first prescription above the dose the patient paid for', () => {
+    const orderedGlp1 = { productId: 'sema', productName: 'Wegovy', label: '0.5 mg', step: 2 };
+    expect(codes(ctx({ items: [item(1)], orderedGlp1 }))).toEqual([]);
+    expect(codes(ctx({ items: [item(2)], orderedGlp1, verifiedPriorGlp1Use: true }))).toEqual([]);
+    expect(codes(ctx({ items: [item(3)], orderedGlp1, verifiedPriorGlp1Use: true }))).toEqual(['GLP1_ABOVE_ORDERED_DOSE:hard']);
+    // Later step-ups at check-ins are normal titration, billed from the next month.
+    expect(codes(ctx({ items: [item(3)], orderedGlp1, currentGlp1Step: 2 }))).toEqual([]);
+  });
+
+  it('warns when the first prescription is a different medicine from the one ordered', () => {
+    const orderedGlp1 = { productId: 'another-glp1', productName: 'Wegovy', label: '0.5 mg', step: 2 };
+    expect(codes(ctx({ items: [item(1)], orderedGlp1 }))).toEqual(['GLP1_DIFFERENT_FROM_ORDERED:soft']);
   });
 
   it('rejects two GLP-1 medicines together', () => {

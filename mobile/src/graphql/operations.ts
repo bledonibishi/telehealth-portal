@@ -1,5 +1,11 @@
 import { gql } from '@apollo/client';
 
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPatientPasswordReset($input: RequestPasswordResetInput!) {
+    requestPatientPasswordReset(input: $input)
+  }
+`;
+
 export const LOGIN_PATIENT = gql`
   mutation LoginPatient($input: LoginInput!) {
     loginPatient(input: $input) {
@@ -46,6 +52,7 @@ export const MY_CONSULTATIONS = gql`
       id
       kind
       status
+      refundStatus
       submittedAt
       updatedAt
       prescription {
@@ -145,6 +152,18 @@ export const MY_PRODUCT_KIND = gql`
   }
 `;
 
+export const MY_TELEHEALTH_CONSENT = gql`
+  query MyTelehealthConsent {
+    myTelehealthConsent
+  }
+`;
+
+export const ACCEPT_TELEHEALTH_CONSENT = gql`
+  mutation AcceptTelehealthConsent($version: String!) {
+    acceptTelehealthConsent(version: $version)
+  }
+`;
+
 export const CONSENT_TEXT = gql`
   query ConsentText($type: ConsentType!) {
     consentText(type: $type) {
@@ -152,5 +171,187 @@ export const CONSENT_TEXT = gql`
       version
       text
     }
+  }
+`;
+
+// The patient's one conversation with their care team: messages on each consultation, plus those
+// from before they had one (e.g. asking for help during onboarding).
+export const MY_CONVERSATION = gql`
+  query MyConversation {
+    myConsultations {
+      id
+      submittedAt
+      messages {
+        id
+        senderId
+        senderRole
+        content
+        sentAt
+        readAt
+      }
+    }
+    myPreConsultationMessages {
+      id
+      senderId
+      senderRole
+      content
+      sentAt
+      readAt
+    }
+  }
+`;
+
+// Reading the conversation: what the care team sent is marked read so they can see it was.
+export const MARK_MESSAGES_READ = gql`
+  mutation MarkMessagesRead($consultationId: ID!) {
+    markMessagesRead(consultationId: $consultationId)
+  }
+`;
+
+export const MARK_PRE_CONSULTATION_READ = gql`
+  mutation MarkPreConsultationMessagesRead {
+    markPreConsultationMessagesRead
+  }
+`;
+
+export const MY_TREATMENT_PLAN = gql`
+  query MyTreatmentPlan {
+    myTreatmentPlan {
+      prescriptionId
+      programme
+      productName
+      strength
+      frequency
+      directions
+      prescriberName
+      startedAt
+      validUntil
+      weeksElapsed
+      durationWeeks
+      dosesTaken
+      dosesPlanned
+      nextDoseAt
+      repeatsLeft
+    }
+  }
+`;
+
+const BASIC_INFO_FIELDS = gql`
+  fragment BasicInfoFields on Patient {
+    id
+    firstName
+    lastName
+    dateOfBirth
+    phone
+    addressLine1
+    addressLine2
+    city
+    postcode
+    country
+  }
+`;
+
+export const ME_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  query MeBasicInfo {
+    me {
+      ...BasicInfoFields
+    }
+  }
+`;
+
+export const UPDATE_MY_BASIC_INFO = gql`
+  ${BASIC_INFO_FIELDS}
+  mutation UpdateMyBasicInfo($input: UpdateBasicInfoInput!) {
+    updateMyBasicInfo(input: $input) {
+      ...BasicInfoFields
+    }
+  }
+`;
+
+export const MY_OPEN_REFUND_REQUEST = gql`
+  query MyOpenRefundRequest {
+    myOpenRefundRequest {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const REQUEST_MY_REFUND = gql`
+  mutation RequestMyRefund {
+    requestMyRefund {
+      id
+      status
+      requestedAt
+    }
+  }
+`;
+
+export const CANCEL_MY_SUBSCRIPTION = gql`
+  mutation CancelMySubscription {
+    cancelMySubscription
+  }
+`;
+
+
+export const REGISTER_PUSH_TOKEN = gql`
+  mutation RegisterPushToken($token: String!, $platform: String!) {
+    registerPushToken(token: $token, platform: $platform)
+  }
+`;
+
+export const UNREGISTER_PUSH_TOKEN = gql`
+  mutation UnregisterPushToken($token: String!) {
+    unregisterPushToken(token: $token)
+  }
+`;
+
+
+
+
+export const MY_NOTIFICATIONS = gql`
+  query MyNotifications($before: DateTime) {
+    myNotifications(limit: 20, before: $before) {
+      id
+      kind
+      href
+      count
+      readAt
+      updatedAt
+      params { key value }
+    }
+    unreadNotificationCount
+  }
+`;
+
+export const UNREAD_NOTIFICATION_COUNT = gql`
+  query UnreadNotificationCount {
+    unreadNotificationCount
+  }
+`;
+
+export const MARK_NOTIFICATIONS_READ = gql`
+  mutation MarkNotificationsRead($ids: [ID!]!) {
+    markNotificationsRead(ids: $ids)
+  }
+`;
+
+export const MARK_ALL_NOTIFICATIONS_READ = gql`
+  mutation MarkAllNotificationsRead {
+    markAllNotificationsRead
+  }
+`;
+
+export const MY_NOTIFICATION_PREFERENCES = gql`
+  query MyNotificationPreferences {
+    myNotificationPreferences { pushMessages pushOrders pushReminders pushRewards emailUnreadMessages }
+  }
+`;
+
+export const UPDATE_NOTIFICATION_PREFERENCES = gql`
+  mutation UpdateMyNotificationPreferences($input: UpdateNotificationPreferencesInput!) {
+    updateMyNotificationPreferences(input: $input) { pushMessages pushOrders pushReminders pushRewards emailUnreadMessages }
   }
 `;

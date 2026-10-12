@@ -7,6 +7,8 @@ export enum PatientTreatmentStatus {
   ACTIVE = 'ACTIVE',
   /** Activated, but no current prescription (not started, or stopped) */
   INACTIVE = 'INACTIVE',
+  /** Every consultation was declined (and nothing is prescribed): not a patient who simply hasn't started */
+  DECLINED = 'DECLINED',
   /** Has not activated their account yet */
   PENDING = 'PENDING',
 }
@@ -59,6 +61,12 @@ export class PatientListItemModel extends PatientModel {
   @Field(() => Float, { nullable: true, description: 'Null until a target weight is set' })
   weightLostKg?: number;
 
+  @Field(() => Float, { nullable: true, description: 'From their profile, or the intake answer until they set it' })
+  heightCm?: number | null;
+
+  @Field(() => Float, { nullable: true, description: 'Current weight over height squared. Null without a believable height and weight.' })
+  bmi?: number | null;
+
   @Field(() => Float, { nullable: true, description: '0–100; null until a target weight is set' })
   progressPercentage?: number;
 
@@ -70,4 +78,16 @@ export class PatientListItemModel extends PatientModel {
 
   @Field({ nullable: true, description: 'When the patient last sent a message' })
   lastMessageAt?: Date;
+}
+
+@ObjectType('RecordMatch')
+export class RecordMatchModel {
+  @Field({ description: 'The patient the record belongs to' })
+  patientId: string;
+
+  @Field({ description: 'PRESCRIPTION, CHECK_IN or ORDER' })
+  kind: string;
+
+  @Field({ description: 'The full id of the record that matched' })
+  recordId: string;
 }

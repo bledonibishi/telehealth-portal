@@ -30,11 +30,19 @@ export enum RedFlagSeverity {
   WARNING = 'WARNING',
 }
 
+/** Triage of a patient's answers: RED can't be treated online, ORANGE needs the doctor's closer look, GREEN is standard. */
+export enum RiskTag {
+  RED = 'RED',
+  ORANGE = 'ORANGE',
+  GREEN = 'GREEN',
+}
+
 export enum OnboardingStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   PENDING_REVIEW = 'PENDING_REVIEW',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  DECLINED = 'DECLINED',
 }
 
 export enum PersonaStatus {
@@ -43,6 +51,16 @@ export enum PersonaStatus {
   VERIFIED = 'VERIFIED',
   FAILED = 'FAILED',
   NOT_CONFIGURED = 'NOT_CONFIGURED',
+}
+
+/** Status of an identity-check session in verify-service. */
+export enum IdentityVerificationStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  NEEDS_REVIEW = 'NEEDS_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
 }
 
 export enum PhotoReviewStatus {
@@ -175,3 +193,6 @@ export interface QuizAnswer {
   question: string;
   answer: string;
 }
+
+export * from './errors';
+export * from './notifications';

@@ -3,7 +3,6 @@ dist/
 .next/
 build/
 *.env
-!*.env.example
 .turbo/
 .DS_Store
 *.tsbuildinfo
@@ -25,3 +24,22 @@ backend/src/schema.gql
 # Local env overrides (hold real keys)
 .env.local
 .env*.local
+
+# Example env files (.env.example, .env.local.example) are not tracked either
+.env.example
+.env*.example
+
+# Output of backend/scripts/compare-proof-models.ts (may contain names read from documents)
+proof-model-comparison-*.json
+backend/sample-proofs/
+backend/email-previews/
+
+# Pose-model weights are downloaded, not committed (AGPL — see backend/models/README.md)
+backend/models/*.onnx
+backend/models/*.pt
+
+# Proof-reader test documents: the synthetic set is regenerated on demand (pnpm make-proof-test-set); anything in
+# private/ may be a real prescription and must never be committed.
+backend/eval/proof-reader/synthetic/
+backend/eval/proof-reader/private/
+backend/proof-model-comparison-*.json

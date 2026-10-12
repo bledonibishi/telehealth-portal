@@ -1,8 +1,10 @@
 'use client';
 
+import { MessageTicks, tickStateOf } from './MessageTicks';
 import { useEffect, useRef, useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import type { ChatMessage } from './useConsultationChat';
+import { LoadingState } from '@telehealth/loading';
 
 const QUICK_REPLIES = [
   { label: 'I have a question', text: 'Hi, I have a question about my treatment: ' },
@@ -38,8 +40,10 @@ function UnreadBadge({ count }: { count: number }) {
 
 // Collapsed: a slim rail (a floating button on phones) with the chat icon and a count of new messages.
 // Expanded: a docked thread beside the page (full screen on phones).
+// The floating variant, for pages without room for a side rail (onboarding), is a round button in the
+// corner that opens a chat window above the page.
 export function ChatDock({
-  open, onOpenChange, messages, unread, currentUserId, sending, onSend, loading,
+  open, onOpenChange, messages, unread, currentUserId, sending, onSend, loading, variant = 'docked', draft,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,8 +53,15 @@ export function ChatDock({
   sending: boolean;
   loading: boolean;
   onSend: (content: string) => Promise<unknown>;
+  variant?: 'docked' | 'floating';
+  /** Text to start the message with, e.g. when opened from "Message our team"; never overwrites typing. */
+  draft?: string;
 }) {
+  const floating = variant === 'floating';
   const [content, setContent] = useState('');
+  useEffect(() => {
+    if (draft) setContent((c) => (c.trim() ? c : draft));
+  }, [draft]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -93,31 +104,31 @@ export function ChatDock({
           <button
             type="button"
             onClick={() => onOpenChange(true)}
-            className="fixed z-30 right-4 bottom-20 md:right-24 md:bottom-6 max-w-[320px] text-left bg-white border border-brand-100 shadow-xl rounded-2xl px-4 py-3"
+            className="fixed z-30 right-4 bottom-20 md:right-24 md:bottom-6 max-w-[320px] text-left bg-white border border-brand-100 shadow-xl rounded-lg px-4 py-3"
           >
             <p className="text-xs font-semibold text-brand-700">New message from your care team</p>
             <p className="text-sm text-slate-700 mt-0.5 line-clamp-2">{preview.content}</p>
             <p className="text-[11px] font-medium text-brand-600 mt-1.5">Open chat →</p>
           </button>
         )}
-        <div className="hidden md:flex w-[72px] shrink-0 border-l border-slate-100 bg-white flex-col items-center pt-6 gap-1.5">
+        {!floating && <div className="hidden md:flex w-[72px] shrink-0 border-l border-slate-100 bg-white flex-col items-center pt-6 gap-1.5">
           <button
             type="button"
             onClick={() => onOpenChange(true)}
             aria-label={unread > 0 ? `Open chat with your care team, ${unread} new` : 'Open chat with your care team'}
             title="Chat with your care team"
-            className="relative w-12 h-12 rounded-2xl bg-brand-50 text-brand-700 flex items-center justify-center hover:bg-brand-100 transition-colors"
+            className="relative w-12 h-12 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center hover:bg-brand-100 transition-colors"
           >
             <ChatIcon />
             <UnreadBadge count={unread} />
           </button>
           <span className="text-[11px] font-medium text-slate-400">Chat</span>
-        </div>
+        </div>}
         <button
           type="button"
           onClick={() => onOpenChange(true)}
           aria-label={unread > 0 ? `Open chat with your care team, ${unread} new` : 'Open chat with your care team'}
-          className="md:hidden fixed right-4 bottom-4 z-30 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg flex items-center justify-center"
+          className={`${floating ? 'md:right-6 md:bottom-6' : 'md:hidden'} fixed right-4 bottom-4 z-30 w-14 h-14 rounded-full bg-brand-600 text-white shadow-lg flex items-center justify-center`}
         >
           <ChatIcon />
           <UnreadBadge count={unread} />
@@ -138,7 +149,11 @@ export function ChatDock({
   return (
     <aside
       aria-label="Chat with your care team"
-      className="fixed inset-0 z-40 md:static md:inset-auto md:w-[380px] shrink-0 md:border-l border-slate-100 bg-white flex flex-col min-h-0"
+      className={
+        floating
+          ? 'fixed inset-0 z-40 md:inset-auto md:right-6 md:bottom-6 md:w-[380px] md:h-[min(600px,calc(100vh-3rem))] md:rounded-lg md:shadow-2xl md:border border-slate-100 bg-white flex flex-col min-h-0 overflow-hidden'
+          : 'fixed inset-0 z-40 md:static md:inset-auto md:w-[380px] shrink-0 md:border-l border-slate-100 bg-white flex flex-col min-h-0'
+      }
     >
       <div className="shrink-0 px-5 py-4 flex items-center gap-3 bg-gradient-to-br from-brand-600 to-brand-700 text-white">
         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
@@ -164,7 +179,7 @@ export function ChatDock({
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-slate-50 space-y-1">
-        {loading && <p className="text-xs text-slate-400 text-center">Loading…</p>}
+        {loading && <LoadingState label="Loading…" className="!py-6" />}
         {!loading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center px-6">
             <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mb-3">
@@ -187,15 +202,16 @@ export function ChatDock({
                 <span className="text-[11px] font-medium text-slate-500 mb-1 px-1">{row.isMe ? 'You' : 'Your care team'}</span>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] rounded-lg px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words ${
                   row.isMe
                     ? 'bg-brand-600 text-white rounded-br-md'
                     : 'bg-white text-slate-900 border border-slate-100 shadow-sm rounded-bl-md'
                 }`}
               >
                 {row.m.content}
-                <span className={`block text-[10px] mt-1 text-right ${row.isMe ? 'text-brand-100' : 'text-slate-400'}`}>
+                <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-brand-100' : 'text-slate-400'}`}>
                   {format(new Date(row.m.sentAt), 'HH:mm')}
+                  {row.isMe && <MessageTicks state={tickStateOf(row.m)} onDark />}
                 </span>
               </div>
             </div>
@@ -218,7 +234,7 @@ export function ChatDock({
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 border border-slate-200 rounded-2xl pl-4 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
+          className="flex items-end gap-2 border border-slate-200 rounded-lg pl-4 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
         >
           <textarea
             ref={inputRef}
@@ -240,7 +256,7 @@ export function ChatDock({
             type="submit"
             disabled={sending || !content.trim()}
             aria-label="Send message"
-            className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center disabled:bg-slate-200 disabled:text-slate-400"
+            className="w-9 h-9 rounded-md bg-brand-600 text-white flex items-center justify-center disabled:bg-slate-200 disabled:text-slate-400"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />

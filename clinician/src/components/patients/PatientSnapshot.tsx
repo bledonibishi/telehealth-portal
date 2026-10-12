@@ -5,16 +5,17 @@ import { useQuery } from '@apollo/client';
 import { differenceInDays } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_WEIGHT_CHART } from '@/graphql/weight';
-import { PATIENT_ADHERENCE } from '@/graphql/patients';
+import { PATIENT_ADHERENCE, PATIENT_RECENT_DOSES } from '@/graphql/patients';
 import { FEELINGS, kg, kgChange } from '@/lib/weight';
 import { medicationStyle } from '@/lib/medication';
 import { STALE_WEIGH_IN_DAYS, TREATMENT_STATUS, type TreatmentStatus } from '@/lib/patient-status';
 import MedicationPill from './MedicationPill';
 import ProgressRing from './ProgressRing';
+import { LoadingState } from '@telehealth/loading';
 
 export type SnapshotTab = 'messages' | 'prescriptions' | 'labs' | 'weight';
 
-const CARD = 'bg-white border border-gray-200 rounded-2xl';
+const CARD = 'bg-white border border-gray-200 rounded-lg';
 const HEADING = 'text-xs font-semibold text-gray-500 uppercase tracking-wide';
 
 /** What the patient is on right now, read off their active prescription. */
@@ -27,7 +28,9 @@ export function currentMedications(prescriptions: any[]): { label: string; dose?
 
 export function treatmentStatusOf(patient: any, prescriptions: any[]): TreatmentStatus {
   if (!patient.activatedAt) return 'PENDING';
-  return prescriptions.some((r) => r.status === 'ACTIVE') ? 'ACTIVE' : 'INACTIVE';
+  if (prescriptions.some((r) => r.status === 'ACTIVE')) return 'ACTIVE';
+  const consultations: { status: string }[] = patient.consultations ?? [];
+  return consultations.length > 0 && consultations.every((c) => c.status === 'DECLINED') ? 'DECLINED' : 'INACTIVE';
 }
 
 export function heightMetres(consultations: any[]): number | null {
@@ -77,12 +80,12 @@ export function WeightChart({ timeline, loading, from, height = 240 }: {
       rows.push({ at: new Date(timeline.startingAt).getTime(), kg: timeline.startingWeightKg, label: t('Starting weight') });
     }
     for (const m of timeline.measurements) {
-      rows.push({ at: new Date(m.measuredAt).getTime(), kg: m.weightKg, label: m.kind === 'CHECK_IN' ? t('Monthly check-in') : t('Daily entry') });
+      rows.push({ at: new Date(m.measuredAt).getTime(), kg: m.weightKg, label: m.kind === 'CHECK_IN' ? t('Check-in') : t('Daily entry') });
     }
     return rows.sort((a, b) => a.at - b.at);
   }, [timeline, from, t]);
 
-  if (loading && !timeline) return <p className="text-sm text-gray-400 py-10 text-center">{t('Loading…')}</p>;
+  if (loading && !timeline) return <LoadingState label={t('Loading…')} className="!py-10" />;
   if (points.length === 0) return <p className="text-sm text-gray-400 py-10 text-center">{t('No weights recorded yet.')}</p>;
   if (width === 0) return <div ref={boxRef} className="w-full" style={{ height }} />;
 
@@ -220,6 +223,43 @@ function TreatmentJourney({ events }: { events: JourneyEvent[] }) {
 
 // ── Dose adherence ──────────────────────────────────────────────────────────
 
+// Left and right are the patient's own. Same keys as InjectionSite in the backend.
+const SITE_LABEL: Record<string, string> = {
+  ABDOMEN_LEFT: 'Belly, left', ABDOMEN_RIGHT: 'Belly, right', THIGH_LEFT: 'Thigh, left', THIGH_RIGHT: 'Thigh, right', ARM_LEFT: 'Upper arm, left', ARM_RIGHT: 'Upper arm, right',
+};
+
+/** The last few injections taken: where they went in and how the patient said they felt a day or so after. */
+function RecentInjections({ patientId }: { patientId: string }) {
+  const { t, fmt } = useI18n();
+  const { data } = useQuery(PATIENT_RECENT_DOSES, { variables: { patientId } });
+  const taken: any[] = (data?.patientDoseCalendar ?? [])
+    .filter((d: any) => d.status === 'TAKEN' && d.takenAt)
+    .sort((a: any, b: any) => b.takenAt.localeCompare(a.takenAt))
+    .slice(0, 5);
+  if (taken.length === 0) return null;
+  return (
+    <div className="mt-4 pt-3 border-t border-gray-100">
+      <p className={HEADING}>{t('Recent injections')}</p>
+      <ul className="mt-2 space-y-1.5">
+        {taken.map((d) => {
+          const feeling = d.feelingAfter ? FEELINGS[d.feelingAfter] : undefined;
+          const rough = d.feelingAfter === 'DIFFICULTIES' || d.feelingAfter === 'NOT_WELL';
+          return (
+            <li key={d.id} className="flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="text-gray-500 w-14">{fmt(d.takenAt, 'd MMM')}</span>
+              <span className="text-gray-700">{d.strength.label}</span>
+              <span className="text-gray-400">{d.injectionSite ? t(SITE_LABEL[d.injectionSite]) : '—'}</span>
+              <span className={`ml-auto ${rough ? 'font-medium text-rose-600' : 'text-gray-500'}`}>
+                {feeling ? `${feeling.emoji} ${t(feeling.label)}` : t('No answer yet')}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Adherence({ patientId }: { patientId: string }) {
   const { t, fmt } = useI18n();
   const { data, loading } = useQuery(PATIENT_ADHERENCE, { variables: { patientId, weeks: 8 } });
@@ -235,7 +275,7 @@ function Adherence({ patientId }: { patientId: string }) {
         {pct !== null && <p className="text-sm font-semibold text-gray-900">{pct}%</p>}
       </div>
       {loading && !data ? (
-        <p className="text-sm text-gray-400 mt-4">{t('Loading…')}</p>
+        <LoadingState variant="inline" label={t('Loading…')} className="mt-4" />
       ) : weeks.length === 0 ? (
         <p className="text-sm text-gray-400 mt-4">{t('No doses logged yet.')}</p>
       ) : (
@@ -257,6 +297,7 @@ function Adherence({ patientId }: { patientId: string }) {
           <p className="text-xs text-gray-400 mt-2">{t('{taken} of {due} scheduled doses taken', { taken, due })}</p>
         </>
       )}
+      <RecentInjections patientId={patientId} />
     </div>
   );
 }
@@ -266,7 +307,7 @@ function Adherence({ patientId }: { patientId: string }) {
 function Stat({ label, value, tone = 'text-gray-900' }: { label: string; value: string; tone?: string }) {
   const { t } = useI18n();
   return (
-    <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+    <div className="bg-gray-50 rounded-md px-3 py-2.5">
       <p className="text-xs text-gray-400">{t(label)}</p>
       <p className={`text-sm font-semibold mt-0.5 ${tone}`}>{value}</p>
     </div>

@@ -1,12 +1,17 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
-import { planFor } from '../stripe/plan-pricing';
+import { DosePricingService } from '../stripe/dose-pricing.service';
+import { SideEffectsService } from '../side-effects/side-effects.service';
+import { planFor, planPriceEnvVars } from '../stripe/plan-pricing';
 import { EmailService } from '../email/email.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { OrdersService } from '../prescriptions/orders.service';
+import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { PrescriptionsService } from '../prescriptions/prescriptions.service';
 import { CheckInOutcome, CheckInStatus, ConsultationKind, UserRole } from '../common/enums';
@@ -38,6 +43,10 @@ export class CheckInReviewService {
     private prescribing: PrescribingService,
     private prescriptions: PrescriptionsService,
     private config: ConfigService,
+    private partner: PartnerOrdersService,
+    private dosePricing: DosePricingService,
+    private sideEffects: SideEffectsService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   async queue() {
@@ -71,11 +80,22 @@ export class CheckInReviewService {
     if (checkIn.status !== CheckInStatus.COMPLETED) throw new BadRequestException('The patient hasn’t completed this check-in yet');
     if (checkIn.reviewedAt) throw new ConflictException('This check-in has already been reviewed');
 
+    // Sending more medicine is the decision the side-effect summary exists for. When it flags anything, the doctor
+    // must say they have read it: the screen asks, and this refuses a request that skipped the screen.
+    const approving = input.outcome === CheckInOutcome.REPEAT || input.outcome === CheckInOutcome.NEW_PRESCRIPTION;
+    const sideEffectSummary = approving ? await this.sideEffects.summaryFor(checkIn.patientId) : null;
+    if (sideEffectSummary?.needsAttention && !input.sideEffectsReviewed) {
+      throw new BadRequestException(`Read the patient’s side effects before approving: ${sideEffectSummary.reasons.join('; ')}`);
+    }
+
     const rx = checkIn.prescription;
     const patient = checkIn.patient;
     let resultOrderId: string | null = null;
     let resultPrescriptionId: string | null = null;
     let billingNote: string;
+    const monitoringOverride = input.monitoringOverrideReason?.trim() || null;
+    // Set when a testosterone blood-test hold was on and the doctor went ahead anyway: it is written to the audit log.
+    let overriddenHold: string | null = null;
 
     switch (input.outcome) {
       case CheckInOutcome.REPEAT: {
@@ -90,6 +110,17 @@ export class CheckInReviewService {
         if (!input.items?.length) throw new BadRequestException('Choose the medicine for the new prescription');
         await this.prescribing.assertCanPrescribe(clinicianId);
         await this.prescribing.assertIdentityVerified(patient.id);
+        // The next supply is a new prescription, not a repeat, so the blood-test hold that repeats are subject to applies here
+        // too. Going ahead anyway (for example lowering the dose because of the results) needs its own recorded reason, which
+        // is not the reason that answers the prescribing rules: justifying one of those never lifts this hold.
+        if (rx) {
+          try {
+            await this.orders.assertTrtMonitoring(rx.id);
+          } catch (hold) {
+            if (!monitoringOverride) throw hold;
+            overriddenHold = (hold as Error).message;
+          }
+        }
         if (!checkIn.kind) throw new BadRequestException('This check-in has no programme recorded');
         const kind = checkIn.kind as ConsultationKind;
 
@@ -119,6 +150,7 @@ export class CheckInReviewService {
         );
         resultPrescriptionId = issued.id;
         resultOrderId = (await this.prisma.order.findFirst({ where: { prescriptionId: issued.id, sequence: 1 } }))?.id ?? null;
+        if (resultOrderId) await this.partner.trySend(resultOrderId);
         billingNote = await this.movePlan(patient, kind, issued.id);
         break;
       }
@@ -138,48 +170,63 @@ export class CheckInReviewService {
         throw new BadRequestException('Unknown outcome');
     }
 
-    const updated = await this.prisma.checkIn.update({
-      where: { id: checkIn.id },
-      data: {
-        reviewedAt: new Date(),
-        reviewedById: clinicianId,
-        outcome: input.outcome,
-        reviewNote: input.note?.trim() || null,
-        billingNote,
-        resultOrderId,
-        resultPrescriptionId,
-      },
-      include: { patient: true, prescription: true, reviewedBy: true },
-    });
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CHECK_IN_REVIEWED',
-      resourceType: 'CheckIn',
-      resourceId: checkIn.id,
-      metadata: { outcome: input.outcome, resultOrderId, resultPrescriptionId, billingNote },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const reviewed = await tx.checkIn.update({
+        where: { id: checkIn.id },
+        data: {
+          reviewedAt: new Date(),
+          reviewedById: clinicianId,
+          outcome: input.outcome,
+          reviewNote: input.note?.trim() || null,
+          patientNote: input.messageToPatient?.trim() || null,
+          billingNote,
+          resultOrderId,
+          resultPrescriptionId,
+        },
+        include: { patient: true, prescription: true, reviewedBy: true },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CHECK_IN_REVIEWED',
+          resourceType: 'CheckIn',
+          resourceId: checkIn.id,
+          patientId: patient.id,
+          metadata: {
+            outcome: input.outcome,
+            resultOrderId,
+            resultPrescriptionId,
+            billingNote,
+            ...(sideEffectSummary?.needsAttention ? { sideEffectsFlagged: sideEffectSummary.reasons, sideEffectsReviewed: true } : {}),
+            ...(overriddenHold ? { trtHoldOverridden: { hold: overriddenHold, reason: monitoringOverride } } : {}),
+          },
+        },
+        tx,
+      );
+      return reviewed;
     });
 
     await this.notifyPatient(patient, clinicianId, HEADLINE[input.outcome], input.messageToPatient);
     return updated;
   }
 
-  // A new dose can mean a different plan (e.g. GLP-1 Starter → Advanced).
+  // A new dose has its own price (or, for doses not priced individually, can mean a different plan tier).
   private async movePlan(patient: Parameters<BillingService['changePrice']>[0], kind: ConsultationKind, prescriptionId: string) {
     const items = await this.prisma.prescriptionItem.findMany({
       where: { prescriptionId },
       include: { product: true, strength: true },
     });
-    const plan = planFor(kind, items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep })));
-    const priceId = this.config.get<string>(`STRIPE_PRICE_${plan}`);
+    const priced = items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId }));
+    const priceIds = this.dosePricing.priceIdsFor(kind, priced);
     const resumed = await this.billing.resume(patient);
-    if (!priceId) return `${resumed}. No STRIPE_PRICE_${plan} configured — check the plan in Stripe`;
-    return `${resumed}. ${await this.billing.changePrice(patient, priceId)}`;
+    if (!priceIds) return `${resumed}. No price for this dose and no ${planPriceEnvVars(planFor(kind, priced))[0]} configured — check the plan in Stripe`;
+    return `${resumed}. ${await this.billing.changePrice(patient, priceIds)}`;
   }
 
   // Messages live on consultation threads; use the patient's latest one.
   private async notifyPatient(patient: { id: string; email: string; firstName: string }, clinicianId: string, headline: string, message?: string) {
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline }, href: '/dashboard' });
     try {
       if (message?.trim()) {
         const thread = await this.prisma.consultation.findFirst({ where: { patientId: patient.id }, orderBy: { submittedAt: 'desc' } });

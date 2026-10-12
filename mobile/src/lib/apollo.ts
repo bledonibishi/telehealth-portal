@@ -8,6 +8,7 @@ import { createClient } from 'graphql-ws';
 import { resetToLogin } from '../navigation/navigationRef';
 import { REFRESH_ACCESS_TOKEN } from '../graphql/operations';
 import { clearTokens, getRefreshToken, getToken, setTokens } from './tokens';
+import { sessionEndReason } from '@telehealth/shared-types';
 
 const GRAPHQL_URL = process.env.EXPO_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
 const WS_URL = GRAPHQL_URL.replace(/^http/, 'ws');
@@ -54,15 +55,17 @@ function endSession() {
 // refresh token) instead of logging the patient out — this is what keeps
 // them signed in across the 15-minute access token lifetime without
 // re-entering their password, for as long as the 7-day refresh token lasts.
-const errorLink = onError(({ graphQLErrors, response, operation, forward, networkError }) => {
-  const reason = graphQLErrors
-    ?.map((e) => (e.extensions?.originalError as { reason?: string } | undefined)?.reason)
-    .find(Boolean);
+// Sign-in and the other no-session operations answer "unauthenticated" for a wrong password or a spent link. That is a
+// message for the form to show, not a session that ended; treating it as one threw the patient back to a fresh sign-in screen.
+const PUBLIC_OPERATIONS = new Set(['LoginPatient', 'ActivateAccount', 'RequestActivationLink', 'RequestPatientPasswordReset', 'ResetPassword', 'RefreshAccessToken']);
 
-  const isAuthError =
-    !!reason ||
-    graphQLErrors?.some((e) => e.extensions?.code === 'UNAUTHENTICATED') ||
-    (networkError && 'statusCode' in networkError && (networkError as any).statusCode === 401);
+const errorLink = onError(({ graphQLErrors, response, operation, forward, networkError }) => {
+  if (PUBLIC_OPERATIONS.has(operation.operationName)) return;
+  // Only an error that says the session ended signs the patient out. Any other "unauthenticated" (a wrong current
+  // password) is a message for the screen that asked.
+  const reason = sessionEndReason(graphQLErrors);
+
+  const isAuthError = !!reason || (networkError && 'statusCode' in networkError && (networkError as any).statusCode === 401);
   if (!isAuthError) return;
 
   if (reason !== 'TOKEN_EXPIRED' || operation.getContext().retriedAfterRefresh) {

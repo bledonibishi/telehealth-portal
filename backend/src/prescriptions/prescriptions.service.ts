@@ -1,4 +1,6 @@
-import { Injectable, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -7,6 +9,7 @@ import { MessagingService } from '../messaging/messaging.service';
 import { ConsultationKind, PrescriptionStatus, UserRole } from '../common/enums';
 import { OrdersService } from './orders.service';
 import { DosingService } from '../dosing/dosing.service';
+import { PartnerOrdersService } from './partner-orders.service';
 import { PrescribingService } from './prescribing.service';
 import { ChangeDoseInput } from './dto/change-dose.input';
 
@@ -23,6 +26,8 @@ export class PrescriptionsService {
     private messaging: MessagingService,
     private email: EmailService,
     private config: ConfigService,
+    private partner: PartnerOrdersService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   async findById(id: string) {
@@ -45,19 +50,26 @@ export class PrescriptionsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       await this.orders.cancelPendingFor(id, `Prescription cancelled: ${reason.trim()}`, tx);
       await this.dosing.cancelForPrescription(id, tx);
-      return tx.prescription.update({
+      const cancelled = await tx.prescription.update({
         where: { id },
         data: { status: PrescriptionStatus.CANCELLED, cancelledAt: new Date(), cancelReason: reason.trim() },
       });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'PRESCRIPTION_CANCELLED',
+          resourceType: 'Prescription',
+          resourceId: id,
+          patientId: rx.patientId,
+          metadata: { reason: reason.trim() },
+        },
+        tx,
+      );
+      return cancelled;
     });
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'PRESCRIPTION_CANCELLED',
-      resourceType: 'Prescription',
-      resourceId: id,
-      metadata: { reason: reason.trim() },
-    });
+    // Orders already handed to the pharmacy partner are withdrawn there too.
+    await this.partner.flushCancellations();
     return updated;
   }
 
@@ -93,8 +105,8 @@ export class PrescriptionsService {
     });
     const answers = (consultation?.quizAnswers as any[]) ?? [];
 
-    const issued = await this.prisma.$transaction((tx) =>
-      this.prescribing.issue(
+    const issued = await this.prisma.$transaction(async (tx) => {
+      const rx = await this.prescribing.issue(
         {
           patientId: current.patientId,
           prescriberId: clinicianId,
@@ -108,26 +120,35 @@ export class PrescriptionsService {
           overrideReason: input.overrideReason,
         },
         tx,
-      ),
-    );
-
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'DOSE_CHANGED',
-      resourceType: 'Prescription',
-      resourceId: issued.id,
-      metadata: { supersedes: current.id, reason: input.reasonForChange.trim(), medication: issued.medication },
+      );
+      // Same transaction as the change: a dose change that can't be recorded doesn't happen.
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'DOSE_CHANGED',
+          resourceType: 'Prescription',
+          resourceId: rx.id,
+          patientId: current.patientId,
+          metadata: { supersedes: current.id, reason: input.reasonForChange.trim(), medication: rx.medication },
+        },
+        tx,
+      );
+      return rx;
     });
 
     const patient = await this.prisma.patient.findUnique({ where: { id: current.patientId } });
     if (patient) await this.notifyPatient(patient, clinicianId, input.messageToPatient);
+
+    // The new dose's first supply replaces any unsent order — pass it to the pharmacy partner.
+    await this.partner.trySendForPrescription(issued.id);
 
     return issued;
   }
 
   // Best effort: a failed email or message must not undo a dose change that is already saved.
   private async notifyPatient(patient: { id: string; email: string; firstName: string }, clinicianId: string, message?: string) {
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline: 'Your dose has been updated' }, href: '/dashboard' });
     try {
       if (message?.trim()) {
         const thread = await this.prisma.consultation.findFirst({ where: { patientId: patient.id }, orderBy: { submittedAt: 'desc' } });

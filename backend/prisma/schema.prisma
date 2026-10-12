@@ -60,6 +60,59 @@ enum CheckInFeeling {
 enum WeightEntrySource {
   PATIENT
   STAFF
+  // Sent by a connected device or health app (smart scale, Apple Health, Google Fit).
+  DEVICE
+}
+
+enum SideEffectSeverity {
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AppointmentReason {
+  QUESTION
+  CHECK_UP
+  SIDE_EFFECT
+  PAIN
+  DOSE_CHANGE
+  OTHER
+}
+
+// URGENT is answered within 24 hours, ROUTINE within 3 days (see appointments/triage.ts).
+enum AppointmentUrgency {
+  ROUTINE
+  URGENT
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  PENDING // waiting for the host to accept
+  CONFIRMED
+  RESCHEDULED // replaced by a newer booking (see rescheduledFromUid on that one)
+  CANCELLED
+  REJECTED
+  COMPLETED
+}
+
+enum DeviceProvider {
+  APPLE_HEALTH
+  GOOGLE_FIT
+  SMART_SCALE
+  OTHER
 }
 
 enum UploadKind {
@@ -68,6 +121,35 @@ enum UploadKind {
   BODY_PHOTO_FRONT
   BODY_PHOTO_SIDE
   PRESCRIPTION_PROOF
+  // A photo taken alongside a weighing, to see progress over time.
+  PROGRESS_PHOTO
+  // A lab's report (PDF or photo) a patient or a doctor attached, kept as the source of the results typed from it.
+  LAB_REPORT
+}
+
+enum LabReportSource {
+  PATIENT
+  STAFF
+}
+
+// PENDING: nobody has entered its results yet. ENTERED: results were saved from it. REJECTED: not usable (blurry, not a lab report).
+enum LabReportStatus {
+  PENDING
+  ENTERED
+  REJECTED
+}
+
+enum BodyPhotoView {
+  FRONT
+  SIDE
+}
+
+// UNCHECKED: the automated check could not run (not set up, over its daily limit, a format it can't read, an
+// outage) — the photo is accepted and a clinician reviews it as they do every photo.
+enum PhotoCheckOutcome {
+  PASS
+  FAIL
+  UNCHECKED
 }
 
 enum OnboardingStatus {
@@ -75,6 +157,8 @@ enum OnboardingStatus {
   PENDING_REVIEW
   APPROVED
   REJECTED
+  // The application was declined: nothing is waiting for review and the patient can't send more in.
+  DECLINED
 }
 
 enum PersonaStatus {
@@ -83,6 +167,16 @@ enum PersonaStatus {
   VERIFIED
   FAILED
   NOT_CONFIGURED
+}
+
+// Mirrors the statuses verify-service reports for an identity-check session.
+enum IdentityVerificationStatus {
+  PENDING
+  PROCESSING
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
 }
 
 enum PhotoReviewStatus {
@@ -120,6 +214,12 @@ enum PrescriptionStatus {
   ACTIVE
   SUPERSEDED
   CANCELLED
+}
+
+enum PartnerTransmissionStatus {
+  PENDING
+  SENT
+  FAILED
 }
 
 enum OrderStatus {
@@ -178,50 +278,80 @@ enum LabResultKind {
 }
 
 model Clinician {
-  id            String        @id @default(cuid())
-  email         String        @unique
-  passwordHash  String        @map("password_hash")
-  firstName     String        @map("first_name")
-  lastName      String        @map("last_name")
+  id                   String        @id @default(cuid())
+  email                String        @unique
+  passwordHash         String        @map("password_hash")
+  // Bumped when the password changes or "sign out everywhere" is used; tokens carry the number they were issued under.
+  tokenVersion         Int           @default(0) @map("token_version")
+  firstName            String        @map("first_name")
+  lastName             String        @map("last_name")
   // Medical licence — required (with isVerified) before a clinician can prescribe
-  licenseNumber String?       @unique @map("license_number")
-  licensingBody String?       @map("licensing_body")
-  role          ClinicianRole @default(DOCTOR)
-  isVerified    Boolean       @default(false) @map("is_verified")
-  verifiedAt    DateTime?     @map("verified_at")
-  verifiedById  String?       @map("verified_by_id")
-  mfaSecret     String?       @map("mfa_secret")
-  mfaEnabled    Boolean       @default(false) @map("mfa_enabled")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  licenseNumber        String?       @unique @map("license_number")
+  licensingBody        String?       @map("licensing_body")
+  role                 ClinicianRole @default(DOCTOR)
+  isVerified           Boolean       @default(false) @map("is_verified")
+  verifiedAt           DateTime?     @map("verified_at")
+  verifiedById         String?       @map("verified_by_id")
+  mfaSecret            String?       @map("mfa_secret")
+  mfaEnabled           Boolean       @default(false) @map("mfa_enabled")
+  // An admin turned the account off: it cannot sign in, and its open sessions stop working. Nothing it did is touched.
+  deactivatedAt        DateTime?     @map("deactivated_at")
+  // When the person chose their own password. Null for someone invited who has not accepted yet (their stored hash is
+  // an unguessable placeholder). Only such an account can be deleted outright: it has never been used. Defaults to now,
+  // so an account made any other way (a seed, a script) with a password counts as set; an invitation says null on purpose.
+  passwordSetAt        DateTime?     @default(now()) @map("password_set_at")
+  // A single-use link to set a password: for an invitation, or sent again to a member who lost theirs.
+  inviteToken          String?       @unique @map("invite_token")
+  inviteTokenExpiresAt DateTime?     @map("invite_token_expires_at")
+  // Shown to the patient on My Doctor, set by an admin. All optional.
+  specialty            String?
+  bio                  String?
+  languages            String[]      @default([])
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
 
   consultations       Consultation[]
   reviewedOnboardings OnboardingSubmission[]
   prescriptions       Prescription[]
   reviewedCheckIns    CheckIn[]
+  handledAppointments AppointmentRequest[]
+  bookings            Booking[]
   enteredLabResults   LabResult[]            @relation("LabResultEnteredBy")
   reviewedLabResults  LabResult[]            @relation("LabResultReviewedBy")
+  notifications       Notification[]
 
   @@map("clinicians")
 }
 
 model Lead {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  firstName       String           @map("first_name")
-  lastName        String           @map("last_name")
-  productKind     ConsultationKind @map("product_kind")
-  quizAnswers     Json             @map("quiz_answers")
-  stripeSessionId String?          @map("stripe_session_id")
+  id                     String           @id @default(cuid())
+  email                  String           @unique
+  firstName              String           @map("first_name")
+  lastName               String           @map("last_name")
+  productKind            ConsultationKind @map("product_kind")
+  quizAnswers            Json             @map("quiz_answers")
+  stripeSessionId        String?          @map("stripe_session_id")
   // The referrer's code this lead arrived with, if any — kept even before a
   // Referral row exists, since LeadsService validates it at creation time.
-  referralCode    String?          @map("referral_code")
+  referralCode           String?          @map("referral_code")
   // Delivery details and whether the referral reward was applied, captured at
   // checkout and copied onto the Patient when the first payment succeeds.
-  checkoutDetails Json?            @map("checkout_details")
-  convertedAt     DateTime?        @map("converted_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
+  checkoutDetails        Json?            @map("checkout_details")
+  // The medical questionnaire, answered on the website after choosing a treatment and before paying. It becomes the
+  // patient's consultation when the first payment succeeds (see ConsultationsService.submitFromLead). The consent
+  // they accepted with it is kept here until then, with where it was accepted from.
+  intakeAnswers          Json?            @map("intake_answers")
+  intakeConsentVersion   String?          @map("intake_consent_version")
+  intakeConsentIp        String?          @map("intake_consent_ip")
+  intakeConsentUserAgent String?          @map("intake_consent_user_agent")
+  intakeSavedAt          DateTime?        @map("intake_saved_at")
+  convertedAt            DateTime?        @map("converted_at")
+  // "Finish your order" reminders sent to a lead who hasn't paid (see LeadRemindersService), and when they asked to stop.
+  reminderCount          Int              @default(0) @map("reminder_count")
+  lastReminderAt         DateTime?        @map("last_reminder_at")
+  remindersStoppedAt     DateTime?        @map("reminders_stopped_at")
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
   patient  Patient?
   referral Referral?
@@ -229,10 +359,83 @@ model Lead {
   @@map("leads")
 }
 
+// Something that happened which one person should hear about: a patient (their care team wrote, an order moved) or a
+// staff member (a patient wrote, an urgent request came in). Exactly one of patientId and clinicianId is set. The words
+// are not stored: `kind` and `params` are turned into text by each app (see shared-types notifications.ts), so the
+// clinician portal can show them in its own language. Rows about the same thing share a `groupKey` (e.g. "msg:<patient>"):
+// a new event updates the reader's unread row instead of adding another, and handling the thing (replying, answering
+// the request) marks every row with that key read, for everyone it was sent to.
+model Notification {
+  id          String    @id @default(cuid())
+  patientId   String?   @map("patient_id")
+  clinicianId String?   @map("clinician_id")
+  kind        String
+  params      Json      @default("{}")
+  // Where tapping it leads, as a path inside the reader's app, e.g. "/messages".
+  href        String?
+  groupKey    String?   @map("group_key")
+  // How many events this row stands for (5 messages from one patient are one row saying 5).
+  count       Int       @default(1)
+  readAt      DateTime? @map("read_at")
+  // When we emailed a reminder about it still being unread (once per row).
+  emailedAt   DateTime? @map("emailed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  // When the last event joined this row; the list is ordered by it.
+  updatedAt   DateTime  @default(now()) @map("updated_at")
+
+  patient   Patient?   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinician Clinician? @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, updatedAt])
+  @@index([clinicianId, updatedAt])
+  @@index([groupKey, readAt])
+  @@index([kind, readAt, emailedAt])
+  @@map("notifications")
+}
+
+// A phone a patient is signed in on, so we can tell it when an order moves. One row per Expo push token; a token
+// that belongs to a different patient later (a shared phone) is moved to them, never kept on both.
+model PushDevice {
+  id         String   @id @default(cuid())
+  patientId  String   @map("patient_id")
+  token      String   @unique
+  // ios or android.
+  platform   String
+  createdAt  DateTime @default(now()) @map("created_at")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("push_devices")
+}
+
+// A patient's one-tap ask for their money back. It refunds nothing by itself: an admin sees whether the medicine has
+// already left the pharmacy and decides (see stripe/refund-requests.service.ts). No reason is asked for.
+model RefundRequest {
+  id          String    @id @default(cuid())
+  patientId   String    @map("patient_id")
+  // REQUESTED, APPROVED or DECLINED.
+  status      String    @default("REQUESTED")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  decidedAt   DateTime? @map("decided_at")
+  decidedById String?   @map("decided_by_id")
+  // What happened to the money (the refund and subscription outcome), shown to the admin.
+  outcome     String?
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
+  @@index([patientId])
+  @@map("refund_requests")
+}
+
 model Patient {
   id                       String    @id @default(cuid())
   email                    String    @unique
   passwordHash             String    @map("password_hash")
+  // Bumped when the password changes or "sign out everywhere" is used; tokens carry the number they were issued under.
+  tokenVersion             Int       @default(0) @map("token_version")
   firstName                String    @map("first_name")
   lastName                 String    @map("last_name")
   dateOfBirth              DateTime  @map("date_of_birth")
@@ -242,6 +445,9 @@ model Patient {
   activatedAt              DateTime? @map("activated_at")
   stripeCustomerId         String?   @map("stripe_customer_id")
   stripeSubscriptionId     String?   @map("stripe_subscription_id")
+  // Set when Stripe reports the subscription has ended (the patient cancelled in the billing
+  // portal, or it was cancelled by us): no further supplies are shipped.
+  subscriptionEndedAt      DateTime? @map("subscription_ended_at")
   // This patient's own shareable referral code — generated lazily on first use.
   referralCode             String?   @unique @map("referral_code")
   // Whether a reward this patient earns is credited automatically, or left for
@@ -254,25 +460,53 @@ model Patient {
   city                     String?   @map("city")
   postcode                 String?   @map("postcode")
   country                  String?   @map("country")
+  // Body details the patient keeps up to date on their profile. Height defaults to the intake answer until they set it.
+  gender                   Gender?
+  heightCm                 Float?    @map("height_cm")
+  // Kept by the patient on their profile; the clinical record of allergies is the intake questionnaire.
+  allergies                String?
+  emergencyContactName     String?   @map("emergency_contact_name")
+  emergencyContactPhone    String?   @map("emergency_contact_phone")
+  // Which notifications may reach the phone as a push, and whether an unread message is followed up by email. The app
+  // itself always shows everything; treatment decisions and refunds are always pushed (see shared-types notificationCategory).
+  pushMessages             Boolean   @default(true) @map("push_messages")
+  pushOrders               Boolean   @default(true) @map("push_orders")
+  pushReminders            Boolean   @default(true) @map("push_reminders")
+  pushRewards              Boolean   @default(true) @map("push_rewards")
+  emailUnreadMessages      Boolean   @default(true) @map("email_unread_messages")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  lead               Lead?                 @relation(fields: [leadId], references: [id])
-  consultations      Consultation[]
-  uploadedFiles      UploadedFile[]
-  onboarding         OnboardingSubmission?
-  checkIns           CheckIn[]
-  prescriptions      Prescription[]
-  orders             Order[]
-  consents           Consent[]
-  weightGoal         WeightGoal?
-  weightEntries      WeightEntry[]
-  doseEvents         DoseEvent[]
-  symptomAssessments SymptomAssessment[]
-  labResults         LabResult[]
-  referralsMade      Referral[]            @relation("ReferralsMade")
-  referralsReceived  Referral?             @relation("ReferralsReceived")
-  vouchers           Voucher[]
+  lead                  Lead?                  @relation(fields: [leadId], references: [id])
+  consultations         Consultation[]
+  messages              Message[]
+  uploadedFiles         UploadedFile[]
+  onboarding            OnboardingSubmission?
+  checkIns              CheckIn[]
+  prescriptions         Prescription[]
+  orders                Order[]
+  consents              Consent[]
+  weightGoal            WeightGoal?
+  weightEntries         WeightEntry[]
+  bodyMeasurements      BodyMeasurement[]
+  deviceConnections     DeviceConnection[]
+  sideEffectReports     SideEffectReport[]
+  sideEffectLogs        SideEffectLog[]
+  doseEvents            DoseEvent[]
+  symptomAssessments    SymptomAssessment[]
+  labResults            LabResult[]
+  labReports            LabReport[]
+  referralsMade         Referral[]             @relation("ReferralsMade")
+  referralsReceived     Referral?              @relation("ReferralsReceived")
+  vouchers              Voucher[]
+  refillRequests        RefillRequest[]
+  appointmentRequests   AppointmentRequest[]
+  bodyPhotoChecks       BodyPhotoCheck[]
+  bookings              Booking[]
+  identityVerifications IdentityVerification[]
+  refundRequests        RefundRequest[]
+  pushDevices           PushDevice[]
+  notifications         Notification[]
 
   @@map("patients")
 }
@@ -337,14 +571,15 @@ model Prescription {
   cancelReason   String?            @map("cancel_reason")
   issuedAt       DateTime           @default(now()) @map("issued_at")
 
-  consultation Consultation?      @relation(fields: [consultationId], references: [id])
-  patient      Patient            @relation(fields: [patientId], references: [id])
-  prescriber   Clinician?         @relation(fields: [prescriberId], references: [id])
-  supersedes   Prescription?      @relation("PrescriptionHistory", fields: [supersedesId], references: [id])
-  supersededBy Prescription?      @relation("PrescriptionHistory")
-  items        PrescriptionItem[]
-  orders       Order[]
-  checkIns     CheckIn[]          @relation("CheckInPrescription")
+  consultation   Consultation?      @relation(fields: [consultationId], references: [id])
+  patient        Patient            @relation(fields: [patientId], references: [id])
+  prescriber     Clinician?         @relation(fields: [prescriberId], references: [id])
+  supersedes     Prescription?      @relation("PrescriptionHistory", fields: [supersedesId], references: [id])
+  supersededBy   Prescription?      @relation("PrescriptionHistory")
+  items          PrescriptionItem[]
+  orders         Order[]
+  checkIns       CheckIn[]          @relation("CheckInPrescription")
+  refillRequests RefillRequest[]
 
   @@index([patientId])
   @@map("prescriptions")
@@ -353,32 +588,92 @@ model Prescription {
 // One supply of a prescription: the first fill, then one per repeat. What the
 // pharmacy dispatches and the patient tracks.
 model Order {
-  id               String      @id @default(cuid())
-  prescriptionId   String      @map("prescription_id")
-  patientId        String      @map("patient_id")
+  id                    String      @id @default(cuid())
+  prescriptionId        String      @map("prescription_id")
+  patientId             String      @map("patient_id")
   // 1 = first supply; each repeat increments.
-  sequence         Int
-  status           OrderStatus @default(PENDING)
+  sequence              Int
+  status                OrderStatus @default(PENDING)
   // Snapshot at dispatch, so later address changes don't rewrite history.
-  shippingAddress  Json?       @map("shipping_address")
-  pharmacyRef      String?     @map("pharmacy_ref")
-  dispatchedAt     DateTime?   @map("dispatched_at")
-  carrier          String?
-  trackingNumber   String?     @map("tracking_number")
-  trackingUrl      String?     @map("tracking_url")
-  outForDeliveryAt DateTime?   @map("out_for_delivery_at")
-  deliveredAt      DateTime?   @map("delivered_at")
-  cancelledAt      DateTime?   @map("cancelled_at")
-  cancelReason     String?     @map("cancel_reason")
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  shippingAddress       Json?       @map("shipping_address")
+  pharmacyRef           String?     @map("pharmacy_ref")
+  dispatchedAt          DateTime?   @map("dispatched_at")
+  carrier               String?
+  trackingNumber        String?     @map("tracking_number")
+  trackingUrl           String?     @map("tracking_url")
+  // The courier's expected delivery window, given when the pharmacy ships it; shown to the patient.
+  estimatedDeliveryFrom DateTime?   @map("estimated_delivery_from")
+  estimatedDeliveryTo   DateTime?   @map("estimated_delivery_to")
+  // The pharmacy has packed it and is waiting for the courier to collect it.
+  readyForPickupAt      DateTime?   @map("ready_for_pickup_at")
+  // When we last asked a courier's tracking API about this parcel (see couriers/), so it isn't asked too often.
+  trackingCheckedAt     DateTime?   @map("tracking_checked_at")
+  outForDeliveryAt      DateTime?   @map("out_for_delivery_at")
+  deliveredAt           DateTime?   @map("delivered_at")
+  cancelledAt           DateTime?   @map("cancelled_at")
+  cancelReason          String?     @map("cancel_reason")
+  // What happened to the patient's money when an admin cancelled it (refunded, subscription ended, or nothing).
+  cancelBillingNote     String?     @map("cancel_billing_note")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
 
-  prescription Prescription @relation(fields: [prescriptionId], references: [id])
-  patient      Patient      @relation(fields: [patientId], references: [id])
+  prescription         Prescription         @relation(fields: [prescriptionId], references: [id])
+  patient              Patient              @relation(fields: [patientId], references: [id])
+  partnerTransmission  PartnerTransmission?
+  trackingEvents       OrderTrackingEvent[]
+  // What the pharmacy charged per unit when this order was handed over: [{ product, strength, quantity, unitCost }].
+  // Kept so a later change to a dose's cost never rewrites an earlier month's statement.
+  pharmacyCostSnapshot Json?                @map("pharmacy_cost_snapshot")
 
   @@unique([prescriptionId, sequence])
   @@index([status])
   @@map("orders")
+}
+
+// One step in an order's journey, from staff pressing a button or from a courier or tracking service
+// calling our webhook. Kept as a history for the patient and staff; the order's own status is moved
+// forward from these, never back.
+model OrderTrackingEvent {
+  id         String   @id @default(cuid())
+  orderId    String   @map("order_id")
+  // READY_FOR_PICKUP, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RETURNED or EXCEPTION
+  // (see couriers/tracking-status.ts). Text, so a new kind needs no migration.
+  status     String
+  occurredAt DateTime @map("occurred_at")
+  location   String?
+  note       String?
+  // MANUAL (staff) or WEBHOOK (courier / tracking service).
+  source     String
+  // The sender's own id for this event, so a resend is recorded only once.
+  externalId String?  @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([orderId, externalId])
+  @@index([orderId, occurredAt])
+  @@map("order_tracking_events")
+}
+
+// A patient's one-tap ask for their next supply. It never creates an order: a doctor still places the
+// repeat (from the shipments list), and that closes the request. `sequence` is the supply asked for
+// (the next order number), so a double tap or a retry can't open a second request for the same supply.
+model RefillRequest {
+  id             String    @id @default(cuid())
+  patientId      String    @map("patient_id")
+  prescriptionId String    @map("prescription_id")
+  sequence       Int
+  requestedAt    DateTime  @default(now()) @map("requested_at")
+  // Set when a repeat order is placed against the prescription.
+  resolvedAt     DateTime? @map("resolved_at")
+  orderId        String?   @map("order_id")
+
+  patient      Patient      @relation(fields: [patientId], references: [id])
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+
+  @@unique([prescriptionId, sequence])
+  @@index([patientId])
+  @@map("refill_requests")
 }
 
 model PrescriptionItem {
@@ -395,6 +690,39 @@ model PrescriptionItem {
   doseEvents   DoseEvent[]
 
   @@map("prescription_items")
+}
+
+// One row per order: whether the structured order summary reached the external
+// pharmacy partner (webhook and/or email), how many attempts it took, and the
+// exact payload that was sent. If the order is cancelled after it went out, the
+// same row carries the cancellation message ("order.cancelled") the same way.
+model PartnerTransmission {
+  id            String                    @id @default(cuid())
+  orderId       String                    @unique @map("order_id")
+  status        PartnerTransmissionStatus @default(PENDING)
+  // Which message this row is delivering: "order.created" or "order.cancelled".
+  event         String                    @default("order.created")
+  // Channels that accepted the current message, e.g. ["WEBHOOK", "EMAIL"].
+  channels      String[]
+  // Channels the current message must reach; empty means every configured one.
+  // A cancellation goes only where the order itself was delivered.
+  targets       String[]
+  attempts      Int                       @default(0)
+  lastError     String?                   @map("last_error")
+  lastAttemptAt DateTime?                 @map("last_attempt_at")
+  // Earliest time the scheduled sweep may try again (back-off).
+  nextAttemptAt DateTime?                 @map("next_attempt_at")
+  // Set while a sender is delivering this row, so two senders never post the same message.
+  claimedAt     DateTime?                 @map("claimed_at")
+  sentAt        DateTime?                 @map("sent_at")
+  payload       Json
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("partner_transmissions")
 }
 
 // Medicines a clinician can prescribe. Seeded; review with the partner
@@ -429,6 +757,16 @@ model Product {
   @@map("products")
 }
 
+// Where on the body an injection went, so the next one can be somewhere else.
+enum InjectionSite {
+  ABDOMEN_LEFT
+  ABDOMEN_RIGHT
+  THIGH_LEFT
+  THIGH_RIGHT
+  ARM_LEFT
+  ARM_RIGHT
+}
+
 enum DoseStatus {
   SCHEDULED
   TAKEN
@@ -440,18 +778,23 @@ enum DoseStatus {
 // single weekly GLP-1 injection. Generated ahead of time on a rolling window
 // (see DosingService) so the patient always has upcoming dates to see.
 model DoseEvent {
-  id                 String     @id @default(cuid())
-  prescriptionItemId String     @map("prescription_item_id")
-  patientId          String     @map("patient_id")
-  scheduledFor       DateTime   @map("scheduled_for")
-  status             DoseStatus @default(SCHEDULED)
-  takenAt            DateTime?  @map("taken_at")
+  id                 String          @id @default(cuid())
+  prescriptionItemId String          @map("prescription_item_id")
+  patientId          String          @map("patient_id")
+  scheduledFor       DateTime        @map("scheduled_for")
+  status             DoseStatus      @default(SCHEDULED)
+  takenAt            DateTime?       @map("taken_at")
   note               String?
+  // Where the injection went (injectable products only), and how the patient said they felt a day or so
+  // later — the doctor reads these together when deciding whether to step the dose up.
+  injectionSite      InjectionSite?  @map("injection_site")
+  feelingAfter       CheckInFeeling? @map("feeling_after")
+  feelingAfterAt     DateTime?       @map("feeling_after_at")
   // Set once a reminder email has gone out, so the cron doesn't resend one
   // every time it runs while the dose is still upcoming.
-  reminderSentAt     DateTime?  @map("reminder_sent_at")
-  createdAt          DateTime   @default(now()) @map("created_at")
-  updatedAt          DateTime   @updatedAt @map("updated_at")
+  reminderSentAt     DateTime?       @map("reminder_sent_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
   prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Cascade)
   patient          Patient          @relation(fields: [patientId], references: [id])
@@ -483,10 +826,13 @@ model LabResult {
   reviewedAt         DateTime?     @map("reviewed_at")
   reviewedById       String?       @map("reviewed_by_id")
   reviewNote         String?       @map("review_note")
+  // The lab report these were typed from, when there is one.
+  reportId           String?       @map("report_id")
   createdAt          DateTime      @default(now()) @map("created_at")
   updatedAt          DateTime      @updatedAt @map("updated_at")
 
   patient    Patient    @relation(fields: [patientId], references: [id])
+  report     LabReport? @relation(fields: [reportId], references: [id])
   enteredBy  Clinician? @relation("LabResultEnteredBy", fields: [enteredById], references: [id])
   reviewedBy Clinician? @relation("LabResultReviewedBy", fields: [reviewedById], references: [id])
 
@@ -499,15 +845,20 @@ model LabResult {
 }
 
 model ProductStrength {
-  id              String  @id @default(cuid())
-  productId       String  @map("product_id")
-  label           String
-  packDescription String? @map("pack_description")
+  id               String   @id @default(cuid())
+  productId        String   @map("product_id")
+  label            String
+  packDescription  String?  @map("pack_description")
   // 1 = starting dose. Null for products that aren't titrated.
-  titrationStep   Int?    @map("titration_step")
-  defaultQuantity Int     @default(1) @map("default_quantity")
-  sortOrder       Int     @default(0) @map("sort_order")
-  active          Boolean @default(true)
+  titrationStep    Int?     @map("titration_step")
+  defaultQuantity  Int      @default(1) @map("default_quantity")
+  sortOrder        Int      @default(0) @map("sort_order")
+  active           Boolean  @default(true)
+  // The monthly Stripe price for this dose (each dose is priced separately).
+  // Null: not sold per dose yet — billing falls back to the plan tier price.
+  stripePriceId    String?  @map("stripe_price_id")
+  // What the pharmacy partner charges us for one unit of this dose, in the clinic's currency. Null: not known yet.
+  pharmacyUnitCost Decimal? @map("pharmacy_unit_cost") @db.Decimal(10, 2)
 
   product           Product            @relation(fields: [productId], references: [id])
   prescriptionItems PrescriptionItem[]
@@ -517,15 +868,30 @@ model ProductStrength {
 }
 
 model Message {
-  id             String   @id @default(cuid())
-  consultationId String   @map("consultation_id")
-  senderId       String   @map("sender_id")
-  senderRole     Role     @map("sender_role")
+  id             String    @id @default(cuid())
+  // The conversation is the patient's. Messages sent before the patient has a
+  // consultation (e.g. asking for help during onboarding) have no
+  // consultationId; submitting the medical questionnaire moves them onto the
+  // new consultation (see ConsultationsService.submitIntakeQuiz).
+  patientId      String    @map("patient_id")
+  consultationId String?   @map("consultation_id")
+  senderId       String    @map("sender_id")
+  senderRole     Role      @map("sender_role")
   content        String
-  sentAt         DateTime @default(now()) @map("sent_at")
+  sentAt         DateTime  @default(now()) @map("sent_at")
+  // When the other side first had the conversation open with this message in it. Null until then.
+  readAt         DateTime? @map("read_at")
+  // A patient's message the AI check thought might be urgent (see MessageUrgencyService). It only ever raises a message's
+  // priority for the care team: a message the check missed or failed on is left exactly as it was.
+  aiUrgent       Boolean   @default(false) @map("ai_urgent")
+  aiUrgentReason String?   @map("ai_urgent_reason")
+  aiCheckedAt    DateTime? @map("ai_checked_at")
 
-  consultation Consultation @relation(fields: [consultationId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  consultation Consultation? @relation(fields: [consultationId], references: [id])
 
+  @@index([consultationId, readAt])
+  @@index([patientId, consultationId])
   @@map("messages")
 }
 
@@ -537,10 +903,15 @@ model AuditLogEntry {
   action       String
   resourceType String   @map("resource_type")
   resourceId   String   @map("resource_id")
+  // The patient the action concerns, when there is one — so a patient's whole
+  // medical trail comes back from one indexed query.
+  patientId    String?  @map("patient_id")
   metadata     Json?
-  timestamp    DateTime @default(now())
+  timestamp    DateTime @default(now()) @map("created_at")
 
-  @@map("audit_log_entries")
+  @@index([patientId, timestamp])
+  @@index([timestamp])
+  @@map("audit_logs")
 }
 
 model UploadedFile {
@@ -552,9 +923,33 @@ model UploadedFile {
   storageKey String     @map("storage_key")
   createdAt  DateTime   @default(now()) @map("created_at")
 
-  patient Patient @relation(fields: [patientId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  weightEntry WeightEntry?
+  labReport   LabReport?
 
   @@map("uploaded_files")
+}
+
+// What the automated check made of one body photo at onboarding. `issues` are our own codes
+// (see onboarding/photo-check.ts), never free text from the model. `fileId` is a plain id, not a
+// relation: a photo that is retaken is deleted, and its check stays as a record of what was tried.
+model BodyPhotoCheck {
+  id            String            @id @default(cuid())
+  patientId     String            @map("patient_id")
+  fileId        String            @map("file_id")
+  view          BodyPhotoView
+  outcome       PhotoCheckOutcome
+  issues        String[]
+  model         String?
+  /// The patient, after failing repeatedly, asked for a clinician to look at this photo instead of retaking it.
+  sentForReview Boolean           @default(false) @map("sent_for_review")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, view, createdAt])
+  @@index([fileId])
+  @@map("body_photo_checks")
 }
 
 model CheckIn {
@@ -582,6 +977,8 @@ model CheckIn {
   reviewedById         String?           @map("reviewed_by_id")
   outcome              CheckInOutcome?
   reviewNote           String?           @map("review_note")
+  // What the doctor wrote for the patient (internal `reviewNote` is never shown to them). Printed on the check-in report.
+  patientNote          String?           @map("patient_note")
   // What happened to billing as a result (price change, pause, cancellation).
   billingNote          String?           @map("billing_note")
   resultOrderId        String?           @map("result_order_id")
@@ -597,6 +994,48 @@ model CheckIn {
   // The Weight Journey reads a patient's completed check-ins by date.
   @@index([patientId, completedAt])
   @@map("check_ins")
+}
+
+// What an AI feature produced for something (a check-in brief, a message translation), kept so the same request isn't paid
+// for twice and so there is a record of what staff were shown. `inputHash` is a hash of what the model was given, so a
+// changed record gets a fresh answer.
+model AiOutput {
+  id          String   @id @default(cuid())
+  kind        String
+  subjectId   String   @map("subject_id")
+  inputHash   String   @map("input_hash")
+  output      Json
+  model       String
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([kind, subjectId, inputHash])
+  @@index([subjectId])
+  @@map("ai_outputs")
+}
+
+// A lab report someone attached: the file (kept encrypted like other uploads) and where it stands. A patient's upload
+// waits here as PENDING until a doctor types in its results; those results then point back at it.
+model LabReport {
+  id            String          @id @default(cuid())
+  patientId     String          @map("patient_id")
+  fileId        String          @unique @map("file_id")
+  source        LabReportSource
+  status        LabReportStatus @default(PENDING)
+  // What the patient wrote with it, or the doctor's reason for rejecting it.
+  note          String?
+  uploadedById  String?         @map("uploaded_by_id")
+  handledById   String?         @map("handled_by_id")
+  handledAt     DateTime?       @map("handled_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  patient    Patient      @relation(fields: [patientId], references: [id])
+  file       UploadedFile @relation(fields: [fileId], references: [id])
+  results    LabResult[]
+
+  @@index([patientId, createdAt])
+  @@index([status, createdAt])
+  @@map("lab_reports")
 }
 
 // A patient's Weight Journey endpoints. The starting weight is snapshotted from
@@ -620,54 +1059,271 @@ model WeightGoal {
 // edited or deleted; a mistake is voided, and staff fix one by voiding it and adding a
 // replacement that points back at it. A trigger enforces this for every client.
 model WeightEntry {
-  id              String            @id @default(cuid())
-  patientId       String            @map("patient_id")
-  weightKg        Decimal           @map("weight_kg") @db.Decimal(4, 1)
+  id                 String            @id @default(cuid())
+  patientId          String            @map("patient_id")
+  weightKg           Decimal           @map("weight_kg") @db.Decimal(4, 1)
   // When the weighing happened (chosen by the patient, default now) vs. when it was saved.
-  measuredAt      DateTime          @map("measured_at")
-  recordedAt      DateTime          @default(now()) @map("recorded_at")
-  source          WeightEntrySource @default(PATIENT)
-  note            String?
+  measuredAt         DateTime          @map("measured_at")
+  recordedAt         DateTime          @default(now()) @map("recorded_at")
+  source             WeightEntrySource @default(PATIENT)
+  note               String?
   // Client-generated id so a double tap or retry can't record the same weighing twice.
-  clientRequestId String?           @map("client_request_id")
-  correctsId      String?           @unique @map("corrects_id")
-  voidedAt        DateTime?         @map("voided_at")
-  voidedById      String?           @map("voided_by_id")
-  voidReason      String?           @map("void_reason")
+  clientRequestId    String?           @map("client_request_id")
+  correctsId         String?           @unique @map("corrects_id")
+  voidedAt           DateTime?         @map("voided_at")
+  voidedById         String?           @map("voided_by_id")
+  voidReason         String?           @map("void_reason")
+  // An optional progress photo taken with this weighing (an UploadedFile of kind PROGRESS_PHOTO).
+  photoFileId        String?           @unique @map("photo_file_id")
+  // Set when the weight came from a connected device; `externalId` is that device's own id for
+  // the reading, so sending the same reading twice records it once.
+  deviceConnectionId String?           @map("device_connection_id")
+  externalId         String?           @map("external_id")
 
-  patient     Patient      @relation(fields: [patientId], references: [id])
-  corrects    WeightEntry? @relation("WeightEntryCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
-  correctedBy WeightEntry? @relation("WeightEntryCorrection")
+  patient          Patient           @relation(fields: [patientId], references: [id])
+  photoFile        UploadedFile?     @relation(fields: [photoFileId], references: [id])
+  deviceConnection DeviceConnection? @relation(fields: [deviceConnectionId], references: [id])
+  corrects         WeightEntry?      @relation("WeightEntryCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
+  correctedBy      WeightEntry?      @relation("WeightEntryCorrection")
 
   @@unique([patientId, clientRequestId])
+  @@unique([deviceConnectionId, externalId])
   @@index([patientId, measuredAt])
   @@map("weight_entries")
 }
 
+// Tape measurements the patient takes to see fat loss that the scale alone doesn't show. Any of the
+// three may be left out of one entry. Their own tracking, so a mistake is voided (kept, hidden) rather
+// than edited.
+model BodyMeasurement {
+  id              String    @id @default(cuid())
+  patientId       String    @map("patient_id")
+  measuredAt      DateTime  @map("measured_at")
+  recordedAt      DateTime  @default(now()) @map("recorded_at")
+  waistCm         Decimal?  @map("waist_cm") @db.Decimal(4, 1)
+  hipsCm          Decimal?  @map("hips_cm") @db.Decimal(4, 1)
+  armCm           Decimal?  @map("arm_cm") @db.Decimal(4, 1)
+  // Client-generated id so a double tap or retry can't record the same measuring twice.
+  clientRequestId String?   @map("client_request_id")
+  voidedAt        DateTime? @map("voided_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([patientId, clientRequestId])
+  @@index([patientId, measuredAt])
+  @@map("body_measurements")
+}
+
+// A device or health app a patient has allowed to send their weight (see DeviceReadingsController).
+// Only a hash of its token is kept: the token itself is shown once, when the connection is made.
+model DeviceConnection {
+  id         String         @id @default(cuid())
+  patientId  String         @map("patient_id")
+  provider   DeviceProvider
+  label      String
+  tokenHash  String         @unique @map("token_hash")
+  // The last characters of the token, so the patient can tell their connections apart.
+  tokenHint  String         @map("token_hint")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  lastUsedAt DateTime?      @map("last_used_at")
+  revokedAt  DateTime?      @map("revoked_at")
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  weightEntries WeightEntry[]
+
+  @@index([patientId])
+  @@map("device_connections")
+}
+
+// A time booked with the clinic through the scheduling provider (Cal.com). The provider is the source of
+// truth for the calendar; this row mirrors it (kept in step by signed webhooks) so the rest of the system
+// can ask "what is booked, for whom, and why" without calling out. `purpose` says what the booking is for
+// (see booking/booking-purposes.ts) and `referenceId` points at the thing it belongs to, when there is one
+// (e.g. an appointment request). No medical details are stored here or sent to the provider.
+model Booking {
+  id                 String        @id @default(cuid())
+  provider           String        @default("CALCOM")
+  // The provider's own id for the booking; a rescheduled booking gets a new one.
+  providerUid        String        @unique @map("provider_uid")
+  purpose            String
+  referenceId        String?       @map("reference_id")
+  // Set only when the booking was made from the portal (proved by a signed token), never from an email match.
+  patientId          String?       @map("patient_id")
+  // The host, when their email matches a clinician.
+  clinicianId        String?       @map("clinician_id")
+  hostName           String?       @map("host_name")
+  hostEmail          String?       @map("host_email")
+  attendeeName       String?       @map("attendee_name")
+  attendeeEmail      String?       @map("attendee_email")
+  title              String?
+  status             BookingStatus @default(CONFIRMED)
+  startsAt           DateTime      @map("starts_at")
+  endsAt             DateTime      @map("ends_at")
+  meetingUrl         String?       @map("meeting_url")
+  location           String?
+  cancelReason       String?       @map("cancel_reason")
+  rescheduledFromUid String?       @map("rescheduled_from_uid")
+  // The provider event it was booked on, e.g. "clinic/routine" — what the scheduler opens to move it.
+  eventLink          String?       @map("event_link")
+  // When the provider last told us about this booking; an older message never overwrites a newer one.
+  providerUpdatedAt  DateTime?     @map("provider_updated_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
+
+  patient   Patient?   @relation(fields: [patientId], references: [id])
+  clinician Clinician? @relation(fields: [clinicianId], references: [id])
+
+  @@index([patientId, startsAt])
+  @@index([purpose, referenceId])
+  @@index([startsAt])
+  @@map("bookings")
+}
+
+// A patient asking to see a doctor. The patient says what it is about and how bad it is; the urgency and the
+// time by which a doctor must respond are worked out from that on the server, never chosen freely.
+model AppointmentRequest {
+  id               String             @id @default(cuid())
+  patientId        String             @map("patient_id")
+  reason           AppointmentReason
+  details          String
+  // 0–10, when the patient is in pain.
+  painLevel        Int?               @map("pain_level")
+  // Keys of the warning signs the patient ticked, e.g. ["chest_pain"].
+  redFlags         String[]           @map("red_flags")
+  urgency          AppointmentUrgency
+  // Warning signs were ticked, so the patient was told to call emergency services now.
+  emergencyAdvised Boolean            @default(false) @map("emergency_advised")
+  preferredTimes   String?            @map("preferred_times")
+  status           AppointmentStatus  @default(REQUESTED)
+  respondBy        DateTime           @map("respond_by")
+  scheduledFor     DateTime?          @map("scheduled_for")
+  meetingUrl       String?            @map("meeting_url")
+  clinicianNote    String?            @map("clinician_note")
+  handledById      String?            @map("handled_by_id")
+  cancelledAt      DateTime?          @map("cancelled_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  handledBy Clinician? @relation(fields: [handledById], references: [id])
+
+  @@index([status, urgency, respondBy])
+  @@index([patientId, createdAt])
+  @@map("appointment_requests")
+}
+
+// A side effect the patient reported between check-ins, for the doctor to acknowledge.
+model SideEffectReport {
+  id               String             @id @default(cuid())
+  patientId        String             @map("patient_id")
+  // Keys of the effects chosen, e.g. ["nausea", "fatigue"].
+  effects          String[]
+  severity         SideEffectSeverity
+  note             String?
+  // What the patient was on when they reported it, e.g. "Semaglutide (Wegovy) 0.25 mg".
+  medication       String?
+  createdAt        DateTime           @default(now()) @map("created_at")
+  acknowledgedAt   DateTime?          @map("acknowledged_at")
+  acknowledgedById String?            @map("acknowledged_by_id")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([acknowledgedAt, createdAt])
+  @@index([patientId, createdAt])
+  @@map("side_effect_reports")
+}
+
+// The patient's weekly score (1 = none, 10 = worst) for each of the usual GLP-1 side effects. The doctor
+// reads the latest of these, and how they have moved, before approving the next supply or dose.
+model SideEffectLog {
+  id              String   @id @default(cuid())
+  patientId       String   @map("patient_id")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+  nausea          Int
+  vomiting        Int
+  abdominalPain   Int      @map("abdominal_pain")
+  diarrhoea       Int
+  constipation    Int
+  fatigue         Int
+  note            String?
+  // Client-generated id so a double tap or retry can't record the same entry twice.
+  clientRequestId String?  @map("client_request_id")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@unique([patientId, clientRequestId])
+  @@index([patientId, recordedAt])
+  @@map("side_effect_logs")
+}
+
 model OnboardingSubmission {
-  id                      String                 @id @default(cuid())
-  patientId               String                 @unique @map("patient_id")
-  idDocumentFileId        String?                @map("id_document_file_id")
-  selfieFileId            String?                @map("selfie_file_id")
-  personaStatus           PersonaStatus          @default(NOT_STARTED) @map("persona_status")
-  bodyPhotoFrontFileId    String?                @map("body_photo_front_file_id")
-  bodyPhotoSideFileId     String?                @map("body_photo_side_file_id")
-  photoReviewStatus       PhotoReviewStatus      @default(NOT_STARTED) @map("photo_review_status")
-  priorMedicationUse      Boolean?               @map("prior_medication_use")
-  prescriptionProofType   PrescriptionProofType? @map("prescription_proof_type")
-  prescriptionProofFileId String?                @map("prescription_proof_file_id")
-  status                  OnboardingStatus       @default(IN_PROGRESS) @map("status")
-  submittedAt             DateTime?              @map("submitted_at")
-  reviewedAt              DateTime?              @map("reviewed_at")
-  reviewedByClinicianId   String?                @map("reviewed_by_clinician_id")
-  stepFeedback            Json                   @default("[]") @map("step_feedback")
-  createdAt               DateTime               @default(now()) @map("created_at")
-  updatedAt               DateTime               @updatedAt @map("updated_at")
+  id                           String                 @id @default(cuid())
+  patientId                    String                 @unique @map("patient_id")
+  idDocumentFileId             String?                @map("id_document_file_id")
+  selfieFileId                 String?                @map("selfie_file_id")
+  personaStatus                PersonaStatus          @default(NOT_STARTED) @map("persona_status")
+  bodyPhotoFrontFileId         String?                @map("body_photo_front_file_id")
+  bodyPhotoSideFileId          String?                @map("body_photo_side_file_id")
+  photoReviewStatus            PhotoReviewStatus      @default(NOT_STARTED) @map("photo_review_status")
+  priorMedicationUse           Boolean?               @map("prior_medication_use")
+  prescriptionProofType        PrescriptionProofType? @map("prescription_proof_type")
+  prescriptionProofFileId      String?                @map("prescription_proof_file_id")
+  // Automatic read of the proof and the dose-safety assessment — see
+  // PrescriptionProofReviewService. Advisory only; the clinician decides.
+  prescriptionProofReview      Json?                  @map("prescription_proof_review")
+  // The patient used the medicine before but has no proof: they start on the
+  // lowest dose like a new patient, unless a clinician verifies it another way.
+  prescriptionProofUnavailable Boolean                @default(false) @map("prescription_proof_unavailable")
+  status                       OnboardingStatus       @default(IN_PROGRESS) @map("status")
+  submittedAt                  DateTime?              @map("submitted_at")
+  // Which identity flow this submission was sent on, fixed when it is submitted: true when the ID
+  // check ran in verify-service (its result gates approval), false for the in-app ID upload a
+  // clinician reviews. Turning verify-service on or off later doesn't move a submission between them.
+  identityViaVerifyService     Boolean                @default(false) @map("identity_via_verify_service")
+  reviewedAt                   DateTime?              @map("reviewed_at")
+  reviewedByClinicianId        String?                @map("reviewed_by_clinician_id")
+  stepFeedback                 Json                   @default("[]") @map("step_feedback")
+  createdAt                    DateTime               @default(now()) @map("created_at")
+  updatedAt                    DateTime               @updatedAt @map("updated_at")
 
   patient             Patient    @relation(fields: [patientId], references: [id])
   reviewedByClinician Clinician? @relation(fields: [reviewedByClinicianId], references: [id])
 
   @@map("onboarding_submissions")
+}
+
+// One identity-check session in verify-service. Deliberately minimal: the session
+// id, our status for it and when it was decided. Photos and anything read from the
+// document stay in verify-service and are never stored here.
+model IdentityVerification {
+  id          String                     @id @default(cuid())
+  patientId   String                     @map("patient_id")
+  // verify-service's id for the session.
+  sessionId   String                     @unique @map("session_id")
+  status      IdentityVerificationStatus @default(PENDING)
+  // Reviewer's reason when REJECTED. Internal: never shown to the patient.
+  reason      String?                    @map("reason")
+  decidedAt   DateTime?                  @map("decided_at")
+  // occurredAt of the newest event applied, so late or replayed events can't move
+  // a session backwards.
+  lastEventAt DateTime?                  @map("last_event_at")
+  expiresAt   DateTime                   @map("expires_at")
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  @@index([patientId, createdAt])
+  @@map("identity_verifications")
+}
+
+// Webhook event ids already processed (deliveries are at-least-once).
+model VerifyWebhookEvent {
+  eventId    String   @id @map("event_id")
+  sessionId  String   @map("session_id")
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  @@map("verify_webhook_events")
 }
 
 model ThrottleCounter {
@@ -767,4 +1423,38 @@ model Voucher {
 
   @@index([patientId])
   @@map("vouchers")
+}
+
+// A code emailed to someone starting the quiz, and the short-lived proof that they entered it. The quiz needs the proof
+// to save a lead for that email, so nobody can save or change answers under an email they can't read.
+model EmailVerification {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  codeSalt        String?   @map("code_salt")
+  codeHash        String?   @map("code_hash")
+  codeExpiresAt   DateTime? @map("code_expires_at")
+  attempts        Int       @default(0)
+  lastSentAt      DateTime  @map("last_sent_at")
+  sentCount       Int       @default(1) @map("sent_count")
+  sentWindowStart DateTime  @map("sent_window_start")
+  tokenHash       String?   @map("token_hash")
+  tokenExpiresAt  DateTime? @map("token_expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("email_verifications")
+}
+
+// A single-use "forgot password" link. Only the SHA-256 of the token is stored, so a database leak does not hand out working links.
+model PasswordReset {
+  id          String    @id @default(cuid())
+  accountType String    @map("account_type") // PATIENT | CLINICIAN
+  accountId   String    @map("account_id")
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([accountType, accountId])
+  @@map("password_resets")
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient } from '@apollo/client';
 import { MY_WEIGHT_TIMELINE } from '@/graphql/weight';
 import { mergePoints, Point, yearEnd, yearStart } from './timeseries';
+import { useOnWeightsChanged } from './weights-changed';
 
 export interface TimelineMeta {
   startingWeightKg: number | null;
@@ -21,6 +22,8 @@ const toPoint = (m: any): Point => ({
   changeKg: m.changeKg,
   note: m.note,
   feeling: m.feeling,
+  hasPhoto: m.hasPhoto,
+  patientCanEdit: m.patientCanEdit,
 });
 const ms = (v: string | null | undefined) => (v ? Date.parse(v) : null);
 
@@ -34,7 +37,7 @@ export function useWeightTimeline() {
   const [chunks, setChunks] = useState<Record<number, Point[]>>({});
   const [meta, setMeta] = useState<TimelineMeta | null>(null);
   const [pending, setPending] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [truncated, setTruncated] = useState(false);
   const requested = useRef(new Set<number>());
   // Years whose last request failed, so Retry reloads those (not just the current year).
@@ -60,11 +63,11 @@ export function useWeightTimeline() {
         });
         if (tl.truncated) setTruncated(true);
         failed.current.delete(year);
-        setError((e) => (failed.current.size === 0 ? null : e)); // stay in error while another year is still failing
+        setError((e: unknown) => (failed.current.size === 0 ? null : e)); // stay in error while another year is still failing
       } catch (e: any) {
         requested.current.delete(year); // let a retry ask again
         failed.current.add(year);
-        setError(e?.message ?? 'Couldn’t load your weights');
+        setError(e);
       } finally {
         setPending((n) => n - 1);
       }
@@ -89,6 +92,9 @@ export function useWeightTimeline() {
   const refresh = useCallback(async () => {
     await Promise.all([...requested.current].map((y) => fetchYear(y, true)));
   }, [fetchYear]);
+
+  // A weighing added, changed or removed anywhere on the page: the chart follows.
+  useOnWeightsChanged(() => { void refresh(); });
 
   const retry = useCallback(() => {
     setError(null);

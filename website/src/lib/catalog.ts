@@ -20,7 +20,7 @@ export interface StoreProduct {
   format: string;
   image: keyof typeof CONFIG.IMAGES;
   doses: Dose[];
-  // HRT only: lets the patient add micronised progesterone (HRT Complete).
+  // HRT only: lets the patient add micronised progesterone (the "Oestrogen + progesterone" plan).
   progesteroneAddOn?: boolean;
   // Matches the ?med= query param used by the homepage product links.
   medKey?: string;

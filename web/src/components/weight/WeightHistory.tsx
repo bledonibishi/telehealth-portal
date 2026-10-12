@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import { feelingOf, kg, kgChange } from '@/lib/weight';
 
-/** Start + one row per monthly check-in. Stacked cards on a phone, a timeline rail from `sm` up. */
+/** Start + one row per check-in. Stacked cards on a phone, a timeline rail from `sm` up. */
 export function WeightHistory({ starting, entries }: { starting?: number | null; entries: any[] }) {
   return (
     <ol className="relative border-l-2 border-slate-100 ml-2 space-y-4">

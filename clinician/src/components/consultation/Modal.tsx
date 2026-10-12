@@ -27,7 +27,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} bg-white rounded-xl shadow-xl border border-gray-200`}
+        className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} bg-white rounded-md shadow-xl border border-gray-200`}
       >
         <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-200">
           <div>

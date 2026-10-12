@@ -1,5 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
-import { ConsultationStatus, ConsultationKind, RedFlagSeverity, RefundStatus } from '../../common/enums';
+import { ConsultationStatus, ConsultationKind, RedFlagSeverity, RefundStatus, RiskTag } from '../../common/enums';
 import { ClinicianModel } from '../../clinicians/models/clinician.model';
 import { PatientModel } from '../../patients/models/patient.model';
 import { PrescriptionModel } from '../../prescriptions/models/prescription.model';
@@ -43,6 +43,9 @@ export class ConsultationModel {
   @Field(() => ID)
   id: string;
 
+  @Field({ nullable: true, description: 'Only on approval: what happened to billing for the prescribed dose (refund, new price, or needs fixing by hand)' })
+  billingNote?: string;
+
   @Field(() => ConsultationKind)
   kind: ConsultationKind;
 
@@ -57,6 +60,12 @@ export class ConsultationModel {
 
   @Field(() => [RedFlagModel])
   redFlags: RedFlagModel[];
+
+  @Field(() => RiskTag, { description: 'Triage of the answers: RED = disqualifying flag, ORANGE = needs a closer look, GREEN = standard' })
+  riskTag: RiskTag;
+
+  @Field(() => String, { nullable: true, description: 'Why a clinician can’t decide this yet (onboarding unfinished, identity not approved); null when they can, and for patients' })
+  decisionBlockedReason?: string | null;
 
   @Field(() => PrescriptionModel, { nullable: true })
   prescription?: PrescriptionModel;

@@ -3,19 +3,27 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import Link from 'next/link';
-import { CHECK_IN_REVIEW_QUEUE, PATIENT_TRENDS, REVIEW_CHECK_IN } from '@/graphql/checkins';
+import { CHECK_IN_REVIEW_QUEUE, PATIENT_TRENDS, REVIEW_CHECK_IN, SIDE_EFFECT_SUMMARY } from '@/graphql/checkins';
 import { PATIENT_HISTORY } from '@/graphql/consultations';
 import { GET_ORDERS } from '@/graphql/orders';
 import { PrescriptionForm, PrescriptionSubmission, Row } from '@/components/consultation/PrescriptionForm';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
+import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
+import SideEffectSummary from '@/components/checkins/SideEffectSummary';
+import LatestLabs from '@/components/labs/LatestLabs';
+import { PATIENT_TRT_MONITORING } from '@/graphql/labs';
+import { CheckInBrief } from '@/components/ai/CheckInBrief';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { InlineError } from '@/components/ui/Alert';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { LoadingState, SkeletonList } from '@telehealth/loading';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
 
 const OUTCOMES: { key: Outcome; label: string; hint: string; cls: string }[] = [
+  { key: 'NEW_PRESCRIPTION', label: 'New prescription', hint: 'The next supply: same medicine and dose, or change it', cls: 'bg-brand-500 hover:bg-brand-900' },
   { key: 'REPEAT', label: 'Send repeat', hint: 'Same medicine and dose, from the remaining repeats', cls: 'bg-green-600 hover:bg-green-700' },
-  { key: 'NEW_PRESCRIPTION', label: 'New prescription', hint: 'Change or step up the dose, or renew', cls: 'bg-brand-500 hover:bg-brand-900' },
   { key: 'HOLD', label: 'Hold this month', hint: 'No supply; billing paused', cls: 'bg-warn-500 hover:bg-warn-900' },
   { key: 'STOP', label: 'Stop treatment', hint: 'Cancels the prescription; subscription ends at period end', cls: 'bg-danger-500 hover:bg-danger-900' },
 ];
@@ -60,8 +68,19 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
   const rx = checkIn.prescription;
+  // Fresh every time, so a score logged a minute ago is never missed. Approving waits on this.
+  const { data: seData, loading: seLoading, error: seError } = useQuery(SIDE_EFFECT_SUMMARY, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
+  const sideEffects = seData?.sideEffectSummary;
+  const [seReviewed, setSeReviewed] = useState(false);
+  // A testosterone patient whose blood tests are overdue (or whose haematocrit is too high) is on hold: a new prescription then needs its own reason.
+  const { data: trtData } = useQuery(PATIENT_TRT_MONITORING, { variables: { patientId: checkIn.patient.id }, fetchPolicy: 'network-only' });
+  const hold = trtData?.patientTrtMonitoring?.refillsOnHold ? (trtData.patientTrtMonitoring.holdReasons as string[]) : [];
+  const [holdReason, setHoldReason] = useState('');
+  const approving = outcome === 'REPEAT' || outcome === 'NEW_PRESCRIPTION';
+  // A failed load must not strand the doctor, so only a loaded summary that flags something (or a load still under way) holds approval back.
+  const holdForSideEffects = approving && !seError && (seLoading || (!!sideEffects?.needsAttention && !seReviewed));
 
   const { data: history } = useQuery(PATIENT_HISTORY, { variables: { patientId: checkIn.patient.id } });
   // The prescribing rules run against the patient's consultation for this programme.
@@ -70,11 +89,11 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const [review, { loading }] = useMutation(REVIEW_CHECK_IN, {
     refetchQueries: [{ query: CHECK_IN_REVIEW_QUEUE }, { query: GET_ORDERS }],
     onCompleted: onDone,
-    onError: (e) => setError(e.message),
+    onError: (e) => setError(e),
   });
 
   const submit = (extra: Partial<PrescriptionSubmission> = {}) => {
-    setError('');
+    setError(null);
     review({
       variables: {
         input: {
@@ -82,6 +101,10 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
           outcome,
           note: note.trim() || undefined,
           messageToPatient: message.trim() || undefined,
+          // The server refuses an approval without this when the summary flags something.
+          sideEffectsReviewed: seReviewed || undefined,
+          // Only sent when there is a hold, and only with its own reason.
+          monitoringOverrideReason: outcome === 'NEW_PRESCRIPTION' && hold.length > 0 ? holdReason.trim() || undefined : undefined,
           ...extra,
         },
       },
@@ -97,21 +120,22 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
   const repeatAvailable = rx?.status === 'ACTIVE' && (rx?.repeatsRemaining ?? 0) > 0;
 
   return (
+    <div className="space-y-4">
+    {sideEffects && <SideEffectSummary summary={sideEffects} />}
+    {seError && <p className="text-xs text-warn-900 bg-warn-50 rounded px-3 py-2">{t('Could not load the side-effect summary. Check the patient’s record before approving.')}</p>}
     <div className="border border-gray-200 rounded-lg p-4 space-y-4 bg-white">
       <h3 className="text-sm font-semibold text-gray-900">{t('Decision')}</h3>
 
       <div className="grid grid-cols-2 gap-2">
-        {OUTCOMES.map((o) => {
-          const disabled = o.key === 'REPEAT' && !repeatAvailable;
+        {OUTCOMES.filter((o) => o.key !== 'REPEAT' || repeatAvailable).map((o) => {
           return (
             <button
               key={o.key}
               onClick={() => setOutcome(o.key)}
-              disabled={disabled}
-              className={`text-left rounded px-3 py-2 text-white disabled:opacity-40 ${o.cls} ${outcome === o.key ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
+              className={`text-left rounded px-3 py-2 text-white ${o.cls} ${outcome === o.key ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
             >
               <span className="block text-sm font-medium">{t(o.label)}</span>
-              <span className="block text-xs opacity-90">{disabled ? t('No repeats left — issue a new prescription') : t(o.hint)}</span>
+              <span className="block text-xs opacity-90">{t(o.hint)}</span>
             </button>
           );
         })}
@@ -130,9 +154,33 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
         </>
       )}
 
-      {error && <p className="text-sm text-danger-500">{error}</p>}
+      <InlineError error={error} />
 
-      {outcome === 'NEW_PRESCRIPTION' && (
+      {outcome === 'NEW_PRESCRIPTION' && hold.length > 0 && (
+        <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3 space-y-2">
+          <p className="text-sm font-semibold text-danger-500">{t('Testosterone blood-test hold')}</p>
+          <ul className="text-xs text-gray-800 list-disc pl-4 space-y-0.5">{hold.map((r) => <li key={r}>{r}</li>)}</ul>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-700 mb-1">{t('Reason to go ahead despite the hold (recorded in the audit log)')}</span>
+            <textarea rows={2} value={holdReason} onChange={(e) => setHoldReason(e.target.value)} className={inputCls} />
+          </label>
+        </div>
+      )}
+
+      {holdForSideEffects && (
+        <div className="rounded border border-danger-500/40 bg-danger-50/60 p-3">
+          {seLoading ? (
+            <LoadingState variant="inline" label={t('Loading the side-effect summary…')} />
+          ) : (
+            <label className="flex items-start gap-2 text-sm text-gray-900 cursor-pointer">
+              <input type="checkbox" checked={seReviewed} onChange={(e) => setSeReviewed(e.target.checked)} className="mt-0.5" />
+              <span>{t('I have read the side effects above and they do not stop me approving.')}</span>
+            </label>
+          )}
+        </div>
+      )}
+
+      {outcome === 'NEW_PRESCRIPTION' && !holdForSideEffects && (hold.length === 0 || holdReason.trim().length > 0) && (
         consultationId ? (
           <PrescriptionForm
             consultationId={consultationId}
@@ -145,11 +193,11 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
             onSubmit={(rxInput) => submit(rxInput)}
           />
         ) : (
-          <p className="text-xs text-gray-500">{t('Loading the patient’s consultation…')}</p>
+          <LoadingState variant="inline" label={t('Loading the patient’s consultation…')} />
         )
       )}
 
-      {outcome && outcome !== 'NEW_PRESCRIPTION' && (
+      {outcome && outcome !== 'NEW_PRESCRIPTION' && !holdForSideEffects && (
         <div className="flex gap-2">
           <button onClick={() => submit()} disabled={loading} className="bg-gray-900 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50">
             {loading ? 'Saving…' : `Confirm: ${OUTCOMES.find((o) => o.key === outcome)!.label.toLowerCase()}`}
@@ -158,6 +206,7 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
         </div>
       )}
     </div>
+    </div>
   );
 }
 
@@ -165,19 +214,29 @@ export default function CheckInsPage() {
   const { t, timeAgo, fmt } = useI18n();
   const { data, loading, error } = useQuery(CHECK_IN_REVIEW_QUEUE, { pollInterval: 60_000 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const queue: any[] = data?.checkInReviewQueue ?? [];
+  const [query, setQuery] = useState('');
+  const everything: any[] = data?.checkInReviewQueue ?? [];
+  // Finds a check-in by the patient's name or email, or by its own id or the prescription's (full, or the short "#x2xval74").
+  const q = query.trim().toLowerCase().replace(/^#/, '');
+  const queue = q
+    ? everything.filter((c) =>
+        [`${c.patient.firstName} ${c.patient.lastName}`, c.patient.email, c.id, c.prescription?.id].some((v) => v?.toLowerCase().includes(q)),
+      )
+    : everything;
   const selected = queue.find((c) => c.id === selectedId) ?? null;
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className="w-96 border-r border-gray-200 flex flex-col bg-white shrink-0">
+      <div className={`${selected ? 'hidden lg:flex' : 'flex'} w-full lg:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
         <div className="px-5 py-4 border-b border-gray-200">
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: queue.length })}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: everything.length })}</p>
+          <SearchInput className="w-full mt-3" value={query} onChange={setQuery} placeholder={t('Search name, email or ID…')} ariaLabel={t('Search name, email or ID…')} clearLabel={t('Clear search')} />
         </div>
+        <SideEffectAlerts />
         <MissedDoseAlerts />
-        {loading && <p className="p-5 text-sm text-gray-400">{t('Loading…')}</p>}
-        {error && <p className="p-5 text-sm text-danger-500">{error.message}</p>}
+        {loading && <div className="p-5"><SkeletonList rows={4} label={t('Loading…')} /></div>}
+        <InlineError error={error} className="p-5" />
         <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
           {queue.map((c) => {
             const critical = c.redFlags.some((f: any) => f.severity === 'CRITICAL');
@@ -201,16 +260,17 @@ export default function CheckInsPage() {
               </button>
             );
           })}
-          {!loading && queue.length === 0 && <p className="p-8 text-center text-sm text-gray-400">{t('All check-ins reviewed.')}</p>}
+          {!loading && queue.length === 0 && <p className="p-8 text-center text-sm text-gray-400">{everything.length > 0 ? t('No check-ins match.') : t('All check-ins reviewed.')}</p>}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50">
+      <div className={`${selected ? 'block' : 'hidden lg:block'} flex-1 min-w-0 overflow-y-auto bg-gray-50`}>
         {!selected ? (
           <div className="h-full flex items-center justify-center text-sm text-gray-400">{t('Select a check-in')}</div>
         ) : (
-          <div className="p-6 max-w-5xl mx-auto space-y-6">
-            <div className="flex items-start justify-between">
+          <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+            <button type="button" onClick={() => setSelectedId(null)} className="lg:hidden text-sm font-medium text-brand-500">← {t('Check-ins')}</button>
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">{selected.patient.firstName} {selected.patient.lastName}</h2>
                 <p className="text-sm text-gray-500 mt-1">
@@ -236,8 +296,8 @@ export default function CheckInsPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-6">
-              <div className="col-span-2 space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              <div className="xl:col-span-2 space-y-6 min-w-0">
                 <section className="bg-white rounded-lg border border-gray-200">
                   <div className="px-4 py-3 border-b border-gray-200">
                     <h3 className="text-sm font-semibold text-gray-900">{t('Answers')}</h3>
@@ -256,11 +316,14 @@ export default function CheckInsPage() {
                   </div>
                 </section>
 
+                <CheckInBrief key={`brief-${selected.id}`} checkInId={selected.id} />
+
                 <ReviewPanel key={selected.id} checkIn={selected} onDone={() => setSelectedId(null)} />
               </div>
 
               <aside className="space-y-4">
                 <WeightTrend patientId={selected.patient.id} />
+                <LatestLabs patientId={selected.patient.id} />
                 {selected.prescription ? (
                   <PrescriptionCard prescription={selected.prescription} patientId={selected.patient.id} />
                 ) : (

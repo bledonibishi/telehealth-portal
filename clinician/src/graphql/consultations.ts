@@ -10,6 +10,7 @@ export const PRESCRIPTION_FRAGMENT = gql`
     issuedAt
     validUntil
     refillsAllowed
+    supersedesId
     overrideReason
     contentHash
     documentUrl
@@ -51,6 +52,8 @@ const CONSULTATION_FRAGMENT = gql`
     updatedAt
     declineReason
     refundStatus
+    riskTag
+    decisionBlockedReason
     patient {
       id
       firstName
@@ -129,6 +132,7 @@ export const APPROVE_CONSULTATION = gql`
   mutation ApproveConsultation($input: ApproveConsultationInput!) {
     approveConsultation(input: $input) {
       ...ConsultationFields
+      billingNote
     }
   }
 `;
@@ -146,6 +150,15 @@ export const REQUEST_MORE_INFO = gql`
   ${CONSULTATION_FRAGMENT}
   mutation RequestMoreInfo($consultationId: ID!, $message: String) {
     requestMoreInfo(consultationId: $consultationId, message: $message) {
+      ...ConsultationFields
+    }
+  }
+`;
+
+export const REQUEST_ONBOARDING_REDO = gql`
+  ${CONSULTATION_FRAGMENT}
+  mutation RequestOnboardingRedo($consultationId: ID!, $step: OnboardingStepKey!, $reason: String!) {
+    requestOnboardingRedo(consultationId: $consultationId, step: $step, reason: $reason) {
       ...ConsultationFields
     }
   }
@@ -208,6 +221,25 @@ export const PATIENT_PRESCRIPTIONS = gql`
         id
         kind
       }
+    }
+  }
+`;
+
+// What was paid for and what the prescription proof showed, for choosing a consultation's first dose.
+export const PRESCRIBING_CONTEXT = gql`
+  query PrescribingContext($consultationId: ID!) {
+    prescribingContext(consultationId: $consultationId) {
+      orderedTreatment
+      orderedProductId
+      orderedStrengthId
+      orderedProgesteroneProductId
+      orderedProgesteroneStrengthId
+      priorMedicationUse
+      noProof
+      proofDose
+      proofRiskLevel
+      safeNextDose
+      hasActivePrescription
     }
   }
 `;

@@ -1,10 +1,10 @@
 import { Resolver, Query, Mutation, Args, ID, Int } from '@nestjs/graphql';
 import { WeightMeasurementsService } from './weight-measurements.service';
-import { WeightJourneyModel, WeightTimelineModel } from './models/weight-journey.model';
-import { AddWeightInput, CorrectWeightEntryInput } from './dto/weight-journey.input';
+import { ProgressPhotoModel, WeightForecastModel, WeightJourneyModel, WeightTimelineModel, WeightTrendModel } from './models/weight-journey.model';
+import { AddWeightInput, CorrectWeightEntryInput, EditMyWeightInput } from './dto/weight-journey.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { AuthUser, PRESCRIBERS, STAFF } from '../auth/access-roles';
+import { AuthUser, PRESCRIBERS } from '../auth/access-roles';
 import { AuditRead } from '../audit/audit-read.interceptor';
 
 @Resolver()
@@ -24,6 +24,40 @@ export class WeightMeasurementsResolver {
   }
 
   @Authorized('PATIENT')
+  @Query(() => WeightForecastModel, { description: 'Where the signed-in patient’s weight is heading in 3 and 6 months at their current pace' })
+  myWeightForecast(@CurrentUser() user: AuthUser) {
+    return this.measurements.forecast(user.id);
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => WeightTrendModel, { description: 'What the signed-in patient’s recent weights say: rising, losing steadily, holding, scattered, or a last entry to double-check' })
+  myWeightTrend(@CurrentUser() user: AuthUser) {
+    return this.measurements.trend(user.id);
+  }
+
+  // Weight history is clinical: doctors only, not support or fulfilment staff.
+  @Authorized(...PRESCRIBERS)
+  @AuditRead('WeightJourney', 'patientId')
+  @Query(() => WeightTrendModel, { description: 'What a patient’s recent weights say. Doctors only; the view is audited.' })
+  weightTrendForPatient(@Args('patientId', { type: () => ID }) patientId: string) {
+    return this.measurements.trend(patientId);
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => [ProgressPhotoModel], { description: 'The signed-in patient’s own progress photos, oldest first' })
+  myProgressPhotos(@CurrentUser() user: AuthUser) {
+    return this.measurements.progressPhotos(user.id);
+  }
+
+  // Body photos are for the patient and their doctors only — not support or fulfilment staff.
+  @Authorized(...PRESCRIBERS)
+  @AuditRead('Patient', 'patientId')
+  @Query(() => [ProgressPhotoModel], { description: 'A patient’s progress photos, oldest first. Doctors only; the view is audited.' })
+  progressPhotosForPatient(@Args('patientId', { type: () => ID }) patientId: string) {
+    return this.measurements.progressPhotos(patientId);
+  }
+
+  @Authorized('PATIENT')
   @Mutation(() => WeightJourneyModel, { description: 'Record a weight at any date and time. Never overwrites an earlier entry.' })
   addMyWeight(@CurrentUser() user: AuthUser, @Args('input') input: AddWeightInput) {
     return this.measurements.add(user.id, input);
@@ -35,7 +69,14 @@ export class WeightMeasurementsResolver {
     return this.measurements.voidOwn(user.id, entryId);
   }
 
-  @Authorized(...STAFF)
+  @Authorized('PATIENT')
+  @Mutation(() => WeightJourneyModel, { description: 'Change the weight, date, note or photo of one of your own entries. The original is kept as voided and a replacement is added.' })
+  editMyWeight(@CurrentUser() user: AuthUser, @Args('input') input: EditMyWeightInput) {
+    return this.measurements.editOwn(user.id, input);
+  }
+
+  // Weight history is clinical: doctors only, not support or fulfilment staff.
+  @Authorized(...PRESCRIBERS)
   @AuditRead('WeightJourney', 'patientId')
   @Query(() => WeightTimelineModel)
   weightTimelineForPatient(

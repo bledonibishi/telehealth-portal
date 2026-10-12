@@ -1,159 +1,124 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
-import { format } from 'date-fns';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
-import { MY_ORDERS } from '@/graphql/orders';
 import { ME_NAME } from '@/graphql/patient';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
-import { WeightJourneyCard } from '@/components/weight/WeightJourneyCard';
+import { MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { SubscriptionStatus } from '@/components/dashboard/SubscriptionStatus';
+import { ReportSideEffectDialog } from '@/components/doses/ReportSideEffectDialog';
+import { PlanHero } from '@/components/home/PlanHero';
+import { ProgressOverview } from '@/components/home/ProgressOverview';
+import { WeightTrendNotice } from '@/components/weight/WeightTrendNotice';
+import { ProfileSummaryCard } from '@/components/home/ProfileSummaryCard';
+import { TreatmentPlanCard } from '@/components/home/TreatmentPlanCard';
+import { AppointmentCard, ChatCard, ContactCard, EmergencyCard } from '@/components/home/SideCards';
+import { RecentUpdates } from '@/components/home/RecentUpdates';
+import { RecentOrders } from '@/components/home/RecentOrders';
+import { QuickLinks } from '@/components/home/QuickLinks';
+import { Card, btnPrimary } from '@/components/portal/Card';
+import { useCareStage } from '@/lib/useCareStage';
+import { Icon } from '@/components/portal/Icon';
+import { SkeletonCard, SkeletonTile } from '@telehealth/loading';
 
-const STAGES = ['Prescribed', 'Dispatched', 'Out for delivery', 'Delivered'] as const;
-const STAGE_OF: Record<string, number> = { PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
-
-function OrderTracker({ current }: { current: number }) {
+/** One line that needs the patient's attention, with the action beside it. */
+function Notice({ tone, title, text, href, action }: { tone: 'warn' | 'info'; title: string; text: string; href: string; action: string }) {
   return (
-    <div className="flex items-center">
-      {STAGES.map((stage, i) => (
-        <div key={stage} className="flex items-center flex-1 last:flex-none">
-          <div className="flex flex-col items-center">
-            <div
-              className={`w-3 h-3 rounded-full ${i <= current ? 'bg-brand-600' : 'bg-slate-200'} ${i === current ? 'ring-4 ring-brand-100' : ''}`}
-            />
-            <span className={`text-[11px] mt-1.5 whitespace-nowrap ${i <= current ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
-              {stage}
-            </span>
-          </div>
-          {i < STAGES.length - 1 && <div className={`h-0.5 flex-1 mx-1.5 mb-4 ${i < current ? 'bg-brand-600' : 'bg-slate-200'}`} />}
-        </div>
-      ))}
+    <div className={`rounded-md border px-4 py-2.5 flex items-center justify-between gap-3 ${tone === 'warn' ? 'bg-orange-50 border-orange-100' : 'bg-white border-slate-200/70'}`}>
+      <p className="text-sm min-w-0"><b className="text-ink-900">{title}</b> <span className="text-slate-500">{text}</span></p>
+      <Link href={href} className="flex-shrink-0 text-sm font-medium text-ink-600 hover:text-ink-800">{action}</Link>
     </div>
   );
 }
 
-const QUICK_LINKS = [
-  { href: '/consultations', icon: '📋', label: 'My consultations', hint: 'See the status of your treatment requests' },
-  { href: '/doses', icon: '📅', label: 'My doses', hint: 'When each dose is due, and what you’ve taken' },
-  { href: '/messages', icon: '💬', label: 'Messages', hint: 'Talk to your clinical team' },
-  { href: '/prescription', icon: '💊', label: 'Prescriptions & orders', hint: 'Full history and delivery tracking' },
-];
-
 export default function DashboardPage() {
+  const [reporting, setReporting] = useState(false);
   const { data: nameData } = useQuery(ME_NAME);
-  const { data: consultData, loading: consultLoading } = useQuery(MY_CONSULTATIONS);
-  const { data: ordersData, loading: ordersLoading } = useQuery(MY_ORDERS);
-  // Refetched on every visit, so a check-in just completed shows up straight away.
+  const { data: consultData, loading } = useQuery(MY_CONSULTATIONS);
+  // Refetched on every visit, so a check-in or weigh-in just done shows up straight away.
   const { data: journeyData } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
+  const { data: planData, loading: planLoading } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-and-network' });
   const journey = journeyData?.myWeightJourney;
+  const next = useCareStage();
+  const plan = planData?.myTreatmentPlan;
 
   const consultations = consultData?.myConsultations ?? [];
   const needsInfo = consultations.some((c: any) => c.status === 'MORE_INFO_REQUESTED');
-  const hasActiveConsultation = consultations.some((c: any) => c.status !== 'DECLINED');
-
-  const orders = ordersData?.myOrders ?? [];
-  const currentOrder = orders.find((o: any) => o.status !== 'CANCELLED');
-  const stage = currentOrder ? (STAGE_OF[currentOrder.status] ?? 0) : 0;
-
-  const loading = consultLoading || ordersLoading;
   const firstName = nameData?.me?.firstName;
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">{firstName ? `Welcome back, ${firstName}` : 'Welcome back'}</h1>
-        <p className="text-sm text-slate-500 mt-1">Here&rsquo;s where things stand with your treatment.</p>
+    <div className="px-4 sm:px-6 lg:px-8 pb-8">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 mb-5 -mt-1">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink-900">{firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'}</h1>
+          <p className="text-sm text-slate-500 mt-0.5 mb-2">Here’s your health journey at a glance.</p>
+          <SubscriptionStatus />
+        </div>
+        <div className="flex items-start gap-2">
+          <button type="button" onClick={() => setReporting(true)} className="text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-1.5">
+            Report a side effect
+          </button>
+        </div>
       </div>
 
-      {journey && <WeightJourneyCard journey={journey} />}
-
-      {!loading && needsInfo && (
-        <div className="mb-4 bg-orange-50 border border-orange-100 rounded-2xl p-5 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Your clinician needs more information</p>
-            <p className="text-xs text-slate-500 mt-0.5">Check your messages, then update your medical questionnaire.</p>
-          </div>
-          <Link href="/onboarding/medical-questionnaire?from=dashboard" className="flex-shrink-0 text-sm font-medium text-brand-600 hover:text-brand-700">
-            Update answers →
-          </Link>
-        </div>
-      )}
-
-      {/* Declined consultations are refunded, so starting over goes through support. */}
-      {!loading && consultations.length > 0 && !hasActiveConsultation && (
-        <div className="mb-4 bg-white rounded-2xl border border-slate-100 p-6">
-          <p className="text-slate-900 text-sm font-medium">Your consultation was declined</p>
-          <p className="text-slate-500 text-sm mt-1">
-            Your clinician&rsquo;s message explains why. If you&rsquo;d like to talk it through, message us.
-          </p>
-          <Link href="/messages" className="inline-block mt-3 text-sm font-medium text-brand-600 hover:text-brand-700">
-            Go to messages →
-          </Link>
-        </div>
-      )}
-
-      {!loading && consultations.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center mb-4">
-          <p className="text-slate-900 text-sm font-medium">Complete your medical questionnaire</p>
-          <p className="text-slate-400 text-sm mt-1">A doctor reviews your answers before prescribing.</p>
-          <Link
-            href="/onboarding/medical-questionnaire?from=dashboard"
-            className="inline-block mt-4 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-xl"
-          >
-            Start questionnaire
-          </Link>
-        </div>
-      )}
-
-      {!loading && currentOrder && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-6 mb-4">
-          <div className="flex items-start justify-between mb-5">
-            <div>
-              <p className="text-xs font-semibold text-brand-700 uppercase tracking-wide">Track your order</p>
-              <h3 className="text-lg font-semibold text-slate-900 mt-1">{currentOrder.prescription.medication}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {currentOrder.sequence === 1 ? 'First supply' : `Repeat ${currentOrder.sequence - 1}`}
-                {currentOrder.dispatchedAt && ` · Dispatched ${format(new Date(currentOrder.dispatchedAt), 'dd MMM yyyy')}`}
-              </p>
-            </div>
-            <Link href="/prescription" className="flex-shrink-0 text-xs font-medium text-brand-600 hover:text-brand-700">
-              Details →
-            </Link>
-          </div>
-
-          <OrderTracker current={stage} />
-
-          {currentOrder.trackingUrl && (
-            <a
-              href={currentOrder.trackingUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block mt-4 text-xs font-medium text-brand-600 hover:text-brand-700"
-            >
-              Track package →
-            </a>
-          )}
-          {typeof currentOrder.prescription.repeatsRemaining === 'number' && currentOrder.prescription.repeatsRemaining > 0 && (
-            <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100">
-              {currentOrder.prescription.repeatsRemaining} repeat{currentOrder.prescription.repeatsRemaining === 1 ? '' : 's'} left on this prescription
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {QUICK_LINKS.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className="bg-white rounded-2xl border border-slate-100 p-5 hover:border-brand-200 hover:shadow-sm transition-all"
-          >
-            <span className="text-xl">{l.icon}</span>
-            <p className="text-sm font-semibold text-slate-900 mt-2">{l.label}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{l.hint}</p>
-          </Link>
-        ))}
+      <div className="space-y-2 mb-4 empty:hidden">
+        {!loading && needsInfo && (
+          <Notice tone="warn" title="Your clinician needs more information." text="Check your messages, then update your answers." href="/onboarding/medical-questionnaire?from=dashboard" action="Update answers →" />
+        )}
+        {journey && <WeightTrendNotice />}
       </div>
+
+      {planLoading && !plan ? (
+        <section aria-label="Your treatment progress" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6 gap-3 mb-5">
+          {[1, 2, 3, 4, 5].map((k) => <SkeletonTile key={k} className="bg-white" label="Loading…" />)}
+        </section>
+      ) : (
+        <ProgressOverview journey={journey} plan={plan} />
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_18.5rem] gap-5 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-5 min-w-0 [&>*]:min-w-0">
+          <div className="md:col-span-6">
+            {plan ? (
+              <PlanHero plan={plan} />
+            ) : planLoading || next.stage === 'LOADING' ? (
+              <SkeletonCard lines={5} className="min-h-[16rem] bg-white" label="Loading your treatment plan…" />
+            ) : (
+              <Card className="h-full">
+                <p className="text-sm font-medium text-ink-700">Current Treatment Plan</p>
+                <h2 className="text-xl font-bold text-ink-900 mt-2">{next.title}</h2>
+                {next.text && <p className="text-sm text-slate-500 mt-2 max-w-xl">{next.text}</p>}
+                {next.action && <Link href={next.action.href} className={`${btnPrimary} mt-4`}>{next.action.label}</Link>}
+              </Card>
+            )}
+          </div>
+          {plan && <div className="md:col-span-6"><TreatmentPlanCard plan={plan} /></div>}
+
+          <div className="md:col-span-3 2xl:col-span-2"><RecentUpdates /></div>
+          <div className="md:col-span-3 2xl:col-span-2"><RecentOrders /></div>
+          <div className="md:col-span-6 2xl:col-span-2"><QuickLinks /></div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 min-w-0 [&>*]:min-w-0">
+          <ProfileSummaryCard journey={journey} />
+          <ChatCard />
+          <AppointmentCard />
+          <EmergencyCard />
+          <ContactCard />
+        </div>
+      </div>
+
+      <footer className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+        <p className="flex items-center gap-2"><Icon name="help" className="w-4 h-4" /> Your health is our priority. We’re here to support you every step of the way.</p>
+        <nav className="flex gap-5" aria-label="Legal">
+          <Link href="/settings#privacy" className="hover:text-ink-800">Privacy</Link>
+          <Link href="/settings#help" className="hover:text-ink-800">Help</Link>
+        </nav>
+      </footer>
+
+      {reporting && <ReportSideEffectDialog onClose={() => setReporting(false)} />}
     </div>
   );
 }

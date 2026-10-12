@@ -1,10 +1,18 @@
-import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrescriptionProofReviewService } from '../onboarding/prescription-proof-review.service';
+import { DosePricingService } from '../stripe/dose-pricing.service';
 import { AuditService } from '../audit/audit.service';
 import { BillingService } from '../stripe/billing.service';
+import { PartnerOrdersService } from '../prescriptions/partner-orders.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
-import { ConsentType, ConsultationKind, ConsultationStatus, UserRole } from '../common/enums';
+import { ClinicianRole, ConsentType, ConsultationKind, OnboardingStatus, OnboardingStepKey, ProductCategory, ConsultationStatus, RiskTag, UserRole } from '../common/enums';
+import { requiredReviewSteps, stepFiles } from '../onboarding/required-steps';
+import { lockPatientIdentity } from '../identity-verification/identity-verification.service';
 import { ApproveConsultationInput } from './dto/approve-consultation.input';
 import { DeclineConsultationInput } from './dto/decline-consultation.input';
 import { SubmitIntakeQuizInput } from './dto/submit-intake-quiz.input';
@@ -15,12 +23,18 @@ import { MessagingService } from '../messaging/messaging.service';
 import { EmailService } from '../email/email.service';
 import { ConsentsService, RequestMeta } from '../consents/consents.service';
 import { StoredAnswer, evaluateAnswers } from '../questionnaires/evaluate';
+import { triage } from '../questionnaires/triage';
 
 const REVIEWABLE = [
   ConsultationStatus.SUBMITTED,
   ConsultationStatus.IN_REVIEW,
   ConsultationStatus.MORE_INFO_REQUESTED,
 ] as const;
+
+// One notification per consultation waiting for review, done once it is picked up or decided.
+const consultationKey = (id: string) => `consult:${id}`;
+
+const RISK_RANK: Record<RiskTag, number> = { [RiskTag.RED]: 0, [RiskTag.ORANGE]: 1, [RiskTag.GREEN]: 2 };
 
 @Injectable()
 export class ConsultationsService {
@@ -37,6 +51,10 @@ export class ConsultationsService {
     private messaging: MessagingService,
     private email: EmailService,
     private consents: ConsentsService,
+    private partner: PartnerOrdersService,
+    private proofReview: PrescriptionProofReviewService,
+    private dosePricing: DosePricingService,
+    @Optional() private notifier?: NotifierService,
   ) {}
 
   // A doctor who has claimed a consultation owns the decision; others (bar
@@ -59,13 +77,21 @@ export class ConsultationsService {
     this.assertMayDecide(c, clinicianId, isAdmin);
     if (c.status === ConsultationStatus.IN_REVIEW && c.clinicianId === clinicianId) return c;
 
-    // Conditional update: two doctors clicking at once can't both win.
-    const { count } = await this.prisma.consultation.updateMany({
-      where: {
-        id: consultationId,
-        OR: [{ status: ConsultationStatus.SUBMITTED }, ...(isAdmin ? [{ status: ConsultationStatus.IN_REVIEW }] : [])],
-      },
-      data: { status: ConsultationStatus.IN_REVIEW, clinicianId },
+    const count = await this.prisma.$transaction(async (tx) => {
+      // The clinician's row is held for the length of the claim. Deactivating an account writes that same row before
+      // it hands its claimed consultations back, so one of the two goes first: either this claim is already saved and
+      // gets handed back, or the account is already off and the claim is refused. A deactivated doctor never keeps one.
+      const active = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM clinicians WHERE id = ${clinicianId} AND deactivated_at IS NULL FOR SHARE`;
+      if (active.length === 0) throw new ForbiddenException('This account has been deactivated');
+      // Conditional update: two doctors clicking at once can't both win.
+      const result = await tx.consultation.updateMany({
+        where: {
+          id: consultationId,
+          OR: [{ status: ConsultationStatus.SUBMITTED }, ...(isAdmin ? [{ status: ConsultationStatus.IN_REVIEW }] : [])],
+        },
+        data: { status: ConsultationStatus.IN_REVIEW, clinicianId },
+      });
+      return result.count;
     });
     if (count === 0) throw new ConflictException('Someone else has just claimed this consultation');
 
@@ -75,8 +101,11 @@ export class ConsultationsService {
       action: 'CONSULTATION_CLAIMED',
       resourceType: 'Consultation',
       resourceId: consultationId,
+      patientId: c.patientId,
       metadata: c.clinicianId && c.clinicianId !== clinicianId ? { takenFrom: c.clinicianId } : undefined,
     });
+    // Picked up: it no longer waits for the rest of the team.
+    await this.notifier?.resolve(consultationKey(consultationId));
     return this.findById(consultationId);
   }
 
@@ -85,16 +114,22 @@ export class ConsultationsService {
     if (c.status !== ConsultationStatus.IN_REVIEW) throw new ForbiddenException('Consultation is not claimed');
     this.assertMayDecide(c, clinicianId, isAdmin);
 
-    await this.prisma.consultation.update({
-      where: { id: consultationId },
-      data: { status: ConsultationStatus.SUBMITTED, clinicianId: null },
-    });
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_RELEASED',
-      resourceType: 'Consultation',
-      resourceId: consultationId,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.consultation.update({
+        where: { id: consultationId },
+        data: { status: ConsultationStatus.SUBMITTED, clinicianId: null },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_RELEASED',
+          resourceType: 'Consultation',
+          resourceId: consultationId,
+          patientId: c.patientId,
+        },
+        tx,
+      );
     });
     return this.findById(consultationId);
   }
@@ -102,10 +137,14 @@ export class ConsultationsService {
   // Best effort: a failed email or message must not undo a clinical decision
   // that is already saved.
   private async notifyPatient(
-    patient: { email: string; firstName: string },
+    patient: { id: string; email: string; firstName: string },
+    consultationId: string,
     headline: string,
     message?: { consultationId: string; clinicianId: string; content?: string },
   ) {
+    // Decided: nobody on the team needs to be told it is waiting any more.
+    await this.notifier?.resolve(consultationKey(consultationId));
+    await this.notifier?.toPatient(patient.id, { kind: NotificationKind.TREATMENT_UPDATE, params: { headline }, href: '/dashboard' });
     try {
       if (message?.content?.trim()) {
         await this.messaging.send(message.clinicianId, UserRole.CLINICIAN, {
@@ -120,6 +159,12 @@ export class ConsultationsService {
     }
   }
 
+  /** Why this consultation can't be decided yet; null once it can, or when it has already been decided. */
+  async decisionBlockedReason(c: { patientId: string; status: string }): Promise<string | null> {
+    if (!REVIEWABLE.includes(c.status as any)) return null;
+    return this.prescribing.notReadyReason(c.patientId);
+  }
+
   async findQueue() {
     const rows = await this.prisma.consultation.findMany({
       where: { status: { in: REVIEWABLE as any } },
@@ -127,13 +172,12 @@ export class ConsultationsService {
       orderBy: { submittedAt: 'asc' },
     });
 
-    return rows.sort((a, b) => {
-      const aCtitical = a.redFlags.some((f) => f.severity === 'CRITICAL');
-      const bCritical = b.redFlags.some((f) => f.severity === 'CRITICAL');
-      if (aCtitical && !bCritical) return -1;
-      if (!aCtitical && bCritical) return 1;
-      return 0;
-    });
+    // Stable sort: within a tag, the longest wait stays first.
+    const rank = (c: (typeof rows)[number]) => RISK_RANK[triage(c.redFlags).riskTag];
+    const sorted = rows.sort((a, b) => rank(a) - rank(b));
+    // Whether each can be decided yet, worked out once for the whole queue rather than per row.
+    const blocked = await this.prescribing.notReadyReasons(sorted.map((c) => c.patientId));
+    return sorted.map((c) => Object.assign(c, { decisionBlockedReason: blocked.get(c.patientId) ?? null }));
   }
 
   async findById(id: string) {
@@ -179,11 +223,36 @@ export class ConsultationsService {
     });
   }
 
+  /**
+   * When the medical questionnaire was already answered on the website (before payment), this turns it into the
+   * patient's consultation as soon as the first payment has made them a patient, so onboarding never asks again.
+   * It goes through submitIntakeQuiz, so the checks, flags, consent record and queue are the same as the
+   * portal's. Returns null when there is nothing to submit, or when it can't be (e.g. the consent wording changed
+   * since): the patient then answers it in the portal as before.
+   */
+  async submitFromLead(patientId: string): Promise<{ id: string } | null> {
+    const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
+    const lead = patient?.lead;
+    if (!lead || !Array.isArray(lead.intakeAnswers) || !lead.intakeConsentVersion) return null;
+    const exists = await this.prisma.consultation.findFirst({ where: { patientId, kind: lead.productKind }, select: { id: true } });
+    if (exists) return null;
+    try {
+      return await this.submitIntakeQuiz(
+        patientId,
+        { kind: lead.productKind as ConsultationKind, answers: lead.intakeAnswers as any[], telehealthConsentVersion: lead.intakeConsentVersion },
+        { ip: lead.intakeConsentIp ?? undefined, userAgent: lead.intakeConsentUserAgent ?? undefined },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Couldn't create the consultation from lead ${lead.id}'s website answers: ${err?.message}`);
+      return null;
+    }
+  }
+
   // The medical questionnaire a paid patient fills in; creates the
   // consultation the doctor reviews. Answers that rule the patient out don't
   // block submission — they have already paid, so the consultation goes to the
   // top of the queue as a critical red flag and a decline refunds them.
-  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}) {
+  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}, opts: { consentRecordedElsewhere?: boolean } = {}) {
     const intake = findQuestionnaire(input.kind, 'INTAKE');
     const evaluation = evaluateAnswers(intake, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
@@ -209,7 +278,8 @@ export class ConsultationsService {
       }
     }
 
-    await this.consents.record(patientId, ConsentType.TELEHEALTH, input.telehealthConsentVersion, meta);
+    // Entered by staff for the patient: no consent is recorded on their behalf, they accept it themselves in onboarding.
+    if (!opts.consentRecordedElsewhere) await this.consents.record(patientId, ConsentType.TELEHEALTH, input.telehealthConsentVersion, meta);
 
     const data = {
       quizAnswers: answers as any,
@@ -232,6 +302,14 @@ export class ConsultationsService {
           data: { patientId, kind: input.kind, ...data, redFlags: { create: flags } },
           include,
         });
+    if (input.kind === ConsultationKind.GLP1) await this.syncPriorUse(patientId, evaluation.answers);
+
+    if (!open) {
+      // Anything the patient and the team said before there was a
+      // consultation (e.g. help during onboarding) joins this thread.
+      const moved = await this.prisma.message.updateMany({ where: { patientId, consultationId: null }, data: { consultationId: consultation.id } });
+      if (moved.count) consultation.messages = await this.prisma.message.findMany({ where: { consultationId: consultation.id }, orderBy: { sentAt: 'asc' } });
+    }
 
     await this.audit.log({
       actorId: patientId,
@@ -239,7 +317,15 @@ export class ConsultationsService {
       action: open ? 'CONSULTATION_RESUBMITTED' : 'CONSULTATION_SUBMITTED',
       resourceType: 'Consultation',
       resourceId: consultation.id,
+      patientId,
       metadata: { questionnaireVersion: data.questionnaireVersion, redFlags: flags.length },
+    });
+
+    await this.notifier?.toStaff({ clinicianIds: open?.clinicianId ? [open.clinicianId] : undefined, roles: [ClinicianRole.ADMIN, ClinicianRole.DOCTOR] }, {
+      kind: NotificationKind.CONSULTATION_SUBMITTED,
+      params: { patient: `${consultation.patient.firstName} ${consultation.patient.lastName}` },
+      href: `/consultation/${consultation.id}`,
+      groupKey: consultationKey(consultation.id),
     });
 
     this.posthog.capture(patientId, 'consultation_submitted', {
@@ -258,6 +344,73 @@ export class ConsultationsService {
     return consultation;
   }
 
+  /**
+   * Each dose has its own price, and the patient paid for the dose they ordered. If the clinician's
+   * first prescription is a different one (e.g. a lower starting dose), bill that from next month
+   * and refund the difference if it's cheaper. After the approval, never part of it: a billing problem is
+   * recorded for fixing by hand rather than undoing the clinical decision.
+   */
+  private async billPrescribedDose(
+    clinicianId: string,
+    patient: { id: string; email: string; stripeCustomerId: string | null; stripeSubscriptionId: string | null },
+    kind: ConsultationKind,
+    prescriptionId: string,
+  ): Promise<string | null> {
+    try {
+      const items = await this.prisma.prescriptionItem.findMany({ where: { prescriptionId }, include: { product: true, strength: true } });
+      const priceIds = this.dosePricing.priceIdsFor(
+        kind,
+        items.map((i) => ({ category: i.product.category, titrationStep: i.strength.titrationStep, stripePriceId: i.strength.stripePriceId })),
+      );
+      if (!priceIds) return null;
+      const doseLabel = items.length
+        ? items.map((i) => `${i.product.brandName ?? i.product.name} ${i.strength.label}`).join(' + ')
+        : 'the prescribed plan';
+      // Only the first prescription replaces the dose ordered at checkout. A later one (e.g. a new
+      // consultation months in) must not refund a month that was billed correctly.
+      const earlier = await this.prisma.prescription.count({ where: { patientId: patient.id, id: { not: prescriptionId } } });
+      if (earlier > 0) {
+        return `Billing unchanged: not the patient’s first prescription — if ${doseLabel} is priced differently, change the plan in Stripe from the next cycle`;
+      }
+      const note = await this.billing.moveToPrescribedPrice(patient, priceIds, doseLabel);
+      await this.audit.log({
+        actorId: clinicianId,
+        actorRole: UserRole.CLINICIAN,
+        action: 'BILLING_MATCHED_TO_PRESCRIPTION',
+        resourceType: 'Prescription',
+        resourceId: prescriptionId,
+        patientId: patient.id,
+        metadata: { priceIds, note },
+      });
+      return note;
+    } catch (err: any) {
+      this.logger.error(`Billing the prescribed dose for ${patient.id} failed: ${err?.message}`);
+      return 'Billing couldn’t be updated automatically — check the subscription in Stripe';
+    }
+  }
+
+  /**
+   * The questionnaire is where the patient says whether, and which, GLP-1 they
+   * used before. That decides whether the proof-of-prescription step applies,
+   * and the proof is checked against those answers — so re-run the check.
+   */
+  private async syncPriorUse(patientId: string, answers: Array<{ questionId: string; value: string | null }>) {
+    const value = answers.find((a) => a.questionId === 'glp1_prior_use')?.value;
+    if (value !== 'yes' && value !== 'no') return;
+    const priorMedicationUse = value === 'yes';
+    await this.prisma.onboardingSubmission.upsert({
+      where: { patientId },
+      create: { patientId, priorMedicationUse },
+      update: {
+        priorMedicationUse,
+        ...(priorMedicationUse
+          ? {}
+          : { prescriptionProofType: null, prescriptionProofFileId: null, prescriptionProofReview: Prisma.DbNull, prescriptionProofUnavailable: false }),
+      },
+    });
+    if (priorMedicationUse) await this.proofReview.reassess(patientId).catch(() => null);
+  }
+
   async approve(clinicianId: string, input: ApproveConsultationInput, isAdmin = false) {
     const c = await this.findById(input.consultationId);
     if (!REVIEWABLE.includes(c.status as any)) {
@@ -265,9 +418,11 @@ export class ConsultationsService {
     }
     this.assertMayDecide(c, clinicianId, isAdmin);
     await this.prescribing.assertCanPrescribe(clinicianId);
-    await this.prescribing.assertIdentityVerified(c.patientId);
+    await this.prescribing.assertReadyForDecision(c.patientId);
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // One decision: approving the consultation approves the patient's onboarding (ID, photos, proof) with it.
+      const onboardingApproved = await this.prescribing.approveOnboarding(tx, c.patientId, clinicianId);
       const prescription = await this.prescribing.issue(
         {
           consultationId: c.id,
@@ -283,29 +438,39 @@ export class ConsultationsService {
         },
         tx,
       );
-      return tx.consultation.update({
+      const consultation = await tx.consultation.update({
         where: { id: input.consultationId },
         data: { status: ConsultationStatus.APPROVED, clinicianId },
         include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
-      }).then((consultation) => ({ ...consultation, prescription }));
+      });
+      // Same transaction as the decision: an approval that can't be recorded doesn't happen.
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_APPROVED',
+          resourceType: 'Consultation',
+          resourceId: input.consultationId,
+          patientId: c.patientId,
+          metadata: {
+            prescriptionId: prescription.id,
+            medication: prescription.medication,
+            dosage: prescription.dosage,
+            contentHash: prescription.contentHash,
+            overrideReason: prescription.overrideReason,
+            onboardingApproved,
+          },
+        },
+        tx,
+      );
+      return { ...consultation, prescription };
     });
 
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_APPROVED',
-      resourceType: 'Consultation',
-      resourceId: input.consultationId,
-      metadata: {
-        prescriptionId: updated.prescription.id,
-        medication: updated.prescription.medication,
-        dosage: updated.prescription.dosage,
-        contentHash: updated.prescription.contentHash,
-        overrideReason: updated.prescription.overrideReason,
-      },
-    });
+    await this.notifyPatient(updated.patient, updated.id, 'Your treatment has been approved');
+    const billingNote = await this.billPrescribedDose(clinicianId, updated.patient, c.kind as ConsultationKind, updated.prescription.id);
 
-    await this.notifyPatient(updated.patient, 'Your treatment has been approved');
+    // The first supply is ready: pass it to the pharmacy partner (a failure is retried later, never undoes the approval).
+    await this.partner.trySendForPrescription(updated.prescription.id);
 
     this.posthog.capture(clinicianId, 'consultation_approved', {
       consultation_id: updated.id,
@@ -320,7 +485,63 @@ export class ConsultationsService {
       posthogDistinctId: clinicianId,
     });
 
-    return updated;
+    return { ...updated, billingNote: billingNote ?? undefined };
+  }
+
+  /**
+   * Asks the patient to redo one onboarding step (a blurred photo, a document that doesn't match) without
+   * deciding the consultation. The onboarding goes back to the patient with the reason beside that step, and the
+   * consultation can't be approved until they have sent it in again. Asking about another step before they
+   * have answered adds to the request.
+   */
+  async requestOnboardingRedo(clinicianId: string, consultationId: string, step: OnboardingStepKey, reason: string, isAdmin = false) {
+    const c = await this.findById(consultationId);
+    if (![ConsultationStatus.SUBMITTED, ConsultationStatus.IN_REVIEW].includes(c.status as any)) {
+      throw new ForbiddenException('Consultation is not in a reviewable state');
+    }
+    this.assertMayDecide(c, clinicianId, isAdmin);
+    if (!reason?.trim()) throw new BadRequestException('Tell the patient what to fix');
+
+    await this.prisma.$transaction(async (tx) => {
+      await lockPatientIdentity(tx, c.patientId);
+      const submission = await tx.onboardingSubmission.findUnique({ where: { patientId: c.patientId } });
+      if (!submission || ![OnboardingStatus.PENDING_REVIEW, OnboardingStatus.REJECTED].includes(submission.status as any)) {
+        throw new BadRequestException('The patient has no onboarding waiting for a decision');
+      }
+      if (!requiredReviewSteps(submission, submission.identityViaVerifyService).includes(step)) {
+        throw new BadRequestException('This step is not part of the current review');
+      }
+      const earlier = submission.status === OnboardingStatus.REJECTED ? ((submission.stepFeedback as any[]) ?? []) : [];
+      const feedback = [...earlier.filter((f) => f.step !== step && !f.approved), { step, approved: false, reason: reason.trim(), files: stepFiles(submission, step) }];
+      await tx.onboardingSubmission.update({
+        where: { patientId: c.patientId },
+        data: {
+          status: OnboardingStatus.REJECTED,
+          stepFeedback: feedback as unknown as Prisma.InputJsonValue,
+          reviewedAt: new Date(),
+          reviewedByClinicianId: clinicianId,
+        },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'ONBOARDING_REDO_REQUESTED',
+          resourceType: 'Consultation',
+          resourceId: consultationId,
+          patientId: c.patientId,
+          metadata: { step },
+        },
+        tx,
+      );
+    });
+
+    await this.notifyPatient(c.patient, consultationId, 'Your clinician needs you to redo a step', {
+      consultationId,
+      clinicianId,
+      content: reason,
+    });
+    return this.findById(consultationId);
   }
 
   async decline(clinicianId: string, input: DeclineConsultationInput, isAdmin = false) {
@@ -332,27 +553,44 @@ export class ConsultationsService {
 
     const refund = await this.refundIfNothingPrescribed(c.patientId, c.id, c.patient);
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: input.consultationId },
-      data: {
-        status: ConsultationStatus.DECLINED,
-        clinicianId,
-        declineReason: input.reason,
-        refundStatus: refund.status,
-      },
-      include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const declined = await tx.consultation.update({
+        where: { id: input.consultationId },
+        data: {
+          status: ConsultationStatus.DECLINED,
+          clinicianId,
+          declineReason: input.reason,
+          refundStatus: refund.status,
+        },
+        include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+      });
+      // Nothing is left to review: close the onboarding too, so the patient isn't shown "Under review" and
+      // can't send more in. Not when they have another request still open, or were already approved.
+      const stillOpen = await tx.consultation.count({
+        where: { patientId: c.patientId, id: { not: input.consultationId }, status: { not: ConsultationStatus.DECLINED } },
+      });
+      if (stillOpen === 0) {
+        await tx.onboardingSubmission.updateMany({
+          where: { patientId: c.patientId, status: { in: [OnboardingStatus.IN_PROGRESS, OnboardingStatus.PENDING_REVIEW, OnboardingStatus.REJECTED] } },
+          data: { status: OnboardingStatus.DECLINED, reviewedAt: new Date(), reviewedByClinicianId: clinicianId },
+        });
+      }
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_DECLINED',
+          resourceType: 'Consultation',
+          resourceId: input.consultationId,
+          patientId: c.patientId,
+          metadata: { reason: input.reason, refund },
+        },
+        tx,
+      );
+      return declined;
     });
 
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_DECLINED',
-      resourceType: 'Consultation',
-      resourceId: input.consultationId,
-      metadata: { reason: input.reason, refund },
-    });
-
-    await this.notifyPatient(updated.patient, 'An update on your consultation', {
+    await this.notifyPatient(updated.patient, updated.id, 'An update on your consultation', {
       consultationId: updated.id,
       clinicianId,
       content: input.messageToPatient,
@@ -401,21 +639,27 @@ export class ConsultationsService {
     }
     this.assertMayDecide(c, clinicianId, isAdmin);
 
-    const updated = await this.prisma.consultation.update({
-      where: { id: consultationId },
-      data: { status: ConsultationStatus.MORE_INFO_REQUESTED, clinicianId },
-      include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const requested = await tx.consultation.update({
+        where: { id: consultationId },
+        data: { status: ConsultationStatus.MORE_INFO_REQUESTED, clinicianId },
+        include: { patient: true, clinician: true, redFlags: true, prescription: true, messages: true },
+      });
+      await this.audit.log(
+        {
+          actorId: clinicianId,
+          actorRole: UserRole.CLINICIAN,
+          action: 'CONSULTATION_MORE_INFO_REQUESTED',
+          resourceType: 'Consultation',
+          resourceId: consultationId,
+          patientId: c.patientId,
+        },
+        tx,
+      );
+      return requested;
     });
 
-    await this.audit.log({
-      actorId: clinicianId,
-      actorRole: UserRole.CLINICIAN,
-      action: 'CONSULTATION_MORE_INFO_REQUESTED',
-      resourceType: 'Consultation',
-      resourceId: consultationId,
-    });
-
-    await this.notifyPatient(updated.patient, 'Your clinician has a question', {
+    await this.notifyPatient(updated.patient, consultationId, 'Your clinician has a question', {
       consultationId,
       clinicianId,
       content: message,

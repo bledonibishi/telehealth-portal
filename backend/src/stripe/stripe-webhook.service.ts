@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import Stripe from 'stripe';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { AuditService } from '../audit/audit.service';
+import { UserRole } from '../common/enums';
 import { newActivationToken } from '../auth/activation-token';
+import { ConsultationsService } from '../consultations/consultations.service';
 
 @Injectable()
 export class StripeWebhookService {
@@ -18,6 +22,9 @@ export class StripeWebhookService {
     private email: EmailService,
     private config: ConfigService,
     private referrals: ReferralsService,
+    private audit: AuditService,
+    // Looked up when needed: ConsultationsModule already imports this module, so it can't be injected directly.
+    private moduleRef: ModuleRef,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3001';
   }
@@ -33,6 +40,7 @@ export class StripeWebhookService {
           { customerId: stripeId(session.customer), subscriptionId: stripeId(session.subscription) },
           // What Stripe actually took off this payment — not a flag the client could set.
           (session.total_details?.amount_discount ?? 0) > 0,
+          { amount: session.amount_total ?? 0, currency: session.currency ?? 'eur', reference: null, paidAt: new Date((session.created ?? Date.now() / 1000) * 1000) },
         );
         break;
       }
@@ -54,11 +62,48 @@ export class StripeWebhookService {
           invoice.id,
           { customerId: stripeId(invoice.customer), subscriptionId: stripeId(invoice.subscription) },
           discountCents > 0,
+          { amount: invoice.amount_paid ?? 0, currency: invoice.currency ?? 'eur', reference: invoice.number ?? null, paidAt: new Date((invoice.status_transitions?.paid_at ?? invoice.created ?? Date.now() / 1000) * 1000) },
         );
+        break;
+      }
+      case 'customer.subscription.deleted': {
+        // The patient cancelled in Stripe's billing portal (or it ended at period end): stop shipping.
+        const subscription = event.data.object as Stripe.Subscription;
+        await this.endSubscription(subscription.id);
         break;
       }
       default:
         this.logger.debug(`Unhandled event type: ${event.type}`);
+    }
+  }
+
+  private async endSubscription(subscriptionId: string) {
+    const patient = await this.prisma.patient.findFirst({ where: { stripeSubscriptionId: subscriptionId }, select: { id: true } });
+    if (!patient) return; // an abandoned checkout's subscription, or one we never linked to a patient
+    // Only the first report counts; Stripe may deliver an event more than once.
+    const { count } = await this.prisma.patient.updateMany({
+      where: { id: patient.id, subscriptionEndedAt: null },
+      data: { subscriptionEndedAt: new Date() },
+    });
+    if (count === 0) return;
+    this.logger.log(`Subscription ${subscriptionId} ended — patient ${patient.id} will not be sent further supplies`);
+    await this.audit.log({
+      actorId: 'system:stripe',
+      actorRole: UserRole.ADMIN,
+      action: 'SUBSCRIPTION_ENDED',
+      resourceType: 'Patient',
+      resourceId: patient.id,
+      metadata: { subscriptionId },
+    });
+  }
+
+  /** Never throws: a failure is logged and the patient is asked the questionnaire in the portal instead. */
+  private async createConsultationFromLead(email: string) {
+    try {
+      const patient = await this.prisma.patient.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } });
+      if (patient) await this.moduleRef.get(ConsultationsService, { strict: false }).submitFromLead(patient.id);
+    } catch (err: any) {
+      this.logger.error(`Creating the consultation from the website answers for ${email} failed: ${err?.message}`);
     }
   }
 
@@ -67,6 +112,7 @@ export class StripeWebhookService {
     stripeReferenceId: string,
     stripeIds: { customerId: string | null; subscriptionId: string | null },
     rewardApplied: boolean,
+    payment: { amount: number; currency: string; reference: string | null; paidAt: Date },
   ) {
     if (!email) {
       this.logger.warn(`Payment event has no email — reference ${stripeReferenceId}`);
@@ -87,14 +133,17 @@ export class StripeWebhookService {
     };
 
     // Idempotency: if already converted, skip (also covers subscription renewal invoices)
-    if (lead.convertedAt) {
+    const skipAlreadyConverted = async () => {
       // Still backfill billing ids — a declined consultation needs them to refund.
       if (Object.keys(billing).length) {
         await this.prisma.patient.updateMany({ where: { email }, data: billing });
       }
+      // A payment event after the first (renewals, the second event of one payment) is another chance to turn the
+      // website answers into the consultation if that failed the first time. Harmless when it already exists.
+      await this.createConsultationFromLead(email);
       this.logger.log(`Lead ${lead.id} already converted — skipping`);
-      return;
-    }
+    };
+    if (lead.convertedAt) return skipAlreadyConverted();
 
     // Generate activation token (expires 7 days)
     const { activationToken, activationTokenExpiresAt } = newActivationToken();
@@ -110,37 +159,50 @@ export class StripeWebhookService {
     // Create or update patient
     const tempPasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
-    const patient = await this.prisma.patient.upsert({
-      where: { email },
-      update: { activationToken, activationTokenExpiresAt, ...billing },
-      create: {
-        email,
-        passwordHash: tempPasswordHash,
-        firstName: lead.firstName,
-        lastName: lead.lastName,
-        dateOfBirth: new Date('1990-01-01'), // placeholder — patient sets this on activation
-        leadId: lead.id,
-        activationToken,
-        activationTokenExpiresAt,
-        addressLine1: details.line1 || null,
-        city: details.city || null,
-        postcode: details.postalCode || null,
-        country: details.country || null,
-        ...billing,
-      },
+    // Claiming the lead and creating the patient are one step: when the two events of a payment (the checkout session
+    // and its invoice) arrive together, only one gets through, so there is one activation link and one receipt.
+    // Marked with a Stripe reference (Checkout Session id, or invoice id for the inline Payment Element flow).
+    const patient = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.lead.updateMany({ where: { id: lead.id, convertedAt: null }, data: { convertedAt: new Date(), stripeSessionId: stripeReferenceId } });
+      if (claimed.count === 0) return null;
+      return tx.patient.upsert({
+        where: { email },
+        update: { activationToken, activationTokenExpiresAt, ...billing },
+        create: {
+          email,
+          passwordHash: tempPasswordHash,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          dateOfBirth: new Date('1990-01-01'), // placeholder — patient sets this on activation
+          leadId: lead.id,
+          activationToken,
+          activationTokenExpiresAt,
+          addressLine1: details.line1 || null,
+          city: details.city || null,
+          postcode: details.postalCode || null,
+          country: details.country || null,
+          ...billing,
+        },
+      });
     });
-
-    // Mark lead as converted with a Stripe reference (Checkout Session id, or
-    // invoice id for the inline Payment Element flow)
-    await this.prisma.lead.update({
-      where: { id: lead.id },
-      data: {
-        convertedAt: new Date(),
-        stripeSessionId: stripeReferenceId,
-      },
-    });
+    if (!patient) return skipAlreadyConverted();
 
     this.logger.log(`Patient created/updated for ${email} — patient ${patient.id}`);
+
+    // The receipt goes first, on its own: the steps below can fail (and the payment is then retried, but only once
+    // by this point converted), and a patient who paid must not be left without it. Nothing to confirm for a payment
+    // of nothing (a fully discounted first month).
+    if (payment.amount > 0) {
+      try {
+        await this.email.sendPaymentReceiptEmail(email, lead.firstName, payment);
+      } catch (err: any) {
+        this.logger.error(`Payment receipt email to ${email} failed: ${err?.message}`);
+      }
+    }
+
+    // The medical questionnaire answered on the website becomes the consultation now, so onboarding doesn't
+    // ask for it again. If it can't (nothing answered, or it needs redoing) the portal asks as before.
+    await this.createConsultationFromLead(email);
 
     // This lead's first payment just succeeded — the point referral rewards
     // actually get handed out (never at quiz/lead time, to avoid rewarding
@@ -152,6 +214,7 @@ export class StripeWebhookService {
     await this.email.sendActivationEmail(email, lead.firstName, activationUrl);
 
     this.logger.log(`Activation email sent to ${email}`);
+
   }
 }
 

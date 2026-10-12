@@ -1,18 +1,22 @@
 'use client';
 
+import { PasswordInput } from '@/components/common/PasswordInput';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApolloClient, useMutation } from '@apollo/client';
 import { LOGIN_PATIENT } from '@/graphql/auth';
 import { setToken } from '@/lib/auth';
+import { ErrorAlert } from '@/components/common/Alert';
+import { ErrorCode, describeError } from '@telehealth/shared-types';
+import { BusyLabel } from '@telehealth/loading';
 
 export default function LoginPage() {
   const router = useRouter();
   const apollo = useApolloClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const [loginPatient, { loading }] = useMutation(LOGIN_PATIENT, {
     async onCompleted(data) {
@@ -22,32 +26,25 @@ export default function LoginPage() {
       router.push('/dashboard');
     },
     onError(err) {
-      setError(err.message);
+      setError(err);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     loginPatient({ variables: { input: { email, password } } });
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <span className="font-bold text-2xl text-slate-900 tracking-tight">telehealth</span>
-          <p className="text-sm text-slate-500 mt-1">Patient portal</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+    <>
           <h1 className="text-xl font-semibold text-slate-900 mb-6">Sign in to your account</h1>
 
-          {error && (
-            <div className="mb-4 text-sm text-danger-500 bg-danger-50 border border-danger-100 rounded-lg px-3 py-2">
-              {error}
-            </div>
-          )}
+          <ErrorAlert
+            error={error}
+            className="mb-4"
+            action={describeError(error)?.code === ErrorCode.ACCOUNT_NOT_ACTIVATED && <Link href="/get-started" className="underline">Send me a new activation link</Link>}
+          />
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -62,9 +59,12 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-              <input
-                type="password"
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <Link href="/forgot-password" className="text-xs text-brand-600 hover:text-brand-700">Forgot password?</Link>
+              </div>
+              <PasswordInput
+                
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -77,7 +77,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
             >
-              {loading ? 'Signing in…' : 'Sign in'}
+              <BusyLabel busy={loading} busyText="Signing in…">Sign in</BusyLabel>
             </button>
           </form>
 
@@ -87,8 +87,6 @@ export default function LoginPage() {
               Set up your account
             </Link>
           </p>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

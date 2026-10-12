@@ -2,56 +2,66 @@
 
 import { useRef, useState } from 'react';
 import { uploadFile, UploadKind } from '@/lib/upload';
+import { AuthedImage } from '@/components/common/AuthedImage';
+import { InlineError } from '@/components/common/Alert';
 
 export default function PhotoUploadField({
   kind,
   label,
   hint,
   onUploaded,
+  existingFileId,
 }: {
   kind: UploadKind;
   label: string;
   hint?: string;
   onUploaded: (fileId: string) => void;
+  /** A photo already saved for this field: shown, and replaced if the patient picks another. */
+  existingFileId?: string | null;
 }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     setPreviewUrl(URL.createObjectURL(file));
     setStatus('uploading');
-    setError('');
+    setError(null);
     try {
       const fileId = await uploadFile(kind, file);
       setStatus('done');
       onUploaded(fileId);
     } catch (err: any) {
       setStatus('error');
-      setError(err.message ?? 'Upload failed');
+      setError(err);
     }
   };
 
   return (
-    <div className="border border-slate-200 rounded-2xl p-4">
+    <div className="border border-slate-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-sm font-medium text-slate-900">{label}</p>
           {hint && <p className="text-xs text-slate-400 mt-0.5">{hint}</p>}
         </div>
-        {status === 'done' && (
-          <span className="text-xs font-medium text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full">✓ Uploaded</span>
+        {(status === 'done' || (!!existingFileId && !previewUrl)) && (
+          <span className="text-xs font-medium text-ink-800 bg-ink-50 px-2 py-0.5 rounded-full">✓ Uploaded</span>
         )}
       </div>
 
-      {previewUrl ? (
+      {!previewUrl && existingFileId ? (
+        <div>
+          <AuthedImage fileId={existingFileId} alt={label} className="w-full max-h-64 object-cover rounded-md border border-slate-100" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-2 text-xs font-medium text-ink-600 hover:text-ink-800">Replace photo</button>
+        </div>
+      ) : previewUrl ? (
         <div className="relative">
-          <img src={previewUrl} alt={label} className="w-full max-h-64 object-cover rounded-xl border border-slate-100" />
+          <img src={previewUrl} alt={label} className="w-full max-h-72 object-contain bg-slate-50 rounded-md border border-slate-100" />
           {status === 'uploading' && (
-            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-xl">
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center rounded-md">
               <span className="text-xs text-slate-500">Uploading…</span>
             </div>
           )}
@@ -71,21 +81,21 @@ export default function PhotoUploadField({
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 px-3 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-xl transition-colors"
+            className="flex-1 px-3 py-2.5 bg-ink-700 hover:bg-ink-800 text-white text-sm font-medium rounded-md transition-colors"
           >
             Take photo
           </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 px-3 py-2.5 border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors"
+            className="flex-1 px-3 py-2.5 border border-slate-200 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
           >
             Upload file
           </button>
         </div>
       )}
 
-      {error && <p className="text-xs text-danger-500 mt-2">{error}</p>}
+      <InlineError error={error} size="xs" className="mt-2" />
 
       <input
         ref={cameraInputRef}

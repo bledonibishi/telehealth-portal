@@ -5,6 +5,8 @@ import {
 import { useMutation, useQuery } from '@apollo/client';
 import { CONSENT_TEXT, MY_CONSULTATIONS, MY_PRODUCT_KIND, QUESTIONNAIRE, SUBMIT_INTAKE_QUIZ } from '../../graphql/operations';
 import { ConsultationKind } from '@telehealth/shared-types';
+import { errorMessage } from '@telehealth/shared-types';
+import { LoadingState } from '../../components/Skeleton';
 
 type Question = {
   id: string;
@@ -34,7 +36,9 @@ function toAnswer(q: Question, selected: string[]) {
 
 // Questions come from the backend (the same questionnaire the web portal
 // shows); the server re-validates every answer and decides what it means.
-export function IntakeQuizScreen({ navigation }: any) {
+export function IntakeQuizScreen({ navigation, route }: any) {
+  // The same questionnaire is a step of onboarding (then "done" goes back to the checklist) and a tab afterwards.
+  const inOnboarding = route?.name === 'MedicalQuestionnaire';
   const { data: kindData, loading: kindLoading } = useQuery(MY_PRODUCT_KIND);
   const [chosenKind, setChosenKind] = useState<ConsultationKind | null>(null);
   const kind: ConsultationKind | null = chosenKind ?? kindData?.myProductKind ?? null;
@@ -52,13 +56,13 @@ export function IntakeQuizScreen({ navigation }: any) {
     refetchQueries: [{ query: MY_CONSULTATIONS }],
     onCompleted() {
       Alert.alert('Submitted', 'Your answers are with our clinical team. We’ll be in touch soon.', [
-        { text: 'OK', onPress: () => navigation.navigate('Status') },
+        { text: 'OK', onPress: () => (inOnboarding ? navigation.goBack() : navigation.navigate('Status')) },
       ]);
     },
     onError(e) {
       // Walk back through the questions with earlier answers kept, so the
       // patient can correct what the server rejected.
-      Alert.alert('Please check your answers', e.message);
+      Alert.alert('Please check your answers', errorMessage(e));
       setHistory([]);
       const first = questions[0];
       setDraft(first && !first.options ? (values[first.id] ?? []).join('') : '');
@@ -96,7 +100,7 @@ export function IntakeQuizScreen({ navigation }: any) {
   };
 
   if (kindLoading || (kind && loading)) {
-    return <View style={styles.container}><ActivityIndicator /></View>;
+    return <View style={styles.container}><LoadingState label="Loading the questions…" /></View>;
   }
 
   if (!kind) {
@@ -205,7 +209,7 @@ export function IntakeQuizScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 24, backgroundColor: '#f9fafb' },
+  container: { flexGrow: 1, padding: 24, backgroundColor: '#f9fafb', width: '100%', alignSelf: 'center', maxWidth: 720 },
   title: { fontSize: 20, fontWeight: '600', color: '#111827', marginBottom: 12, lineHeight: 28 },
   sub: { fontSize: 15, color: '#6b7280', marginBottom: 24 },
   progress: { fontSize: 12, color: '#9ca3af', marginBottom: 12 },

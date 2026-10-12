@@ -46,3 +46,22 @@ export const SET_PRODUCT_STRENGTH_ACTIVE = gql`
     }
   }
 `;
+
+export const PRESCRIPTION_TEMPLATES = gql`
+  query PrescriptionTemplates($kind: ConsultationKind!) {
+    prescriptionTemplates(kind: $kind) {
+      id
+      name
+      description
+      validityDays
+      refillsAllowed
+      notes
+      items {
+        productId
+        strengthId
+        quantity
+        directions
+      }
+    }
+  }
+`;

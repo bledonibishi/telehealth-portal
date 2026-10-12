@@ -1,44 +1,59 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
+import { NotificationKind } from '@telehealth/shared-types';
+import { NotifierService } from '../notifications/notifier.service';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CheckInStatus, ConsultationKind, DoseStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
+import { OrdersService } from '../prescriptions/orders.service';
+import { CheckInStatus, ConsultationKind, DoseStatus, OrderStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
+import { noteFlags } from './note-signals';
 
-const CHECK_IN_INTERVAL_DAYS = 30;
+// GLP-1 titration is reviewed every 4 weeks (weeks 4, 8, 12 …), so a check-in is due 28 days after the last one.
+export const CHECK_IN_INTERVAL_DAYS = 28;
 const TOKEN_EXPIRY_DAYS = 14;
 
 @Injectable()
 export class CheckInsService {
   private readonly logger = new Logger(CheckInsService.name);
   private readonly appUrl: string;
+  private readonly isProduction: boolean;
 
   constructor(
     private prisma: PrismaService,
     private email: EmailService,
     config: ConfigService,
+    @Optional() private notifier?: NotifierService,
+    @Optional() private orders?: OrdersService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
+    this.isProduction = config.get<string>('NODE_ENV') === 'production';
   }
 
   /**
    * Keeps every patient on treatment (an active prescription) with exactly one
-   * open (not-yet-completed) check-in scheduled, spaced CHECK_IN_INTERVAL_DAYS
-   * apart from their first prescription. Runs frequently so new prescriptions
-   * and freshly-completed check-ins get their next one queued promptly.
+   * open (not-yet-completed) check-in scheduled, CHECK_IN_INTERVAL_DAYS after
+   * their first order went out (or after their last completed check-in). Nothing
+   * is scheduled until that first order has been dispatched. Runs frequently so
+   * newly-dispatched orders and freshly-completed check-ins get their next one
+   * queued promptly.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async ensureScheduled() {
+  async ensureScheduled(patientId?: string) {
     const patients = await this.prisma.patient.findMany({
-      where: { activatedAt: { not: null }, prescriptions: { some: { status: PrescriptionStatus.ACTIVE } } },
+      where: { ...(patientId ? { id: patientId } : {}), activatedAt: { not: null }, prescriptions: { some: { status: PrescriptionStatus.ACTIVE } } },
       include: {
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
-        prescriptions: { orderBy: { issuedAt: 'asc' }, take: 1 },
+        orders: {
+          where: { dispatchedAt: { not: null }, status: { not: OrderStatus.CANCELLED } },
+          orderBy: { dispatchedAt: 'asc' },
+          take: 1,
+        },
       },
     });
 
@@ -46,12 +61,36 @@ export class CheckInsService {
       const latest = patient.checkIns[0];
       if (latest && latest.status !== CheckInStatus.COMPLETED) continue;
 
-      const baseDate = latest?.completedAt ?? patient.prescriptions[0].issuedAt;
+      const baseDate = latest?.completedAt ?? patient.orders[0]?.dispatchedAt;
+      if (!baseDate) continue;
       const dueAt = new Date(baseDate.getTime() + CHECK_IN_INTERVAL_DAYS * 86_400_000);
 
       await this.prisma.checkIn.create({ data: { patientId: patient.id, dueAt } });
       this.logger.log(`Scheduled check-in for ${patient.email}, due ${dueAt.toISOString()}`);
     }
+  }
+
+  /**
+   * Dev/testing only: stands in for the pharmacy. Ships the prescription's waiting order, then schedules the patient's
+   * check-in straight away instead of waiting for the next scheduler run. Returns the check-in that is now open, if any.
+   */
+  async processNow(actorId: string, prescriptionId: string) {
+    if (this.isProduction) throw new ForbiddenException('A prescription can only be processed by hand in development');
+    if (!this.orders) throw new BadRequestException('Orders are not available');
+    const rx = await this.prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: { orders: { where: { status: OrderStatus.PENDING }, orderBy: { sequence: 'asc' }, take: 1 } },
+    });
+    if (!rx) throw new NotFoundException('Prescription not found');
+    if (rx.status !== PrescriptionStatus.ACTIVE) throw new BadRequestException('Only a current prescription can be processed');
+    if (rx.orders[0]) await this.orders.dispatch(actorId, rx.orders[0].id, 'DEV-PROCESSED', {});
+    await this.ensureScheduled(rx.patientId);
+    const open = await this.prisma.checkIn.findFirst({
+      where: { patientId: rx.patientId, status: { not: CheckInStatus.COMPLETED } },
+      orderBy: { createdAt: 'desc' },
+      include: { patient: true },
+    });
+    return open ? this.toModel(open) : null;
   }
 
   /** Emails out any check-in whose due date has arrived. */
@@ -62,30 +101,60 @@ export class CheckInsService {
       include: { patient: true },
     });
 
-    for (const checkIn of due) {
-      const token = randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_DAYS * 86_400_000);
-
-      await this.prisma.checkIn.update({
-        where: { id: checkIn.id },
-        data: { status: CheckInStatus.SENT, sentAt: new Date(), token, tokenExpiresAt },
-      });
-
-      const url = this.buildUrl(token)!;
-      await this.email.sendCheckInEmail(checkIn.patient.email, checkIn.patient.firstName, url);
-      this.logger.log(`Sent check-in email to ${checkIn.patient.email}`);
-    }
+    for (const checkIn of due) await this.send(checkIn);
   }
 
+  /** Puts the check-in in the SENT state with a live link, reusing the link it already has while that still works. */
+  private async openLink(checkIn: { id: string; token?: string | null; tokenExpiresAt?: Date | null; sentAt?: Date | null }) {
+    const live = !!checkIn.token && !!checkIn.tokenExpiresAt && checkIn.tokenExpiresAt > new Date();
+    return this.prisma.checkIn.update({
+      where: { id: checkIn.id },
+      data: live
+        ? { status: CheckInStatus.SENT }
+        : {
+            status: CheckInStatus.SENT,
+            sentAt: new Date(),
+            token: randomBytes(32).toString('hex'),
+            tokenExpiresAt: new Date(Date.now() + TOKEN_EXPIRY_DAYS * 86_400_000),
+          },
+      include: { patient: true },
+    });
+  }
+
+  private async send(checkIn: { id: string; patientId: string; token?: string | null; tokenExpiresAt?: Date | null; patient: { email: string; firstName: string } }) {
+    const sent = await this.openLink(checkIn);
+    const url = this.buildUrl(sent.token)!;
+    await this.notifier?.toPatient(checkIn.patientId, { kind: NotificationKind.CHECK_IN_READY, href: '/dashboard', groupKey: `checkin:${checkIn.id}` });
+    await this.email.sendCheckInEmail(checkIn.patient.email, checkIn.patient.firstName, url);
+    this.logger.log(`Sent check-in email to ${checkIn.patient.email}`);
+    return sent;
+  }
+
+  /**
+   * Staff hand-off, for when the scheduled email isn't enough (a patient who lost it, or CX sending the link by
+   * message): creates the link now, and emails it too when asked. Without the email the link is only shown to staff.
+   */
+  async issueLink(id: string, sendEmail: boolean) {
+    const checkIn = await this.prisma.checkIn.findUnique({ where: { id }, include: { patient: true } });
+    if (!checkIn) throw new NotFoundException('Check-in not found');
+    if (checkIn.status === CheckInStatus.COMPLETED) throw new BadRequestException('This check-in has already been completed');
+    return this.toModel(sendEmail ? await this.send(checkIn) : await this.openLink(checkIn));
+  }
+
+  /** Dev/testing only: move a check-in's scheduled date. A sent one is put back to scheduled so it can be sent again; a date that has already arrived sends it straight away instead of waiting for the next cron run. */
   async reschedule(id: string, dueAt: Date) {
+    if (this.isProduction) throw new ForbiddenException('Check-ins can only be rescheduled in development');
+    if (Number.isNaN(dueAt.getTime())) throw new BadRequestException('Invalid due date');
     const checkIn = await this.prisma.checkIn.findUnique({ where: { id } });
     if (!checkIn) throw new NotFoundException('Check-in not found');
-    if (checkIn.status !== CheckInStatus.SCHEDULED) {
-      throw new BadRequestException('Only a not-yet-sent check-in can be rescheduled');
-    }
+    if (checkIn.status === CheckInStatus.COMPLETED) throw new BadRequestException('A completed check-in can’t be rescheduled');
 
-    const updated = await this.prisma.checkIn.update({ where: { id }, data: { dueAt } });
-    return this.toModel(updated);
+    const updated = await this.prisma.checkIn.update({
+      where: { id },
+      data: { dueAt, status: CheckInStatus.SCHEDULED, token: null, tokenExpiresAt: null, sentAt: null },
+      include: { patient: true },
+    });
+    return this.toModel(dueAt <= new Date() ? await this.send(updated) : updated);
   }
 
   buildUrl(token?: string | null) {
@@ -191,6 +260,11 @@ export class CheckInsService {
     const evaluation = evaluateAnswers(questionnaire, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
 
+    // What the patient wrote in their own words: a keyword pass flags anxiety, low motivation,
+    // trouble with the dose or distress, so the doctor reads those check-ins first.
+    const textIds = new Set(questionnaire.questions.filter((q) => q.type === 'text').map((q) => q.id));
+    evaluation.flags.push(...noteFlags(evaluation.answers.filter((a) => textIds.has(a.questionId)).map((a) => a.answer)));
+
     if (kind === ConsultationKind.GLP1 && prescription) {
       const titrationFlag = this.glp1TitrationRiskFlag(prescription, evaluation.answers);
       if (titrationFlag) evaluation.flags.push(titrationFlag);
@@ -227,6 +301,7 @@ export class CheckInsService {
       },
     });
     if (count === 0) throw new BadRequestException('This check-in has already been completed');
+    await this.notifier?.resolve(`checkin:${checkIn.id}`);
 
     const updated = await this.prisma.checkIn.findUniqueOrThrow({ where: { id: checkIn.id }, include: { patient: true } });
     return this.toModel(updated);

@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -11,7 +12,10 @@ import { PostHogService } from '../posthog/posthog.service';
 import { ConsentsService } from '../consents/consents.service';
 import { PrescribingService } from '../prescriptions/prescribing.service';
 import { WeightJourneyService } from '../weight-journey/weight-journey.service';
+import { ConsultationsService } from '../consultations/consultations.service';
 import { PatientTreatmentStatus } from './models/patient-list-item.model';
+import { intakeNumber } from './patient-profile.service';
+import { bmiOf, plausibleHeightCm } from './bmi';
 import { findQuestionnaire, versionTag } from '../questionnaires/definitions';
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import {
@@ -58,6 +62,8 @@ function generateTempPassword(length = 12): string {
 
 @Injectable()
 export class PatientsService {
+  private readonly logger = new Logger(PatientsService.name);
+
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -65,11 +71,38 @@ export class PatientsService {
     private consents: ConsentsService,
     private prescribing: PrescribingService,
     private weightJourney: WeightJourneyService,
+    // Looked up when needed: ConsultationsModule is not a dependency of this module.
+    private moduleRef: ModuleRef,
   ) {}
 
   // One query per relation (batched across all patients, not per row) so the
   // list can filter/sort by programme, review status and treatment status
   // without pulling every patient's full consultation/message history.
+  /**
+   * Finds the patients whose prescription, check-in or order has this id: the full id, or the last characters of it
+   * (the short form shown on screen, as "#x2xval74"). Too little to go on (under 6 characters) matches nothing.
+   */
+  async findByRecordId(code: string) {
+    const typed = code.trim();
+    const id = typed.replace(/^#/, '').replace(/^th-/i, '').toLowerCase();
+    if (!/^[a-z0-9]{6,40}$/.test(id)) return [];
+    // An id is looked up with a "ends with" match, which can't use an index and scans the tables, so it is only done for
+    // something that looks like an id: marked with # or TH-, or holding a digit. An ordinary name or email never does.
+    if (!/^(#|th-)/i.test(typed) && !/\d/.test(id)) return [];
+    const where = { id: { endsWith: id } };
+    const select = { id: true, patientId: true };
+    const [prescriptions, checkIns, orders] = await Promise.all([
+      this.prisma.prescription.findMany({ where, select, take: 5 }),
+      this.prisma.checkIn.findMany({ where, select, take: 5 }),
+      this.prisma.order.findMany({ where, select, take: 5 }),
+    ]);
+    return [
+      ...prescriptions.map((r) => ({ patientId: r.patientId, kind: 'PRESCRIPTION', recordId: r.id })),
+      ...checkIns.map((r) => ({ patientId: r.patientId, kind: 'CHECK_IN', recordId: r.id })),
+      ...orders.map((r) => ({ patientId: r.patientId, kind: 'ORDER', recordId: r.id })),
+    ];
+  }
+
   async findAll() {
     const rows = await this.prisma.patient.findMany({
       orderBy: { createdAt: 'desc' },
@@ -96,6 +129,8 @@ export class PatientsService {
           },
         },
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1, select: { status: true, dueAt: true } },
+        // Messages from before the patient had a consultation.
+        messages: { where: { consultationId: null }, orderBy: { sentAt: 'desc' }, take: 1, select: { senderRole: true, sentAt: true } },
       },
     });
 
@@ -105,14 +140,32 @@ export class PatientsService {
       .map((r) => r.id);
     const journeys = await this.weightJourney.summariesFor(glp1Ids);
 
-    return rows.map(({ lead, consultations, prescriptions, checkIns, ...patient }) => {
+    // Height is on the profile when the patient set it; until then it is the intake answer, which is read only for those who need it.
+    const withoutHeight = rows.filter((r) => r.heightCm == null).map((r) => r.id);
+    const intake = withoutHeight.length
+      ? await this.prisma.consultation.findMany({
+          where: { patientId: { in: withoutHeight } },
+          // Newest first, as on the patient's own profile: intakeNumber takes the first height it meets.
+          orderBy: { submittedAt: 'desc' },
+          select: { patientId: true, quizAnswers: true },
+        })
+      : [];
+    // Grouped in one pass, keeping that order, instead of searching the whole list again for every patient.
+    const intakeByPatient = new Map<string, Array<{ quizAnswers: unknown }>>();
+    for (const c of intake) {
+      const list = intakeByPatient.get(c.patientId);
+      if (list) list.push(c);
+      else intakeByPatient.set(c.patientId, [c]);
+    }
+    const intakeHeight = new Map<string, number | null>();
+    for (const id of withoutHeight) intakeHeight.set(id, intakeNumber(intakeByPatient.get(id) ?? [], 'height_cm'));
+
+    return rows.map(({ lead, consultations, prescriptions, checkIns, messages: preConsultation = [], ...patient }) => {
       const journey = journeys.get(patient.id);
       const prescription = prescriptions[0];
-      const newest = consultations
-        .flatMap((c) => c.messages)
+      const newest = [...consultations.flatMap((c) => c.messages), ...preConsultation]
         .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
-      const lastFromPatient = consultations
-        .flatMap((c) => c.messages)
+      const lastFromPatient = [...consultations.flatMap((c) => c.messages), ...preConsultation]
         .filter((m) => m.senderRole === UserRole.PATIENT)
         .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime())[0];
 
@@ -127,7 +180,9 @@ export class PatientsService {
           ? PatientTreatmentStatus.PENDING
           : prescription
             ? PatientTreatmentStatus.ACTIVE
-            : PatientTreatmentStatus.INACTIVE,
+            : consultations.length > 0 && consultations.every((c) => c.status === ConsultationStatus.DECLINED)
+              ? PatientTreatmentStatus.DECLINED
+              : PatientTreatmentStatus.INACTIVE,
         medications: prescription
           ? prescription.items.length > 0
             ? prescription.items.map((i) => ({ label: i.product.brandName ?? i.product.name, dose: i.strength.label }))
@@ -138,6 +193,8 @@ export class PatientsService {
         targetWeightKg: journey?.targetWeightKg ?? null,
         weightLostKg: journey?.weightLostKg ?? null,
         progressPercentage: journey?.progressPercentage ?? null,
+        heightCm: plausibleHeightCm(patient.heightCm ?? intakeHeight.get(patient.id)),
+        bmi: bmiOf(journey?.currentWeightKg, patient.heightCm ?? intakeHeight.get(patient.id)),
         lastWeighedAt: journey?.latestMeasurementAt ?? null,
         awaitingReply: newest?.senderRole === UserRole.PATIENT,
         lastMessageAt: lastFromPatient?.sentAt ?? null,
@@ -251,6 +308,14 @@ export class PatientsService {
       quizFlags = evaluation.flags;
       questionnaireVersion = versionTag(intake);
     }
+    // Onboarding left for the patient: any medical answers entered here still become their consultation, as
+    // answers given on the website do, so onboarding doesn't ask for them again. Checked now, before anything
+    // is created. With none entered, the patient answers them in the portal as before.
+    const intakeForPatient = !input.onboardingCompleted && (input.quizAnswers?.length ?? 0) > 0;
+    if (intakeForPatient) {
+      const evaluation = evaluateAnswers(findQuestionnaire(input.plan, 'INTAKE'), input.quizAnswers!, true);
+      if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
+    }
 
     // An admin can set the password directly; otherwise generate a readable
     // one (not a 32-char hex blob) since they need to actually type it to log
@@ -261,8 +326,14 @@ export class PatientsService {
     const now = new Date();
 
     const patient = await this.prisma.$transaction(async (tx) => {
+      // Staff-created patients count as having paid: record the treatment the way checkout does, so the
+      // prescribing form shows "Paid for" and pre-selects it.
+      const treatment = input.treatment?.trim().slice(0, 120) || (await this.starterTreatmentText(input.plan, tx));
       const lead = await tx.lead.create({
-        data: { email, firstName, lastName, productKind: input.plan, quizAnswers: [], convertedAt: now },
+        data: {
+          email, firstName, lastName, productKind: input.plan, convertedAt: now,
+          quizAnswers: treatment ? [{ questionId: 'preferred_treatment', question: 'Preferred treatment (chosen at checkout)', answer: treatment }] : [],
+        },
       });
 
       const created = await tx.patient.create({
@@ -335,13 +406,31 @@ export class PatientsService {
       return created;
     });
 
+    let intakeSubmitted = false;
+    if (intakeForPatient) {
+      // The patient already exists: a failure here must not look like the creation failed (a retry would hit the
+      // duplicate email). They answer the questionnaire in the portal instead.
+      try {
+        await this.moduleRef.get(ConsultationsService, { strict: false }).submitIntakeQuiz(
+          patient.id,
+          { kind: input.plan, answers: input.quizAnswers! },
+          {},
+          // The patient hasn't been shown the consent: it is not recorded for them, they accept it in onboarding.
+          { consentRecordedElsewhere: true },
+        );
+        intakeSubmitted = true;
+      } catch (err: any) {
+        this.logger.error(`Creating the consultation for staff-created patient ${patient.id} failed: ${err?.message}`);
+      }
+    }
+
     await this.audit.log({
       actorId,
       actorRole: UserRole.CLINICIAN,
       action: 'PATIENT_CREATED_BY_STAFF',
       resourceType: 'Patient',
       resourceId: patient.id,
-      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted },
+      metadata: { plan: input.plan, onboardingCompleted: input.onboardingCompleted, intakeSubmitted },
     });
     this.posthog.capture(actorId, 'patient_created_by_staff', {
       plan: input.plan,
@@ -350,6 +439,15 @@ export class PatientsService {
 
     const record = await this.findById(patient.id);
     return { ...record, temporaryPassword: password };
+  }
+
+  /** The plan's starter medicine as checkout text, e.g. "Wegovy 0.25 mg" (GLP-1 only; the other programmes aren't dose-matched). */
+  private async starterTreatmentText(kind: ConsultationKind, tx: Prisma.TransactionClient): Promise<string | null> {
+    if (kind !== ConsultationKind.GLP1) return null;
+    const [spec] = STARTER_ITEMS[kind];
+    const product = await tx.product.findUnique({ where: { slug: spec.slug } });
+    const name = product?.brandName ?? product?.name;
+    return name ? `${name} ${spec.label}` : null;
   }
 
   private async resolveStarterItems(kind: ConsultationKind, tx: Prisma.TransactionClient) {

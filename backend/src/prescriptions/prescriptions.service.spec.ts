@@ -11,9 +11,11 @@ describe('PrescriptionsService', () => {
   let messaging: { send: jest.Mock };
   let email: { sendConsultationUpdateEmail: jest.Mock };
   let audit: { log: jest.Mock };
+  let partner: { trySendForPrescription: jest.Mock; flushCancellations: jest.Mock };
   let service: PrescriptionsService;
 
   beforeEach(() => {
+    partner = { trySendForPrescription: jest.fn(), flushCancellations: jest.fn() };
     audit = { log: jest.fn() };
     prisma = {
       prescription: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -40,12 +42,13 @@ describe('PrescriptionsService', () => {
       messaging as any,
       email as any,
       { get: jest.fn() } as any,
+      partner as any,
     );
   });
 
   describe('cancel', () => {
     it('cancels an active prescription and audits the reason', async () => {
-      prisma.prescription.findUnique.mockResolvedValue({ id: 'rx-1', status: 'ACTIVE' });
+      prisma.prescription.findUnique.mockResolvedValue(ACTIVE_RX);
       prisma.prescription.update.mockResolvedValue({ id: 'rx-1', status: 'CANCELLED' });
 
       await service.cancel('doc-1', 'rx-1', ' Side effects ');
@@ -54,7 +57,11 @@ describe('PrescriptionsService', () => {
         where: { id: 'rx-1' },
         data: expect.objectContaining({ status: 'CANCELLED', cancelReason: 'Side effects' }),
       });
-      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'PRESCRIPTION_CANCELLED' }));
+      // Recorded in the same transaction as the cancellation, against the patient.
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'PRESCRIPTION_CANCELLED', patientId: 'p-1' }),
+        prisma,
+      );
     });
 
     it('cancels orders and scheduled doses the pharmacy/patient have not acted on yet', async () => {
@@ -62,6 +69,15 @@ describe('PrescriptionsService', () => {
       await service.cancel('doc-1', 'rx-1', 'Side effects');
       expect(orders.cancelPendingFor).toHaveBeenCalledWith('rx-1', 'Prescription cancelled: Side effects', prisma);
       expect(dosing.cancelForPrescription).toHaveBeenCalledWith('rx-1', prisma);
+    });
+
+    it('tells the pharmacy partner about the withdrawn orders once the change is saved', async () => {
+      prisma.prescription.findUnique.mockResolvedValue({ id: 'rx-1', status: 'ACTIVE' });
+      const order: string[] = [];
+      prisma.$transaction.mockImplementation(async (fn: any) => { const r = await fn(prisma); order.push('committed'); return r; });
+      partner.flushCancellations.mockImplementation(async () => { order.push('flushed'); });
+      await service.cancel('doc-1', 'rx-1', 'Side effects');
+      expect(order).toEqual(['committed', 'flushed']);
     });
 
     it('refuses without a reason', async () => {
@@ -100,7 +116,8 @@ describe('PrescriptionsService', () => {
     it('audits the change with the clinical reason', async () => {
       await service.changeDose('doc-1', input as any);
       expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'DOSE_CHANGED', resourceId: 'rx-2', metadata: expect.objectContaining({ supersedes: 'rx-1', reason: input.reasonForChange }) }),
+        expect.objectContaining({ action: 'DOSE_CHANGED', resourceId: 'rx-2', patientId: 'p-1', metadata: expect.objectContaining({ supersedes: 'rx-1', reason: input.reasonForChange }) }),
+        prisma,
       );
     });
 

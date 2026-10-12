@@ -8,7 +8,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 export function TrtMonitoringCard({ monitoring }: { monitoring: TrtMonitoring }) {
   const { t, timeAgo, fmt } = useI18n();
   return (
-    <div className={`rounded-xl border p-4 ${monitoring.refillsOnHold ? 'border-danger-500/40 bg-danger-50' : 'border-gray-200 bg-gray-50'}`}>
+    <div className={`rounded-md border p-4 ${monitoring.refillsOnHold ? 'border-danger-500/40 bg-danger-50' : 'border-gray-200 bg-gray-50'}`}>
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-800">{t('Testosterone monitoring')}</p>
         <span className={`text-xs font-medium px-2 py-0.5 rounded ${monitoring.refillsOnHold ? 'bg-danger-500 text-white' : 'bg-green-50 text-green-700'}`}>
@@ -28,7 +28,7 @@ export function TrtMonitoringCard({ monitoring }: { monitoring: TrtMonitoring })
         </ul>
       )}
 
-      <table className="w-full text-sm mt-3">
+      <div className="overflow-x-auto"><table className="w-full min-w-[420px] text-sm mt-3">
         <thead>
           <tr className="text-left text-xs text-gray-400">
             <th className="font-medium py-1">{t('Test')}</th>
@@ -51,7 +51,7 @@ export function TrtMonitoringCard({ monitoring }: { monitoring: TrtMonitoring })
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

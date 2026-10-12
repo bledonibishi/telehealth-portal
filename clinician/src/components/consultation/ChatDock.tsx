@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
-import { PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
+import { MARK_MESSAGES_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { ConversationWatchers } from './ConversationWatchers';
+import { MessageTicks, tickStateOf } from './MessageTicks';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { SkeletonMessages } from '@telehealth/loading';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string };
+type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -54,7 +56,7 @@ export function ChatDock({
   const { t, fmt } = useI18n();
   const dayLabel = (d: Date) => (isToday(d) ? t('Today') : isYesterday(d) ? t('Yesterday') : fmt(d, 'd MMM yyyy'));
   const client = useApolloClient();
-  const [open, setOpen] = useState(() => readStorage(OPEN_PREF_KEY) === '1');
+  const [open, setOpen] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 1024 ? false : readStorage(OPEN_PREF_KEY) === '1')); // on a phone it opens on request, as a full screen
   const [content, setContent] = useState('');
   const [seenAt, setSeenAt] = useState(() => Number(readStorage(seenKey(patientId))) || 0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -78,6 +80,7 @@ export function ChatDock({
     client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
       if (!existing?.patient) return existing;
       return {
+        ...existing,
         patient: {
           ...existing.patient,
           consultations: existing.patient.consultations.map((c: any) =>
@@ -99,6 +102,30 @@ export function ChatDock({
 
   // Messages sent while the socket was down were never delivered to it.
   useEffect(() => realtime?.onReconnect(() => { refetch(); }), [refetch]);
+
+  const patchMessages = (consultationId: string, change: (m: Message) => Message) => {
+    client.cache.updateQuery({ query: PATIENT_CONVERSATION, variables: { id: patientId } }, (existing) => {
+      if (!existing?.patient) return existing;
+      return { ...existing, patient: { ...existing.patient, consultations: existing.patient.consultations.map((c: any) => (c.id !== consultationId ? c : { ...c, messages: c.messages.map(change) })) } };
+    });
+  };
+
+  // Having the thread open reads it: the patient's ticks turn blue. A closed dock is not "reading".
+  const [markRead] = useMutation(MARK_MESSAGES_READ);
+  const marking = useRef(new Set<string>());
+  useEffect(() => {
+    if (!open) return;
+    for (const c of consultations) {
+      if (marking.current.has(c.id) || !(c.messages ?? []).some((m) => m.senderRole === 'PATIENT' && !m.readAt)) continue;
+      marking.current.add(c.id);
+      const readAt = new Date().toISOString();
+      markRead({ variables: { consultationId: c.id } })
+        .then(() => patchMessages(c.id, (m) => (m.senderRole === 'PATIENT' && !m.readAt ? { ...m, readAt } : m)))
+        .catch(() => undefined)
+        .finally(() => marking.current.delete(c.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, data]);
 
   const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE, {
     onCompleted({ sendMessage: message }) {
@@ -148,18 +175,18 @@ export function ChatDock({
     inputRef.current?.focus();
   };
 
-  const watchers = <ConversationWatchers consultationIds={consultations.map((c) => c.id)} onMessage={addToCache} />;
+  const watchers = <ConversationWatchers consultationIds={consultations.map((c) => c.id)} onMessage={addToCache} onRead={(r) => r.byPatient && patchMessages(r.consultationId, (m) => (m.senderRole !== 'PATIENT' && !m.readAt ? { ...m, readAt: r.readAt } : m))} />;
 
   if (!open) {
     return (
-      <div className="w-14 shrink-0 border-l border-gray-200 bg-white flex flex-col items-center pt-4">
+      <div className="fixed bottom-4 right-4 z-30 rounded-full border border-gray-200 bg-white p-1 shadow-lg lg:static lg:z-auto lg:w-14 lg:shrink-0 lg:rounded-none lg:border-0 lg:border-l lg:p-0 lg:pt-4 lg:shadow-none flex flex-col items-center">
         {watchers}
         <button
           type="button"
           onClick={() => setOpenPersisted(true)}
           aria-label={unread > 0 ? t('Open messages, {n} new', { n: unread }) : t('Open messages')}
           title={t('Messages')}
-          className="relative w-10 h-10 rounded-xl flex items-center justify-center text-gray-500 hover:bg-brand-50 hover:text-brand-900 transition-colors"
+          className="relative w-10 h-10 rounded-md flex items-center justify-center text-gray-500 hover:bg-brand-50 hover:text-brand-900 transition-colors"
         >
           <ChatIcon />
           {unread > 0 && (
@@ -186,7 +213,7 @@ export function ChatDock({
   });
 
   return (
-    <aside className="w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
+    <aside className="fixed inset-0 z-40 w-full lg:static lg:z-auto lg:w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
       {watchers}
       <div className="h-16 shrink-0 px-4 flex items-center gap-3 border-b border-gray-200">
         <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-900 text-xs font-semibold flex items-center justify-center">
@@ -210,7 +237,7 @@ export function ChatDock({
       </div>
 
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-gray-50 space-y-1">
-        {loading && <p className="text-xs text-gray-400 text-center">{t('Loading…')}</p>}
+        {loading && <SkeletonMessages label={t('Loading…')} />}
         {!loading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 px-6">
             <ChatIcon className="w-8 h-8 mb-2" />
@@ -233,15 +260,16 @@ export function ChatDock({
                 </span>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-snug whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] rounded-lg px-3.5 py-2 text-sm leading-snug whitespace-pre-wrap break-words ${
                   row.isMe
                     ? 'bg-brand-500 text-white rounded-br-md'
                     : 'bg-white text-gray-900 border border-gray-200 rounded-bl-md'
                 }`}
               >
                 {row.m.content}
-                <span className={`block text-[10px] mt-1 text-right ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
+                <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
                   {fmt(row.m.sentAt, 'HH:mm')}
+                  {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}
                 </span>
               </div>
             </div>
@@ -264,7 +292,7 @@ export function ChatDock({
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 border border-gray-300 rounded-xl pl-3 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
+          className="flex items-end gap-2 border border-gray-300 rounded-md pl-3 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
         >
           <textarea
             ref={inputRef}

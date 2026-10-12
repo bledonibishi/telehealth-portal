@@ -14,6 +14,12 @@ export interface RuleContext {
   verifiedPriorGlp1Use: boolean;
   // Titration step of the GLP-1 the patient is currently prescribed, if any.
   currentGlp1Step: number | null;
+  // From the prescription proof review: the highest safe next step given the
+  // dose the patient was on elsewhere and how long ago (see prior-dose-assessment.ts).
+  priorDoseSafeMaxStep?: number | null;
+  priorDoseSafeMaxLabel?: string | null;
+  // The GLP-1 dose the patient paid for at checkout. Each dose has its own price.
+  orderedGlp1?: { productId: string; productName: string; label: string; step: number | null } | null;
 }
 
 export interface RuleViolation {
@@ -83,6 +89,31 @@ export function checkPrescribingRules(ctx: RuleContext): RuleViolation[] {
       soft(
         'GLP1_START_DOSE',
         'Patients new to GLP-1 treatment start on the lowest dose; no verified prior use is on file',
+      );
+    } else if (ctx.priorDoseSafeMaxStep != null && glp1Step > ctx.priorDoseSafeMaxStep) {
+      soft(
+        'GLP1_ABOVE_PRIOR_DOSE',
+        `The prescription proof review puts the safe next dose at ${ctx.priorDoseSafeMaxLabel ?? `step ${ctx.priorDoseSafeMaxStep}`} (titration step ${ctx.priorDoseSafeMaxStep}), given the patient's previous dose and the time since their last injection`,
+      );
+    }
+  }
+
+  // The first prescription can't cost more than the patient paid: a higher dose of the medicine
+  // they ordered is refused (they change their order instead); a lower one is refunded the difference.
+  const ordered = ctx.orderedGlp1;
+  if (glp1Step !== null && ctx.currentGlp1Step === null && ordered) {
+    const item = glp1[0];
+    if (item.product.id === ordered.productId) {
+      if (ordered.step !== null && glp1Step > ordered.step) {
+        hard(
+          'GLP1_ABOVE_ORDERED_DOSE',
+          `The patient ordered ${ordered.productName} ${ordered.label}. A first prescription can't be a higher, more expensive dose: prescribe ${ordered.label} or lower, or ask the patient to change their order.`,
+        );
+      }
+    } else {
+      soft(
+        'GLP1_DIFFERENT_FROM_ORDERED',
+        `The patient ordered ${ordered.productName} ${ordered.label}, not ${item.product.name}. Check that this isn't more expensive than what they paid for.`,
       );
     }
   }

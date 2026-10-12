@@ -2,19 +2,20 @@
 
 import Link from 'next/link';
 import { useQuery } from '@apollo/client';
-import AuthedImage from '@/components/AuthedImage';
 import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { LoadingState } from '@telehealth/loading';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   APPROVED: { label: 'Approved', cls: 'bg-green-100 text-green-700' },
   PENDING_REVIEW: { label: 'Awaiting review', cls: 'bg-yellow-100 text-yellow-800' },
   IN_PROGRESS: { label: 'Not submitted', cls: 'bg-gray-100 text-gray-600' },
   REJECTED: { label: 'Changes requested', cls: 'bg-danger-50 text-danger-500' },
+  DECLINED: { label: 'Declined', cls: 'bg-danger-50 text-danger-500' },
 };
 
-// Prescribing is blocked until onboarding is approved, so the reviewer needs
-// to see where it stands (and the photos) without leaving the consultation.
+// Where onboarding stands, beside the decision. What the patient sent (ID result, photos, proof) is the
+// "Identity & onboarding" section of the consultation itself, so the reviewer decides on one page.
 export function OnboardingSummary({ patientId }: { patientId: string }) {
   const { t } = useI18n();
   const { data, loading } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId } });
@@ -28,40 +29,20 @@ export function OnboardingSummary({ patientId }: { patientId: string }) {
         {!loading && <span className={`text-xs font-medium px-2 py-0.5 rounded ${status.cls}`}>{t(status.label)}</span>}
       </div>
 
-      {loading && <p className="text-xs text-gray-400">{t('Loading…')}</p>}
+      {loading && <LoadingState variant="inline" label={t('Loading…')} />}
       {!loading && !o && <p className="text-xs text-gray-500">{t('The patient hasn’t started onboarding.')}</p>}
 
-      {o && (
-        <>
-          <dl className="grid grid-cols-2 gap-2 text-xs">
-            <div><dt className="text-gray-500">{t('ID check')}</dt><dd>{o.personaStatus.replace(/_/g, ' ').toLowerCase()}</dd></div>
-            <div><dt className="text-gray-500">{t('Photos')}</dt><dd>{o.photoReviewStatus.replace(/_/g, ' ').toLowerCase()}</dd></div>
-            <div className="col-span-2">
-              <dt className="text-gray-500">{t('Prior use of this medicine')}</dt>
-              <dd>
-                {o.priorMedicationUse === null ? '—' : o.priorMedicationUse ? 'Yes' : 'No'}
-                {o.priorMedicationUse && (o.prescriptionProofUrl ? ' · proof uploaded' : ' · no proof yet')}
-              </dd>
-            </div>
-          </dl>
-          <div className="grid grid-cols-4 gap-1.5">
-            {[
-              [o.idDocumentUrl, t('ID document')],
-              [o.selfieUrl, t('Selfie')],
-              [o.bodyPhotoFrontUrl, t('Body photo, front')],
-              [o.bodyPhotoSideUrl, t('Body photo, side')],
-            ].map(([path, alt]) => (
-              <AuthedImage key={alt} path={path} alt={alt!} className="w-full h-16 object-cover rounded" />
-            ))}
-          </div>
-        </>
+      {!loading && o?.status === 'PENDING_REVIEW' && (
+        <p className="text-xs text-gray-600 bg-gray-50 rounded p-2">{t('Approving this consultation approves their onboarding too. If something needs fixing, use “Ask to redo a step”.')}</p>
       )}
-
-      {o?.status !== 'APPROVED' && !loading && (
-        <p className="text-xs text-warn-900 bg-warn-50 rounded p-2">{t('You can’t prescribe until onboarding is approved.')}</p>
+      {!loading && o?.status === 'REJECTED' && (
+        <p className="text-xs text-warn-900 bg-warn-50 rounded p-2">{t('Waiting for the patient to redo the steps you asked them to.')}</p>
+      )}
+      {!loading && (!o || o.status === 'IN_PROGRESS') && (
+        <p className="text-xs text-warn-900 bg-warn-50 rounded p-2">{t('You can decide once the patient has finished onboarding.')}</p>
       )}
       <Link href={`/patients?patient=${patientId}`} className="block text-xs font-medium text-brand-500 hover:underline">
-        {t('Review documents →')}
+        {t('Open patient file →')}
       </Link>
     </div>
   );

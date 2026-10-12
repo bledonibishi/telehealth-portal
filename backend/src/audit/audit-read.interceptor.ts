@@ -52,6 +52,9 @@ export class AuditReadInterceptor implements NestInterceptor {
                 action: 'RECORD_VIEWED',
                 resourceType: options.resourceType,
                 resourceId: String(args?.[options.idArg] ?? 'unknown'),
+                // A read keyed by the patient (their weights, photos, trend) belongs in that patient's audit trail,
+                // whatever the record is called. Without this only reads of the 'Patient' record itself showed there.
+                ...(options.idArg === 'patientId' && args?.patientId ? { patientId: String(args.patientId) } : {}),
                 metadata: { via: field },
               });
             }

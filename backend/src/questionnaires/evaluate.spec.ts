@@ -63,7 +63,19 @@ describe('evaluateAnswers', () => {
     expect(noBp.answers.some((a) => a.questionId === 'bp_systolic')).toBe(false);
 
     const prior = evaluateAnswers(GLP1_INTAKE, glp1({ glp1_prior_use: 'yes' }), true);
-    expect(prior.errors).toEqual([expect.stringContaining('Which medicine')]);
+    expect(prior.errors).toEqual([
+      expect.stringContaining('Which medicine'),
+      expect.stringContaining('When did you last inject'),
+      expect.stringContaining('How long have you been on that dose'),
+    ]);
+
+    const mounjaro = evaluateAnswers(
+      GLP1_INTAKE,
+      glp1({ glp1_prior_use: 'yes', glp1_prior_medicine: 'mounjaro', glp1_prior_dose_tirzepatide: '2.5 mg', glp1_last_dose: '1_2_weeks', glp1_weeks_on_dose: '4_plus_weeks' }),
+      true,
+    );
+    expect(mounjaro.errors).toEqual([]);
+    expect(mounjaro.answers.some((a) => a.questionId === 'glp1_prior_dose_semaglutide')).toBe(false);
   });
 
   it('rejects an exclusive option combined with others', () => {
@@ -118,6 +130,33 @@ describe('evaluateAnswers', () => {
         'CRITICAL:BMI 27–29.9 without a weight-related condition',
         'CRITICAL:History of pancreatitis',
       ]);
+    });
+
+    describe('the website’s calculated BMI ("BMI 34.2 (calculated from 168 cm, 92 kg)")', () => {
+      const bmi = (answer: string, extra: SubmittedAnswer[] = []) =>
+        evaluateAnswers(GLP1_ELIG, [{ questionId: 'age', answer: '40 to 59' }, { questionId: 'bmi', answer }, ...extra], false);
+
+      it('is sorted into the same bands, so the server enforces the BMI rules itself', () => {
+        expect(bmi('BMI 34.2 (calculated from 168 cm, 92 kg)').answers.find((a) => a.questionId === 'bmi')).toMatchObject({ answer: '30 or above', value: '30_plus' });
+        expect(bmi('BMI 28.4 (calculated from 170 cm, 82 kg)').answers.find((a) => a.questionId === 'bmi')?.value).toBe('27_29');
+        expect(bmi('BMI 30 (calculated from 170 cm, 86.7 kg)').answers.find((a) => a.questionId === 'bmi')?.value).toBe('30_plus');
+      });
+
+      it('flags a BMI under 27 that got past the browser', () => {
+        expect(flagText(bmi('BMI 24.9 (calculated from 170 cm, 72 kg)'))).toEqual(['CRITICAL:Self-reported BMI under 27']);
+      });
+
+      it('asks for a weight-related condition between 27 and 29.9, and flags its absence', () => {
+        const e = bmi('BMI 28.4 (calculated from 170 cm, 82 kg)', [{ questionId: 'weight_conditions', answer: 'Neither of these' }]);
+        expect(flagText(e)).toEqual(['CRITICAL:BMI 27–29.9 without a weight-related condition']);
+        expect(flagText(bmi('BMI 28.4 (calculated from 170 cm, 82 kg)', [{ questionId: 'weight_conditions', answer: 'High blood pressure' }]))).toEqual([]);
+      });
+
+      it('does not accept an impossible figure or other text as a BMI', () => {
+        for (const answer of ['BMI 4 (calculated from 170 cm, 11 kg)', 'BMI 900 (calculated from 120 cm, 300 kg)', 'BMI abc', 'bmi is fine']) {
+          expect(bmi(answer).answers.find((a) => a.questionId === 'bmi')).toMatchObject({ answer, value: null });
+        }
+      });
     });
 
     it('keeps unrecognised answers verbatim in lenient mode', () => {

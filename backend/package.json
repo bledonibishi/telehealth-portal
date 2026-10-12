@@ -11,24 +11,46 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:seed-catalog": "ts-node prisma/catalog.ts"
+    "prisma:seed-catalog": "ts-node prisma/catalog.ts",
+    "compare-proof-models": "ts-node scripts/compare-proof-models.ts",
+    "email-preview": "ts-node -T -P tsconfig.json scripts/preview-emails.ts",
+    "set-dose-price": "ts-node scripts/set-dose-price.ts",
+    "sync-dose-prices": "ts-node scripts/sync-dose-prices.ts",
+    "mark-body-photos-done": "ts-node scripts/mark-body-photos-done.ts",
+    "make-proof-test-set": "ts-node -T -P tsconfig.json eval/proof-reader/make-test-set.ts",
+    "seed-test-orders": "ts-node scripts/seed-test-orders.ts",
+    "seed-examples": "ts-node scripts/seed-examples.ts",
+    "seed-labs": "ts-node scripts/seed-labs-for.ts",
+    "sample-lab-report": "ts-node scripts/sample-lab-report.ts",
+    "lead-reminders-now": "ts-node scripts/lead-reminders-now.ts",
+    "pharmacy-costs": "ts-node -T -P tsconfig.json scripts/pharmacy-costs.ts",    "pose-model": "mkdir -p models && curl -L --fail -o models/yolov8n-pose.onnx https://huggingface.co/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@apollo/server": "^4.10.0",
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "@langfuse/otel": "^5.13.1",
+    "@langfuse/tracing": "^5.13.1",
     "@nestjs/apollo": "^12.1.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.1.1",
@@ -39,17 +61,21 @@
     "@nestjs/platform-express": "^10.3.0",
     "@nestjs/schedule": "^4.0.0",
     "@nestjs/throttler": "^6.7.1",
+    "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "^0.222.0",
+    "@opentelemetry/context-async-hooks": "^2.12.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.222.0",
     "@opentelemetry/resources": "^2.11.0",
     "@opentelemetry/sdk-logs": "^0.222.0",
     "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/sdk-trace-node": "^2.12.0",
     "@prisma/client": "^5.9.0",
     "@telehealth/shared-types": "workspace:*",
     "bcryptjs": "^2.4.3",
     "graphql": "^16.8.1",
     "graphql-subscriptions": "^2.0.0",
     "graphql-ws": "^5.14.2",
+    "onnxruntime-node": "^1.30.0",
     "otplib": "^12.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -58,6 +84,7 @@
     "reflect-metadata": "^0.2.1",
     "resend": "^6.28.1",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.5",
     "stripe": "^22.6.2"
   },
   "devDependencies": {

@@ -1,11 +1,15 @@
 import { Controller, Post, Get, Body, Query } from '@nestjs/common';
 import { CheckoutService, type ShippingInput } from './checkout.service';
+import { DosePricingService } from '../stripe/dose-pricing.service';
 
 // Public — the website's checkout page (website/src/app/checkout) and success
 // page call these directly.
 @Controller('api/checkout')
 export class CheckoutController {
-  constructor(private checkout: CheckoutService) {}
+  constructor(
+    private checkout: CheckoutService,
+    private dosePricing: DosePricingService,
+  ) {}
 
   @Post()
   createHostedSession(
@@ -25,6 +29,12 @@ export class CheckoutController {
   @Post('details')
   saveShipping(@Body() body: { leadId?: string; shipping?: ShippingInput }) {
     return this.checkout.saveShipping(body);
+  }
+
+  /** Each dose's own monthly price, for the product picker. Doses not listed use their plan price. */
+  @Get('prices')
+  prices() {
+    return this.dosePricing.publicPrices();
   }
 
   @Get('rewards')

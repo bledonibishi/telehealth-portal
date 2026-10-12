@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // data-theme is set by the inline script below, before first paint, so the page never flashes the wrong mode.
-    <html lang="en" suppressHydrationWarning>
+    // lang is the default language (see DEFAULT_LOCALE); the i18n provider changes it when the reader has chosen another.
+    <html lang="sq" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

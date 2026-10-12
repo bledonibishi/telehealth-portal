@@ -3,7 +3,10 @@
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
+import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
+import { OnboardingReview } from '@/components/onboarding/OnboardingReview';
 import { RedFlagBanner } from './RedFlagBanner';
+import { RiskBadge } from './RiskBadge';
 import { DecisionPanel } from './DecisionPanel';
 import { ChatDock } from './ChatDock';
 import { PatientHistory } from './PatientHistory';
@@ -12,6 +15,8 @@ import { OnboardingSummary } from './OnboardingSummary';
 import { getToken } from '@/lib/auth';
 import { differenceInYears, formatDistanceToNow } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import { ErrorAlert } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 function parseJwtPayload(token: string) {
   try {
@@ -44,10 +49,14 @@ const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0
 
 export function ConsultationDetail({ id }: { id: string }) {
   const { t, timeAgo, fmt } = useI18n();
-  const { data, loading, error } = useQuery(GET_CONSULTATION, { variables: { id } });
+  const { data, loading, error, refetch } = useQuery(GET_CONSULTATION, { variables: { id } });
+  const patientId: string | undefined = data?.consultation?.patient?.id;
+  // Shared with the decision panel and the side summary through the cache.
+  const { data: onboardingData } = useQuery(GET_ONBOARDING_SUBMISSION, { variables: { patientId }, skip: !patientId });
+  const onboarding = onboardingData?.onboardingSubmission;
 
-  if (loading) return <p className="p-6 text-sm text-gray-500">{t('Loading…')}</p>;
-  if (error) return <p className="p-6 text-sm text-danger-500">{error.message}</p>;
+  if (loading) return <LoadingState label={t('Loading…')} className="!py-6" />;
+  if (error) return <ErrorAlert error={error} title={t('Could not load this consultation')} onRetry={() => refetch()} className="m-6" />;
 
   const c = data?.consultation;
   if (!c) return null;
@@ -63,7 +72,7 @@ export function ConsultationDetail({ id }: { id: string }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Identity + decision stay in view while the questionnaire scrolls. */}
         <header className="shrink-0 bg-white border-b border-gray-200">
-          <div className="px-6 pt-3 pb-3">
+          <div className="px-4 sm:px-6 pt-3 pb-3">
             <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
               {t('← Review queue')}
             </Link>
@@ -75,6 +84,7 @@ export function ConsultationDetail({ id }: { id: string }) {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <h1 className="text-xl font-semibold text-gray-900 truncate">{fullName}</h1>
                   <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${status.cls}`}>{t(status.label)}</span>
+                  <RiskBadge tag={c.riskTag} />
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5">
                   {t('{n} yrs', { n: differenceInYears(new Date(), dob) })} · {c.kind} · {t('submitted {when}', { when: timeAgo(c.submittedAt) })}
@@ -92,16 +102,25 @@ export function ConsultationDetail({ id }: { id: string }) {
             refundStatus={c.refundStatus}
             clinician={c.clinician}
             currentUserId={currentUserId}
+            patientId={c.patient.id}
+            blockedReason={c.decisionBlockedReason}
           />
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+          <div className="p-4 sm:p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
             <div className="space-y-5 min-w-0">
               <RedFlagBanner redFlags={c.redFlags} />
 
+              {onboarding && onboarding.status !== 'IN_PROGRESS' && (
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-gray-900">{t('Identity & onboarding')}</h2>
+                  <OnboardingReview onboarding={onboarding} />
+                </section>
+              )}
+
               {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
-                <section key={section} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <section key={section} className="bg-white rounded-md border border-gray-200 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                     <h2 className="text-sm font-semibold text-gray-900">{t(section)}</h2>
                     <span className="text-xs text-gray-400">{answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}</span>
@@ -122,7 +141,7 @@ export function ConsultationDetail({ id }: { id: string }) {
             </div>
 
             <aside className="space-y-4 min-w-0">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Patient')}</h3>
                 <dl className="space-y-2.5 text-sm">
                   <div>
@@ -142,7 +161,7 @@ export function ConsultationDetail({ id }: { id: string }) {
 
               {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
 
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Prior consultations')}</h3>
                 <PatientHistory patientId={c.patient.id} excludeId={c.id} />
               </div>

@@ -1,4 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { ErrorCode } from '@telehealth/shared-types';
 
 export enum AuthFailureReason {
   TOKEN_MISSING = 'TOKEN_MISSING',
@@ -7,7 +8,9 @@ export enum AuthFailureReason {
   WRONG_TOKEN_TYPE = 'WRONG_TOKEN_TYPE',
   MFA_REQUIRED = 'MFA_REQUIRED',
   ACCOUNT_NOT_FOUND = 'ACCOUNT_NOT_FOUND',
+  ACCOUNT_DEACTIVATED = 'ACCOUNT_DEACTIVATED',
   UNKNOWN_ROLE = 'UNKNOWN_ROLE',
+  SESSION_REVOKED = 'SESSION_REVOKED',
 }
 
 const MESSAGES: Record<AuthFailureReason, string> = {
@@ -17,11 +20,13 @@ const MESSAGES: Record<AuthFailureReason, string> = {
   [AuthFailureReason.WRONG_TOKEN_TYPE]: 'Token cannot be used for this request',
   [AuthFailureReason.MFA_REQUIRED]: 'MFA verification required',
   [AuthFailureReason.ACCOUNT_NOT_FOUND]: 'Account no longer exists',
+  [AuthFailureReason.ACCOUNT_DEACTIVATED]: 'This account has been deactivated',
   [AuthFailureReason.UNKNOWN_ROLE]: 'Token has an unknown role',
+  [AuthFailureReason.SESSION_REVOKED]: 'This session was ended. Please sign in again',
 };
 
 export function authFailure(reason: AuthFailureReason) {
-  return new UnauthorizedException({ statusCode: 401, message: MESSAGES[reason], reason });
+  return new UnauthorizedException({ statusCode: 401, code: ErrorCode.SESSION_ENDED, severity: 'warning', message: MESSAGES[reason], reason });
 }
 
 export function reasonFromJwtError(err: any): AuthFailureReason {

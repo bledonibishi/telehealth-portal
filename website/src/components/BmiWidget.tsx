@@ -17,7 +17,7 @@ export default function BmiWidget() {
       '<div class="pvb-ticks"><span style="left:14%">18.5</span><span style="left:40%">25</span><span style="left:60%">30</span><span style="left:80%">35</span></div>' +
       '<p class="pvb-note" data-v="note"></p>' +
       '<a class="pvb-cta" href="/glp1-eligibility">Check my eligibility →</a>' +
-      '<div class="pvb-small">Takes about 2 minutes · Reviewed by a licensed doctor</div>';
+      '<div class="pvb-small">Takes about 5 minutes · Reviewed by a licensed doctor</div>';
 
     const q = (s: string) => el.querySelector<HTMLElement>(s)!;
     const hR = el.querySelector<HTMLInputElement>('[data-r=h]')!;

@@ -6,7 +6,7 @@ import { PatientsService } from './patients.service';
 // are only exercised by createByStaff, below.
 const noJourneys = () => ({ summariesFor: jest.fn().mockResolvedValue(new Map()) });
 const noopDeps = (journey: any = noJourneys()) =>
-  [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any, journey] as const;
+  [{ log: jest.fn() } as any, { capture: jest.fn() } as any, {} as any, {} as any, journey, {} as any] as const;
 
 describe('PatientsService.findAll', () => {
   const row = (over: Partial<any> = {}) => ({
@@ -21,7 +21,7 @@ describe('PatientsService.findAll', () => {
   });
 
   it('flattens the lead, latest consultation, active prescription and latest check-in onto the patient', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
     const deps = noopDeps();
     const [result] = await new PatientsService(prisma as any, ...deps).findAll();
 
@@ -40,8 +40,22 @@ describe('PatientsService.findAll', () => {
     expect(result).not.toHaveProperty('checkIns');
   });
 
+  it('marks a patient whose every consultation was declined as Declined, not Inactive', async () => {
+    const statusOf = async (over: Partial<any>) => {
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [], ...over })]) } };
+      const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+      return result.treatmentStatus;
+    };
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }] })).toBe('DECLINED');
+    // Still Inactive when something else is open, or there is no consultation yet.
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }, { status: 'SUBMITTED', kind: 'GLP1', messages: [] }] })).toBe('INACTIVE');
+    expect(await statusOf({ consultations: [] })).toBe('INACTIVE');
+    // A declined second request doesn't mark someone who is on treatment.
+    expect(await statusOf({ consultations: [{ status: 'DECLINED', kind: 'GLP1', messages: [] }], prescriptions: [{ id: 'rx', medication: 'x', dosage: 'y', items: [] }] })).toBe('ACTIVE');
+  });
+
   it('only counts active prescriptions', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [] })]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [] })]) } };
     const deps = noopDeps();
     const [result] = await new PatientsService(prisma as any, ...deps).findAll();
     expect(result.hasActivePrescription).toBe(false);
@@ -49,6 +63,7 @@ describe('PatientsService.findAll', () => {
 
   it('defaults everything to null for a patient with no lead, consultations or check-ins', async () => {
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([row({ lead: null, consultations: [], checkIns: [], prescriptions: [] })]),
       },
@@ -67,19 +82,20 @@ describe('PatientsService.findAll', () => {
 
   it('names the medication after the brand, with the prescribed strength', async () => {
     const items = [{ product: { name: 'Semaglutide', brandName: 'Wegovy' }, strength: { label: '0.5 mg' } }];
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [{ id: 'rx-1', medication: 'x', dosage: 'y', items }] })]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ prescriptions: [{ id: 'rx-1', medication: 'x', dosage: 'y', items }] })]) } };
     const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
     expect(result.medications).toEqual([{ label: 'Wegovy', dose: '0.5 mg' }]);
   });
 
   it('falls back to the prescription summary when it has no items', async () => {
-    const prisma = { patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
+    const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row()]) } };
     const [result] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
     expect(result.medications).toEqual([{ label: 'Oestrogel', dose: '0.75 mg' }]);
   });
 
   it('is ACTIVE with a prescription, INACTIVE without one and PENDING before activation', async () => {
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([row(), row({ prescriptions: [] }), row({ activatedAt: null })]),
       },
@@ -95,6 +111,7 @@ describe('PatientsService.findAll', () => {
       ),
     };
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([
           row({ lead: { productKind: 'GLP1' } }),
@@ -113,6 +130,7 @@ describe('PatientsService.findAll', () => {
     const at = (d: string) => new Date(d);
     const thread = (...m: [string, string][]) => ({ status: 'APPROVED', kind: 'GLP1', messages: [{ senderRole: m[0][0], sentAt: at(m[0][1]) }] });
     const prisma = {
+      consultation: { findMany: jest.fn().mockResolvedValue([]) },
       patient: {
         findMany: jest.fn().mockResolvedValue([
           row({ consultations: [thread(['PATIENT', '2026-09-20'])] }),
@@ -137,6 +155,49 @@ describe('PatientsService.findAll', () => {
     expect(include.consultations).not.toHaveProperty('take');
     expect(include.checkIns).toMatchObject({ take: 1, orderBy: { createdAt: 'desc' } });
     expect(include.prescriptions).toMatchObject({ where: { status: 'ACTIVE' } });
+  });
+
+  describe('height and BMI', () => {
+    const journeys = (currentWeightKg: number) => ({ summariesFor: jest.fn().mockResolvedValue(new Map([['p-1', { currentWeightKg, startingWeightKg: currentWeightKg + 5 }]])) });
+    const run = async (patient: any, intake: any[] = [], weight = 80) => {
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue(intake) }, patient: { findMany: jest.fn().mockResolvedValue([patient]) } };
+      const deps = noopDeps(journeys(weight));
+      return { result: (await new PatientsService(prisma as any, ...deps).findAll())[0], prisma };
+    };
+
+    it('works the BMI out from the height on their profile and their current weight', async () => {
+      const { result, prisma } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: 180 }), [], 80);
+      expect(result).toMatchObject({ heightCm: 180, bmi: 24.7 });
+      expect(prisma.consultation.findMany).not.toHaveBeenCalled(); // nothing to look up when the profile has the height
+    });
+
+    it('falls back to the height they gave at intake until they set one', async () => {
+      const { result } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), [{ patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', answer: '170', value: '170' }] }], 100);
+      expect(result).toMatchObject({ heightCm: 170, bmi: 34.6 });
+    });
+
+    it('takes the newest intake height when there are several, and asks for them newest first', async () => {
+      const intake = [
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '172' }] }, // newest, as the query returns it
+        { patientId: 'p-other', quizAnswers: [{ questionId: 'height_cm', value: '150' }] },
+        { patientId: 'p-1', quizAnswers: [{ questionId: 'height_cm', value: '160' }] },
+      ];
+      const { result, prisma } = await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }), intake, 100);
+      expect(result.heightCm).toBe(172);
+      expect(prisma.consultation.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { submittedAt: 'desc' } }));
+    });
+
+    it('shows neither a height nor a BMI for a height that cannot be real', async () => {
+      expect((await run(row({ lead: { productKind: 'GLP1' }, heightCm: 17 }))).result).toMatchObject({ heightCm: null, bmi: null });
+    });
+
+    it('has no BMI without a height, or for a programme without a weight journey', async () => {
+      expect((await run(row({ lead: { productKind: 'GLP1' }, heightCm: null }))).result).toMatchObject({ heightCm: null, bmi: null });
+      // The journey service only returns a journey for weight programmes, so an HRT patient has none.
+      const prisma = { consultation: { findMany: jest.fn().mockResolvedValue([]) }, patient: { findMany: jest.fn().mockResolvedValue([row({ lead: { productKind: 'HRT' }, heightCm: 170 })]) } };
+      const [hrt] = await new PatientsService(prisma as any, ...noopDeps()).findAll();
+      expect(hrt.bmi).toBeNull();
+    });
   });
 });
 
@@ -213,6 +274,8 @@ describe('PatientsService.createByStaff', () => {
   const CATALOG: Record<string, any> = {
     'semaglutide-wegovy': {
       id: 'prod-glp1',
+      name: 'Semaglutide',
+      brandName: 'Wegovy',
       defaultDirections: 'Inject weekly',
       strengths: [{ id: 'str-glp1-0.25', label: '0.25 mg', defaultQuantity: 1 }],
     },
@@ -290,9 +353,41 @@ describe('PatientsService.createByStaff', () => {
       record: jest.fn().mockResolvedValue({}),
     };
     const prescribing = { issue: jest.fn().mockResolvedValue({ id: 'rx-1' }) };
-    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any, {} as any);
-    return { svc, prisma, tx, audit, posthog, consents, prescribing };
+    const submitIntakeQuiz = jest.fn().mockResolvedValue({ id: 'c-2' });
+    const moduleRef = { get: jest.fn().mockReturnValue({ submitIntakeQuiz }) };
+    const svc = new PatientsService(prisma as any, audit as any, posthog as any, consents as any, prescribing as any, {} as any, moduleRef as any);
+    return { svc, prisma, tx, audit, posthog, consents, prescribing, submitIntakeQuiz };
   }
+
+  it('turns medical answers entered with onboarding left to the patient into their consultation, so onboarding doesn’t ask again', async () => {
+    const { svc, tx, submitIntakeQuiz, audit } = build();
+    await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false } as any);
+    expect(tx.onboardingSubmission.create).not.toHaveBeenCalled();
+    expect(submitIntakeQuiz).toHaveBeenCalledWith('p-new', expect.objectContaining({ kind: 'GLP1', answers: GLP1_ANSWERS }), {}, { consentRecordedElsewhere: true });
+    // The patient hasn't been shown the consent, so none is recorded for them.
+    expect(submitIntakeQuiz.mock.calls[0][1]).not.toHaveProperty('telehealthConsentVersion');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: true }) }));
+  });
+
+  it('still creates the patient, and says nothing failed, when the consultation can’t be created', async () => {
+    const { svc, submitIntakeQuiz, audit } = build();
+    submitIntakeQuiz.mockRejectedValue(new Error('boom'));
+    const result = await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false } as any);
+    expect(result.temporaryPassword).toBeTruthy();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ intakeSubmitted: false }) }));
+  });
+
+  it('leaves the questionnaire to the patient when none was entered', async () => {
+    const { svc, submitIntakeQuiz } = build();
+    await svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false, quizAnswers: [] } as any);
+    expect(submitIntakeQuiz).not.toHaveBeenCalled();
+  });
+
+  it('refuses incomplete medical answers before creating anything', async () => {
+    const { svc, tx } = build();
+    await expect(svc.createByStaff('admin-1', { ...validInput, onboardingCompleted: false, quizAnswers: GLP1_ANSWERS.slice(2) } as any)).rejects.toThrow(/height|weight/i);
+    expect(tx.patient.create).not.toHaveBeenCalled();
+  });
 
   it('rejects an email already used by an existing patient or lead', async () => {
     const { svc, prisma } = build();
@@ -306,7 +401,11 @@ describe('PatientsService.createByStaff', () => {
     await svc.createByStaff('admin-1', validInput as any);
 
     expect(tx.lead.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ email: 'nora@example.com', productKind: 'GLP1', quizAnswers: [] }),
+      data: expect.objectContaining({
+        email: 'nora@example.com',
+        productKind: 'GLP1',
+        quizAnswers: [expect.objectContaining({ questionId: 'preferred_treatment', answer: expect.stringContaining('0.25 mg') })],
+      }),
     });
     expect(tx.patient.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ firstName: 'Nora', lastName: 'Aliu', leadId: 'lead-1' }),
@@ -402,7 +501,7 @@ describe('PatientsService.createByStaff', () => {
     });
     expect(tx.consultation.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        questionnaireVersion: 'GLP1-intake@1',
+        questionnaireVersion: 'GLP1-intake@2',
         quizAnswers: expect.arrayContaining([expect.objectContaining({ questionId: 'smoking', value: 'never' })]),
         redFlags: { create: expect.any(Array) },
       }),
@@ -413,5 +512,41 @@ describe('PatientsService.createByStaff', () => {
       }),
       tx,
     );
+  });
+});
+
+describe('PatientsService.findByRecordId', () => {
+  const build = () => {
+    const prisma = {
+      prescription: { findMany: jest.fn().mockResolvedValue([{ id: 'cmuyax2xval74', patientId: 'p-1' }]) },
+      checkIn: { findMany: jest.fn().mockResolvedValue([{ id: 'cmabcdicf7b7m', patientId: 'p-2' }]) },
+      order: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    return { prisma, service: new PatientsService(prisma as any, ...noopDeps()) };
+  };
+
+  it('finds the owner of a prescription or check-in from the short id shown on screen', async () => {
+    const { prisma, service } = build();
+    const result = await service.findByRecordId('  #X2XVAL74 ');
+    expect(prisma.prescription.findMany.mock.calls[0][0].where).toEqual({ id: { endsWith: 'x2xval74' } });
+    expect(result).toEqual([
+      { patientId: 'p-1', kind: 'PRESCRIPTION', recordId: 'cmuyax2xval74' },
+      { patientId: 'p-2', kind: 'CHECK_IN', recordId: 'cmabcdicf7b7m' },
+    ]);
+  });
+
+  it('does not scan the tables for something that is only letters, like a name, unless it is marked as an id', async () => {
+    const { prisma, service } = build();
+    expect(await service.findByRecordId('smithson')).toEqual([]);
+    expect(prisma.prescription.findMany).not.toHaveBeenCalled();
+    await service.findByRecordId('#smithson');
+    expect(prisma.prescription.findMany).toHaveBeenCalled();
+  });
+
+  it('matches nothing for too little to go on, or for something that is not an id', async () => {
+    const { prisma, service } = build();
+    expect(await service.findByRecordId('abc')).toEqual([]);
+    expect(await service.findByRecordId('emma smith')).toEqual([]);
+    expect(prisma.prescription.findMany).not.toHaveBeenCalled();
   });
 });

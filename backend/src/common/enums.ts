@@ -4,9 +4,11 @@ import {
   ConsultationKind,
   UserRole,
   RedFlagSeverity,
+  RiskTag,
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,
+  IdentityVerificationStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
   OnboardingStepKey,
@@ -31,9 +33,24 @@ registerEnumType(ConsultationStatus, { name: 'ConsultationStatus' });
 registerEnumType(ConsultationKind, { name: 'ConsultationKind' });
 registerEnumType(UserRole, { name: 'UserRole' });
 registerEnumType(RedFlagSeverity, { name: 'RedFlagSeverity' });
+// Lab reports are backend-only, so their enums live here rather than in the shared package.
+export enum LabReportSource {
+  PATIENT = 'PATIENT',
+  STAFF = 'STAFF',
+}
+export enum LabReportStatus {
+  PENDING = 'PENDING',
+  ENTERED = 'ENTERED',
+  REJECTED = 'REJECTED',
+}
+registerEnumType(LabReportSource, { name: 'LabReportSource' });
+registerEnumType(LabReportStatus, { name: 'LabReportStatus' });
+
+registerEnumType(RiskTag, { name: 'RiskTag' });
 registerEnumType(ClinicianRole, { name: 'ClinicianRole' });
 registerEnumType(OnboardingStatus, { name: 'OnboardingStatus' });
 registerEnumType(PersonaStatus, { name: 'PersonaStatus' });
+registerEnumType(IdentityVerificationStatus, { name: 'IdentityVerificationStatus' });
 registerEnumType(PhotoReviewStatus, { name: 'PhotoReviewStatus' });
 registerEnumType(PrescriptionProofType, { name: 'PrescriptionProofType' });
 registerEnumType(OnboardingStepKey, { name: 'OnboardingStepKey' });
@@ -58,9 +75,11 @@ export {
   ConsultationKind,
   UserRole,
   RedFlagSeverity,
+  RiskTag,
   ClinicianRole,
   OnboardingStatus,
   PersonaStatus,
+  IdentityVerificationStatus,
   PhotoReviewStatus,
   PrescriptionProofType,
   OnboardingStepKey,

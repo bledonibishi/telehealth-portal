@@ -3,20 +3,55 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import {
-  CORRECT_CHECK_IN_WEIGHT, CORRECT_WEIGHT_ENTRY, CORRECT_WEIGHT_GOAL, GET_WEIGHT_JOURNEY, GET_WEIGHT_TIMELINE, VOID_WEIGHT_ENTRY,
+  CORRECT_CHECK_IN_WEIGHT, CORRECT_WEIGHT_ENTRY, CORRECT_WEIGHT_GOAL, GET_WEIGHT_JOURNEY, GET_WEIGHT_TIMELINE, VOID_WEIGHT_ENTRY, WEIGHT_TREND_FOR_PATIENT,
 } from '@/graphql/weight';
 import { FEELINGS, kg, kgChange as rawKgChange } from '@/lib/weight';
 import { useI18n } from '@/lib/i18n/I18nProvider';
+import ProgressPhotos from './ProgressPhotos';
+import { InlineError } from '@/components/ui/Alert';
+import { LoadingState } from '@telehealth/loading';
 
 const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-gray-50 rounded-xl px-3 py-2.5">
+    <div className="bg-gray-50 rounded-md px-3 py-2.5">
       <p className="text-xs text-gray-400">{label}</p>
       <p className="text-sm font-semibold text-gray-900 mt-0.5">{value}</p>
     </div>
   );
+}
+
+/**
+ * What the recent weights say, for the doctor: a sustained rise in red, a last weight that looks like a typo in amber.
+ * Nothing for any other pattern, so it only appears when something needs a look.
+ */
+function WeightTrendFlag({ patientId }: { patientId: string }) {
+  const { t } = useI18n();
+  const { data } = useQuery(WEIGHT_TREND_FOR_PATIENT, { variables: { patientId }, fetchPolicy: 'cache-and-network' });
+  const trend = data?.weightTrendForPatient;
+  if (!trend) return null;
+  if (trend.level === 'GAIN') {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3" role="alert">
+        <p className="text-sm font-semibold text-red-700">{t('Weight is trending up')}</p>
+        <p className="text-xs text-red-700/90 mt-0.5">
+          {t('About +{pct}% every 4 weeks at the pace of the recent weigh-ins ({rate} kg a week). If it continues: about +{kg} kg in 3 months.', { pct: trend.changePct28Days, rate: trend.kgPerWeek, kg: trend.kgIn3Months })}
+        </p>
+      </div>
+    );
+  }
+  if (trend.level === 'CHECK_ENTRY') {
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3" role="status">
+        <p className="text-sm font-semibold text-amber-800">{t('The latest weight may be a typing mistake')}</p>
+        <p className="text-xs text-amber-800/90 mt-0.5">
+          {t('{latest} kg is {pct}% away from the weight before it ({previous} kg). The patient sees a note to check it the next time they open their weights; nobody has contacted them.', { latest: trend.latestKg, pct: Math.round(trend.jumpPct), previous: trend.previousKg })}
+        </p>
+      </div>
+    );
+  }
+  return null;
 }
 
 /** A small "new value + reason" form used for both goal and check-in corrections. */
@@ -26,7 +61,7 @@ function CorrectionForm({
   requireReason?: boolean;
   fields: { key: string; label: string; initial: string }[];
   saving: boolean;
-  error?: string;
+  error?: unknown;
   onSave: (values: Record<string, number>, reason: string) => void;
   onCancel: () => void;
 }) {
@@ -36,7 +71,7 @@ function CorrectionForm({
   const valid = fields.every((f) => Number(values[f.key]) > 0) && (!requireReason || reason.trim().length > 0);
 
   return (
-    <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+    <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-md p-3">
       <div className="flex flex-wrap gap-3">
         {fields.map((f) => (
           <label key={f.key} className="text-xs text-gray-500">
@@ -58,7 +93,7 @@ function CorrectionForm({
         onChange={(e) => setReason(e.target.value)}
         className={`${inputCls} w-full`}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      <InlineError error={error} size="xs" />
       <div className="flex gap-2">
         <button
           disabled={!valid || saving}
@@ -79,7 +114,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
   const [editingGoal, setEditingGoal] = useState(false);
   const [editingCheckIn, setEditingCheckIn] = useState<string | null>(null);
 
-  const refetch = { refetchQueries: [{ query: GET_WEIGHT_JOURNEY, variables: { patientId } }] };
+  const refetch = { refetchQueries: [{ query: GET_WEIGHT_JOURNEY, variables: { patientId } }, { query: WEIGHT_TREND_FOR_PATIENT, variables: { patientId } }] };
   const [correctGoal, goal] = useMutation(CORRECT_WEIGHT_GOAL, refetch);
   const [correctWeight, weight] = useMutation(CORRECT_CHECK_IN_WEIGHT, refetch);
 
@@ -90,6 +125,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
 
   return (
     <div className="p-5 space-y-5">
+      <WeightTrendFlag patientId={patientId} />
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <Stat label="Starting" value={kg(journey.startingWeightKg)} />
         <Stat label="Current" value={kg(journey.currentWeightKg)} />
@@ -106,7 +142,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
       )}
       {!hasProgress && <p className="text-xs text-gray-400">{t('The patient hasn’t set a target weight yet.')}</p>}
 
-      <div className="bg-gray-50 rounded-xl p-4 text-sm">
+      <div className="bg-gray-50 rounded-md p-4 text-sm">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Last check-in')}</p>
         {last ? (
           <>
@@ -135,7 +171,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
                 { key: 'targetWeightKg', label: t('Target'), initial: String(journey.targetWeightKg ?? '') },
               ]}
               saving={goal.loading}
-              error={goal.error?.message}
+              error={goal.error}
               onCancel={() => setEditingGoal(false)}
               onSave={async (v, reason) => {
                 try {
@@ -150,9 +186,11 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
 
 
       <RecordedWeights patientId={patientId} canCorrect={canCorrect} />
+      {/* Body photos are for doctors only (ADMIN, DOCTOR) — the same roles that may correct weights. */}
+      {canCorrect && <ProgressPhotos patientId={patientId} />}
 
       <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Monthly check-ins')}</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Check-ins')}</p>
         {entries.length === 0 ? (
           <p className="text-sm text-gray-400">{t('Nothing recorded yet.')}</p>
         ) : (
@@ -160,7 +198,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
             {[...entries].reverse().map((e) => {
               const feeling = e.feeling ? FEELINGS[e.feeling] : null;
               return (
-                <div key={e.checkInId} className="border border-gray-100 rounded-xl p-3">
+                <div key={e.checkInId} className="border border-gray-100 rounded-md p-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-gray-900">{t('Month {n}', { n: e.month })} · {kg(e.weightKg)}</p>
                     <p className="text-xs text-gray-400">{fmt(e.date, 'dd MMM yyyy')}</p>
@@ -177,7 +215,7 @@ export default function WeightJourneyPanel({ journey, patientId, canCorrect }: {
                     <CorrectionForm
                       fields={[{ key: 'weightKg', label: t('Weight'), initial: String(e.weightKg) }]}
                       saving={weight.loading}
-                      error={weight.error?.message}
+                      error={weight.error}
                       onCancel={() => setEditingCheckIn(null)}
                       onSave={async (v, reason) => {
                         try {
@@ -206,7 +244,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
   const [range] = useState(() => ({ from: new Date(Date.now() - YEAR_MS).toISOString(), to: new Date(Date.now() + 3_600_000).toISOString() }));
   const variables = { patientId, ...range, limit: 500 };
   const { data, loading, error } = useQuery(GET_WEIGHT_TIMELINE, { variables, fetchPolicy: 'cache-and-network' });
-  const refetch = { refetchQueries: [{ query: GET_WEIGHT_TIMELINE, variables }, { query: GET_WEIGHT_JOURNEY, variables: { patientId } }] };
+  const refetch = { refetchQueries: [{ query: GET_WEIGHT_TIMELINE, variables }, { query: GET_WEIGHT_JOURNEY, variables: { patientId } }, { query: WEIGHT_TREND_FOR_PATIENT, variables: { patientId } }] };
   const [correct, corr] = useMutation(CORRECT_WEIGHT_ENTRY, refetch);
   const [voidEntry, vd] = useMutation(VOID_WEIGHT_ENTRY, refetch);
   const [open, setOpen] = useState<{ id: string; action: 'correct' | 'void' } | null>(null);
@@ -216,18 +254,18 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
   return (
     <div>
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Recorded weights · last 12 months')}</p>
-      {error && <p className="text-xs text-red-600">{error.message}</p>}
-      {loading && !data && <p className="text-sm text-gray-400">{t('Loading…')}</p>}
+      <InlineError error={error} size="xs" />
+      {loading && !data && <LoadingState variant="inline" label={t('Loading…')} />}
       {data && rows.length === 0 && <p className="text-sm text-gray-400">{t('No weights recorded.')}</p>}
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {rows.map((r) => (
-          <div key={r.id} className="border border-gray-100 rounded-xl p-3">
+          <div key={r.id} className="border border-gray-100 rounded-md p-3">
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-sm font-medium text-gray-900">{kg(r.weightKg)}</p>
               <p className="text-xs text-gray-400">{fmt(r.measuredAt, 'dd MMM yyyy · HH:mm')}</p>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              {r.kind === 'CHECK_IN' ? t('Monthly check-in') : t('Daily entry')}
+              {r.kind === 'CHECK_IN' ? t('Check-in') : r.hasPhoto ? `${t('Daily entry')} · 📷` : t('Daily entry')}
               {r.changeKg !== null && r.changeKg !== undefined && <> · {kgChange(r.changeKg)}</>}
               {r.feeling && FEELINGS[r.feeling] && <> · {FEELINGS[r.feeling].emoji} {t(FEELINGS[r.feeling].label)}</>}
             </p>
@@ -243,7 +281,7 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
                 requireReason
                 fields={[{ key: 'weightKg', label: t('Correct weight'), initial: String(r.weightKg) }]}
                 saving={corr.loading}
-                error={corr.error?.message}
+                error={corr.error}
                 onCancel={() => setOpen(null)}
                 onSave={async (v, why) => {
                   try { await correct({ variables: { input: { entryId: r.id, weightKg: v.weightKg, reason: why } } }); setOpen(null); } catch { /* shown via corr.error */ }
@@ -251,9 +289,9 @@ function RecordedWeights({ patientId, canCorrect }: { patientId: string; canCorr
               />
             )}
             {open?.id === r.id && open?.action === 'void' && (
-              <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+              <div className="mt-2 space-y-2 bg-amber-50 border border-amber-100 rounded-md p-3">
                 <input placeholder={t('Reason for voiding (required — kept in the audit log)')} value={reason} onChange={(e) => setReason(e.target.value)} className={`${inputCls} w-full`} />
-                {vd.error && <p className="text-xs text-red-600">{vd.error.message}</p>}
+                <InlineError error={vd.error} size="xs" />
                 <div className="flex gap-2">
                   <button
                     disabled={!reason.trim() || vd.loading}
