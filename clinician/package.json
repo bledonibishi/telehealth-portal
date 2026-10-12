@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
+    "@tanstack/react-table": "^8.21.3",
     "@telehealth/booking": "workspace:*",
     "@telehealth/loading": "workspace:*",
     "@telehealth/shared-types": "workspace:*",

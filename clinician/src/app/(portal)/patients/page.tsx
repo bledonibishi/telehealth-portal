@@ -5,7 +5,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@apollo/client';
 import { differenceInYears, differenceInDays } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import { GET_PATIENTS } from '@/graphql/patients';
+import { RECORD_MATCHES, GET_PATIENTS } from '@/graphql/patients';
+import { PATIENTS_WITH_URGENT_MESSAGES } from '@/graphql/ai';
+import { useAiFeature } from '@/lib/ai';
+import { SmartPatientSearch, type SmartFilters } from '@/components/ai/SmartPatientSearch';
+import { Pagination } from '@/components/ui/Pagination';
+import { DataRows, SortableTh, tableDefaults, useTablePager } from '@/components/ui/data-table';
+import { getCoreRowModel, getPaginationRowModel, getSortedRowModel, useReactTable, type ColumnDef, type PaginationState, type SortingState } from '@tanstack/react-table';
 import PatientPanel, { TABS, type Tab } from './PatientPanel';
 import PatientHoverCard, { HOVER_CARD_HEIGHT } from '@/components/patients/PatientHoverCard';
 import PatientChatWindow from '@/components/patients/PatientChatWindow';
@@ -67,7 +73,6 @@ const STATUS_OPTIONS = [
 
 type Quick = 'ACTIVE' | 'REVIEW' | 'TARGET' | 'REPLY';
 type SortKey = 'name' | 'status' | 'medication' | 'bmi' | 'lost' | 'target' | 'progress' | 'lastCheckIn' | 'review';
-type Sort = { key: SortKey; dir: 'asc' | 'desc' };
 
 /** One of the filter dropdowns: the app's own Select, so its list looks like every other dropdown and not the browser's. */
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
@@ -117,26 +122,6 @@ function sortValue(p: any, key: SortKey): string | number | null {
     case 'lastCheckIn': return p.lastWeighedAt ? new Date(p.lastWeighedAt).getTime() : null;
     case 'review': return p.latestConsultationStatus ?? null;
   }
-}
-
-function SortHeader({ label, sortKey, sort, onSort, className = '' }: {
-  label: string; sortKey: SortKey; sort: Sort; onSort: (key: SortKey) => void; className?: string;
-}) {
-  const { t } = useI18n();
-  const active = sort.key === sortKey;
-  return (
-    <th className={`px-4 py-3 whitespace-nowrap font-medium ${className}`}>
-      <button
-        onClick={() => onSort(sortKey)}
-        className={`flex items-center gap-1 hover:text-[color:var(--t-strong)] ${active ? 'text-[color:var(--t-strong)]' : ''}`}
-      >
-        {t(label)}
-        <span className={`text-[10px] ${active ? 'opacity-100' : 'opacity-0 group-hover:opacity-40'}`}>
-          {active && sort.dir === 'asc' ? '▲' : '▼'}
-        </span>
-      </button>
-    </th>
-  );
 }
 
 function StatCard({ label, value, hint, tone, active, onClick }: {
@@ -189,6 +174,9 @@ function Patients() {
   const { t, timeAgo } = useI18n();
   const { data, loading, error, refetch } = useQuery(GET_PATIENTS, { pollInterval: 60_000 });
   const [search, setSearch] = useState('');
+  const urgentOn = useAiFeature('urgency');
+  const { data: urgentData } = useQuery(PATIENTS_WITH_URGENT_MESSAGES, { skip: !urgentOn, pollInterval: 30_000 });
+  const urgentIds = new Set<string>(urgentData?.patientsWithUrgentMessages ?? []);
   const [programme, setProgramme] = useState('ALL');
   const [reviewStatus, setReviewStatus] = useState('ALL');
   const [status, setStatus] = useState('ALL');
@@ -196,7 +184,8 @@ function Patients() {
   const [bmiRange, setBmiRange] = useState<BmiRange>('ALL');
   const [joined, setJoined] = useState<JoinedRange>('ALL');
   const [quick, setQuick] = useState<Quick | null>(null);
-  const [sort, setSort] = useState<Sort>({ key: 'status', dir: 'asc' });
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'status', desc: false }]);
+  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 25 });
   // ?patient=<id> opens that patient directly (linked from a consultation).
   // The open patient lives in the URL (?patient=<id>), so the "Patients" link in the menu and the
   // browser's Back button both return to the list, and a consultation can link straight to a patient.
@@ -240,6 +229,13 @@ function Patients() {
 
   const all = data?.patients ?? [];
 
+  // A prescription, check-in or order id (or its short form, "#x2xval74") finds the patient it belongs to.
+  const code = search.trim();
+  const looksLikeId = /^#?[a-z0-9]{6,40}$/i.test(code);
+  const { data: matchData } = useQuery(RECORD_MATCHES, { variables: { code }, skip: !looksLikeId });
+  const matches: { patientId: string; kind: string; recordId: string }[] = looksLikeId ? matchData?.recordMatches ?? [] : [];
+  const matchedPatients = new Set(matches.map((m) => m.patientId));
+
   const medicationOptions = useMemo(
     () => Array.from(new Set<string>(all.flatMap((p: any) => p.medications.map((m: any) => m.label)))).sort(),
     [all],
@@ -248,7 +244,7 @@ function Patients() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return all.filter((p: any) => {
-      if (q && !(p.email.toLowerCase().includes(q) || p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q))) return false;
+      if (q && !(p.email.toLowerCase().includes(q) || p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) || matchedPatients.has(p.id))) return false;
       if (programme !== 'ALL' && p.productKind !== programme) return false;
       if (reviewStatus !== 'ALL') {
         if (reviewStatus === 'NONE' ? p.latestConsultationStatus : p.latestConsultationStatus !== reviewStatus) return false;
@@ -263,26 +259,141 @@ function Patients() {
       if (quick === 'REPLY' && !p.awaitingReply) return false;
       return true;
     });
-  }, [all, search, programme, reviewStatus, status, medication, bmiRange, joined, quick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, search, matchData, programme, reviewStatus, status, medication, bmiRange, joined, quick]);
 
-  const patients = useMemo(() => {
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      const av = sortValue(a, sort.key);
-      const bv = sortValue(b, sort.key);
-      if (av === null && bv === null) return 0;
-      if (av === null) return 1;
-      if (bv === null) return -1;
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-  }, [filtered, sort]);
+  // The columns. Each sorts by the same value the old hand-made sort used; a patient with no value there always sorts last.
+  const columns = useMemo<ColumnDef<any>[]>(() => {
+    const sortBy = (key: SortKey) => ({ accessorFn: (p: any) => sortValue(p, key) ?? undefined, sortUndefined: 'last' as const, sortingFn: 'basic' as const, sortDescFirst: false });
+    return [
+      {
+        id: 'name', header: 'Patient name', ...sortBy('name'),
+        meta: { headerClassName: 'pl-5', cellClassName: 'pl-5 pr-4 py-1.5' },
+        cell: ({ row }) => {
+          const patient = row.original;
+          const age = differenceInYears(new Date(), new Date(patient.dateOfBirth));
+          return (
+            <div className="flex items-center gap-3">
+              <div className="relative w-7 h-7 rounded-full bg-[color:var(--border)] flex items-center justify-center text-[11px] font-semibold text-[color:var(--t-body)] shrink-0">
+                {patient.firstName[0]}{patient.lastName[0]}
+                {urgentIds.has(patient.id) && (
+                  <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-[color:var(--bg-panel)]" title={t('A message here was marked possibly urgent')}>!</span>
+                )}
+                {patient.awaitingReply && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[color:var(--bg-panel)]"
+                    title={patient.lastMessageAt ? t('Waiting for a reply since {when}', { when: timeAgo(patient.lastMessageAt) }) : t('Waiting for a reply')}
+                  />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-[color:var(--t-strong)] whitespace-nowrap">{patient.firstName} {patient.lastName}</p>
+                <p className="text-xs text-[color:var(--t-dim)] truncate">
+                  {t('{n} yrs', { n: age })}{patient.productKind ? ` · ${KIND_LABEL[patient.productKind]}` : ''} · {patient.email}
+                </p>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        id: 'status', header: 'Status', ...sortBy('status'),
+        meta: { cellClassName: 'px-4 py-1.5' },
+        cell: ({ row }) => {
+          const st = TREATMENT_STATUS[row.original.treatmentStatus as TreatmentStatus];
+          return <span className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap ${st.dark}`}>{t(st.label)}</span>;
+        },
+      },
+      {
+        id: 'medication', header: 'Medication', ...sortBy('medication'),
+        meta: { cellClassName: 'px-4 py-1.5' },
+        cell: ({ row }) =>
+          row.original.medications.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {row.original.medications.map((m: any, i: number) => <MedicationPill key={i} label={m.label} dose={m.dose} solid />)}
+            </div>
+          ) : <span className="text-[color:var(--t-dim)]">—</span>,
+      },
+      {
+        id: 'bmi', header: 'BMI', ...sortBy('bmi'),
+        meta: { cellClassName: 'px-4 py-1.5 whitespace-nowrap' },
+        cell: ({ row }) => {
+          const patient = row.original;
+          if (patient.bmi == null) return <span className="text-[color:var(--t-dim)]" title={patient.heightCm == null ? t('No height on file') : undefined}>—</span>;
+          const band = bmiBand(patient.bmi);
+          return (
+            <span className={band.cls} title={t(band.label)}>
+              <span className="tabular-nums font-medium">{patient.bmi}</span>
+              <span className="block text-[11px] font-normal opacity-80">{t(band.label)}</span>
+            </span>
+          );
+        },
+      },
+      {
+        id: 'lost', header: 'Weight lost', ...sortBy('lost'),
+        meta: { cellClassName: 'px-4 py-1.5 whitespace-nowrap' },
+        cell: ({ row }) => {
+          const lost: number | null = row.original.weightLostKg;
+          return lost === null ? <span className="text-[color:var(--t-dim)]">—</span> : (
+            <span className={`font-medium ${lost > 0 ? 'text-emerald-400' : lost < 0 ? 'text-rose-400' : 'text-[color:var(--t-muted)]'}`}>
+              {lost > 0 ? '−' : lost < 0 ? '+' : ''}{kg(Math.abs(lost))}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'target', header: 'Target', ...sortBy('target'),
+        meta: { cellClassName: 'px-4 py-1.5 whitespace-nowrap text-[color:var(--t-body)]' },
+        cell: ({ row }) => {
+          const patient = row.original;
+          if (patient.targetWeightKg !== null) {
+            return (
+              <>
+                {kg(patient.targetWeightKg)}
+                <span className="block text-[11px] text-[color:var(--t-dim)]">{t('now {weight}', { weight: kg(patient.currentWeightKg) })}</span>
+              </>
+            );
+          }
+          return patient.startingWeightKg !== null ? <span className="text-xs text-[color:var(--t-dim)]">{t('No target set')}</span> : <span className="text-[color:var(--t-dim)]">—</span>;
+        },
+      },
+      {
+        id: 'progress', header: 'Goal progress', ...sortBy('progress'),
+        meta: { cellClassName: 'px-4 py-1.5' },
+        cell: ({ row }) => (row.original.targetWeightKg !== null ? <ProgressRing value={row.original.progressPercentage} size={34} stroke={3.5} /> : <span className="text-[color:var(--t-dim)]">—</span>),
+      },
+      {
+        id: 'lastCheckIn', header: 'Last check-in', ...sortBy('lastCheckIn'),
+        meta: { cellClassName: 'px-4 py-1.5 whitespace-nowrap text-xs' },
+        cell: ({ row }) => <LastCheckIn patient={row.original} />,
+      },
+      {
+        id: 'review', header: 'Review', ...sortBy('review'),
+        meta: { headerClassName: 'pr-5', cellClassName: 'pl-4 pr-5 py-1.5' },
+        cell: ({ row }) => {
+          const review = row.original.latestConsultationStatus ? REVIEW_STATUS[row.original.latestConsultationStatus] : NO_CONSULTATION;
+          return <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap ${review.cls}`}>{t(review.label)}</span>;
+        },
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, timeAgo, urgentData]);
 
-  const handleSort = (key: SortKey) => {
-    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
-  };
-
+  // The list is filtered in full above; the table sorts it and pages what is drawn. Exports and counts use the whole sorted list.
+  const table = useReactTable({
+    data: filtered,
+    columns,
+    getRowId: (p: any) => p.id,
+    state: { sorting, pagination },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    ...tableDefaults,
+  });
+  const patients: any[] = table.getSortedRowModel().rows.map((r) => r.original);
+  const pager = useTablePager(table, { search, programme, reviewStatus, status, medication, bmiRange, joined, quick, sorting });
   const activated = all.filter((p: any) => p.activatedAt).length;
   const counts = {
     active: all.filter((p: any) => p.treatmentStatus === 'ACTIVE').length,
@@ -333,8 +444,29 @@ function Patients() {
           <StatCard label="Messages" value={counts.reply} hint={t('Waiting for a reply')} tone="text-[color:var(--t-strong)]" active={quick === 'REPLY'} onClick={() => toggleQuick('REPLY')} />
         </div>
 
+        <SmartPatientSearch
+          medicationOptions={medicationOptions}
+          onReset={showAll}
+          onApply={(f: SmartFilters) => {
+            resetFilters();
+            setSearch(f.text ?? '');
+            if (f.programme) setProgramme(f.programme);
+            if (f.status) setStatus(f.status);
+            if (f.reviewStatus) setReviewStatus(f.reviewStatus);
+            if (f.bmiRange) setBmiRange(f.bmiRange as BmiRange);
+            if (f.joined) setJoined(f.joined as JoinedRange);
+            if (f.medication) setMedication(f.medication);
+            if (f.quick) setQuick(f.quick as Quick);
+          }}
+        />
+
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <SearchInput className="w-full sm:w-56" value={search} onChange={setSearch} placeholder={t('Search by name or email…')} ariaLabel={t('Search by name or email…')} clearLabel={t('Clear search')} />
+          <SearchInput className="w-full sm:w-56" value={search} onChange={setSearch} placeholder={t('Search name, email or ID…')} ariaLabel={t('Search name, email or ID…')} clearLabel={t('Clear search')} />
+          {matches.length > 0 && (
+            <span className="text-xs text-gray-500">
+              {matches.map((m) => `${t(m.kind === 'PRESCRIPTION' ? 'Prescription' : m.kind === 'CHECK_IN' ? 'Check-in' : 'Order')} #${m.recordId.slice(-8)}`).join(' · ')}
+            </span>
+          )}
           <FilterSelect label={t('Programme')} value={programme} onChange={setProgramme} options={PROGRAMME_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
           <FilterSelect label={t('Medication')} value={medication} onChange={setMedication} options={[{ value: 'ALL', label: t('All medications') }, ...medicationOptions.map((m) => ({ value: m, label: m }))]} />
           <FilterSelect label={t('Status')} value={status} onChange={setStatus} options={STATUS_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) }))} />
@@ -357,110 +489,30 @@ function Patients() {
         >
           <table className="w-full text-sm">
             <thead>
-              <tr className="group bg-[color:var(--bg-card)] border-b border-[color:var(--border)] text-left text-xs text-[color:var(--t-muted)]">
-                <SortHeader label="Patient name" sortKey="name" sort={sort} onSort={handleSort} className="pl-5" />
-                <SortHeader label="Status" sortKey="status" sort={sort} onSort={handleSort} />
-                <SortHeader label="Medication" sortKey="medication" sort={sort} onSort={handleSort} />
-                <SortHeader label="BMI" sortKey="bmi" sort={sort} onSort={handleSort} />
-                <SortHeader label="Weight lost" sortKey="lost" sort={sort} onSort={handleSort} />
-                <SortHeader label="Target" sortKey="target" sort={sort} onSort={handleSort} />
-                <SortHeader label="Goal progress" sortKey="progress" sort={sort} onSort={handleSort} />
-                <SortHeader label="Last check-in" sortKey="lastCheckIn" sort={sort} onSort={handleSort} />
-                <SortHeader label="Review" sortKey="review" sort={sort} onSort={handleSort} className="pr-5" />
-              </tr>
+              {table.getHeaderGroups().map((group) => (
+                <tr key={group.id} className="group bg-[color:var(--bg-card)] border-b border-[color:var(--border)] text-left text-xs text-[color:var(--t-muted)]">
+                  {group.headers.map((header) => <SortableTh key={header.id} header={header} />)}
+                </tr>
+              ))}
             </thead>
             <tbody className="divide-y divide-[color:var(--border-subtle)]">
               {loading && !data && <SkeletonTableRows rows={8} cols={9} avatar label={t('Loading…')} />}
-              {patients.map((patient: any) => {
-                const age = differenceInYears(new Date(), new Date(patient.dateOfBirth));
-                const review = patient.latestConsultationStatus ? REVIEW_STATUS[patient.latestConsultationStatus] : NO_CONSULTATION;
-                const st = TREATMENT_STATUS[patient.treatmentStatus as TreatmentStatus];
-                const hasGoal = patient.targetWeightKg !== null;
-                const lost: number | null = patient.weightLostKg;
-                const current = chatMode ? chatId === patient.id : previewId === patient.id;
-                return (
-                  <tr
-                    key={patient.id}
-                    onMouseEnter={(e) => {
+              <DataRows
+                table={table}
+                rowProps={(patient) => {
+                  const current = chatMode ? chatId === patient.id : previewId === patient.id;
+                  return {
+                    onMouseEnter: (e) => {
                       if (chatMode) return;
                       const row = e.currentTarget.getBoundingClientRect();
                       const root = rootRef.current?.getBoundingClientRect();
                       schedule(patient.id, previewId ? 120 : 250, root ? row.top - root.top + row.height / 2 : undefined);
-                    }}
-                    onClick={() => (chatMode ? (cancelSchedule(), setChatId(patient.id)) : openFull(patient.id))}
-                    className={`cursor-pointer transition-colors ${current ? 'bg-[color:var(--bg-hover)]' : 'hover:bg-[color:var(--bg-card)]'}`}
-                  >
-                    <td className="pl-5 pr-4 py-1.5">
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-7 h-7 rounded-full bg-[color:var(--border)] flex items-center justify-center text-[11px] font-semibold text-[color:var(--t-body)] shrink-0">
-                          {patient.firstName[0]}{patient.lastName[0]}
-                          {patient.awaitingReply && (
-                            <span
-                              className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[color:var(--bg-panel)]"
-                              title={patient.lastMessageAt ? t('Waiting for a reply since {when}', { when: timeAgo(patient.lastMessageAt) }) : t('Waiting for a reply')}
-                            />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-[color:var(--t-strong)] whitespace-nowrap">{patient.firstName} {patient.lastName}</p>
-                          <p className="text-xs text-[color:var(--t-dim)] truncate">
-                            {t('{n} yrs', { n: age })}{patient.productKind ? ` · ${KIND_LABEL[patient.productKind]}` : ''} · {patient.email}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-1.5">
-                      <span className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full whitespace-nowrap ${st.dark}`}>
-                        {t(st.label)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-1.5">
-                      {patient.medications.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {patient.medications.map((m: any, i: number) => <MedicationPill key={i} label={m.label} dose={m.dose} solid />)}
-                        </div>
-                      ) : <span className="text-[color:var(--t-dim)]">—</span>}
-                    </td>
-                    <td className="px-4 py-1.5 whitespace-nowrap">
-                      {patient.bmi == null ? <span className="text-[color:var(--t-dim)]" title={patient.heightCm == null ? t('No height on file') : undefined}>—</span> : (() => {
-                        const band = bmiBand(patient.bmi);
-                        return (
-                          <span className={band.cls} title={t(band.label)}>
-                            <span className="tabular-nums font-medium">{patient.bmi}</span>
-                            <span className="block text-[11px] font-normal opacity-80">{t(band.label)}</span>
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-1.5 whitespace-nowrap">
-                      {lost === null ? <span className="text-[color:var(--t-dim)]">—</span> : (
-                        <span className={`font-medium ${lost > 0 ? 'text-emerald-400' : lost < 0 ? 'text-rose-400' : 'text-[color:var(--t-muted)]'}`}>
-                          {lost > 0 ? '−' : lost < 0 ? '+' : ''}{kg(Math.abs(lost))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-1.5 whitespace-nowrap text-[color:var(--t-body)]">
-                      {hasGoal ? (
-                        <>
-                          {kg(patient.targetWeightKg)}
-                          <span className="block text-[11px] text-[color:var(--t-dim)]">{t('now {weight}', { weight: kg(patient.currentWeightKg) })}</span>
-                        </>
-                      ) : patient.startingWeightKg !== null ? (
-                        <span className="text-xs text-[color:var(--t-dim)]">{t('No target set')}</span>
-                      ) : <span className="text-[color:var(--t-dim)]">—</span>}
-                    </td>
-                    <td className="px-4 py-1.5">
-                      {hasGoal ? <ProgressRing value={patient.progressPercentage} size={34} stroke={3.5} /> : <span className="text-[color:var(--t-dim)]">—</span>}
-                    </td>
-                    <td className="px-4 py-1.5 whitespace-nowrap text-xs">
-                      <LastCheckIn patient={patient} />
-                    </td>
-                    <td className="pl-4 pr-5 py-1.5">
-                      <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap ${review.cls}`}>{t(review.label)}</span>
-                    </td>
-                  </tr>
-                );
-              })}
+                    },
+                    onClick: () => (chatMode ? (cancelSchedule(), setChatId(patient.id)) : openFull(patient.id)),
+                    className: `cursor-pointer transition-colors ${current ? 'bg-[color:var(--bg-hover)]' : 'hover:bg-[color:var(--bg-card)]'}`,
+                  };
+                }}
+              />
             </tbody>
           </table>
 
@@ -470,6 +522,7 @@ function Patients() {
             </div>
           )}
         </div>
+        <Pagination state={pager} />
 
         {/* Chat — docked bottom-right; opening another patient replaces it */}
         {chatPatient && (

@@ -32,6 +32,16 @@ export const GET_PATIENTS = gql`
   }
 `;
 
+export const RECORD_MATCHES = gql`
+  query RecordMatches($code: String!) {
+    recordMatches(code: $code) {
+      patientId
+      kind
+      recordId
+    }
+  }
+`;
+
 export const PATIENT_ADHERENCE = gql`
   query PatientDoseAdherence($patientId: ID!, $weeks: Int) {
     doseAdherenceTrend(patientId: $patientId, weeks: $weeks) {
@@ -69,6 +79,7 @@ export const GET_PATIENT = gql`
       leadId
       activatedAt
       createdAt
+      gender
       consultations {
         id
         kind
@@ -92,6 +103,15 @@ export const GET_PATIENT = gql`
         sentAt
         tokenExpiresAt
         completedAt
+        prescription { id }
+        resultPrescriptionId
+        resultOrderId
+        reviewedAt
+        reviewedBy { id firstName lastName }
+        outcome
+        reviewNote
+        billingNote
+        redFlags { severity description }
         wantsToReorder
         reportUrl
         answers { questionId question answer }

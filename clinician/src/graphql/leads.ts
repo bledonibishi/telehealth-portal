@@ -11,6 +11,17 @@ export const GET_LEADS = gql`
       stripeSessionId
       convertedAt
       createdAt
+      riskTag
+      riskReasons
+      updatedAt
+      intakeSavedAt
+      referralCode
+      stage
+      treatment
+      deliveryCity
+      deliveryCountry
+      reminderCount
+      remindersStoppedAt
       quizAnswers {
         questionId
         question

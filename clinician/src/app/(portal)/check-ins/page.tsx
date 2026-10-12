@@ -11,15 +11,18 @@ import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { MissedDoseAlerts } from '@/components/checkins/MissedDoseAlerts';
 import { SideEffectAlerts } from '@/components/checkins/SideEffectAlerts';
 import SideEffectSummary from '@/components/checkins/SideEffectSummary';
+import LatestLabs from '@/components/labs/LatestLabs';
+import { CheckInBrief } from '@/components/ai/CheckInBrief';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { LoadingState, SkeletonList } from '@telehealth/loading';
 
 type Outcome = 'REPEAT' | 'NEW_PRESCRIPTION' | 'HOLD' | 'STOP';
 
 const OUTCOMES: { key: Outcome; label: string; hint: string; cls: string }[] = [
+  { key: 'NEW_PRESCRIPTION', label: 'New prescription', hint: 'The next supply: same medicine and dose, or change it', cls: 'bg-brand-500 hover:bg-brand-900' },
   { key: 'REPEAT', label: 'Send repeat', hint: 'Same medicine and dose, from the remaining repeats', cls: 'bg-green-600 hover:bg-green-700' },
-  { key: 'NEW_PRESCRIPTION', label: 'New prescription', hint: 'Change or step up the dose, or renew', cls: 'bg-brand-500 hover:bg-brand-900' },
   { key: 'HOLD', label: 'Hold this month', hint: 'No supply; billing paused', cls: 'bg-warn-500 hover:bg-warn-900' },
   { key: 'STOP', label: 'Stop treatment', hint: 'Cancels the prescription; subscription ends at period end', cls: 'bg-danger-500 hover:bg-danger-900' },
 ];
@@ -117,17 +120,15 @@ function ReviewPanel({ checkIn, onDone }: { checkIn: any; onDone: () => void }) 
       <h3 className="text-sm font-semibold text-gray-900">{t('Decision')}</h3>
 
       <div className="grid grid-cols-2 gap-2">
-        {OUTCOMES.map((o) => {
-          const disabled = o.key === 'REPEAT' && !repeatAvailable;
+        {OUTCOMES.filter((o) => o.key !== 'REPEAT' || repeatAvailable).map((o) => {
           return (
             <button
               key={o.key}
               onClick={() => setOutcome(o.key)}
-              disabled={disabled}
-              className={`text-left rounded px-3 py-2 text-white disabled:opacity-40 ${o.cls} ${outcome === o.key ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
+              className={`text-left rounded px-3 py-2 text-white ${o.cls} ${outcome === o.key ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`}
             >
               <span className="block text-sm font-medium">{t(o.label)}</span>
-              <span className="block text-xs opacity-90">{disabled ? t('No repeats left — issue a new prescription') : t(o.hint)}</span>
+              <span className="block text-xs opacity-90">{t(o.hint)}</span>
             </button>
           );
         })}
@@ -195,7 +196,15 @@ export default function CheckInsPage() {
   const { t, timeAgo, fmt } = useI18n();
   const { data, loading, error } = useQuery(CHECK_IN_REVIEW_QUEUE, { pollInterval: 60_000 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const queue: any[] = data?.checkInReviewQueue ?? [];
+  const [query, setQuery] = useState('');
+  const everything: any[] = data?.checkInReviewQueue ?? [];
+  // Finds a check-in by the patient's name or email, or by its own id or the prescription's (full, or the short "#x2xval74").
+  const q = query.trim().toLowerCase().replace(/^#/, '');
+  const queue = q
+    ? everything.filter((c) =>
+        [`${c.patient.firstName} ${c.patient.lastName}`, c.patient.email, c.id, c.prescription?.id].some((v) => v?.toLowerCase().includes(q)),
+      )
+    : everything;
   const selected = queue.find((c) => c.id === selectedId) ?? null;
 
   return (
@@ -203,7 +212,8 @@ export default function CheckInsPage() {
       <div className={`${selected ? 'hidden lg:flex' : 'flex'} w-full lg:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
         <div className="px-5 py-4 border-b border-gray-200">
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: queue.length })}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: everything.length })}</p>
+          <SearchInput className="w-full mt-3" value={query} onChange={setQuery} placeholder={t('Search name, email or ID…')} ariaLabel={t('Search name, email or ID…')} clearLabel={t('Clear search')} />
         </div>
         <SideEffectAlerts />
         <MissedDoseAlerts />
@@ -232,7 +242,7 @@ export default function CheckInsPage() {
               </button>
             );
           })}
-          {!loading && queue.length === 0 && <p className="p-8 text-center text-sm text-gray-400">{t('All check-ins reviewed.')}</p>}
+          {!loading && queue.length === 0 && <p className="p-8 text-center text-sm text-gray-400">{everything.length > 0 ? t('No check-ins match.') : t('All check-ins reviewed.')}</p>}
         </div>
       </div>
 
@@ -288,11 +298,14 @@ export default function CheckInsPage() {
                   </div>
                 </section>
 
+                <CheckInBrief key={`brief-${selected.id}`} checkInId={selected.id} />
+
                 <ReviewPanel key={selected.id} checkIn={selected} onDone={() => setSelectedId(null)} />
               </div>
 
               <aside className="space-y-4">
                 <WeightTrend patientId={selected.patient.id} />
+                <LatestLabs patientId={selected.patient.id} />
                 {selected.prescription ? (
                   <PrescriptionCard prescription={selected.prescription} patientId={selected.patient.id} />
                 ) : (

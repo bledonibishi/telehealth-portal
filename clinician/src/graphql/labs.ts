@@ -15,6 +15,8 @@ const LAB_RESULT_FIELDS = gql`
     note
     reviewedAt
     reviewNote
+    reportId
+    reportUrl
     enteredBy {
       firstName
       lastName
@@ -100,6 +102,74 @@ export const REVIEW_LAB_RESULT = gql`
   mutation ReviewLabResult($input: ReviewLabResultInput!) {
     reviewLabResult(input: $input) {
       id
+    }
+  }
+`;
+
+const LAB_REPORT_FIELDS = gql`
+  fragment LabReportFields on LabReport {
+    id
+    patientId
+    source
+    status
+    note
+    filename
+    mimeType
+    fileUrl
+    createdAt
+    handledAt
+    resultCount
+  }
+`;
+
+export const PATIENT_LAB_REPORTS = gql`
+  ${LAB_REPORT_FIELDS}
+  query PatientLabReports($patientId: ID!) {
+    patientLabReports(patientId: $patientId) {
+      ...LabReportFields
+    }
+  }
+`;
+
+export const READ_LAB_REPORT = gql`
+  mutation ReadLabReport($reportId: ID!) {
+    readLabReport(reportId: $reportId) {
+      status
+      reason
+      patientNameOnReport
+      nameMatches
+      labName
+      reportDate
+      notes
+      warnings
+      results {
+        kind
+        analyteName
+        value
+        unit
+        referenceLow
+        referenceHigh
+        collectedOn
+        flaggedByLab
+        alreadyRecorded
+      }
+    }
+  }
+`;
+
+export const RECORD_LAB_RESULTS = gql`
+  mutation RecordLabResults($input: RecordLabResultsInput!) {
+    recordLabResults(input: $input) {
+      id
+    }
+  }
+`;
+
+export const REJECT_LAB_REPORT = gql`
+  ${LAB_REPORT_FIELDS}
+  mutation RejectLabReport($input: RejectLabReportInput!) {
+    rejectLabReport(input: $input) {
+      ...LabReportFields
     }
   }
 `;
