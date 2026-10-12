@@ -27,6 +27,7 @@ import { EmailModule } from './email/email.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { NotifierModule } from './notifications/notifier.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { CxModule } from './cx/cx.module';
 import { PostHogModule } from './posthog/posthog.module';
 import { LangfuseModule } from './langfuse/langfuse.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -94,6 +95,7 @@ import { InsightsModule } from './insights/insights.module';
     NotifierModule,
     NotificationsModule,
     DashboardModule,
+    CxModule,
     UploadsModule,
     OnboardingModule,
     IdentityVerificationModule,

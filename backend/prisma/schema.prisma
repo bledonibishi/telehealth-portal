@@ -332,6 +332,11 @@ model Lead {
   intakeConsentUserAgent String?          @map("intake_consent_user_agent")
   intakeSavedAt          DateTime?        @map("intake_saved_at")
   convertedAt            DateTime?        @map("converted_at")
+  // Follow-up by the CX team on a lead that has not paid: when someone last got in touch and who, so two people
+  // don't chase the same lead. doNotContactAt closes it for good (not interested, or asked not to be contacted).
+  lastContactedAt        DateTime?        @map("last_contacted_at")
+  lastContactedById      String?          @map("last_contacted_by_id")
+  doNotContactAt         DateTime?        @map("do_not_contact_at")
   createdAt              DateTime         @default(now()) @map("created_at")
   updatedAt              DateTime         @updatedAt @map("updated_at")
 

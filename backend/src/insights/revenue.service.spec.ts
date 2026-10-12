@@ -4,7 +4,8 @@ const NOW = new Date('2026-10-15T00:00:00Z');
 const ago = (d: number) => Math.floor((NOW.getTime() - d * 86_400_000) / 1000);
 const sub = (id: string, over: any = {}) => ({
   id, status: 'active', created: ago(200), canceled_at: null,
-  items: [{ quantity: 1, price: { unit_amount: 10000, currency: 'eur', recurring: { interval: 'month', interval_count: 1 } } }],
+  // As Stripe sends it: the items are a list object, not an array.
+  items: { data: [{ quantity: 1, price: { unit_amount: 10000, currency: 'eur', recurring: { interval: 'month', interval_count: 1 } } }] },
   ...over,
 });
 

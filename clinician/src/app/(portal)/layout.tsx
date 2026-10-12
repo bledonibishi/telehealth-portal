@@ -33,6 +33,7 @@ type NotifCounts = {
 
 const NAV: NavItem[] = [
   { href: '/',         label: 'Dashboard',     icon: 'home',     group: 'Overview', roles: ['ADMIN'] },
+  { href: '/cx',       label: 'CX dashboard',  icon: 'home',     group: 'Overview', roles: ['CX_TEAM'] },
   { href: '/leads',    label: 'Leads',         icon: 'flag',     group: 'Clinical', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
   { href: '/patients', label: 'Patients',       icon: 'user',     group: 'Clinical', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'],                     badgeKey: 'patientMessages' },
   { href: '/queue',    label: 'Review queue',   icon: 'plan',     group: 'Clinical', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
