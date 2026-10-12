@@ -3,7 +3,7 @@ import { AuditRead } from '../audit/audit-read.interceptor';
 import { ForbiddenException } from '@nestjs/common';
 import { PatientsService } from './patients.service';
 import { PatientModel } from './models/patient.model';
-import { PatientListItemModel } from './models/patient-list-item.model';
+import { PatientListItemModel, RecordMatchModel } from './models/patient-list-item.model';
 import { UpdatePatientInput } from './dto/update-patient.input';
 import { UpdateBasicInfoInput } from './dto/update-basic-info.input';
 import { CreatePatientInput } from './dto/create-patient.input';
@@ -37,6 +37,12 @@ export class PatientsResolver {
   @Query(() => [PatientListItemModel])
   patients() {
     return this.patientsService.findAll();
+  }
+
+  @Authorized(...CLINICAL_STAFF)
+  @Query(() => [RecordMatchModel], { description: 'Which patient a prescription, check-in or order id belongs to (the full id, or its last 6 or more characters)' })
+  recordMatches(@Args('code') code: string) {
+    return this.patientsService.findByRecordId(code);
   }
 
   @Authorized(...CLINICAL_STAFF, 'PATIENT')

@@ -3,7 +3,7 @@ import { readFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { FallbackFileStorage, FileNotFoundError, LocalFileStorage } from './file-storage';
-import { UploadsService, looksLikeImage, safeFilename, staffMayView } from './uploads.service';
+import { UploadsService, looksLikeImage, looksLikePdf, safeFilename, staffMayView } from './uploads.service';
 
 describe('safeFilename', () => {
   it('keeps names inside the patient folder', () => {
@@ -189,5 +189,44 @@ describe('FallbackFileStorage (S3 with the old disk behind it)', () => {
     await new FallbackFileStorage(primary, legacy).delete('a');
     expect(primary.delete).toHaveBeenCalledWith('a');
     expect(legacy.delete).toHaveBeenCalledWith('a');
+  });
+});
+
+describe('lab reports', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lab-uploads-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const prisma: any = { uploadedFile: { create: jest.fn(({ data }) => Promise.resolve({ id: 'f-1', ...data })) } };
+  const service = new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'UPLOAD_DIR' ? dir : undefined)) } as any, new LocalFileStorage(dir));
+  const file = (mimetype: string, bytes: Buffer, originalname = 'report') => ({ originalname, mimetype, buffer: bytes }) as Express.Multer.File;
+  const pdf = Buffer.from('%PDF-1.7 rest of the file');
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
+
+  it('recognises a PDF by its first bytes', () => {
+    expect(looksLikePdf(pdf)).toBe(true);
+    expect(looksLikePdf(Buffer.from('<html>'))).toBe(false);
+  });
+
+  it('accepts a PDF or a photo of a report', async () => {
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('application/pdf', pdf, 'blood.pdf'))).resolves.toMatchObject({ kind: 'LAB_REPORT' });
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('image/png', png, 'blood.png'))).resolves.toMatchObject({ kind: 'LAB_REPORT' });
+  });
+
+  it('refuses a file that only claims to be a PDF, any other type, and one over 15 MB', async () => {
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('application/pdf', Buffer.from('MZ not a pdf')))).rejects.toThrow(/PDF or a photo/);
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('text/html', Buffer.from('<script>')))).rejects.toThrow(/PDF or a photo/);
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('application/pdf', Buffer.concat([pdf, Buffer.alloc(15 * 1024 * 1024)])))).rejects.toThrow(/under 15 MB/);
+  });
+
+  it('turns away an iPhone HEIC photo, which the AI reader can’t open, and says what to do instead', async () => {
+    const heic = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic'), Buffer.alloc(16)]);
+    await expect(service.save('p-1', 'LAB_REPORT' as any, file('image/heic', heic, 'blood.heic'))).rejects.toThrow(/Most Compatible/);
+  });
+
+  it('is shown to doctors and the patient, not to support or pharmacy staff', () => {
+    const staff = (clinicianRole: string) => ({ role: 'CLINICIAN', clinicianRole }) as any;
+    expect(staffMayView('LAB_REPORT' as any, staff('DOCTOR'))).toBe(true);
+    expect(staffMayView('LAB_REPORT' as any, staff('ADMIN'))).toBe(true);
+    expect(staffMayView('LAB_REPORT' as any, staff('CX_TEAM'))).toBe(false);
+    expect(staffMayView('LAB_REPORT' as any, staff('PROVIDER'))).toBe(false);
   });
 });

@@ -42,7 +42,7 @@ export interface PrescriptionPdfInput {
   medication: string;
   dosage: string;
   instructions: string;
-  patient: { firstName: string; lastName: string; dateOfBirth: Date; addressLine1?: string | null; addressLine2?: string | null; city?: string | null; postcode?: string | null; country?: string | null };
+  patient: { firstName: string; lastName: string; dateOfBirth: Date; gender?: string | null; allergies?: string | null; addressLine1?: string | null; addressLine2?: string | null; city?: string | null; postcode?: string | null; country?: string | null };
   prescriber: { firstName: string; lastName: string; licenseNumber?: string | null; licensingBody?: string | null } | null;
   items: Array<{
     quantity: number;

@@ -12,6 +12,8 @@ import { fetchIntake, hasAnswer, isVisible, prefillFromBmi, toAnswer, type Intak
 import { requestEmailCode, verifyEmailCode } from '@/lib/email-verification';
 import ProductPicker from './ProductPicker';
 import IntakeQuestionView from './IntakeQuestionView';
+import ReturningChoice from './ReturningChoice';
+import { compareAnswers, fetchPrevious, resumeEarlier, type CompareRow, type PreviousAssessment } from '@/lib/returning';
 
 /* ── Types ── */
 interface Answer { question: string; sel: string[] }
@@ -164,6 +166,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [detailsErr, setDetailsErr] = useState('');
   const [emailTaken, setEmailTaken] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Someone who answered before and never paid: their earlier answers beside today's, until they choose.
+  const [returning, setReturning] = useState<{ previous: PreviousAssessment; rows: CompareRow[]; contact: { firstName: string; lastName: string; email: string }; token: string } | null>(null);
+  const [choiceErr, setChoiceErr] = useState('');
   // The medical questions and the consent wording come from the server (the same ones the doctor's review rests on).
   const [intake, setIntake] = useState<{ questions: IntakeQuestion[]; consent: { version: string; text: string } } | null>(null);
   const [intakeFailed, setIntakeFailed] = useState(false);
@@ -393,22 +398,46 @@ export default function Quiz({ product }: { product: ProductKind }) {
   };
 
   /* ── Details form submit — block on failed lead creation ── */
-  const submitDetails = async (firstName: string, lastName: string, email: string, token: string) => {
+  const submitDetails = async (firstName: string, lastName: string, email: string, token: string, opts: { skipCompare?: boolean } = {}) => {
     if (!intake) { setDetailsErr('The health questions haven’t loaded yet. Please try again in a moment.'); return; }
     setSaving(true);
+    const todayHealth = healthQs.concat((intake.questions).filter((x) => x.id in prefilled)).filter((x) => hasAnswer(x, health)).map((x) => toAnswer(x, health[x.id]));
+
+    // Someone who answered before and never paid sees their earlier answers beside today's before anything is replaced.
+    if (!opts.skipCompare) {
+      const previous = await fetchPrevious(product, email, token);
+      if (previous) {
+        const todayEligibility = visible().filter((qq) => st.answers[qq.id]).map((qq) => ({ questionId: qq.id, question: qq.q, answer: st.answers[qq.id].sel.join(', ') }));
+        const questionText = new Map(intake.questions.map((x) => [x.id, x.text ?? x.id]));
+        const rows = [
+          ...compareAnswers(previous.eligibility, todayEligibility),
+          ...compareAnswers(previous.health, todayHealth.map((a) => ({ questionId: a.questionId, question: questionText.get(a.questionId) ?? a.questionId, answer: a.answer }))),
+        ];
+        if (rows.some((r) => r.changed)) {
+          setReturning({ previous, rows, contact: { firstName, lastName, email }, token });
+          setChoiceErr('');
+          setSaving(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+      }
+    }
+
     const lead = await createLead(
       product, visible(), st.answers, { firstName, lastName, email },
-      { answers: healthQs.concat((intake.questions).filter((x) => x.id in prefilled)).filter((x) => hasAnswer(x, health)).map((x) => toAnswer(x, health[x.id])), consentVersion: intake.consent.version },
+      { answers: todayHealth, consentVersion: intake.consent.version },
       token,
     );
     if (lead && typeof lead === 'object' && 'error' in lead) {
       // The proof ran out (or was never right): back to asking for a code.
-      if (/verify your email/i.test(lead.error)) { setProof(null); setCode(''); setCodeSent(false); }
+      if (/verify your email/i.test(lead.error)) { setProof(null); setCode(''); setCodeSent(false); setReturning(null); }
       setDetailsErr(lead.error);
+      setChoiceErr(lead.error);
       setSaving(false);
       return;
     }
     if (lead === 'EMAIL_TAKEN') {
+      setReturning(null);
       setEmailTaken(true);
       setDetailsErr('');
       setSaving(false);
@@ -418,28 +447,65 @@ export default function Quiz({ product }: { product: ProductKind }) {
       // Without a saved lead the payment webhook can't create the patient's
       // account, so never let someone continue to pay from here.
       setDetailsErr("We couldn't save your details. Please check your connection and try again.");
+      setChoiceErr("We couldn't save your details. Please check your connection and try again.");
       setSaving(false);
       return;
     }
+    finishLead(lead, email, firstName, lastName);
+  };
+
+  /* ── A saved lead (new answers, or the earlier ones kept): on to the plans, unless the server ruled the answers out ── */
+  const finishLead = (lead: LeadResult, email: string, firstName: string, lastName: string) => {
     // The server has the final say on eligibility: a RED answer set never reaches plans or payment.
     if (lead.riskTag === 'RED') {
       clearProgress(product);
+      setReturning(null);
       setSaving(false);
       goIneligible("Based on your answers, we can't prescribe this treatment online.", null, lead.riskReasons);
       return;
     }
     clearProgress(product);
-    const id = lead.id;
     // The health answers went with the quiz, so checkout has everything it needs.
-    mergeAssessment({ product, passed: true, leadId: id, email, firstName, lastName, at: Date.now(), plan: null, method: null, intakeDone: true });
+    mergeAssessment({ product, passed: true, leadId: lead.id, email, firstName, lastName, at: Date.now(), plan: null, method: null, intakeDone: true });
+    setReturning(null);
     setScreen('plans');
     setSaving(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  /* ── The choice for someone coming back: keep the earlier answers ── */
+  const keepEarlier = async () => {
+    if (!returning) return;
+    const { contact: c, token } = returning;
+    setSaving(true);
+    setChoiceErr('');
+    try {
+      finishLead(await resumeEarlier(product, c.email, token), c.email, c.firstName, c.lastName);
+    } catch (err) {
+      setChoiceErr(err instanceof Error ? err.message : 'We couldn’t go on with your earlier answers. Please use today’s.');
+      setSaving(false);
+    }
+  };
+
   /* ── Render screens ── */
   if (screen === 'ineligible') return <Ineligible reason={ineligReason} reasons={ineligReasons} onBack={dqIdx >= 0 ? backToDqQuestion : undefined} onRestart={restart} />;
   if (screen === 'plans') return <ProductPicker product={product} onRestart={restart} />;
+  if (returning) {
+    return (
+      <ReturningChoice
+        firstName={returning.contact.firstName}
+        savedAt={returning.previous.savedAt}
+        rows={returning.rows}
+        canKeep={returning.previous.canKeep}
+        blockedReason={returning.previous.keepBlockedReason}
+        busy={saving}
+        error={choiceErr}
+        onUseToday={() => { const r = returning; setChoiceErr(''); void submitDetails(r.contact.firstName, r.contact.lastName, r.contact.email, r.token, { skipCompare: true }); }}
+        onKeepEarlier={keepEarlier}
+        onBack={() => setReturning(null)}
+      />
+    );
+  }
 
   /* ── The statement, before the first question ── */
   if (!st.agreed) {
@@ -637,9 +703,11 @@ export default function Quiz({ product }: { product: ProductKind }) {
               </div>
               {emailTaken && (
                 <div className="thq-error" role="alert">
-                  An account already exists for this email.{' '}
-                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
-                  {' '}instead, or use a different email address.
+                  You’ve already ordered with this email, so there’s an account for it.{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>.
+                  {' '}If you haven’t set a password yet, or forgot it, use{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/forgot-password`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Forgot password</a>
+                  {' '}and we’ll email you a link. Or use a different email address.
                 </div>
               )}
               {detailsErr && <div className="thq-error" role="alert">{detailsErr}</div>}
@@ -671,9 +739,11 @@ export default function Quiz({ product }: { product: ProductKind }) {
               </div>
               {emailTaken && (
                 <div className="thq-error" role="alert">
-                  An account already exists for this email.{' '}
-                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>
-                  {' '}instead, or use a different email address.
+                  You’ve already ordered with this email, so there’s an account for it.{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/login`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Sign in</a>.
+                  {' '}If you haven’t set a password yet, or forgot it, use{' '}
+                  <a href={`${CONFIG.PORTAL_URL}/forgot-password`} style={{ textDecoration: 'underline', fontWeight: 600 }}>Forgot password</a>
+                  {' '}and we’ll email you a link. Or use a different email address.
                 </div>
               )}
               {detailsErr && <div className="thq-error" role="alert">{detailsErr}</div>}

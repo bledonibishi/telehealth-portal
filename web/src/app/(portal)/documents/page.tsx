@@ -11,6 +11,7 @@ import { ManageSubscriptionButton } from '@/components/billing/ManageSubscriptio
 import { Card, CardHeader } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon } from '@/components/portal/Icon';
+import { LabReportCard } from '@/components/portal/LabReportCard';
 import { InlineError } from '@/components/common/Alert';
 import { SkeletonText } from '@telehealth/loading';
 
@@ -115,6 +116,8 @@ export default function DocumentsPage() {
           </ul>
         </Card>
       )}
+
+      <LabReportCard />
 
       <Card>
         <CardHeader title="Invoices & payments" subtitle="Receipts, payment history and your saved card are kept by our payment provider." />

@@ -6,6 +6,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { OrdersService } from '../prescriptions/orders.service';
 import { CheckInStatus, ConsultationKind, DoseStatus, OrderStatus, PrescriptionStatus, ProductCategory, RedFlagSeverity } from '../common/enums';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitions';
@@ -28,6 +29,7 @@ export class CheckInsService {
     private email: EmailService,
     config: ConfigService,
     @Optional() private notifier?: NotifierService,
+    @Optional() private orders?: OrdersService,
   ) {
     this.appUrl = config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
     this.isProduction = config.get<string>('NODE_ENV') === 'production';
@@ -42,9 +44,9 @@ export class CheckInsService {
    * queued promptly.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
-  async ensureScheduled() {
+  async ensureScheduled(patientId?: string) {
     const patients = await this.prisma.patient.findMany({
-      where: { activatedAt: { not: null }, prescriptions: { some: { status: PrescriptionStatus.ACTIVE } } },
+      where: { ...(patientId ? { id: patientId } : {}), activatedAt: { not: null }, prescriptions: { some: { status: PrescriptionStatus.ACTIVE } } },
       include: {
         checkIns: { orderBy: { createdAt: 'desc' }, take: 1 },
         orders: {
@@ -68,6 +70,29 @@ export class CheckInsService {
     }
   }
 
+  /**
+   * Dev/testing only: stands in for the pharmacy. Ships the prescription's waiting order, then schedules the patient's
+   * check-in straight away instead of waiting for the next scheduler run. Returns the check-in that is now open, if any.
+   */
+  async processNow(actorId: string, prescriptionId: string) {
+    if (this.isProduction) throw new ForbiddenException('A prescription can only be processed by hand in development');
+    if (!this.orders) throw new BadRequestException('Orders are not available');
+    const rx = await this.prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: { orders: { where: { status: OrderStatus.PENDING }, orderBy: { sequence: 'asc' }, take: 1 } },
+    });
+    if (!rx) throw new NotFoundException('Prescription not found');
+    if (rx.status !== PrescriptionStatus.ACTIVE) throw new BadRequestException('Only a current prescription can be processed');
+    if (rx.orders[0]) await this.orders.dispatch(actorId, rx.orders[0].id, 'DEV-PROCESSED', {});
+    await this.ensureScheduled(rx.patientId);
+    const open = await this.prisma.checkIn.findFirst({
+      where: { patientId: rx.patientId, status: { not: CheckInStatus.COMPLETED } },
+      orderBy: { createdAt: 'desc' },
+      include: { patient: true },
+    });
+    return open ? this.toModel(open) : null;
+  }
+
   /** Emails out any check-in whose due date has arrived. */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async sendDue() {
@@ -76,23 +101,47 @@ export class CheckInsService {
       include: { patient: true },
     });
 
-    for (const checkIn of due) {
-      const token = randomBytes(32).toString('hex');
-      const tokenExpiresAt = new Date(Date.now() + TOKEN_EXPIRY_DAYS * 86_400_000);
-
-      await this.prisma.checkIn.update({
-        where: { id: checkIn.id },
-        data: { status: CheckInStatus.SENT, sentAt: new Date(), token, tokenExpiresAt },
-      });
-
-      const url = this.buildUrl(token)!;
-      await this.notifier?.toPatient(checkIn.patientId, { kind: NotificationKind.CHECK_IN_READY, href: '/dashboard', groupKey: `checkin:${checkIn.id}` });
-      await this.email.sendCheckInEmail(checkIn.patient.email, checkIn.patient.firstName, url);
-      this.logger.log(`Sent check-in email to ${checkIn.patient.email}`);
-    }
+    for (const checkIn of due) await this.send(checkIn);
   }
 
-  /** Dev/testing only: move a check-in's due date. A sent one is put back to scheduled so it can be sent again. */
+  /** Puts the check-in in the SENT state with a live link, reusing the link it already has while that still works. */
+  private async openLink(checkIn: { id: string; token?: string | null; tokenExpiresAt?: Date | null; sentAt?: Date | null }) {
+    const live = !!checkIn.token && !!checkIn.tokenExpiresAt && checkIn.tokenExpiresAt > new Date();
+    return this.prisma.checkIn.update({
+      where: { id: checkIn.id },
+      data: live
+        ? { status: CheckInStatus.SENT }
+        : {
+            status: CheckInStatus.SENT,
+            sentAt: new Date(),
+            token: randomBytes(32).toString('hex'),
+            tokenExpiresAt: new Date(Date.now() + TOKEN_EXPIRY_DAYS * 86_400_000),
+          },
+      include: { patient: true },
+    });
+  }
+
+  private async send(checkIn: { id: string; patientId: string; token?: string | null; tokenExpiresAt?: Date | null; patient: { email: string; firstName: string } }) {
+    const sent = await this.openLink(checkIn);
+    const url = this.buildUrl(sent.token)!;
+    await this.notifier?.toPatient(checkIn.patientId, { kind: NotificationKind.CHECK_IN_READY, href: '/dashboard', groupKey: `checkin:${checkIn.id}` });
+    await this.email.sendCheckInEmail(checkIn.patient.email, checkIn.patient.firstName, url);
+    this.logger.log(`Sent check-in email to ${checkIn.patient.email}`);
+    return sent;
+  }
+
+  /**
+   * Staff hand-off, for when the scheduled email isn't enough (a patient who lost it, or CX sending the link by
+   * message): creates the link now, and emails it too when asked. Without the email the link is only shown to staff.
+   */
+  async issueLink(id: string, sendEmail: boolean) {
+    const checkIn = await this.prisma.checkIn.findUnique({ where: { id }, include: { patient: true } });
+    if (!checkIn) throw new NotFoundException('Check-in not found');
+    if (checkIn.status === CheckInStatus.COMPLETED) throw new BadRequestException('This check-in has already been completed');
+    return this.toModel(sendEmail ? await this.send(checkIn) : await this.openLink(checkIn));
+  }
+
+  /** Dev/testing only: move a check-in's scheduled date. A sent one is put back to scheduled so it can be sent again; a date that has already arrived sends it straight away instead of waiting for the next cron run. */
   async reschedule(id: string, dueAt: Date) {
     if (this.isProduction) throw new ForbiddenException('Check-ins can only be rescheduled in development');
     if (Number.isNaN(dueAt.getTime())) throw new BadRequestException('Invalid due date');
@@ -103,8 +152,9 @@ export class CheckInsService {
     const updated = await this.prisma.checkIn.update({
       where: { id },
       data: { dueAt, status: CheckInStatus.SCHEDULED, token: null, tokenExpiresAt: null, sentAt: null },
+      include: { patient: true },
     });
-    return this.toModel(updated);
+    return this.toModel(dueAt <= new Date() ? await this.send(updated) : updated);
   }
 
   buildUrl(token?: string | null) {

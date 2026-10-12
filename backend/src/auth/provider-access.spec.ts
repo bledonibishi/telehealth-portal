@@ -95,7 +95,11 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "EmailVerificationResolver.requestEmailCode",
   "EmailVerificationResolver.verifyEmailCode",
   "IdentityVerificationController.handleWebhook",
+  "LeadRemindersController.unsubscribe",
+  "LeadRemindersCronController.trigger",
   "LeadsResolver.createLead",
+  "LeadsResolver.previousAssessment",
+  "LeadsResolver.resumeLead",
   "NotificationsCronController.pruneNotifications",
   "NotificationsCronController.unreadMessageEmails",
   "PartnerOrdersCronController.sweep",
@@ -104,6 +108,7 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "UploadsCleanupController.purge",
   "UploadsController.getFile",
   "UploadsController.upload",
+  "UrgencyCronController.trigger",
 ]
 `);
   });

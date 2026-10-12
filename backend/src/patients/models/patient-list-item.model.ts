@@ -79,3 +79,15 @@ export class PatientListItemModel extends PatientModel {
   @Field({ nullable: true, description: 'When the patient last sent a message' })
   lastMessageAt?: Date;
 }
+
+@ObjectType('RecordMatch')
+export class RecordMatchModel {
+  @Field({ description: 'The patient the record belongs to' })
+  patientId: string;
+
+  @Field({ description: 'PRESCRIPTION, CHECK_IN or ORDER' })
+  kind: string;
+
+  @Field({ description: 'The full id of the record that matched' })
+  recordId: string;
+}

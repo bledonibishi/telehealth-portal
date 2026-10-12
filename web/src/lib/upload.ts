@@ -14,7 +14,7 @@ export async function openAuthedFile(path: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export type UploadKind = 'ID_DOCUMENT' | 'SELFIE' | 'BODY_PHOTO_FRONT' | 'BODY_PHOTO_SIDE' | 'PRESCRIPTION_PROOF' | 'PROGRESS_PHOTO';
+export type UploadKind = 'ID_DOCUMENT' | 'SELFIE' | 'BODY_PHOTO_FRONT' | 'BODY_PHOTO_SIDE' | 'PRESCRIPTION_PROOF' | 'PROGRESS_PHOTO' | 'LAB_REPORT';
 
 export async function uploadFile(kind: UploadKind, file: File): Promise<string> {
   const token = getToken();

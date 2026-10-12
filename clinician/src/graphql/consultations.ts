@@ -10,6 +10,7 @@ export const PRESCRIPTION_FRAGMENT = gql`
     issuedAt
     validUntil
     refillsAllowed
+    supersedesId
     overrideReason
     contentHash
     documentUrl

@@ -7,6 +7,32 @@ export const RESCHEDULE_CHECK_IN = gql`
       id
       status
       dueAt
+      sentAt
+      tokenExpiresAt
+      checkInUrl
+    }
+  }
+`;
+
+export const PROCESS_PRESCRIPTION_NOW = gql`
+  mutation ProcessPrescriptionNow($prescriptionId: ID!) {
+    processPrescriptionNow(prescriptionId: $prescriptionId) {
+      id
+      status
+      dueAt
+    }
+  }
+`;
+
+export const ISSUE_CHECK_IN_LINK = gql`
+  mutation IssueCheckInLink($id: ID!, $sendEmail: Boolean!) {
+    issueCheckInLink(id: $id, sendEmail: $sendEmail) {
+      id
+      status
+      dueAt
+      sentAt
+      tokenExpiresAt
+      checkInUrl
     }
   }
 `;

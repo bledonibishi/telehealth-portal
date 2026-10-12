@@ -15,11 +15,13 @@ import { OrderCard } from '@/components/orders/OrderCard';
 import { PrescriptionCard } from '@/components/consultation/PrescriptionCard';
 import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
 import { GET_ONBOARDING_SUBMISSION } from '@/graphql/onboarding';
-import { RESCHEDULE_CHECK_IN } from '@/graphql/checkins';
+import CheckInTab from '@/components/patients/CheckInTab';
+import { DraftReplyButton, TranslateMessage, UrgentTag, useUrgentMessages } from '@/components/ai/MessageAiTools';
 import { OnboardingReview } from '@/components/onboarding/OnboardingReview';
 import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
+import { PATIENT_LAB_REPORTS } from '@/graphql/labs';
 import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
 import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
@@ -27,6 +29,7 @@ import PatientSnapshot, { currentMedications, treatmentStatusOf } from '@/compon
 import MedicationPill from '@/components/patients/MedicationPill';
 import { TREATMENT_STATUS } from '@/lib/patient-status';
 import { LoadingState } from '@telehealth/loading';
+import { SearchInput } from '@/components/ui/SearchInput';
 
 const STATUS_BADGE: Record<string, string> = {
   SUBMITTED:            'bg-blue-50 text-blue-700',
@@ -57,9 +60,8 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [reply, setReply] = useState('');
-  const [editingCheckInId, setEditingCheckInId] = useState<string | null>(null);
-  const [checkInDate, setCheckInDate] = useState('');
-  const [copiedCheckInId, setCopiedCheckInId] = useState<string | null>(null);
+  const [rxQuery, setRxQuery] = useState('');
+  const urgentMessages = useUrgentMessages(patientId);
 
   const isAdmin = hasAccess(['ADMIN']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
@@ -94,11 +96,11 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
   // Null for programmes without a Weight Journey (e.g. HRT), which hides the tab.
   const { data: weightData } = useQuery(GET_WEIGHT_JOURNEY, { variables: { patientId }, skip: !hasAccess(['ADMIN', 'DOCTOR']) });
   const { data: symptomsData } = useQuery(PATIENT_SYMPTOM_ASSESSMENTS, { variables: { patientId } });
-  const [rescheduleCheckIn, { loading: rescheduling }] = useMutation(RESCHEDULE_CHECK_IN, {
-    refetchQueries: [{ query: GET_PATIENT, variables: { id: patientId } }],
-  });
 
   const p = data?.patient;
+  // Lab reports a patient has sent in that nobody has entered yet, shown on the Labs tab.
+  const { data: labReportData } = useQuery(PATIENT_LAB_REPORTS, { variables: { patientId }, skip: !canReviewOnboarding, pollInterval: 60_000 });
+  const waitingLabReports = (labReportData?.patientLabReports ?? []).filter((r: any) => r.status === 'PENDING').length;
   const onboarding = onboardingData?.onboardingSubmission;
   const weightJourney = weightData?.weightJourneyForPatient;
   const symptomAssessments = symptomsData?.patientSymptomAssessments ?? [];
@@ -117,6 +119,21 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     (a: any, b: any) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime(),
   );
   const checkIns = p.checkIns ?? [];
+  // Numbered oldest first, so "Check-in 2" means the same thing on the prescription and on the Check-in tab.
+  const numberedCheckIns = [...checkIns].sort((a: any, b: any) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()).map((c: any, i: number) => ({ ...c, number: i + 1 }));
+  // A prescription matches its own id (full or the short "#x2xval74"), its medicine, or the id of a check-in tied to it:
+  // the one held while it was current, the one that led to it, or (for the current one) the one still to come.
+  const rxq = rxQuery.trim().toLowerCase().replace(/^#/, '');
+  const openCheckIn = numberedCheckIns.filter((c: any) => c.status !== 'COMPLETED').slice(-1)[0];
+  const shownPrescriptions = !rxq
+    ? allPrescriptions
+    : allPrescriptions.filter(
+        (rx: any) =>
+          rx.id.toLowerCase().includes(rxq) ||
+          rx.medication?.toLowerCase().includes(rxq) ||
+          numberedCheckIns.some((c: any) => c.id.toLowerCase().includes(rxq) && (c.prescription?.id === rx.id || c.resultPrescriptionId === rx.id)) ||
+          (rx.status === 'ACTIVE' && !!openCheckIn && openCheckIn.id.toLowerCase().includes(rxq)),
+      );
   const latestConsultId = p.consultations?.[0]?.id;
   const status = TREATMENT_STATUS[treatmentStatusOf(p, allPrescriptions)];
 
@@ -124,13 +141,6 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     if (!reply.trim() || !latestConsultId) return;
     await sendMessage({ variables: { input: { consultationId: latestConsultId, content: reply.trim() } } });
     setReply('');
-  };
-
-  const handleRescheduleCheckIn = async (id: string) => {
-    if (!checkInDate) return;
-    await rescheduleCheckIn({ variables: { id, dueAt: new Date(checkInDate).toISOString() } });
-    setEditingCheckInId(null);
-    setCheckInDate('');
   };
 
   const handleSave = async () => {
@@ -175,7 +185,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     { key: 'orders',        label: `${t('Orders')} (${orders.length})` },
     { key: 'messages',      label: `${t('Messages')} (${allMessages.length})` },
     { key: 'checkin',       label: t('Check-in') },
-    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: t('Labs') }] : []),
+    ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: waitingLabReports ? `${t('Labs')} (${waitingLabReports} ${t('new')})` : t('Labs') }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: t('Weight') }] : []),
     // Hormone programmes track symptoms instead of weight.
     ...(symptomAssessments.length > 0 || ['HRT', 'TRT'].includes(latestConsult?.kind)
@@ -343,7 +353,11 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
               <div className="py-12 text-center text-sm text-gray-400">{t('No prescriptions issued yet.')}</div>
             ) : (
               <div className="space-y-4">
-                {allPrescriptions.map((rx: any) => <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} />)}
+                <SearchInput className="w-full sm:w-80" value={rxQuery} onChange={setRxQuery} placeholder={t('Search by prescription or check-in ID…')} ariaLabel={t('Search by prescription or check-in ID…')} clearLabel={t('Clear search')} />
+                {shownPrescriptions.length === 0 && <div className="py-8 text-center text-sm text-gray-400">{t('No prescriptions match.')}</div>}
+                {shownPrescriptions.map((rx: any) => (
+                  <PrescriptionCard key={rx.id} prescription={rx} patientId={p.id} orders={orders} checkIns={numberedCheckIns} siblings={allPrescriptions} onOpenCheckIn={() => setTab('checkin')} />
+                ))}
               </div>
             )}
           </div>
@@ -389,10 +403,12 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
                         <p className={`text-xs mb-1 font-medium ${isPatient ? 'text-gray-500' : 'text-blue-100'}`}>
                           {isPatient ? p.firstName : t('Clinician team')}
                         </p>
+                        {urgentMessages.has(msg.id) && <p className="mb-1"><UrgentTag reason={urgentMessages.get(msg.id) ?? ''} /></p>}
                         <p>{msg.content}</p>
                         <p className={`text-xs mt-1 ${isPatient ? 'text-gray-400' : 'text-blue-200'}`}>
                           {timeAgo(msg.sentAt)}
                         </p>
+                        {isPatient && <TranslateMessage messageId={msg.id} />}
                       </div>
                     </div>
                   );
@@ -403,6 +419,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             {/* Reply input */}
             {latestConsultId ? (
               <div className="border-t border-gray-100 p-4 bg-white">
+                <DraftReplyButton patientId={patientId} consultationId={latestConsultId} onDraft={setReply} className="mb-2" />
                 <div className="flex gap-2">
                   <textarea
                     rows={2}
@@ -439,183 +456,10 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
         {tab === 'symptoms' && <SymptomsPanel assessments={symptomAssessments} />}
 
         {/* ── Labs ── */}
-        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} />}
+        {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} patientName={`${p.firstName} ${p.lastName}`} gender={p.gender} />}
 
         {/* ── Check-in ── */}
-        {tab === 'checkin' && (
-          <div className="p-5">
-            <div className="bg-gray-50 rounded-md p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">{t('Check-in')}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                {t('Every 4 weeks the patient is automatically emailed a check-in quiz to review progress and confirm whether to reorder.')}
-              </p>
-            </div>
-
-            {!p.activatedAt ? (
-              <div className="border border-gray-100 rounded-md p-4 text-center text-sm text-gray-400">
-                {t('Check-in schedule starts once the patient activates their account.')}
-              </div>
-            ) : checkIns.length === 0 ? (
-              <div className="border border-gray-100 rounded-md p-4 text-center text-sm text-gray-400">
-                {t('First check-in hasn’t been scheduled yet.')}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {checkIns.map((c: any) => {
-                  const dueDate = new Date(c.dueAt);
-                  const overdue = c.status !== 'COMPLETED' && dueDate < new Date();
-                  return (
-                    <div key={c.id} className="border border-gray-100 rounded-md p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span
-                          className={`text-xs font-medium px-2 py-0.5 rounded ${
-                            c.status === 'COMPLETED'
-                              ? 'bg-green-50 text-green-700'
-                              : overdue
-                                ? 'bg-red-50 text-red-700'
-                                : c.status === 'SENT'
-                                  ? 'bg-blue-50 text-blue-700'
-                                  : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {c.status === 'COMPLETED' ? t('Completed') : overdue ? t('Overdue') : c.status === 'SENT' ? t('Sent — awaiting response') : t('Scheduled')}
-                        </span>
-                        <span className="flex items-center gap-3">
-                          {c.reportUrl && hasAccess(['ADMIN', 'DOCTOR']) && (
-                            <button type="button" onClick={() => openAuthedDocument(c.reportUrl, t)} className="text-xs font-medium text-brand-500 hover:underline">{t('Report PDF')}</button>
-                          )}
-                          <span className="text-xs text-gray-400 font-mono">#{c.id.slice(-8)}</span>
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div>
-                          <p className="text-xs text-gray-400">{t('Scheduled')}</p>
-                          <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.createdAt, 'dd MMM yyyy')}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-400">{t('Due')}</p>
-                          <p className={`text-xs font-medium mt-0.5 ${overdue ? 'text-red-600' : 'text-gray-800'}`}>
-                            {fmt(dueDate, 'dd MMM yyyy')}
-                          </p>
-                        </div>
-                        {c.sentAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Sent')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {timeAgo(c.sentAt)}
-                            </p>
-                          </div>
-                        )}
-                        {c.status === 'SENT' && c.tokenExpiresAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Link expires')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">{fmt(c.tokenExpiresAt, 'dd MMM yyyy')}</p>
-                          </div>
-                        )}
-                        {c.completedAt && (
-                          <div>
-                            <p className="text-xs text-gray-400">{t('Completed')}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">
-                              {timeAgo(c.completedAt)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {c.status === 'SENT' && c.checkInUrl && (
-                        <div className="mb-3">
-                          <p className="text-xs text-gray-400 mb-1">{t('Check-in link')}</p>
-                          <div className="flex items-center gap-2">
-                            <input
-                              readOnly
-                              value={c.checkInUrl}
-                              onClick={(e) => e.currentTarget.select()}
-                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 bg-gray-50 truncate"
-                            />
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(c.checkInUrl);
-                                setCopiedCheckInId(c.id);
-                                setTimeout(() => setCopiedCheckInId((cur) => (cur === c.id ? null : cur)), 2000);
-                              }}
-                              className="shrink-0 text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-700"
-                            >
-                              {copiedCheckInId === c.id ? t('Copied!') : t('Copy')}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {c.status === 'COMPLETED' ? (
-                        <div className="space-y-2 mt-2">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs text-gray-400">{t('Reorder prescription:')}</p>
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.wantsToReorder ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                              {c.wantsToReorder ? t('Yes') : t('No')}
-                            </span>
-                          </div>
-                          {c.answers?.map((a: any) => (
-                            <div key={a.questionId} className="bg-gray-50 rounded-lg px-3 py-2">
-                              <p className="text-xs text-gray-400">{a.question}</p>
-                              <p className="text-xs font-medium text-gray-800 mt-0.5">{a.answer}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-xs text-gray-400">
-                            {c.status === 'SENT' ? t('Waiting for the patient to complete their check-in.') : t('Will be emailed automatically once due.')}
-                          </p>
-                          {process.env.NODE_ENV !== 'production' && c.status !== 'COMPLETED' && canReviewOnboarding && (
-                            editingCheckInId === c.id ? (
-                              <div className="mt-2 flex items-center gap-2">
-                                <input
-                                  type="datetime-local"
-                                  value={checkInDate}
-                                  onChange={(e) => setCheckInDate(e.target.value)}
-                                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => handleRescheduleCheckIn(c.id)}
-                                  disabled={!checkInDate || rescheduling}
-                                  className="text-xs px-2.5 py-1.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-40"
-                                >
-                                  {rescheduling ? '…' : t('Save')}
-                                </button>
-                                <button
-                                  onClick={() => { setEditingCheckInId(null); setCheckInDate(''); }}
-                                  className="text-xs text-gray-400 hover:text-gray-600"
-                                >
-                                  {t('Cancel')}
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setEditingCheckInId(c.id);
-                                  const now = new Date();
-                                  const pad = (n: number) => String(n).padStart(2, '0');
-                                  setCheckInDate(
-                                    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`,
-                                  );
-                                }}
-                                className="mt-2 text-xs text-brand-500 hover:text-brand-900"
-                              >
-                                {t('Edit due date')}
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        {tab === 'checkin' && <CheckInTab patient={p} orders={orders} prescriptions={allPrescriptions} onOpenPrescriptions={() => setTab('prescriptions')} />}
 
       </div>
     </div>

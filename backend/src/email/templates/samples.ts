@@ -18,6 +18,7 @@ export const SAMPLES: Array<{ name: string; content: t.EmailContent }> = [
   { name: 'order-delivered', content: t.orderUpdateEmail({ firstName: 'Redon', kind: 'DELIVERED', ordersUrl: `${P}/orders` }) },
   { name: 'dose-reminder', content: t.doseReminderEmail({ firstName: 'Redon', productName: 'Semaglutide', scheduledFor: new Date(Date.now() + 3 * 864e5), portalUrl: `${P}/doses` }) },
   { name: 'check-in', content: t.checkInEmail({ firstName: 'Redon', checkInUrl: `${P}/checkin/sample` }) },
+  { name: 'lead-reminder', content: t.leadReminderEmail({ firstName: 'Redon', continueUrl: `${P}/glp1-eligibility`, unsubscribeUrl: 'http://localhost:4000/leads/unsubscribe?lead=sample&sig=sample', last: false }) },
   { name: 'referral-reward', content: t.referralRewardEmail({ firstName: 'Redon', amountLabel: '€20', autoApplied: true, rewardsUrl: `${P}/rewards` }) },
   { name: 'clinician-invite', content: t.clinicianInviteEmail({ firstName: 'Dr Hoxha', inviteUrl: `${C}/set-password?token=sample`, firstTime: true }) },
   { name: 'password-reset', content: t.passwordResetEmail({ firstName: 'Redon', resetUrl: `${P}/reset-password?token=sample`, expiresInMinutes: 60 }) },

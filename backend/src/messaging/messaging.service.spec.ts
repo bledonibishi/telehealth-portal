@@ -256,5 +256,26 @@ describe('MessagingService', () => {
       await expect(patientSays()).resolves.toMatchObject({ id: 'msg-1' });
     });
   });
+
+  describe('urgency check', () => {
+    it('checks a patient’s message in the background, and leaves a care-team message alone', async () => {
+      const urgency = { check: jest.fn().mockResolvedValue(true) };
+      const withCheck = new MessagingService(prisma as any, audit as any, posthog as any, undefined, urgency as any);
+
+      await withCheck.send('patient-1', UserRole.PATIENT, { consultationId: 'consult-1', content: 'Hello' });
+      expect(urgency.check).toHaveBeenCalledWith('msg-1');
+
+      urgency.check.mockClear();
+      prisma.message.create.mockResolvedValue({ ...MESSAGE, senderRole: UserRole.CLINICIAN });
+      await withCheck.send('doc-1', UserRole.CLINICIAN, { consultationId: 'consult-1', content: 'Hi' });
+      expect(urgency.check).not.toHaveBeenCalled();
+    });
+
+    it('does not make sending wait for the check, or fail because of it', async () => {
+      const urgency = { check: jest.fn().mockReturnValue(new Promise(() => undefined)) }; // never finishes
+      const withCheck = new MessagingService(prisma as any, audit as any, posthog as any, undefined, urgency as any);
+      await expect(withCheck.send('patient-1', UserRole.PATIENT, { consultationId: 'consult-1', content: 'Hello' })).resolves.toMatchObject({ id: 'msg-1' });
+    });
+  });
 });
 

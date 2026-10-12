@@ -35,6 +35,17 @@ export class UploadsCleanupService {
     return this.purgeAll(orphans, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, weightEntry: null } })) === 1);
   }
 
+  /** A lab report is uploaded just before it is sent in: one this old that was never sent is left behind, and removed. */
+  async purgeOrphanedLabReports(now = new Date()): Promise<number> {
+    const orphans = await this.prisma.uploadedFile.findMany({
+      where: { kind: UploadKind.LAB_REPORT, createdAt: { lt: new Date(now.getTime() - ORPHAN_AFTER_MS) }, labReport: null },
+      select: { id: true, patientId: true, storageKey: true },
+      orderBy: { createdAt: 'asc' },
+      take: BATCH,
+    });
+    return this.purgeAll(orphans, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, labReport: null } })) === 1);
+  }
+
   /**
    * Body photos checked at onboarding and then retaken or abandoned: uploaded, but never saved on the
    * patient's onboarding (the portal deletes a retake itself; this is the net for a closed tab).
