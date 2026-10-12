@@ -207,6 +207,29 @@ export const MY_LAB_RESULTS = gql`
   }
 `;
 
+export const MY_LAB_REPORTS = gql`
+  query MyLabReports {
+    myLabReports {
+      id
+      status
+      note
+      filename
+      fileUrl
+      createdAt
+      resultCount
+    }
+  }
+`;
+
+export const SUBMIT_MY_LAB_REPORT = gql`
+  mutation SubmitMyLabReport($input: SubmitLabReportInput!) {
+    submitMyLabReport(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
 export const MY_CHECK_IN_REPORTS = gql`
   query MyCheckInReports {
     myCheckInReports {
