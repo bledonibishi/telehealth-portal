@@ -166,17 +166,6 @@ ul,ol{list-style:none}
 .pv-bmi-widget{background:#fff;border-radius:0 28px 28px 0;padding:40px}
 
 /* =========================================================
-   TRUST BAND
-   ========================================================= */
-.th-trust-band{background:linear-gradient(135deg,var(--c-blue) 0%,#2463EE 100%);padding:60px 0}
-.th-trust-inner{display:grid;grid-template-columns:repeat(3,1fr);gap:0;max-width:var(--max-w);margin-inline:auto;padding-inline:var(--px)}
-.th-trust-item{color:#fff;padding:24px 32px;border-right:1px solid rgba(255,255,255,.15);text-align:center}
-.th-trust-item:last-child{border-right:none}
-.pv-trust-ico{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
-.th-trust-title{font-family:var(--f-head);font-size:17px;font-weight:700;margin-bottom:6px}
-.th-trust-desc{font-size:14px;color:rgba(255,255,255,.75);line-height:1.5}
-
-/* =========================================================
    CONTACT
    ========================================================= */
 .pv-contact-section{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:stretch;max-width:var(--max-w);margin-inline:auto;padding-inline:var(--px)}
@@ -518,9 +507,6 @@ ul,ol{list-style:none}
   .pv-bmi-inner{grid-template-columns:1fr}
   .pv-bmi-copy{padding:40px 40px 0}
   .pv-bmi-widget{border-radius:0 0 28px 28px}
-  .th-trust-inner{grid-template-columns:1fr}
-  .th-trust-item{border-right:none;border-bottom:1px solid rgba(255,255,255,.15)}
-  .th-trust-item:last-child{border-bottom:none}
   .pv-contact-section{grid-template-columns:1fr}
   .pv-contact-photo-wrap{min-height:280px}
   .pv-footer-inner{grid-template-columns:1fr 1fr}

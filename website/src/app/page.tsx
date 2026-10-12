@@ -76,21 +76,6 @@ const STATS = [
   { num: '5★', label: 'Average trust rating' },
 ];
 
-const TRUST = [
-  {
-    title: 'Licensed, practising clinicians',
-    desc: 'Every prescription is authorised by a qualified, registered doctor — not an algorithm.',
-  },
-  {
-    title: 'Regulated medications',
-    desc: 'Prescription medicines from licensed, recognised manufacturers — only if your doctor decides they are right for you.',
-  },
-  {
-    title: 'End-to-end data security',
-    desc: 'Your health information is encrypted and handled under strict GDPR principles.',
-  },
-];
-
 export default function HomePage() {
   return (
     <>
@@ -315,39 +300,6 @@ export default function HomePage() {
                 <BmiWidget />
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* ── TRUST BAND ── */}
-        <section className="th-trust-band">
-          <div className="th-trust-inner">
-            {TRUST.map((t, i) => (
-              <div key={t.title} className="th-trust-item pv-anim">
-                <div className="pv-trust-ico">
-                  {i === 0 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6 6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/>
-                      <path d="M8 15v1a6 6 0 0 0 6 6 6 6 0 0 0 6-6v-4"/>
-                      <circle cx="20" cy="10" r="2"/>
-                    </svg>
-                  )}
-                  {i === 1 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                      <path d="m9 12 2 2 4-4"/>
-                    </svg>
-                  )}
-                  {i === 2 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  )}
-                </div>
-                <h3 className="th-trust-title">{t.title}</h3>
-                <p className="th-trust-desc">{t.desc}</p>
-              </div>
-            ))}
           </div>
         </section>
 
