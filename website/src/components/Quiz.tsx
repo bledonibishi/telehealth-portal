@@ -141,7 +141,7 @@ function Ineligible({
       <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--c-muted)' }}>
         <button
           onClick={onRestart}
-          style={{ background: 'none', border: 'none', color: 'var(--c-blue)', cursor: 'pointer', fontSize: 13 }}
+          style={{ background: 'none', border: 'none', color: 'var(--c-brand)', cursor: 'pointer', fontSize: 13 }}
         >
           Restart from the beginning
         </button>

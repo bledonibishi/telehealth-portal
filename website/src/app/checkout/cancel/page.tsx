@@ -45,7 +45,7 @@ export default function CheckoutCancelPage() {
 
           <p style={{ marginTop: 20, fontSize: 13, color: 'var(--c-muted)' }}>
             Need help?{' '}
-            <a href="/#contact" style={{ color: 'var(--c-blue)', fontWeight: 600 }}>
+            <a href="/#contact" style={{ color: 'var(--c-brand)', fontWeight: 600 }}>
               Contact us
             </a>
           </p>

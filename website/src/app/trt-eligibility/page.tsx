@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import Quiz from '@/components/Quiz';
 
 export const metadata = {
-  title: 'TRT Eligibility Assessment – Primavera Healthcare',
+  title: 'TRT Eligibility Assessment – Omo Pharmacy',
   description: 'Complete our 5-minute eligibility quiz to find out if testosterone replacement therapy is right for you.',
 };
 

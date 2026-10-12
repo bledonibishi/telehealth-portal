@@ -243,7 +243,7 @@ export default function HomePage() {
         </section>
 
         {/* ── HOW IT WORKS ── */}
-        <section className="section" id="how-it-works" style={{ background: 'var(--c-bg-light)' }}>
+        <section className="section" id="how-it-works" style={{ background: 'var(--c-sand)' }}>
           <div className="container">
             <div className="th-section-head pv-anim">
               <div className="th-section-tag">How it works</div>
@@ -284,16 +284,15 @@ export default function HomePage() {
           <div className="pv-bmi-shell pv-anim">
             <div className="pv-bmi-inner">
               <div className="pv-bmi-copy">
-                <div className="pv-bmi-tag">GLP-1 eligibility</div>
-                <h2 className="pv-bmi-h2">Check your BMI in seconds</h2>
+                <div className="pv-bmi-tag">Quick check</div>
+                <h2 className="pv-bmi-h2">Could GLP-1 treatment be right for you?</h2>
                 <p className="pv-bmi-sub">
-                  GLP-1 treatment is available for adults with a BMI of 27 or above. Use our
-                  calculator to see if you could qualify.
+                  Move the sliders to see your BMI. It&apos;s the first thing your doctor looks at,
+                  alongside your full medical history.
                 </p>
-                <div className="pv-bmi-feat">
-                  <div className="pv-bmi-feat-item">BMI 27+ may qualify for GLP-1 treatment</div>
-                  <div className="pv-bmi-feat-item">BMI 27–29.9 with a weight-related condition</div>
-                  <div className="pv-bmi-feat-item">Reviewed by a licensed doctor</div>
+                <div className="pv-bmi-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={CONFIG.IMAGES.bmi} alt="" loading="lazy" />
                 </div>
               </div>
               <div className="pv-bmi-widget">
@@ -346,7 +345,7 @@ export default function HomePage() {
                   </a>
                 </div>
                 <p className="pv-info-note">
-                  Primavera Healthcare operates under Kosovo healthcare regulations.
+                  Omo Pharmacy operates under Kosovo healthcare regulations.
                   All prescriptions are issued by licensed clinicians and dispensed by registered pharmacies.
                 </p>
               </div>
@@ -360,7 +359,10 @@ export default function HomePage() {
       <footer className="pv-footer">
         <div className="pv-footer-inner">
           <div>
-            <div className="pv-footer-logo">Primavera <span>Health</span></div>
+            <div className="pv-footer-logo">
+              <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
+              <span>Omo <span>Pharmacy</span></span>
+            </div>
             <p className="pv-footer-tagline">
               Licensed prescription healthcare for HRT and weight management, delivered online to Kosovo.
             </p>
@@ -383,7 +385,7 @@ export default function HomePage() {
         </div>
         <div className="pv-footer-bottom">
           <span style={{ color: 'rgba(255,255,255,.4)' }}>
-            © {new Date().getFullYear()} Primavera Healthcare. All rights reserved.
+            © {new Date().getFullYear()} Omo Pharmacy. All rights reserved.
           </span>
           <div className="pv-footer-legal">
             <a href="#">Privacy Policy</a>

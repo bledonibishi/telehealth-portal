@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import Quiz from '@/components/Quiz';
 
 export const metadata = {
-  title: 'GLP-1 Eligibility Assessment – Primavera Healthcare',
+  title: 'GLP-1 Eligibility Assessment – Omo Pharmacy',
   description: 'Complete our 5-minute eligibility quiz to find out if GLP-1 weight management is right for you.',
 };
 

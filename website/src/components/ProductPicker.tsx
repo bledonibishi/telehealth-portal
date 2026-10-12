@@ -120,7 +120,7 @@ export default function ProductPicker({ product, onRestart }: { product: Product
       <p style={{ textAlign: 'center', marginTop: 24, fontSize: 13, color: 'var(--c-muted)' }}>
         <button
           onClick={onRestart}
-          style={{ background: 'none', border: 'none', color: 'var(--c-blue)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+          style={{ background: 'none', border: 'none', color: 'var(--c-brand)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
         >
           ← Restart assessment
         </button>

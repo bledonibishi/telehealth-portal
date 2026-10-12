@@ -164,7 +164,7 @@ function ReviewInner() {
               )}
 
               <p style={{ marginTop: 20 }}>
-                <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
+                <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-brand)', fontWeight: 600 }}>
                   ← Choose a different treatment
                 </Link>
               </p>

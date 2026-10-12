@@ -101,7 +101,7 @@ function StripeMount({
           clientSecret: d.clientSecret,
           appearance: {
             theme: 'stripe',
-            variables: { colorPrimary: '#1E4FD8', colorText: '#0E1A2B', borderRadius: '12px', fontFamily: 'Inter, system-ui, sans-serif' },
+            variables: { colorPrimary: '#0C6F6A', colorText: '#0A3836', borderRadius: '12px', fontFamily: 'Inter, system-ui, sans-serif' },
           },
           fonts: [{ cssSrc: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap' }],
         });
@@ -519,13 +519,13 @@ function CheckoutInner() {
                 aria-checked={chosen === 'paysera'}
                 onClick={() => chooseMethod('paysera')}
                 style={{
-                  borderColor: chosen === 'paysera' ? '#1E4FD8' : undefined,
-                  background: chosen === 'paysera' ? '#EEF4FF' : undefined,
+                  borderColor: chosen === 'paysera' ? 'var(--c-brand)' : undefined,
+                  background: chosen === 'paysera' ? 'var(--c-bg-brand)' : undefined,
                   borderBottomLeftRadius: chosen === 'paysera' ? 0 : undefined,
                   borderBottomRightRadius: chosen === 'paysera' ? 0 : undefined,
                 }}
               >
-                <div className="th-method-dot" style={{ border: chosen === 'paysera' ? '7px solid #1E4FD8' : undefined }} />
+                <div className="th-method-dot" style={{ border: chosen === 'paysera' ? '7px solid var(--c-brand)' : undefined }} />
                 <div>
                   <div className="th-co-method-label">Pay with Paysera</div>
                   <div className="th-co-method-desc">Bank transfer &amp; local payment methods</div>
@@ -550,13 +550,13 @@ function CheckoutInner() {
                 aria-checked={chosen === 'stripe'}
                 onClick={() => chooseMethod('stripe')}
                 style={{
-                  borderColor: chosen === 'stripe' ? '#1E4FD8' : undefined,
-                  background: chosen === 'stripe' ? '#EEF4FF' : undefined,
+                  borderColor: chosen === 'stripe' ? 'var(--c-brand)' : undefined,
+                  background: chosen === 'stripe' ? 'var(--c-bg-brand)' : undefined,
                   borderBottomLeftRadius: chosen === 'stripe' ? 0 : undefined,
                   borderBottomRightRadius: chosen === 'stripe' ? 0 : undefined,
                 }}
               >
-                <div className="th-method-dot" style={{ border: chosen === 'stripe' ? '7px solid #1E4FD8' : undefined }} />
+                <div className="th-method-dot" style={{ border: chosen === 'stripe' ? '7px solid var(--c-brand)' : undefined }} />
                 <div>
                   <div className="th-co-method-label">Pay by card</div>
                   <div className="th-co-method-desc">Visa, Mastercard &amp; more — powered by Stripe</div>
@@ -631,7 +631,7 @@ function CheckoutInner() {
               <div className="th-co-row total"><span>Due today</span><span>{dueToday}</span></div>
               <p className="th-co-note">Your doctor reviews your assessment first. If they can&apos;t prescribe, you&apos;re refunded.</p>
               <div className="th-co-divider" />
-              <Link href="/review" style={{ fontSize: 13, color: 'var(--c-blue)', fontWeight: 600 }}>
+              <Link href="/review" style={{ fontSize: 13, color: 'var(--c-brand)', fontWeight: 600 }}>
                 ← Change dose or voucher
               </Link>
             </div>
