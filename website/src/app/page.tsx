@@ -243,7 +243,7 @@ export default function HomePage() {
         </section>
 
         {/* ── HOW IT WORKS ── */}
-        <section className="section" id="how-it-works" style={{ background: 'var(--c-bg-light)' }}>
+        <section className="section" id="how-it-works" style={{ background: 'var(--c-sand)' }}>
           <div className="container">
             <div className="th-section-head pv-anim">
               <div className="th-section-tag">How it works</div>
@@ -284,16 +284,15 @@ export default function HomePage() {
           <div className="pv-bmi-shell pv-anim">
             <div className="pv-bmi-inner">
               <div className="pv-bmi-copy">
-                <div className="pv-bmi-tag">GLP-1 eligibility</div>
-                <h2 className="pv-bmi-h2">Check your BMI in seconds</h2>
+                <div className="pv-bmi-tag">Quick check</div>
+                <h2 className="pv-bmi-h2">Could GLP-1 treatment be right for you?</h2>
                 <p className="pv-bmi-sub">
-                  GLP-1 treatment is available for adults with a BMI of 27 or above. Use our
-                  calculator to see if you could qualify.
+                  Move the sliders to see your BMI. It&apos;s the first thing your doctor looks at,
+                  alongside your full medical history.
                 </p>
-                <div className="pv-bmi-feat">
-                  <div className="pv-bmi-feat-item">BMI 27+ may qualify for GLP-1 treatment</div>
-                  <div className="pv-bmi-feat-item">BMI 27–29.9 with a weight-related condition</div>
-                  <div className="pv-bmi-feat-item">Reviewed by a licensed doctor</div>
+                <div className="pv-bmi-photo">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={CONFIG.IMAGES.bmi} alt="" loading="lazy" />
                 </div>
               </div>
               <div className="pv-bmi-widget">
@@ -361,7 +360,7 @@ export default function HomePage() {
         <div className="pv-footer-inner">
           <div>
             <div className="pv-footer-logo">
-              <img src="/omo-logo.png?v=2" alt="" width={30} height={30} />
+              <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
               <span>Omo <span>Pharmacy</span></span>
             </div>
             <p className="pv-footer-tagline">

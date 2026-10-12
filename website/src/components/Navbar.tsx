@@ -74,10 +74,8 @@ export default function Navbar() {
     <nav className="pv-nav">
       <div className="pv-nav-inner">
         <Link href="/" className="pv-logo">
-          <img src="/omo-logo.png?v=2" alt="" width={34} height={34} />
-          <span className="pv-logo-text">
-            Omo <span>Pharmacy</span>
-          </span>
+          <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
+          <span className="pv-logo-text">Omo Pharmacy</span>
         </Link>
 
         <div className="pv-nav-links">
