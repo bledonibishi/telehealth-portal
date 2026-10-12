@@ -12,6 +12,7 @@ describe('AuthService', () => {
   let prisma: {
     clinician: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     patient: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+    passwordReset: { deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let email: { sendActivationEmail: jest.Mock };
@@ -45,6 +46,7 @@ describe('AuthService', () => {
     prisma = {
       clinician: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       patient: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      passwordReset: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((fn: any) => fn(prisma));
@@ -68,6 +70,8 @@ describe('AuthService', () => {
       hash.mockResolvedValue('new-hash');
       const tokens = await service.changeOwnPassword(patientAccount, 'old-password-1', 'new-password-12');
       expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'patient-1', passwordHash: 'hashed', tokenVersion: 2 }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
+      // A reset link asked for before the change must not outlive it.
+      expect(prisma.passwordReset.deleteMany).toHaveBeenCalledWith({ where: { accountType: 'PATIENT', accountId: 'patient-1', usedAt: null } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_CHANGED', actorId: 'patient-1' }), prisma);
       expect(jwtService.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'patient-1', tv: 3 }));
       expect(tokens).toEqual({ accessToken: 'signed-token', refreshToken: 'signed-token' });
@@ -79,6 +83,7 @@ describe('AuthService', () => {
       hash.mockResolvedValue('new-hash');
       await service.changeOwnPassword({ id: 'clinician-1', role: UserRole.CLINICIAN }, 'old-password-1', 'new-password-12');
       expect(prisma.clinician.updateMany).toHaveBeenCalledWith({ where: { id: 'clinician-1', passwordHash: 'hashed', tokenVersion: 0 }, data: expect.objectContaining({ passwordHash: 'new-hash', tokenVersion: { increment: 1 } }) });
+      expect(prisma.passwordReset.deleteMany).toHaveBeenCalledWith({ where: { accountType: 'CLINICIAN', accountId: 'clinician-1', usedAt: null } });
       expect(jwtService.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'clinician-1', role: 'DOCTOR', tv: 1 }));
     });
 
@@ -88,6 +93,7 @@ describe('AuthService', () => {
       compare.mockResolvedValue(true);
       hash.mockResolvedValue('new-hash');
       await expect(service.changeOwnPassword(patientAccount, 'old-password-1', 'new-password-12')).rejects.toThrow(/changed somewhere else/);
+      expect(prisma.passwordReset.deleteMany).not.toHaveBeenCalled();
       expect(jwtService.sign).not.toHaveBeenCalled();
     });
 

@@ -300,6 +300,8 @@ export class AuthService {
       // second would end the session the first one just handed back.
       const changed = await (isPatient ? tx.patient : tx.clinician).updateMany({ where: { id: account.id, passwordHash: row.passwordHash, tokenVersion: row.tokenVersion ?? 0 }, data });
       if (changed.count !== 1) throw new ConflictException('Your password was changed somewhere else a moment ago. Please try again.');
+      // A reset link asked for before this must not be able to replace the new password.
+      await tx.passwordReset.deleteMany({ where: { accountType: isPatient ? 'PATIENT' : 'CLINICIAN', accountId: account.id, usedAt: null } });
       await this.audit.log({ actorId: account.id, actorRole, action: 'AUTH_PASSWORD_CHANGED', resourceType, resourceId: account.id, metadata: { ...attempt } }, tx);
     });
     await this.notifyPasswordChanged(row, isPatient);

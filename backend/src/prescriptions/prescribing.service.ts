@@ -38,6 +38,10 @@ function notReady(
   onboarding: { status: string; identityViaVerifyService: boolean } | null,
   identityStatus: string | null,
 ): string | null {
+  // Checked before the approved shortcut: a rejection that arrives after the onboarding was approved still stops prescribing.
+  if (onboarding?.identityViaVerifyService && identityStatus === IdentityVerificationStatus.REJECTED) {
+    return 'The identity check was rejected';
+  }
   if (onboarding?.status === OnboardingStatus.APPROVED) return null;
   if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
   if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
@@ -74,7 +78,10 @@ export class PrescribingService {
 
   async assertIdentityVerified(patientId: string) {
     const onboarding = await this.prisma.onboardingSubmission.findUnique({ where: { patientId } });
-    if (onboarding?.status !== OnboardingStatus.APPROVED) {
+    const idv = onboarding?.identityViaVerifyService
+      ? await this.prisma.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } })
+      : null;
+    if (onboarding?.status !== OnboardingStatus.APPROVED || idv?.status === IdentityVerificationStatus.REJECTED) {
       throw new ForbiddenException("The patient's identity and onboarding checks must be approved before prescribing");
     }
   }

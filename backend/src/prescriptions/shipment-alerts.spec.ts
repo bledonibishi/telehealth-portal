@@ -105,11 +105,21 @@ describe('evaluateShipment', () => {
         expect(alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(CYCLE - 2) }], hasCheckIns: true, latestCheckIn: done(2, 1, 'HOLD') })).toBeNull();
       });
 
-      it('skips two cycles when the hold was made after the first one was already late', () => {
-        // Held one and a half cycles after shipping: that belongs to month 2, so month 3 is next.
-        const shipped = 3 * CYCLE - 2;
-        const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(shipped) }], hasCheckIns: true, latestCheckIn: done(shipped - 1.5 * CYCLE, shipped - 1.5 * CYCLE - 1, 'HOLD') });
-        expect(a!.nextDueAt.getTime()).toBe(daysAgo(shipped).getTime() + 3 * CYCLE * DAY);
+      // Shipped on day 0 of a 28-day cycle; the supply dates after it are day 28, 56, 84 …
+      const nextDueDayAfterHoldOn = (day: number) => {
+        const shipped = 3 * CYCLE;
+        const a = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(shipped) }], hasCheckIns: true, latestCheckIn: done(shipped - day, shipped - day - 0.5, 'HOLD') }, { leadDays: 36_500 });
+        return (a!.nextDueAt.getTime() - daysAgo(shipped).getTime()) / DAY;
+      };
+
+      it.each([25, 28, 31, 40])('skips one month, not two, for a hold on a check-in done on day %i', (day) => {
+        // Early, on time or late, it is the day-28 supply that was held: the next one is day 56.
+        expect(nextDueDayAfterHoldOn(day)).toBe(2 * CYCLE);
+      });
+
+      it('skips the month the check-in was nearest to when no supply went out for a long time', () => {
+        // Day 50 is six days before the day-56 supply: that is the one held, so day 84 is next.
+        expect(nextDueDayAfterHoldOn(50)).toBe(3 * CYCLE);
       });
 
       it('does not treat a hold that is still awaiting review as a skipped month', () => {

@@ -142,9 +142,10 @@ describe('CliniciansService team management', () => {
   });
 
   describe('deactivate', () => {
-    it('turns the account off, voids any link, puts claimed consultations back in the queue, and says so in the audit log', async () => {
+    // tokenVersion moves on so a session open at this moment stays dead even if the account is reactivated later.
+    it('turns the account off, ends its sessions for good, voids any link, puts claimed consultations back in the queue, and says so in the audit log', async () => {
       await service.deactivate('admin-1', 'c-2');
-      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-2' }, data: { deactivatedAt: expect.any(Date), inviteToken: null, inviteTokenExpiresAt: null } });
+      expect(prisma.clinician.update).toHaveBeenCalledWith({ where: { id: 'c-2' }, data: { deactivatedAt: expect.any(Date), tokenVersion: { increment: 1 }, inviteToken: null, inviteTokenExpiresAt: null } });
       expect(prisma.consultation.updateMany).toHaveBeenCalledWith({ where: { clinicianId: 'c-2', status: 'IN_REVIEW' }, data: { status: 'SUBMITTED', clinicianId: null } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'CLINICIAN_DEACTIVATED', metadata: { releasedConsultations: 2 } }), prisma);
     });

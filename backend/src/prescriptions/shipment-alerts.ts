@@ -78,8 +78,10 @@ export function evaluateShipment(
   let skippedCycles = 0;
   let check = latest;
   if (latest?.outcome === 'HOLD' && latest.reviewedAt) {
-    const elapsed = latest.completedAt!.getTime() - lastShippedAt.getTime() - OVERDUE_AFTER_DAYS * DAY_MS;
-    skippedCycles = Math.max(Math.floor(elapsed / cycleMs), 0) + 1;
+    // Which month was it made for? The supply date it was completed nearest to: a check-in done a week or two late
+    // still belongs to the month it is late for, and one done shortly before a supply date belongs to that date.
+    const sinceShipped = latest.completedAt!.getTime() - lastShippedAt.getTime();
+    skippedCycles = Math.max(Math.ceil((sinceShipped - cycleMs / 2) / cycleMs), 1);
     check = null; // that check-in belongs to the month that was skipped, not to the next one
   }
 

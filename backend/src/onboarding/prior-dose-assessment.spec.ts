@@ -106,6 +106,19 @@ describe('assessPriorDose', () => {
     expect(a.findings.map((f) => f.message)).toContain('Document shows 2.5 mg, but the patient said 7.5 mg');
   });
 
+  it.each([
+    ['a name that only partly matches', { patientName: 'Ann' }],
+    ['no name on it', { patientName: null }],
+    ['no date on it', { documentDate: null }],
+    ['a date in the future', { documentDate: '2026-11-20' }],
+    ['a date too long ago', { documentDate: '2025-10-01' }],
+  ])('does not count the dose as verified from a document with %s', (_n, over) => {
+    const a = assessPriorDose(input({ document: doc(over as Partial<DocumentReading>) }));
+    expect(a.verifiedStep).toBeNull();
+    // Still there for the clinician to look at: it is the verified status that is withheld, not the document.
+    expect(a.checks.find((c) => c.key === 'DOSE')?.value).toBe('2.5 mg');
+  });
+
   it('treats a document in someone else’s name as unverified evidence', () => {
     const a = assessPriorDose(input({ document: doc({ patientName: 'John Smith' }) }));
     expect(a.riskLevel).toBe('HIGH');

@@ -145,6 +145,17 @@ describe('PrescribingService first decision', () => {
     });
   });
 
+  it('stops a decision when the identity check is rejected after onboarding was approved', async () => {
+    const approved = { ...submitted, status: 'APPROVED', identityViaVerifyService: true };
+    expect(await build(approved, { status: 'REJECTED' }).service.notReadyReason('p-1')).toMatch(/identity check was rejected/);
+    await expect(build(approved, { status: 'REJECTED' }).service.assertReadyForDecision('p-1')).rejects.toThrow(ForbiddenException);
+    await expect(build(approved, { status: 'REJECTED' }).service.assertIdentityVerified('p-1')).rejects.toThrow(ForbiddenException);
+    // An approved result, or a patient whose identity a clinician checked by hand, is unaffected.
+    expect(await build(approved, { status: 'APPROVED' }).service.notReadyReason('p-1')).toBeNull();
+    expect(await build({ ...approved, identityViaVerifyService: false }, { status: 'REJECTED' }).service.notReadyReason('p-1')).toBeNull();
+    await expect(build(approved, { status: 'APPROVED' }).service.assertIdentityVerified('p-1')).resolves.toBeUndefined();
+  });
+
   it('leaves an onboarding that was already approved alone, and refuses to approve over an identity rejection', async () => {
     const approved = build({ ...submitted, status: 'APPROVED' });
     expect(await approved.service.approveOnboarding(approved.prisma, 'p-1', 'doc-1')).toBe(false);

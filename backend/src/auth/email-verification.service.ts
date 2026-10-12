@@ -73,19 +73,27 @@ export class EmailVerificationService {
     if (!row?.codeHash || !row.codeSalt || !row.codeExpiresAt || row.codeExpiresAt.getTime() < now.getTime()) {
       throw new BadRequestException('That code has expired. Please ask for a new one.');
     }
-    if (row.attempts >= MAX_WRONG_CODES) throw new BadRequestException('Too many wrong codes. Please ask for a new one.');
+    // Counted before the code is compared, and only while tries remain: guesses sent at the same moment each use one up.
+    const tooMany = () => new BadRequestException('Too many wrong codes. Please ask for a new one.');
+    if (row.attempts >= MAX_WRONG_CODES) throw tooMany();
+    const counted = await this.prisma.emailVerification.updateMany({
+      where: { email, codeHash: row.codeHash, attempts: { lt: MAX_WRONG_CODES } },
+      data: { attempts: { increment: 1 } },
+    });
+    if (counted.count !== 1) throw tooMany();
 
     if (!same(row.codeHash, sha256(`${row.codeSalt}:${code.trim()}`))) {
-      await this.prisma.emailVerification.update({ where: { email }, data: { attempts: { increment: 1 } } });
       throw new BadRequestException('That code isn’t right. Please check it and try again.');
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    await this.prisma.emailVerification.update({
-      where: { email },
+    const exchanged = await this.prisma.emailVerification.updateMany({
+      // Matching on the code makes it single-use even if two requests carry the right one.
+      where: { email, codeHash: row.codeHash },
       // The code works once; the proof lasts long enough to finish the quiz, and to retry if saving fails.
       data: { codeHash: null, codeSalt: null, codeExpiresAt: null, attempts: 0, tokenHash: sha256(token), tokenExpiresAt: new Date(now.getTime() + TOKEN_TTL_MS) },
     });
+    if (exchanged.count !== 1) throw new BadRequestException('That code has expired. Please ask for a new one.');
     return token;
   }
 
