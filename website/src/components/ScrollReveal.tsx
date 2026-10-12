@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 const SEL = [
   '.pv-hero-copy', '.pv-hero-visual', '.pv-feature', '.th-section-head',
   '.th-product-card-hrt', '.th-product-card-glp', '.pv-bmi-shell',
-  '.th-step-card', '.th-trust-band', '.pv-page-head', '.pv-stats-split',
+  '.th-step-card', '.pv-page-head', '.pv-stats-split',
   '.pv-stat', '.pv-info-card', '.pv-contact-photo-wrap', '.pv-form-card',
 ].join(',');
 
