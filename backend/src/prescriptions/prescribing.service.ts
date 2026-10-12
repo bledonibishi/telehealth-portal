@@ -258,17 +258,21 @@ export class PrescribingService {
     ]);
     const ordered = await findGlp1Dose(db, orderedTreatmentText(patient?.lead?.quizAnswers));
     const proof = onboarding?.prescriptionProofReview as
-      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null } }
+      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null; documentVerifiesPriorUse?: boolean | null } }
       | null
       | undefined;
     // A patient who said they have no proof isn't verified, whatever an earlier upload showed.
     const noProof = onboarding?.prescriptionProofUnavailable === true;
     const proofCurrent = !noProof && !!proof && proof.fileId === onboarding?.prescriptionProofFileId;
+    // The proof on file failed its name or date check: approving the onboarding does not turn it into verified prior use.
+    // The prescriber can still go above the starting dose, with a reason (a soft rule). Reviews stored before this
+    // result existed carry no verdict and are left as they were.
+    const proofFailedChecks = proofCurrent && proof!.assessment?.documentVerifiesPriorUse === false;
     return checkPrescribingRules({
       kind: input.kind,
       items,
       answers: input.answers,
-      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof,
+      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof && !proofFailedChecks,
       currentGlp1Step: current,
       priorDoseSafeMaxStep: proofCurrent ? proof!.assessment?.safeMaxStep ?? null : null,
       priorDoseSafeMaxLabel: proofCurrent ? proof!.assessment?.safeMaxDoseLabel ?? null : null,

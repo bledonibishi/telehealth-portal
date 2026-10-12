@@ -74,13 +74,13 @@ export class EmailVerificationService {
       throw new BadRequestException('That code has expired. Please ask for a new one.');
     }
     // Counted before the code is compared, and only while tries remain: guesses sent at the same moment each use one up.
-    const tooMany = () => new BadRequestException('Too many wrong codes. Please ask for a new one.');
-    if (row.attempts >= MAX_WRONG_CODES) throw tooMany();
+    const tooManyWrong = () => new BadRequestException('Too many wrong codes. Please ask for a new one.');
+    if (row.attempts >= MAX_WRONG_CODES) throw tooManyWrong();
     const counted = await this.prisma.emailVerification.updateMany({
       where: { email, codeHash: row.codeHash, attempts: { lt: MAX_WRONG_CODES } },
       data: { attempts: { increment: 1 } },
     });
-    if (counted.count !== 1) throw tooMany();
+    if (counted.count !== 1) throw tooManyWrong();
 
     if (!same(row.codeHash, sha256(`${row.codeSalt}:${code.trim()}`))) {
       throw new BadRequestException('That code isn’t right. Please check it and try again.');

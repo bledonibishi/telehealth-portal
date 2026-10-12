@@ -112,14 +112,20 @@ describe('evaluateShipment', () => {
         return (a!.nextDueAt.getTime() - daysAgo(shipped).getTime()) / DAY;
       };
 
-      it.each([25, 28, 31, 40])('skips one month, not two, for a hold on a check-in done on day %i', (day) => {
-        // Early, on time or late, it is the day-28 supply that was held: the next one is day 56.
+      it.each([25, 28, 31, 40, 43, 50])('skips one supply, not two, for a hold on a check-in done on day %i', (day) => {
+        // Early, on time or weeks late, it is the day-28 supply that was held (nothing went out for it): day 56 is next.
         expect(nextDueDayAfterHoldOn(day)).toBe(2 * CYCLE);
       });
 
-      it('skips the month the check-in was nearest to when no supply went out for a long time', () => {
-        // Day 50 is six days before the day-56 supply: that is the one held, so day 84 is next.
-        expect(nextDueDayAfterHoldOn(50)).toBe(3 * CYCLE);
+      it.each([52, 56, 60])('holds the day-56 supply when the check-in was done for that one (day %i)', (day) => {
+        // From the last few days before day 56 on, the check-in is that supply's: day 84 is next.
+        expect(nextDueDayAfterHoldOn(day)).toBe(3 * CYCLE);
+      });
+
+      it('reads the same from the patient’s refill button, which looks much further ahead than the alert does', () => {
+        const shipped = 3 * CYCLE;
+        const far = alertFor({ orders: [{ status: 'DELIVERED', dispatchedAt: daysAgo(shipped) }], hasCheckIns: true, latestCheckIn: done(shipped - 31, shipped - 32, 'HOLD') }, { leadDays: 36_500 });
+        expect((far!.nextDueAt.getTime() - daysAgo(shipped).getTime()) / DAY).toBe(2 * CYCLE);
       });
 
       it('does not treat a hold that is still awaiting review as a skipped month', () => {

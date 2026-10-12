@@ -134,6 +134,8 @@ describe('AuthService', () => {
       const stored = reset.create.mock.calls[0][0].data;
       expect(stored.tokenHash).not.toBe(token);
       expect(stored.tokenHash).toBe(hashResetToken(token));
+      // Tied to the session version the account had when the link was asked for.
+      expect(stored.tokenVersion).toBe(0);
       // Older links go only after the new one was sent.
       await new Promise((r) => setImmediate(r));
       expect(reset.deleteMany).toHaveBeenCalledWith({ where: expect.objectContaining({ id: { not: 'new-row' }, usedAt: null }) });
@@ -181,6 +183,32 @@ describe('AuthService', () => {
       expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'patient-1' }, data: { passwordHash: 'new-hash', tokenVersion: { increment: 1 } } });
       expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_RESET' }), prisma);
       expect((email as any).sendPasswordChangedEmail).toHaveBeenCalled();
+    });
+
+    it('refuses a link asked for before the password was last changed, even one created just after that change', async () => {
+      // The request read the account at version 2; the password was then changed (version 3) before the link was used.
+      reset.findUnique.mockResolvedValue(row({ tokenVersion: 2 }));
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 3 });
+      await expect(service.resetPassword('tok', 'a-good-password-1')).rejects.toThrow(/invalid or has expired/);
+      expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_PASSWORD_RESET_FAILED', metadata: expect.objectContaining({ reason: 'SUPERSEDED' }) }));
+    });
+
+    it('refuses it too when the password changes while the new one is being hashed', async () => {
+      reset.findUnique.mockResolvedValue(row({ tokenVersion: 2 }));
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 2 });
+      prisma.patient.updateMany.mockResolvedValue({ count: 0 }); // the version moved on before the write
+      await expect(service.resetPassword('tok', 'a-good-password-1')).rejects.toThrow(/invalid or has expired/);
+      expect(prisma.patient.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'patient-1', tokenVersion: 2 } }));
+    });
+
+    it('accepts a link at the current version, and one issued before links carried a version', async () => {
+      reset.findUnique.mockResolvedValue(row({ tokenVersion: 2 }));
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 2 });
+      await expect(service.resetPassword('tok', 'a-good-password-1')).resolves.toBe(true);
+      reset.findUnique.mockResolvedValue(row({ tokenVersion: null }));
+      prisma.patient.findUnique.mockResolvedValue({ ...PATIENT, tokenVersion: 7 });
+      await expect(service.resetPassword('tok', 'a-good-password-1')).resolves.toBe(true);
     });
 
     it.each([

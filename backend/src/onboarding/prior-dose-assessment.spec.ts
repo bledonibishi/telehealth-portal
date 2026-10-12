@@ -115,8 +115,17 @@ describe('assessPriorDose', () => {
   ])('does not count the dose as verified from a document with %s', (_n, over) => {
     const a = assessPriorDose(input({ document: doc(over as Partial<DocumentReading>) }));
     expect(a.verifiedStep).toBeNull();
+    expect(a.documentVerifiesPriorUse).toBe(false);
     // Still there for the clinician to look at: it is the verified status that is withheld, not the document.
     expect(a.checks.find((c) => c.key === 'DOSE')?.value).toBe('2.5 mg');
+  });
+
+  it('says whether the document stands as proof, and gives no verdict when there was nothing to read', () => {
+    expect(assessPriorDose(input()).documentVerifiesPriorUse).toBe(true);
+    expect(assessPriorDose(input({ document: doc({ patientName: 'John Smith' }) })).documentVerifiesPriorUse).toBe(false);
+    expect(assessPriorDose(input({ document: doc({ isPrescriptionEvidence: false }) })).documentVerifiesPriorUse).toBe(false);
+    expect(assessPriorDose(input({ document: doc({ readable: false }) })).documentVerifiesPriorUse).toBeNull();
+    expect(assessPriorDose(input({ document: null })).documentVerifiesPriorUse).toBeNull();
   });
 
   it('treats a document in someone else’s name as unverified evidence', () => {

@@ -129,6 +129,10 @@ export interface Assessment {
   // Titration step on the requested product that the document proves. Null
   // unless the document is readable, in the patient's name and the same medicine.
   verifiedStep: number | null;
+  // Whether the document stands as proof of earlier use: it is prescription evidence, fully in the patient's name and
+  // dated within the window. False when one of those failed; null when no document could be read, so there was nothing
+  // to judge. Stored with the review and read when prescribing (see PrescribingService.evaluate).
+  documentVerifiesPriorUse: boolean | null;
   // Highest step it would be safe to prescribe next, if it could be worked out.
   safeMaxStep: number | null;
   safeMaxDoseLabel: string | null;
@@ -499,6 +503,7 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
     riskLevel: risk,
     nameMatch,
     verifiedStep,
+    documentVerifiesPriorUse: document?.readable ? documentTrusted && proofVerifiesDose : null,
     safeMaxStep,
     safeMaxDoseLabel: safeMaxStep !== null && requested ? labelForStep(requested.ladder, safeMaxStep) : null,
     requestedDoseLabel: requested?.label ?? null,
