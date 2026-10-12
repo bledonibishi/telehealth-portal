@@ -484,7 +484,7 @@ describe('OrdersService', () => {
 
     it('refuses once all repeats are used', async () => {
       withOrders([1, 2, 3].map((sequence) => ({ status: 'DELIVERED', sequence })));
-      await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/All repeats/);
+      await expect(service.createRepeat('doc-1', 'rx-1')).rejects.toThrow(/no repeats left/);
     });
 
     it('refuses while another order is still pending', async () => {

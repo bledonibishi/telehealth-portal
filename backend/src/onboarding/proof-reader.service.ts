@@ -14,8 +14,8 @@ export const DEFAULT_PROOF_READER_MODEL = 'claude-sonnet-5-5';
 // Request options not every model accepts: sending them to the others is a 400.
 // The `effort` setting exists from Opus 4.5 / Sonnet 4.6 on (not Haiku 4.5);
 // server-side refusal fallbacks only on the newest models.
-const SUPPORTS_EFFORT = /^claude-(fable-5|opus-5|opus-4-[5-9]|sonnet-5|sonnet-4-6)/;
-const SUPPORTS_FALLBACKS = /^claude-(fable-5-1|opus-5|sonnet-5-5)/;
+export const SUPPORTS_EFFORT = /^claude-(fable-5|opus-5|opus-4-[5-9]|sonnet-5|sonnet-4-6)/;
+export const SUPPORTS_FALLBACKS = /^claude-(fable-5-1|opus-5|sonnet-5-5)/;
 
 // The API accepts these image types; HEIC (iPhone default) must be converted first.
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;

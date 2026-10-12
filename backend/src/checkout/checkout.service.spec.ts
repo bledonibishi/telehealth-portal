@@ -96,6 +96,19 @@ describe('CheckoutService per-dose prices', () => {
     expect(session.create).not.toHaveBeenCalled();
   });
 
+  it('refuses payment on health answers older than 30 days, and takes them at 29', async () => {
+    const session = { create: jest.fn().mockResolvedValue({ url: 'https://pay' }) };
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000);
+    await expect(
+      build(prismaFor({ lead: { ...LEAD, intakeSavedAt: ago(31) } }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' }),
+    ).rejects.toThrow(/more than 30 days old/);
+    expect(session.create).not.toHaveBeenCalled();
+
+    await expect(
+      build(prismaFor({ lead: { ...LEAD, intakeSavedAt: ago(29) } }), { checkout: { sessions: session } }).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' }),
+    ).resolves.not.toThrow();
+  });
+
   it('refuses another treatment’s plan price for a GLP-1 lead whose dose the catalog doesn’t know', async () => {
     const session = { create: jest.fn() };
     const lead = { ...LEAD, productKind: 'GLP1' };

@@ -78,6 +78,31 @@ export class PatientsService {
   // One query per relation (batched across all patients, not per row) so the
   // list can filter/sort by programme, review status and treatment status
   // without pulling every patient's full consultation/message history.
+  /**
+   * Finds the patients whose prescription, check-in or order has this id: the full id, or the last characters of it
+   * (the short form shown on screen, as "#x2xval74"). Too little to go on (under 6 characters) matches nothing.
+   */
+  async findByRecordId(code: string) {
+    const typed = code.trim();
+    const id = typed.replace(/^#/, '').replace(/^th-/i, '').toLowerCase();
+    if (!/^[a-z0-9]{6,40}$/.test(id)) return [];
+    // An id is looked up with a "ends with" match, which can't use an index and scans the tables, so it is only done for
+    // something that looks like an id: marked with # or TH-, or holding a digit. An ordinary name or email never does.
+    if (!/^(#|th-)/i.test(typed) && !/\d/.test(id)) return [];
+    const where = { id: { endsWith: id } };
+    const select = { id: true, patientId: true };
+    const [prescriptions, checkIns, orders] = await Promise.all([
+      this.prisma.prescription.findMany({ where, select, take: 5 }),
+      this.prisma.checkIn.findMany({ where, select, take: 5 }),
+      this.prisma.order.findMany({ where, select, take: 5 }),
+    ]);
+    return [
+      ...prescriptions.map((r) => ({ patientId: r.patientId, kind: 'PRESCRIPTION', recordId: r.id })),
+      ...checkIns.map((r) => ({ patientId: r.patientId, kind: 'CHECK_IN', recordId: r.id })),
+      ...orders.map((r) => ({ patientId: r.patientId, kind: 'ORDER', recordId: r.id })),
+    ];
+  }
+
   async findAll() {
     const rows = await this.prisma.patient.findMany({
       orderBy: { createdAt: 'desc' },

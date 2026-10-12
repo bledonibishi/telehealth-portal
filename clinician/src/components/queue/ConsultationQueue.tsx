@@ -6,6 +6,7 @@ import { QueueRow } from './QueueRow';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ErrorAlert } from '@/components/ui/Alert';
 import { SkeletonList } from '@telehealth/loading';
+import { Pagination, usePagination } from '@/components/ui/Pagination';
 
 const TH = 'px-3 py-2.5 text-xs font-medium text-gray-500';
 
@@ -16,6 +17,7 @@ export function ConsultationQueue() {
   });
 
   const consultations = data?.consultationQueue ?? [];
+  const pager = usePagination<any>(consultations);
 
   return (
     <div>
@@ -52,13 +54,14 @@ export function ConsultationQueue() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {consultations.map((c: any) => (
+                {pager.items.map((c: any) => (
                   <QueueRow key={c.id} consultation={c} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        {!error && !loading && consultations.length > 0 && <Pagination state={pager} />}
       </div>
     </div>
   );

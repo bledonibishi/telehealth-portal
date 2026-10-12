@@ -50,7 +50,7 @@ const isComplete = (r: Row) => r.productId && r.strengthId && r.quantity > 0 && 
 
 export function PrescriptionForm({
   consultationId, kind, submitting, onSubmit, onCancel,
-  submitLabel = 'Approve and issue prescription', initialItems, stepUp = false, showDoseContext = false, error,
+  submitLabel = 'Approve and issue prescription', dialog = false, top, initialItems, stepUp = false, showDoseContext = false, error,
 }: {
   consultationId: string;
   kind: 'HRT' | 'GLP1' | 'TRT';
@@ -58,6 +58,10 @@ export function PrescriptionForm({
   onSubmit: (input: PrescriptionSubmission) => void;
   onCancel: () => void;
   submitLabel?: string;
+  /** For a form that fills a dialog: the fields scroll and the buttons stay at the bottom. */
+  dialog?: boolean;
+  /** Shown above the fields, inside the scrolling area. */
+  top?: React.ReactNode;
   // Start from the patient's current medicines (e.g. at a check-in)…
   initialItems?: Row[];
   // …moving titrated ones to the next step of their protocol.
@@ -120,8 +124,7 @@ export function PrescriptionForm({
     setRows((rs) => (rs.length === 1 && !rs[0].productId ? prefill : rs));
   }, [prefilled, initialItems, products, doseContext]);
   const [notes, setNotes] = useState('');
-  const [validityDays, setValidityDays] = useState(180);
-  const [refillsAllowed, setRefillsAllowed] = useState(0);
+  const [validityDays, setValidityDays] = useState(30);
   const [overrideReason, setOverrideReason] = useState('');
 
   const [runCheck, { data: checkData }] = useLazyQuery(PRESCRIBING_CHECK, { fetchPolicy: 'network-only' });
@@ -164,7 +167,6 @@ export function PrescriptionForm({
     setTemplateId(tpl.id);
     setRows(tpl.items.map((i) => ({ productId: i.productId, strengthId: i.strengthId, quantity: i.quantity, directions: i.directions })));
     setValidityDays(tpl.validityDays);
-    setRefillsAllowed(tpl.refillsAllowed);
     setNotes(tpl.notes ?? '');
     setOverrideReason('');
   };
@@ -176,16 +178,19 @@ export function PrescriptionForm({
       items: rows.map((r) => ({ ...plain(r), directions: r.directions.trim() })),
       notes: notes.trim() || undefined,
       validityDays,
-      refillsAllowed,
+      // Every order has its own prescription, so there are no repeats to set.
+      refillsAllowed: 0,
       overrideReason: needsReason.length ? overrideReason.trim() : undefined,
     });
   };
 
-  if (loading) return <LoadingState variant="inline" label={t('Loading medicines…')} />;
-  if (!products.length) return <p className="text-sm text-danger-500">{t('No {kind} medicines are available to prescribe. An admin needs to add them to the catalog.', { kind })}</p>;
+  if (loading) return <div className={dialog ? 'px-6 py-5' : undefined}><LoadingState variant="inline" label={t('Loading medicines…')} /></div>;
+  if (!products.length) return <p className={`text-sm text-danger-500 ${dialog ? 'px-6 py-5' : ''}`}>{t('No {kind} medicines are available to prescribe. An admin needs to add them to the catalog.', { kind })}</p>;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className={dialog ? 'flex flex-col flex-1 min-h-0' : 'space-y-4'}>
+      <div className={dialog ? 'flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-4' : 'space-y-4'}>
+      {top}
       {kind === 'GLP1' && doseContext && !doseContext.hasActivePrescription && <DoseContext context={doseContext} />}
 
       {rows.map((row, i) => {
@@ -277,22 +282,15 @@ export function PrescriptionForm({
       )}
 
       <div className="border-t border-gray-100 pt-4 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="block">
-            <span className={labelCls}>{t('Valid for')}</span>
-            <Select
-              ariaLabel={t('Valid for')}
-              value={String(validityDays)}
-              onChange={(v) => setValidityDays(Number(v))}
-              options={VALIDITY_OPTIONS.map((d) => ({ value: String(d), label: t('{n} days', { n: d }) }))}
-            />
-            <span className="block text-xs text-gray-400 mt-1">{t('How long it can be dispensed')}</span>
-          </div>
-          <div className="block">
-            <span className={labelCls}>{t('Repeats')}</span>
-            <NumberStepper ariaLabel={t('Repeats')} min={0} max={11} emptyValue={0} placeholder="0" value={refillsAllowed} onChange={setRefillsAllowed} />
-            <span className="block text-xs text-gray-400 mt-1">{t('Extra supplies after the first')}</span>
-          </div>
+        <div className="block">
+          <span className={labelCls}>{t('Valid for')}</span>
+          <Select
+            ariaLabel={t('Valid for')}
+            value={String(validityDays)}
+            onChange={(v) => setValidityDays(Number(v))}
+            options={VALIDITY_OPTIONS.map((d) => ({ value: String(d), label: t('{n} days', { n: d }) }))}
+          />
+          <span className="block text-xs text-gray-400 mt-1">{t('How long it can be dispensed')}</span>
         </div>
 
         <label className="block">
@@ -336,9 +334,11 @@ export function PrescriptionForm({
         </div>
       )}
 
-      <ErrorAlert error={error} />
+      {!dialog && <ErrorAlert error={error} />}
+      </div>
+      {dialog && <div className="px-6 pt-3 bg-white"><ErrorAlert error={error} /></div>}
 
-      <div className="flex items-center gap-2 border-t border-gray-100 pt-4">
+      <div className={dialog ? 'flex items-center gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4 rounded-b-xl' : 'flex items-center gap-2 border-t border-gray-100 pt-4'}>
         <button type="submit" disabled={!canSubmit} className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-5 h-10 text-sm font-medium disabled:opacity-50 transition-colors">
           {submitting ? t('Issuing…') : t(submitLabel)}
         </button>

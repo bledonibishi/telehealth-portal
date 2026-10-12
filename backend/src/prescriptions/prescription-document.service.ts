@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PRESCRIPTION_DOCUMENT_INCLUDE, hashPrescription } from './prescribing.service';
 import { renderPrescriptionPdf } from './prescription-pdf';
+import { renderKosovoPrescriptionPdf } from './prescription-pdf-kosovo';
 
 @Injectable()
 export class PrescriptionDocumentService {
@@ -28,9 +29,9 @@ export class PrescriptionDocumentService {
   render(rx: Awaited<ReturnType<PrescriptionDocumentService['load']>>): Promise<Buffer> {
     // Legacy prescriptions (issued before structured prescribing) have no hash.
     const tampered = rx.contentHash !== null && rx.contentHash !== hashPrescription(rx);
-    return renderPrescriptionPdf(
-      { ...rx, tampered },
-      { name: this.config.get<string>('CLINIC_NAME', 'Telehealth Clinic'), address: this.config.get<string>('CLINIC_ADDRESS', '') || undefined },
-    );
+    const clinic = { name: this.config.get<string>('CLINIC_NAME', 'Telehealth Clinic'), address: this.config.get<string>('CLINIC_ADDRESS', '') || undefined };
+    // The Kosovo paper-prescription layout unless PRESCRIPTION_FORMAT=standard (the general layout, for other markets).
+    const draw = this.config.get<string>('PRESCRIPTION_FORMAT', 'kosovo') === 'standard' ? renderPrescriptionPdf : renderKosovoPrescriptionPdf;
+    return draw({ ...rx, tampered }, clinic);
   }
 }

@@ -28,6 +28,9 @@ export class PatientModel {
   @Field({ nullable: true })
   phone?: string;
 
+  @Field(() => String, { nullable: true, description: 'FEMALE, MALE, OTHER or PREFER_NOT_TO_SAY, as the patient set it on their profile' })
+  gender?: string;
+
   @Field({ nullable: true })
   addressLine1?: string;
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation } from '@apollo/client';
 import { PATIENT_LAB_RESULTS, PATIENT_TRT_MONITORING, RECORD_LAB_RESULT } from '@/graphql/labs';
-import { DEFAULT_UNIT, KIND_LABEL } from './labs-format';
+import { DEFAULT_UNIT, KIND_LABEL, suggestedRange } from './labs-format';
 import { format } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { InlineError } from '@/components/ui/Alert';
@@ -13,7 +13,7 @@ const inputCls = 'border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:
 const num = (s: string) => (s.trim() === '' ? undefined : Number(s));
 
 /** Enter a result from a lab report. Out-of-range values are flagged for review automatically. */
-export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', onDone }: { patientId: string; defaultKind?: string; onDone: () => void }) {
+export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', gender, onDone }: { patientId: string; defaultKind?: string; gender?: string | null; onDone: () => void }) {
   const { t, fmt } = useI18n();
   const [kind, setKind] = useState(defaultKind);
   const [analyteName, setAnalyteName] = useState('');
@@ -27,6 +27,8 @@ export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', o
     refetchQueries: [{ query: PATIENT_LAB_RESULTS, variables: { patientId } }, { query: PATIENT_TRT_MONITORING, variables: { patientId } }],
     awaitRefetchQueries: true,
   });
+
+  const suggestion = low.trim() === '' && high.trim() === '' ? suggestedRange(kind, gender) : null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +89,11 @@ export function RecordLabResultForm({ patientId, defaultKind = 'TESTOSTERONE', o
           <input type="date" value={collectedOn} max={format(new Date(), 'yyyy-MM-dd')} onChange={(e) => setCollectedOn(e.target.value)} className={`${inputCls} block mt-1`} />
         </label>
       </div>
+      {suggestion && (
+        <button type="button" onClick={() => { setLow(suggestion.low != null ? String(suggestion.low) : ''); setHigh(suggestion.high != null ? String(suggestion.high) : ''); }} className="text-xs text-brand-500 hover:underline">
+          {t('No range on the report? Use a typical one ({range}, {who})', { range: `${suggestion.low ?? ''}–${suggestion.high ?? ''}`, who: t(suggestion.note) })}
+        </button>
+      )}
       <InlineError error={error} size="xs" />
       <div className="flex gap-3">
         <button type="submit" disabled={loading} className="bg-brand-500 hover:bg-brand-900 disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg">

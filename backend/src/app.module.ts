@@ -17,6 +17,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { QuestionnairesModule } from './questionnaires/questionnaires.module';
 import { ConsentsModule } from './consents/consents.module';
 import { MessagingModule } from './messaging/messaging.module';
+import { AiModule } from './ai/ai.module';
 import { LeadsModule } from './leads/leads.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { StripeModule } from './stripe/stripe.module';
@@ -84,6 +85,7 @@ import { InsightsModule } from './insights/insights.module';
     QuestionnairesModule,
     ConsentsModule,
     MessagingModule,
+    AiModule,
     LeadsModule,
     ReferralsModule,
     StripeModule,

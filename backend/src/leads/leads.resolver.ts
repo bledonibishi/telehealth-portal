@@ -1,6 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent, Context } from '@nestjs/graphql';
 import { LeadsService } from './leads.service';
-import { LeadModel } from './models/lead.model';
+import { LeadModel, PreviousAssessmentModel } from './models/lead.model';
+import { PreviousAssessmentInput } from './dto/previous-assessment.input';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { SALES } from '../auth/access-roles';
@@ -32,6 +33,42 @@ export class LeadsResolver {
   @ResolveField(() => [String])
   riskReasons(@Parent() lead: LeadModel) {
     return triageEligibility(lead.productKind, lead.quizAnswers).reasons;
+  }
+
+  // How far through the website they got, from what has been saved so far.
+  @ResolveField(() => String)
+  stage(@Parent() lead: LeadModel & { checkoutDetails?: unknown }) {
+    if (lead.convertedAt) return 'PAID';
+    if (lead.checkoutDetails && Object.keys(lead.checkoutDetails as object).length > 0) return 'AT_CHECKOUT';
+    return lead.intakeSavedAt ? 'HEALTH_ANSWERED' : 'QUIZ';
+  }
+
+  @ResolveField(() => String, { nullable: true })
+  treatment(@Parent() lead: LeadModel) {
+    const answers = Array.isArray(lead.quizAnswers) ? lead.quizAnswers : [];
+    const pick = (id: string) => answers.find((a) => a.questionId === id)?.answer;
+    return pick('preferred_treatment') ?? pick('preferred_medication') ?? null;
+  }
+
+  @ResolveField(() => String, { nullable: true })
+  deliveryCity(@Parent() lead: { checkoutDetails?: { city?: string } | null }) {
+    return lead.checkoutDetails?.city ?? null;
+  }
+
+  @ResolveField(() => String, { nullable: true })
+  deliveryCountry(@Parent() lead: { checkoutDetails?: { country?: string } | null }) {
+    return lead.checkoutDetails?.country ?? null;
+  }
+
+  // Public: the email proof in the input is what guards these two (see EmailVerificationService).
+  @Query(() => PreviousAssessmentModel, { nullable: true, description: 'The answers a returning visitor gave before and never paid on, to compare with today’s. Needs the email proof.' })
+  previousAssessment(@Args('input') input: PreviousAssessmentInput) {
+    return this.leadsService.previousAssessment(input);
+  }
+
+  @Mutation(() => LeadModel, { description: 'Go on with the answers saved earlier instead of answering again. Needs the email proof.' })
+  resumeLead(@Args('input') input: PreviousAssessmentInput) {
+    return this.leadsService.resumeLead(input);
   }
 
   // Public — called from /website after quiz completion (before payment)

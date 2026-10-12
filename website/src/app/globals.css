@@ -554,3 +554,22 @@ ul,ol{list-style:none}
   #treatments,#how-it-works,#bmi{scroll-margin-top:132px}
 }
 @media (max-width:380px){.pv-treat-ico{width:28px;height:28px;border-radius:8px}.pv-treat-name{font-size:12px}}
+
+/* Returning visitor: earlier answers beside today's */
+.thq-cmp{border:1px solid #E6ECF5;border-radius:14px;overflow:hidden;background:#fff;margin-bottom:12px}
+.thq-cmp-head,.thq-cmp-row{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;padding:12px 16px;align-items:start}
+.thq-cmp-head{background:#F6F8FC;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#64748B}
+.thq-cmp-row{border-top:1px solid #EEF2F8;font-size:14px;line-height:1.45;color:#0E1A2B}
+.thq-cmp-row.is-changed{background:#FFFBEB}
+.thq-cmp-q{font-weight:600}
+.thq-cmp-a{color:#475569;word-break:break-word}
+.thq-cmp-a em{display:none;font-style:normal;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin-right:6px}
+.thq-cmp-today{color:#0E1A2B;font-weight:600}
+.thq-cmp-toggle{background:none;border:0;padding:6px 0;font:inherit;font-size:14px;font-weight:600;color:#1E4FD8;cursor:pointer}
+.thq-next-alt{background:#fff;color:#1E4FD8;border:1.5px solid #1E4FD8;box-shadow:none;margin-top:12px}
+.thq-next-alt:hover{background:#F0F5FF}
+@media (max-width:640px){
+  .thq-cmp-head{display:none}
+  .thq-cmp-row{grid-template-columns:1fr;gap:4px}
+  .thq-cmp-a em{display:inline}
+}

@@ -12,9 +12,10 @@ import { RuleItem, RuleViolation, checkPrescribingRules } from './prescribing-ru
 import { OrdersService } from './orders.service';
 import { DosingService } from '../dosing/dosing.service';
 
-export const DEFAULT_VALIDITY_DAYS = 180;
+// One prescription covers one supply (a month), so it is valid for about as long as that supply lasts.
+export const DEFAULT_VALIDITY_DAYS = 30;
 const MAX_VALIDITY_DAYS = 365;
-const MAX_REFILLS = 11;
+const MAX_DIRECTIONS = 1000;
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -160,12 +161,13 @@ export class PrescribingService {
     if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > MAX_VALIDITY_DAYS) {
       throw new BadRequestException(`Validity must be between 1 and ${MAX_VALIDITY_DAYS} days`);
     }
-    const refillsAllowed = input.refillsAllowed ?? 0;
-    if (!Number.isInteger(refillsAllowed) || refillsAllowed < 0 || refillsAllowed > MAX_REFILLS) {
-      throw new BadRequestException(`Refills must be between 0 and ${MAX_REFILLS}`);
-    }
+    // Every order gets its own prescription, so the doctor signs each supply. Repeats are not issued.
+    if (input.refillsAllowed) throw new BadRequestException('Every order needs its own prescription, so repeats cannot be added');
+    const refillsAllowed = 0;
     for (const item of input.items) {
       if (!item.directions.trim()) throw new BadRequestException('Every medicine needs directions for the patient');
+      // They are printed on the prescription and the label, so they have to fit.
+      if (item.directions.trim().length > MAX_DIRECTIONS) throw new BadRequestException(`Directions can be at most ${MAX_DIRECTIONS} characters`);
     }
 
     const issuedAt = new Date();

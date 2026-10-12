@@ -210,4 +210,15 @@ describe('PrescribingService.issue', () => {
 
     expect(dosing.generateForItem).toHaveBeenCalledWith(item, 'p-1', expect.any(Date), db);
   });
+
+  it('refuses repeats: every order gets its own prescription', async () => {
+    const { db, service } = setup([]);
+    await expect(
+      service.issue(
+        { patientId: 'p-1', prescriberId: 'd-1', kind: 'GLP1' as any, answers: [], refillsAllowed: 2, items: [{ productId: 'sema', strengthId: 'str-2', quantity: 1, directions: 'Weekly' }] },
+        db,
+      ),
+    ).rejects.toThrow(/own prescription/);
+    expect(db.prescription.create).not.toHaveBeenCalled();
+  });
 });

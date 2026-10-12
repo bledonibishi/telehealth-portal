@@ -10,6 +10,7 @@ import {
   clinicianInviteEmail,
   consultationUpdateEmail,
   doseReminderEmail,
+  leadReminderEmail,
   orderUpdateEmail,
   partnerOrderEmail,
   passwordChangedEmail,
@@ -140,6 +141,15 @@ export class EmailService {
       return;
     }
     await this.deliver({ to, kind: 'check-in', ...checkInEmail({ firstName, checkInUrl }) });
+  }
+
+  /** Resolves true only once the provider has accepted it (never in development, where nothing is sent). */
+  async sendLeadReminderEmail(to: string, firstName: string, continueUrl: string, unsubscribeUrl: string, last: boolean): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Lead reminder${last ? ' (last)' : ''} to ${to}: ${continueUrl}`);
+      return false;
+    }
+    return !(await this.deliver({ to, kind: 'lead-reminder', ...leadReminderEmail({ firstName, continueUrl, unsubscribeUrl, last }) }));
   }
 
   async sendOrderUpdateEmail(

@@ -11,6 +11,7 @@ import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
 import { getToken } from '@/lib/auth';
 import { SkeletonMessages } from '@telehealth/loading';
+import { DraftReplyButton, TranslateMessage, UrgentTag, useUrgentMessages } from '@/components/ai/MessageAiTools';
 
 type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
 
@@ -44,6 +45,7 @@ export default function PatientChatWindow({
   const me = useMemo(currentUserId, []);
   const [minimised, setMinimised] = useState(false);
   const [content, setContent] = useState('');
+  const urgent = useUrgentMessages(patientId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -232,6 +234,7 @@ export default function PatientChatWindow({
                       {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : t('Care team')}
                     </span>
                   )}
+                  {urgent.has(row.m.id) && <div className="mb-1 px-1"><UrgentTag reason={urgent.get(row.m.id) ?? ''} /></div>}
                   <div
                     className={`max-w-[82%] rounded-[20px] px-3.5 py-2 text-[15px] leading-snug whitespace-pre-wrap break-words ${
                       row.isMe
@@ -245,14 +248,18 @@ export default function PatientChatWindow({
                       {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}
                     </span>
                   </div>
+                  {row.m.senderRole === 'PATIENT' && <div className="max-w-[82%] px-1"><TranslateMessage messageId={row.m.id} /></div>}
                 </div>
               ),
             )}
           </div>
 
+          <div className="shrink-0 border-t border-sky-100 bg-[#f4f9ff] px-3 pt-2">
+            <DraftReplyButton patientId={patientId} consultationId={replyTo ?? null} onDraft={(text) => { setContent(text); inputRef.current?.focus(); }} />
+          </div>
           <form
             onSubmit={(e) => { e.preventDefault(); submit(); }}
-            className="shrink-0 border-t border-sky-100 bg-[#f4f9ff] p-3 flex items-end gap-2"
+            className="shrink-0 bg-[#f4f9ff] p-3 flex items-end gap-2"
           >
             <textarea
               ref={inputRef}
