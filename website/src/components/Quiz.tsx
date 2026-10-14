@@ -213,8 +213,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
       setRestored(true);
     }
     // Read once (the storage is cleared as it is read), so a second run of this effect must not wipe what the first found.
+    // A height and weight the patient already answered with stays theirs: the calculator only fills an empty question.
     const fromCalculator = questions.some((qq) => qq.type === 'measure') ? takeBmiCarry() : null;
-    if (fromCalculator) setCarried(fromCalculator);
+    if (fromCalculator && !saved?.answers?.bmi) setCarried(fromCalculator);
     setHydrated(true);
   }, [product, questions]);
 

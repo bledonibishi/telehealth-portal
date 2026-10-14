@@ -13,6 +13,8 @@ interface SuccessInfo {
   firstName?: string;
   email?: string;
   referralLink?: string;
+  /** The referral reward as the backend pays it, e.g. "€20.00". */
+  referralRewardLabel?: string;
 }
 
 const POLL_MS = 2000;
@@ -91,6 +93,8 @@ function SuccessInner() {
   const email = info?.email ?? storedEmail;
   const portalUrl = `${CONFIG.PORTAL_URL}/get-started${email ? `?email=${encodeURIComponent(email)}` : ''}`;
   const hasStores = Boolean(CONFIG.APP_STORE_URL || CONFIG.PLAY_STORE_URL);
+  // Shown in the currency the backend actually pays it in ("€20.00" → "€20"); until that is known, no amount is promised.
+  const reward = info?.referralRewardLabel?.replace(/[.,]00$/, '');
 
   return (
     <main>
@@ -99,16 +103,18 @@ function SuccessInner() {
           <div className="pv-result-icon success">✓</div>
           <h1 className="pv-result-h1">You&apos;re all set{info?.firstName ? `, ${info.firstName}` : ''}!</h1>
           <p className="pv-result-sub" style={{ marginBottom: 0 }}>
-            Your payment went through and your answers are saved. One last step in the app, then a doctor reviews everything.
+            Your payment went through and your answers are saved. A few last steps in the app, then a doctor reviews everything.
           </p>
         </div>
 
         <div className="th-success-card highlight">
           <h2>Next: check your email</h2>
           <p>
-            We&apos;ve sent a link to {email ? <strong>{email}</strong> : 'the address you gave us'}. Open it to choose your
-            password, then add the last things the doctor needs: your date of birth and address, a photo of your ID and a
-            full-body photo (and proof of your current treatment, if you&apos;re already on one).
+            {info?.ready ? 'A link to choose your password is on its way to ' : 'We’re setting up your account. A link to choose your password will arrive at '}
+            {email ? <strong>{email}</strong> : 'the address you gave us'}
+            {info?.ready ? '.' : ' in a minute or two.'} Open it, then add what the doctor still needs: usually your date of
+            birth and address, a photo of your ID and a full-body photo (and proof of your current treatment, if you&apos;re
+            already on one). The app shows exactly what&apos;s left.
           </p>
           <p style={{ margin: 0, fontSize: 14 }}>
             No email after a few minutes? Check your spam folder, or{' '}
@@ -120,8 +126,15 @@ function SuccessInner() {
         </div>
 
         <div className="th-success-card referral">
-          <h2>Give <span className="th-price">€20</span>, get <span className="th-price">€20</span></h2>
-          <p>Share your link. When a friend joins, they get <span className="th-price">€20</span> off their first order and you get <span className="th-price">€20</span> off your next one.</p>
+          {reward ? (
+            <h2>Give <span className="th-price">{reward}</span>, get <span className="th-price">{reward}</span></h2>
+          ) : (
+            <h2>Give a discount, get a discount</h2>
+          )}
+          <p>
+            Share your link. When a friend joins, they get {reward ? <span className="th-price">{reward}</span> : 'a discount'} off
+            their first order and you get {reward ? <span className="th-price">{reward}</span> : 'the same'} off your next one.
+          </p>
           {info?.referralLink ? (
             <div className="th-ref-row">
               <input className="th-ref-input" readOnly value={info.referralLink} onFocus={(e) => e.target.select()} />
@@ -143,7 +156,7 @@ function SuccessInner() {
           <div className="pv-result-steps" style={{ marginBottom: 0 }}>
             <div className="pv-result-step">
               <div className="pv-result-step-num">1</div>
-              <span>Set your password from the email, then add your ID and photos in the app. Your health answers are already there.</span>
+              <span>Set your password from the email, then add your ID and photos in the app. Your health answers come with you; the app asks only for anything still missing.</span>
             </div>
             <div className="pv-result-step">
               <div className="pv-result-step-num">2</div>
