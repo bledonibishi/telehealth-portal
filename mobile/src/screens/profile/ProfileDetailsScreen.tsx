@@ -26,7 +26,8 @@ export function ProfileDetailsScreen() {
     const height = form.height.trim() ? Number(form.height.replace(',', '.')) : undefined;
     try {
       await save({ variables: { input: {
-        phone: form.phone.trim(),
+        // The phone can be changed but not emptied (deliveries need it), so a blank box leaves it as it is.
+        ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
         allergies: form.allergies.trim(),
         emergencyContactName: form.emergencyContactName.trim(),
         emergencyContactPhone: form.emergencyContactPhone.trim(),

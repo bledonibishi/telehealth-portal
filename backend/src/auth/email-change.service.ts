@@ -39,12 +39,14 @@ export class EmailChangeService {
 
   private async assertFree(newEmail: string, currentEmail: string) {
     if (newEmail === currentEmail.toLowerCase()) throw appError(ErrorCode.BAD_REQUEST, 'That is already your email address.');
-    const [patient, clinician] = await Promise.all([
+    // A lead (someone who filled in the quiz) counts too: when they pay, their address must still be theirs to turn into an account.
+    const [patient, clinician, lead] = await Promise.all([
       this.prisma.patient.findUnique({ where: { email: newEmail }, select: { id: true } }),
       this.prisma.clinician.findUnique({ where: { email: newEmail }, select: { id: true } }),
+      this.prisma.lead.findUnique({ where: { email: newEmail }, select: { id: true } }),
     ]);
     // Same wording whichever table it was found in; it does not say whose address it is.
-    if (patient || clinician) throw appError(ErrorCode.BAD_REQUEST, 'That email address can’t be used. Please choose another.');
+    if (patient || clinician || lead) throw appError(ErrorCode.BAD_REQUEST, 'That email address can’t be used. Please choose another.');
   }
 
   /** Step 1: check the password and send a code to the new address. */
@@ -56,27 +58,43 @@ export class EmailChangeService {
     return true;
   }
 
-  /** Step 2: the code proves the new inbox is theirs; the address changes and the other sessions end. */
-  async confirm(patientId: string, rawNewEmail: string, code: string, attempt: LoginAttempt = {}) {
+  /**
+   * Step 2: the code proves the new inbox is theirs; the address changes and the other sessions end. The password is asked
+   * for again here: the code alone could be fetched by anyone holding a borrowed session, who never took step 1.
+   */
+  async confirm(patientId: string, rawNewEmail: string, code: string, password: string, attempt: LoginAttempt = {}) {
     const newEmail = normalise(rawNewEmail);
-    const row = await this.prisma.patient.findUnique({ where: { id: patientId } });
-    if (!row) throw appError(ErrorCode.NOT_FOUND, 'We couldn’t find your account.');
+    const row = await this.patientWithPassword(patientId, password, attempt);
     await this.assertFree(newEmail, row.email);
     await this.verification.verifyCode(newEmail, code);
 
     const oldEmail = row.email;
-    await this.prisma.$transaction(async (tx: any) => {
-      const changed = await tx.patient.updateMany({
-        where: { id: patientId, email: oldEmail, tokenVersion: row.tokenVersion ?? 0 },
-        data: { email: newEmail, tokenVersion: { increment: 1 } },
-      });
-      if (changed.count !== 1) throw appError(ErrorCode.CONFLICT);
-      await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'AUTH_EMAIL_CHANGED', resourceType: 'Patient', resourceId: patientId, metadata: { ...attempt } }, tx);
-    });
     try {
-      await this.email.sendEmailChangedEmail(oldEmail, row.firstName, newEmail);
+      await this.prisma.$transaction(async (tx: any) => {
+        const changed = await tx.patient.updateMany({
+          where: { id: patientId, email: oldEmail, tokenVersion: row.tokenVersion ?? 0 },
+          data: { email: newEmail, tokenVersion: { increment: 1 } },
+        });
+        if (changed.count !== 1) throw appError(ErrorCode.CONFLICT, 'Something on your account changed a moment ago. Please start again and ask for a new code.');
+        // A reset link already sent to the old address must not work any more: it would hand the account to whoever still reads that inbox.
+        await tx.passwordReset.updateMany({ where: { accountType: 'PATIENT', accountId: patientId, usedAt: null }, data: { usedAt: new Date() } });
+        await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'AUTH_EMAIL_CHANGED', resourceType: 'Patient', resourceId: patientId, metadata: { from: oldEmail, to: newEmail, ...attempt } }, tx);
+      });
+    } catch (err: any) {
+      // Someone took the address between the check and the save.
+      if (err?.code === 'P2002') throw appError(ErrorCode.BAD_REQUEST, 'That email address can’t be used. Please choose another.');
+      throw err;
+    }
+    // The old inbox is told; if that could not be sent, it is recorded so the team can see it.
+    let noticeSent = false;
+    try {
+      noticeSent = await this.email.sendEmailChangedEmail(oldEmail, row.firstName, newEmail);
     } catch (err: any) {
       this.logger.error(`Email-changed notice to ${patientId} failed: ${err.message}`);
+    }
+    if (!noticeSent) {
+      this.logger.warn(`The email-changed notice for ${patientId} was not delivered`);
+      await this.audit.log({ actorId: patientId, actorRole: UserRole.PATIENT, action: 'AUTH_EMAIL_CHANGED_NOTICE_NOT_SENT', resourceType: 'Patient', resourceId: patientId, metadata: {} }).catch(() => undefined);
     }
     return this.auth.issueTokens(patientId, UserRole.PATIENT, (row.tokenVersion ?? 0) + 1);
   }

@@ -34,7 +34,7 @@ export function ChangeEmailScreen({ navigation }: any) {
   const verify = async () => {
     setProblem(null);
     try {
-      const res = await confirm({ variables: { newEmail: newEmail.trim(), code: code.trim() } });
+      const res = await confirm({ variables: { newEmail: newEmail.trim(), code: code.trim(), currentPassword: password } });
       const tokens = res.data?.confirmMyEmailChange;
       if (tokens) await setTokens(tokens.accessToken, tokens.refreshToken);
       setPassword('');
@@ -70,6 +70,7 @@ export function ChangeEmailScreen({ navigation }: any) {
             <Field label="Code" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} textContentType="oneTimeCode" />
           </View>
           <ErrorText error={problem} />
+          {!!problem && <Text style={s.lostReply}>If this keeps failing, your email may already have changed: try signing in again with the new address.</Text>}
           <Button label="Change my email" onPress={verify} loading={confirming} disabled={code.trim().length < 6} style={{ marginTop: 12 }} />
           <Button label="Use a different address" variant="outline" onPress={() => { setStep('form'); setCode(''); setProblem(null); }} style={{ marginTop: 8 }} />
         </Card>
@@ -90,4 +91,5 @@ const s = StyleSheet.create({
   label: { fontSize: 12, color: colors.slate500 },
   current: { fontSize: 16, fontWeight: '700', color: colors.ink900, marginTop: 2 },
   fields: { gap: 10, marginTop: 8 },
+  lostReply: { fontSize: 12, color: colors.slate500, marginTop: 6, lineHeight: 17 },
 });

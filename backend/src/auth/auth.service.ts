@@ -139,7 +139,8 @@ export class AuthService {
   }
 
   async loginPatient(email: string, password: string, attempt: LoginAttempt = {}) {
-    const patient = await this.prisma.patient.findUnique({ where: { email } });
+    // An address changed in the app is stored in lower case; one typed with capitals still finds it.
+    const patient = (await this.prisma.patient.findUnique({ where: { email } })) ?? (email !== email.trim().toLowerCase() ? await this.prisma.patient.findUnique({ where: { email: email.trim().toLowerCase() } }) : null);
     if (!(await this.passwordMatches(password, patient?.passwordHash))) {
       await this.auditPatientLoginFailed(email, patient?.id, patient ? 'BAD_PASSWORD' : 'UNKNOWN_EMAIL', attempt);
       throw appError(ErrorCode.INVALID_CREDENTIALS, 'Invalid credentials');

@@ -25,6 +25,10 @@ export function NotificationSettingsScreen() {
     try {
       await save({
         variables: { input: { [key]: value } },
+        // The switches read the saved preferences, so the saved answer is written back into them.
+        update: (cache, { data: result }) => {
+          if (result?.updateMyNotificationPreferences) cache.writeQuery({ query: MY_NOTIFICATION_PREFERENCES, data: { myNotificationPreferences: result.updateMyNotificationPreferences } });
+        },
         // Flips at once; Apollo puts the old value back if the server refuses.
         optimisticResponse: prefs ? { updateMyNotificationPreferences: { __typename: 'NotificationPreferencesModel', ...prefs, [key]: value } } : undefined,
       });

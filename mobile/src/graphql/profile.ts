@@ -53,8 +53,8 @@ export const REQUEST_MY_EMAIL_CHANGE = gql`
 `;
 
 export const CONFIRM_MY_EMAIL_CHANGE = gql`
-  mutation ConfirmMyEmailChange($newEmail: String!, $code: String!) {
-    confirmMyEmailChange(newEmail: $newEmail, code: $code) {
+  mutation ConfirmMyEmailChange($newEmail: String!, $code: String!, $currentPassword: String!) {
+    confirmMyEmailChange(newEmail: $newEmail, code: $code, currentPassword: $currentPassword) {
       accessToken
       refreshToken
     }

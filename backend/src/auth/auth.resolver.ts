@@ -95,9 +95,10 @@ export class AuthResolver {
     @CurrentUser() user: AuthUser,
     @Args('newEmail') newEmail: string,
     @Args('code') code: string,
+    @Args('currentPassword') currentPassword: string,
     @Context() ctx: any,
   ) {
-    return this.emailChange.confirm(user.id, newEmail, code, loginAttempt(ctx));
+    return this.emailChange.confirm(user.id, newEmail, code, currentPassword, loginAttempt(ctx));
   }
 
   @Authorized('PATIENT', ...STAFF)

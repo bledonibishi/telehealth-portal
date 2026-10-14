@@ -61,11 +61,24 @@ export class GqlThrottlerGuard extends ThrottlerGuard {
     // A clinician's invitation link passes its token as an argument of its own. Without this every invitation attempt
     // shared one bucket, and five bad links from anyone locked every invited clinician out.
     if (typeof args.token === 'string' && args.token) return args.token;
-    try {
-      return this.jwtService.verify(args.pendingToken).sub;
-    } catch {
-      return args.pendingToken;
+    if (typeof args.pendingToken === 'string') {
+      try {
+        return this.jwtService.verify(args.pendingToken).sub;
+      } catch {
+        return args.pendingToken;
+      }
     }
+    // A signed-in request with no account in its arguments (change password, change email): the limit is per signed-in
+    // person, so one patient's attempts can't use up everyone else's.
+    const bearer: string | undefined = gqlRequest(context)?.headers?.authorization;
+    if (bearer?.startsWith('Bearer ')) {
+      try {
+        return this.jwtService.verify(bearer.slice(7)).sub;
+      } catch {
+        /* not a valid token: the guards behind this one refuse it */
+      }
+    }
+    return String(args.pendingToken);
   }
 }
 
