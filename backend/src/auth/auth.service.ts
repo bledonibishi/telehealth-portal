@@ -300,6 +300,8 @@ export class AuthService {
       // second would end the session the first one just handed back.
       const changed = await (isPatient ? tx.patient : tx.clinician).updateMany({ where: { id: account.id, passwordHash: row.passwordHash, tokenVersion: row.tokenVersion ?? 0 }, data });
       if (changed.count !== 1) throw new ConflictException('Your password was changed somewhere else a moment ago. Please try again.');
+      // A reset link asked for before this must not be able to replace the new password.
+      await tx.passwordReset.deleteMany({ where: { accountType: isPatient ? 'PATIENT' : 'CLINICIAN', accountId: account.id, usedAt: null } });
       await this.audit.log({ actorId: account.id, actorRole, action: 'AUTH_PASSWORD_CHANGED', resourceType, resourceId: account.id, metadata: { ...attempt } }, tx);
     });
     await this.notifyPasswordChanged(row, isPatient);
@@ -336,7 +338,9 @@ export class AuthService {
     const created = await this.prisma.$transaction(async (tx: any) => {
       // The newest link is added first and older ones are removed only once it has been sent (below), so a refused
       // email does not leave the owner with no working link.
-      const row = await tx.passwordReset.create({ data: { accountType, accountId: account.id, tokenHash, expiresAt } });
+      // Tied to the session version read above: if the password is changed while this request is still running, the link
+      // it goes on to create is already dead.
+      const row = await tx.passwordReset.create({ data: { accountType, accountId: account.id, tokenHash, expiresAt, tokenVersion: account.tokenVersion ?? 0 } });
       await this.audit.log({ actorId: account.id, actorRole: isPatient ? UserRole.PATIENT : UserRole.CLINICIAN, action: 'AUTH_PASSWORD_RESET_REQUESTED', resourceType: accountType === 'PATIENT' ? 'Patient' : 'Clinician', resourceId: account.id, metadata: { ...attempt } }, tx);
       return row;
     });
@@ -374,6 +378,12 @@ export class AuthService {
       await failed(!account ? 'NO_ACCOUNT' : 'DEACTIVATED');
       throw invalidLink();
     }
+    // Asked for before the password was last changed (or every session ended): it must not undo that.
+    const issuedAtVersion: number | null = reset.tokenVersion ?? null;
+    if (issuedAtVersion !== null && issuedAtVersion !== (account.tokenVersion ?? 0)) {
+      await failed('SUPERSEDED');
+      throw invalidLink();
+    }
     assertAcceptablePassword(newPassword, account.email);
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
@@ -382,8 +392,8 @@ export class AuthService {
       const spent = await tx.passwordReset.updateMany({ where: { id: reset.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
       if (spent.count !== 1) return false;
       const changed = await (isPatient ? tx.patient : tx.clinician).updateMany({
-        // Checked again here: the account may have been turned off while the password was being hashed.
-        where: { id: account.id, ...(isPatient ? {} : { deactivatedAt: null }) },
+        // Checked again here: the account may have been turned off, or its password changed, while this one was being hashed.
+        where: { id: account.id, ...(isPatient ? {} : { deactivatedAt: null }), ...(issuedAtVersion === null ? {} : { tokenVersion: issuedAtVersion }) },
         data: { passwordHash, tokenVersion: { increment: 1 }, ...(isPatient ? {} : { passwordSetAt: new Date(), inviteToken: null, inviteTokenExpiresAt: null }) },
       });
       // Thrown, not returned, so the spent link rolls back with everything else.

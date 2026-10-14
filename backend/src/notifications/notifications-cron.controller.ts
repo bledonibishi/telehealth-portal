@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotifierService } from './notifier.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /**
  * The in-process @Cron timers in NotifierService only fire while some instance happens to be warm, which Vercel's
@@ -19,8 +20,7 @@ export class NotificationsCronController {
   ) {}
 
   private authorize(authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
   }
 
   @Get('unread-message-emails')

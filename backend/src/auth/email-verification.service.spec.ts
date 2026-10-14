@@ -11,11 +11,16 @@ function setup(env: Record<string, string> = {}) {
         rows.set(where.email, rows.has(where.email) ? { ...rows.get(where.email), ...update } : { ...create });
         return rows.get(where.email);
       }),
-      update: jest.fn(async ({ where, data }: any) => {
-        const next = { ...rows.get(where.email) };
+      // Like the real conditional update: nothing changes, and count is 0, unless the row still matches.
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const row = rows.get(where.email);
+        if (!row) return { count: 0 };
+        if ('codeHash' in where && row.codeHash !== where.codeHash) return { count: 0 };
+        if (where.attempts?.lt !== undefined && !(row.attempts < where.attempts.lt)) return { count: 0 };
+        const next = { ...row };
         for (const [k, v] of Object.entries<any>(data)) next[k] = v && typeof v === 'object' && 'increment' in v ? next[k] + v.increment : v;
         rows.set(where.email, next);
-        return next;
+        return { count: 1 };
       }),
     },
   };
@@ -68,6 +73,24 @@ describe('EmailVerificationService', () => {
     for (let i = 0; i < MAX_WRONG_CODES; i++) await expect(service.verifyCode('a@b.com', wrong, after(1000))).rejects.toThrow(/isn’t right/);
     // Even the right code no longer works: a new one has to be asked for.
     await expect(service.verifyCode('a@b.com', sentCode(), after(2000))).rejects.toThrow(/Too many wrong codes/);
+  });
+
+  it('counts guesses sent at the same moment, so they cannot get past the limit together', async () => {
+    const { service, sentCode } = setup();
+    await service.requestCode('a@b.com', T0);
+    const wrong = sentCode() === '000000' ? '111111' : '000000';
+    const results = await Promise.allSettled(Array.from({ length: MAX_WRONG_CODES + 4 }, () => service.verifyCode('a@b.com', wrong, after(1000))));
+    const messages = results.map((r) => (r as PromiseRejectedResult).reason.message as string);
+    expect(messages.filter((m) => /isn’t right/.test(m))).toHaveLength(MAX_WRONG_CODES);
+    expect(messages.filter((m) => /Too many wrong codes/.test(m))).toHaveLength(4);
+    await expect(service.verifyCode('a@b.com', sentCode(), after(2000))).rejects.toThrow(/Too many wrong codes/);
+  });
+
+  it('gives the proof to only one of two requests carrying the right code', async () => {
+    const { service, sentCode } = setup();
+    await service.requestCode('a@b.com', T0);
+    const results = await Promise.allSettled([service.verifyCode('a@b.com', sentCode(), after(1000)), service.verifyCode('a@b.com', sentCode(), after(1000))]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   });
 
   it('rejects an expired code and an address nobody asked a code for', async () => {

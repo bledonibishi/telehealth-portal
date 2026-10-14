@@ -4,6 +4,8 @@ const DAY_MS = 86_400_000;
 // A supply is four weeks, in step with the 4-weekly check-in (see CHECK_IN_INTERVAL_DAYS).
 export const DEFAULT_SUPPLY_CYCLE_DAYS = 28;
 export const DEFAULT_ALERT_LEAD_DAYS = 5;
+/** A check-in completed this close before a supply date is the check-in for that supply (it opens with the alert). */
+const HOLD_EARLY_WINDOW_DAYS = DEFAULT_ALERT_LEAD_DAYS;
 /** Past this many days late, a due shipment is OVERDUE rather than just DUE. */
 export const OVERDUE_AFTER_DAYS = 3;
 
@@ -78,8 +80,11 @@ export function evaluateShipment(
   let skippedCycles = 0;
   let check = latest;
   if (latest?.outcome === 'HOLD' && latest.reviewedAt) {
-    const elapsed = latest.completedAt!.getTime() - lastShippedAt.getTime() - OVERDUE_AFTER_DAYS * DAY_MS;
-    skippedCycles = Math.max(Math.floor(elapsed / cycleMs), 0) + 1;
+    // Which supply was it made for? No order has shipped since lastShippedAt, so it is the latest supply date that had
+    // come round when the check-in was completed — however late — or the first one, if none had yet. A check-in done in
+    // the last few days before a supply date is for that date. Only that supply is skipped; the next one is a cycle on.
+    const sinceShipped = latest.completedAt!.getTime() - lastShippedAt.getTime();
+    skippedCycles = Math.max(Math.floor((sinceShipped + HOLD_EARLY_WINDOW_DAYS * DAY_MS) / cycleMs), 1);
     check = null; // that check-in belongs to the month that was skipped, not to the next one
   }
 

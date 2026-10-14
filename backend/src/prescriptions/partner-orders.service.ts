@@ -270,16 +270,18 @@ export class PartnerOrdersService {
         db.partnerTransmission.findUnique({ where: { orderId } }),
       ]);
       if (!order || !tx || tx.event === CANCELLED) continue;
-      const inFlight = !!tx.claimedAt && Date.now() - tx.claimedAt.getTime() < CLAIM_TTL_MS;
-      // Never attempted and nobody is sending it now: the partner has never heard of this order.
-      if (tx.attempts === 0 && !inFlight) continue;
+      // Never attempted, nothing recorded, and no sender ever claimed it: the partner has never heard of this order.
+      // (A claim that was never released means a sender stopped half way, so something may have gone out.)
+      if (tx.attempts === 0 && tx.channels.length === 0 && !tx.claimedAt) continue;
+      // Only a finished, fully acknowledged send tells us exactly who has the order. A channel that failed or timed
+      // out may still have delivered it, so in every other case all configured channels are told.
+      const allAcknowledged = tx.status === 'SENT' && !tx.claimedAt && !tx.lastError;
       await db.partnerTransmission.update({
         where: { orderId },
         data: {
           event: CANCELLED,
           status: 'PENDING',
-          // Tell exactly the channels that took the order; if unsure (a timeout may still have landed) tell all.
-          targets: inFlight ? [] : tx.channels,
+          targets: allAcknowledged ? tx.channels : [],
           channels: [],
           attempts: 0,
           lastError: null,
@@ -414,7 +416,9 @@ export class PartnerOrdersService {
   }
 
   private async sendEmail(message: PartnerMessage) {
-    // Email carries a ping only (no patient details, no attachment); the webhook is the channel for the full order.
+    // Email carries a ping only (no patient details, no attachment): it is not a safe place for a name, an address and a
+    // prescription. The pharmacy reads those in the portal, or receives them over the webhook; the ping is what this
+    // channel delivers, so a ping that went out counts as sent.
     const { subject, html } =
       message.event === CANCELLED
         ? partnerCancelEmailSummary(message)

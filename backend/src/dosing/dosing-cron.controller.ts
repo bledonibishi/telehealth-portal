@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DosingService } from './dosing.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /**
  * The in-process @Cron in DosingService only fires while some instance
@@ -22,8 +23,7 @@ export class DosingCronController {
 
   @Get('dose-reminders')
   async triggerDoseReminders(@Headers('authorization') authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
 
     const sent = await this.dosing.sendReminders();
     this.logger.log(`Cron-triggered dose reminders: ${sent} sent`);

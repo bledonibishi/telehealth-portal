@@ -271,6 +271,18 @@ describe('PartnerOrdersService', () => {
       expect(rows.get(ORDER.id)).toMatchObject({ event: 'order.cancelled', targets: [] });
     });
 
+    it('tells every channel when one of them failed or timed out, since that send may still have landed', async () => {
+      const partial = { status: 'FAILED', channels: ['EMAIL'], attempts: 1, lastError: 'WEBHOOK: The operation was aborted due to timeout', payload: {} };
+      const { rows } = await cancelled({ ...WEBHOOK, PARTNER_ORDER_EMAIL: 'ph@x.com' }, partial);
+      expect(rows.get(ORDER.id)).toMatchObject({ event: 'order.cancelled', status: 'PENDING', targets: [] });
+    });
+
+    it('tells every channel when a sender stopped half way and never released its claim', async () => {
+      const abandoned = { status: 'PENDING', channels: ['EMAIL'], attempts: 0, claimedAt: new Date(Date.now() - 60 * 60_000), payload: {} };
+      const { rows } = await cancelled({ ...WEBHOOK, PARTNER_ORDER_EMAIL: 'ph@x.com' }, abandoned);
+      expect(rows.get(ORDER.id)).toMatchObject({ event: 'order.cancelled', targets: [] });
+    });
+
     it('does nothing for an order with no record at all', async () => {
       const { service, prisma } = build(WEBHOOK, { order: CANCELLED_ORDER });
       await service.markCancelled([ORDER.id]);
