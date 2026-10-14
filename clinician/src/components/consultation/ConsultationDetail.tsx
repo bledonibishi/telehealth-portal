@@ -62,7 +62,8 @@ function AnswerSection({ title, count, children }: { title: string; count: strin
       </button>
       {/* Animating grid rows from 0fr to 1fr slides the height to its natural size without measuring it. */}
       <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-        <div className="overflow-hidden min-h-0">
+        {/* inert + aria-hidden: folded answers are hidden from keyboard and screen-reader users, not only from sight. */}
+        <div className="overflow-hidden min-h-0" aria-hidden={!open} {...(open ? {} : { inert: '' as unknown as boolean })}>
           <div className="border-t border-gray-200 divide-y divide-gray-100">{children}</div>
         </div>
       </div>

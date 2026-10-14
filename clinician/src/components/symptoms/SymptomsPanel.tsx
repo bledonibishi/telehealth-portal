@@ -46,7 +46,11 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
   const first = assessments[0];
   const worst = scale?.options[scale.options.length - 1]?.score;
 
+  // How far along the scale a score is, from its lowest possible value (a scale may start at 1, so "none" is an empty bar).
+  const fill = (score: number, min: number, max: number) => (max > min ? Math.min(1, Math.max(0, (score - min) / (max - min))) : 0);
   const tone = (ratio: number) => (ratio >= 0.75 ? 'bg-danger-500' : ratio >= 0.5 ? 'bg-amber-500' : ratio > 0 ? 'bg-green-500' : 'bg-gray-200');
+  // The total's colour follows the scale's own severity band, not a share of the maximum (17 of 44 is Severe on the menopause scale).
+  const severityTone = (severity: string) => ({ severe: 'bg-danger-500', moderate: 'bg-amber-500', mild: 'bg-green-500' } as Record<string, string>)[severity.toLowerCase()] ?? 'bg-gray-200';
   const items: { id: string; text: string; domain: string }[] = scale?.items ?? [];
 
   return (
@@ -56,7 +60,7 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
           <p className="text-xs text-gray-400">{t('Latest')}</p>
           <p className="text-lg font-semibold text-gray-900 mt-0.5">{latest.totalScore} <span className="text-sm font-medium text-gray-500">· {latest.severity}</span></p>
           <div className="h-1.5 rounded-full bg-gray-200 mt-2 overflow-hidden">
-            <div className={`h-full rounded-full ${tone(latest.totalScore / latest.maxScore)}`} style={{ width: `${(latest.totalScore / latest.maxScore) * 100}%` }} />
+            <div className={`h-full rounded-full ${severityTone(latest.severity)}`} style={{ width: `${fill(latest.totalScore, latest.minScore, latest.maxScore) * 100}%` }} />
           </div>
         </div>
         <div className="bg-gray-50 rounded-lg px-4 py-3">
@@ -81,7 +85,7 @@ export default function SymptomsPanel({ assessments: all }: { assessments: Sympt
                 <span className="text-sm font-semibold text-gray-900">{d.score}<span className="font-normal text-gray-400">/{d.max}</span></span>
               </div>
               <div className="h-1.5 rounded-full bg-gray-100 mt-2 overflow-hidden">
-                <div className={`h-full rounded-full ${tone(d.max ? d.score / d.max : 0)}`} style={{ width: `${d.max ? (d.score / d.max) * 100 : 0}%` }} />
+                <div className={`h-full rounded-full ${tone(fill(d.score, d.min, d.max))}`} style={{ width: `${fill(d.score, d.min, d.max) * 100}%` }} />
               </div>
             </div>
           ))}
