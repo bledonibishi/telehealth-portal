@@ -293,7 +293,10 @@ export function DecisionPanel({
             <InlineError error={error} />
             <fieldset className="space-y-1.5">
               <legend className="block text-xs font-medium text-gray-700 mb-1">{t('Which step?')}</legend>
-              {redoable.map((s) => (
+              {redoable.length === 1 ? (
+                // Nothing to choose between: show the one step instead of a lone radio button.
+                <p className="text-sm font-medium text-gray-900">{t(redoable[0].label)}</p>
+              ) : redoable.map((s) => (
                 <label key={s.key} className="flex items-center gap-2 text-sm text-gray-800">
                   <input type="radio" name="redo-step" checked={redoStep === s.key} onChange={() => setRedoStep(s.key)} />
                   {t(s.label)}

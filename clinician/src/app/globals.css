@@ -5,6 +5,8 @@
 @layer base {
   html {
     @apply antialiased;
+    /* The app fills the screen and scrolls inside <main>; stop the page itself from rubber-banding past the end. */
+    overscroll-behavior: none;
   }
 
   body {

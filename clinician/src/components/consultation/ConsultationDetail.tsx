@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
@@ -46,6 +47,29 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 };
 
 const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
+
+/** A questionnaire section that folds away; open by default, so no answer is hidden unless the reader hides it. */
+function AnswerSection({ title, count, children }: { title: string; count: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="bg-white rounded-md border border-gray-200 overflow-hidden">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left">
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        <span className="flex items-center gap-2 text-xs text-gray-400">
+          {count}
+          <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+        </span>
+      </button>
+      {/* Animating grid rows from 0fr to 1fr slides the height to its natural size without measuring it. */}
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+        {/* inert + aria-hidden: folded answers are hidden from keyboard and screen-reader users, not only from sight. */}
+        <div className="overflow-hidden min-h-0" aria-hidden={!open} {...(open ? {} : { inert: '' as unknown as boolean })}>
+          <div className="border-t border-gray-200 divide-y divide-gray-100">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function ConsultationDetail({ id }: { id: string }) {
   const { t, timeAgo, fmt } = useI18n();
@@ -120,23 +144,17 @@ export function ConsultationDetail({ id }: { id: string }) {
               )}
 
               {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
-                <section key={section} className="bg-white rounded-md border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-gray-900">{t(section)}</h2>
-                    <span className="text-xs text-gray-400">{answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}</span>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {answers.map((a: any, i: number) => (
-                      <div key={a.questionId} className="px-4 py-2.5 flex flex-wrap items-baseline gap-x-6 gap-y-0.5">
-                        <p className="flex-1 basis-56 text-[13px] text-gray-500">
-                          <span className="text-gray-300 mr-2 tabular-nums">{i + 1}</span>
-                          {a.question}
-                        </p>
-                        <p className="flex-1 basis-40 text-sm font-medium text-gray-900 whitespace-pre-wrap">{a.answer}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
+                <AnswerSection key={section} title={t(section)} count={answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}>
+                  {answers.map((a: any, i: number) => (
+                    <div key={a.questionId} className="px-4 py-2.5 flex flex-wrap items-baseline gap-x-6 gap-y-0.5">
+                      <p className="flex-1 basis-56 text-[13px] text-gray-500">
+                        <span className="text-gray-300 mr-2 tabular-nums">{i + 1}</span>
+                        {a.question}
+                      </p>
+                      <p className="flex-1 basis-40 text-sm font-medium text-gray-900 whitespace-pre-wrap">{a.answer}</p>
+                    </div>
+                  ))}
+                </AnswerSection>
               ))}
             </div>
 

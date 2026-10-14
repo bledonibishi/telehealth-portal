@@ -67,7 +67,7 @@ export default function LeadsPage() {
   const { data, loading, error } = useQuery(GET_LEADS, { pollInterval: 60_000 });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('ALL');
+  const [filter, setFilter] = useState<Filter>('PENDING');
   const [programme, setProgramme] = useState('ALL');
   const [copied, setCopied] = useState<string | null>(null);
 
