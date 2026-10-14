@@ -10,7 +10,6 @@ import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
 import { IntakeQuizScreen } from '../screens/intake/IntakeQuizScreen';
 import { ConsentScreen } from '../screens/onboarding/ConsentScreen';
 import { ConsultationStatusScreen } from '../screens/consultation/ConsultationStatusScreen';
-import { MessagingScreen } from '../screens/messaging/MessagingScreen';
 import { OnboardingChecklistScreen } from '../screens/onboarding/OnboardingChecklistScreen';
 import { BasicInformationScreen } from '../screens/onboarding/BasicInformationScreen';
 import { IdPhotoScreen } from '../screens/onboarding/IdPhotoScreen';
@@ -25,18 +24,43 @@ import { OrdersScreen } from '../screens/portal/OrdersScreen';
 import { SideEffectsScreen } from '../screens/portal/SideEffectsScreen';
 import { ReportsScreen } from '../screens/portal/ReportsScreen';
 import { NotificationsScreen } from '../screens/portal/NotificationsScreen';
+import { HelpScreen } from '../screens/portal/HelpScreen';
+import { MessagesScreen } from '../screens/messaging/MessagesScreen';
+import { useUnreadMessageCount } from '../lib/useConversation';
 import { MY_PRODUCT_KIND } from '../graphql/portal';
 import { UNREAD_NOTIFICATION_COUNT } from '../graphql/operations';
 import { colors } from '../theme';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { listenForNoticeTaps, registerForPush } from '../lib/push';
 import { navigationRef } from './navigationRef';
+import { withNativeHeader } from '../lib/nativeHeader';
 
 const Stack = createNativeStackNavigator();
 const OnboardingStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const MoreStack = createNativeStackNavigator();
+
+// Screens opened with the navigator's own header bar (a back button on top): they must not leave room for the notch a second time.
+const NotificationsWithHeader = withNativeHeader(NotificationsScreen);
+const DoctorWithHeader = withNativeHeader(DoctorScreen);
+const OrdersWithHeader = withNativeHeader(OrdersScreen);
+const AccountWithHeader = withNativeHeader(AccountScreen);
+const SideEffectsWithHeader = withNativeHeader(SideEffectsScreen);
+const ReportsWithHeader = withNativeHeader(ReportsScreen);
+const NewConsultationWithHeader = withNativeHeader(IntakeQuizScreen);
+const HelpWithHeader = withNativeHeader(HelpScreen);
+const MessagesStack = createNativeStackNavigator();
+
+// The chat, and the written-request form it opens.
+function MessagesFlow() {
+  return (
+    <MessagesStack.Navigator screenOptions={{ headerTintColor: colors.ink700, headerShadowVisible: false, headerStyle: { backgroundColor: colors.page } }}>
+      <MessagesStack.Screen name="Chat" component={MessagesScreen} options={{ headerShown: false }} />
+      <MessagesStack.Screen name="Help" component={HelpWithHeader} options={{ title: '', headerBackTitle: 'Messages' }} />
+    </MessagesStack.Navigator>
+  );
+}
 
 // Development only: `__DEV__` is false in a release build, so the screen and Storybook are dropped from it.
 const StorybookScreen = __DEV__ ? require('../screens/portal/StorybookScreen').StorybookScreen : null;
@@ -46,14 +70,14 @@ function MoreFlow() {
   return (
     <MoreStack.Navigator screenOptions={{ headerTintColor: colors.ink700, headerShadowVisible: false, headerStyle: { backgroundColor: colors.page } }}>
       <MoreStack.Screen name="MoreHome" component={MoreScreen} options={{ headerShown: false }} />
-      <MoreStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: '' }} />
-      <MoreStack.Screen name="Doctor" component={DoctorScreen} options={{ title: '' }} />
-      <MoreStack.Screen name="Orders" component={OrdersScreen} options={{ title: '' }} />
-      <MoreStack.Screen name="Account" component={AccountScreen} options={{ title: '' }} />
-      <MoreStack.Screen name="SideEffects" component={SideEffectsScreen} options={{ title: '' }} />
+      <MoreStack.Screen name="Notifications" component={NotificationsWithHeader} options={{ title: '' }} />
+      <MoreStack.Screen name="Doctor" component={DoctorWithHeader} options={{ title: '' }} />
+      <MoreStack.Screen name="Orders" component={OrdersWithHeader} options={{ title: '' }} />
+      <MoreStack.Screen name="Account" component={AccountWithHeader} options={{ title: '' }} />
+      <MoreStack.Screen name="SideEffects" component={SideEffectsWithHeader} options={{ title: '' }} />
       {StorybookScreen && <MoreStack.Screen name="Storybook" component={StorybookScreen} options={{ title: 'Component library', headerBackTitle: 'More' }} />}
-      <MoreStack.Screen name="Reports" component={ReportsScreen} options={{ title: '' }} />
-      <MoreStack.Screen name="NewConsultation" component={IntakeQuizScreen} options={{ title: 'New consultation' }} />
+      <MoreStack.Screen name="Reports" component={ReportsWithHeader} options={{ title: '' }} />
+      <MoreStack.Screen name="NewConsultation" component={NewConsultationWithHeader} options={{ title: 'New consultation' }} />
     </MoreStack.Navigator>
   );
 }
@@ -72,12 +96,14 @@ function PatientTabs() {
   const kind: string | null | undefined = data?.myProductKind;
   const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { pollInterval: 60_000 });
   const unread: number = unreadData?.unreadNotificationCount ?? 0;
+  const unreadMessages = useUnreadMessageCount();
   return (
     <Tab.Navigator sceneContainerStyle={{ backgroundColor: colors.page }} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.ink700, tabBarInactiveTintColor: colors.slate400, tabBarLabelStyle: { fontSize: 11, fontWeight: '600' } }}>
       <Tab.Screen name="Status" component={ConsultationStatusScreen} options={{ title: 'Home', tabBarIcon: icon('🏠') }} />
       {kind === 'GLP1' && <Tab.Screen name="Weight" component={WeightScreen} options={{ tabBarIcon: icon('⚖️') }} />}
       {!!kind && <Tab.Screen name="Injections" component={InjectionsScreen} options={{ title: kind === 'HRT' ? 'Doses' : 'Injections', tabBarIcon: icon('💉') }} />}
-      <Tab.Screen name="Messages" component={MessagingScreen} options={{ tabBarIcon: icon('💬') }} />
+      {/* Help and messages in one place: the chat, with a button for a written request. */}
+      <Tab.Screen name="Messages" component={MessagesFlow} options={{ title: 'Messages', tabBarIcon: icon('💬'), tabBarBadge: unreadMessages > 0 ? (unreadMessages > 99 ? '99+' : unreadMessages) : undefined }} />
       <Tab.Screen name="More" component={MoreFlow} options={{ tabBarIcon: icon('☰'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined }} />
     </Tab.Navigator>
   );

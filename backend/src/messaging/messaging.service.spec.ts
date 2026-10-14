@@ -48,6 +48,7 @@ describe('MessagingService', () => {
           senderId: 'patient-1',
           senderRole: UserRole.PATIENT,
           content: 'Hello',
+          isAi: false,
         },
       });
     });
@@ -142,7 +143,7 @@ describe('MessagingService', () => {
     it('a patient with no consultation writes to their own pre-consultation thread', async () => {
       await service.sendAs(patient, { content: 'I need help with my proof' });
       expect(prisma.message.create).toHaveBeenCalledWith({
-        data: { patientId: 'patient-1', consultationId: null, senderId: 'patient-1', senderRole: 'PATIENT', content: 'I need help with my proof' },
+        data: { patientId: 'patient-1', consultationId: null, senderId: 'patient-1', senderRole: 'PATIENT', content: 'I need help with my proof', isAi: false },
       });
     });
 
@@ -279,3 +280,108 @@ describe('MessagingService', () => {
   });
 });
 
+
+describe('MessagingService and the support assistant', () => {
+  const build = () => {
+    const prisma: any = {
+      message: { create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'm-1', sentAt: new Date(), ...data })), findUnique: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
+      consultation: { findUniqueOrThrow: jest.fn().mockResolvedValue({ patientId: 'patient-1' }) },
+      patient: { findUnique: jest.fn().mockResolvedValue({ firstName: 'A', lastName: 'B' }) },
+    };
+    const bot = { onPatientMessage: jest.fn().mockResolvedValue(undefined), onStaffMessage: jest.fn().mockResolvedValue(undefined), useSender: jest.fn() };
+    const notifier = { toPatient: jest.fn().mockResolvedValue(undefined), toStaff: jest.fn().mockResolvedValue(undefined), resolve: jest.fn().mockResolvedValue(undefined) };
+    const service = new MessagingService(prisma, { log: jest.fn() } as any, { capture: jest.fn() } as any, notifier as any, undefined, bot as any);
+    return { service, bot, notifier, prisma };
+  };
+
+  it('starts the assistant’s quiet timer when a patient writes', async () => {
+    const { service, bot } = build();
+    await service.send('patient-1', UserRole.PATIENT, { consultationId: 'c-1', content: 'hi' });
+    expect(bot.onPatientMessage).toHaveBeenCalledWith({ patientId: 'patient-1', consultationId: 'c-1' });
+  });
+
+  it('makes the assistant step back when a person writes, but not when it wrote itself', async () => {
+    const { service, bot } = build();
+    await service.send('doc-1', UserRole.CLINICIAN, { consultationId: 'c-1', content: 'Hello' });
+    expect(bot.onStaffMessage).toHaveBeenCalledTimes(1);
+    await service.sendAssistant('patient-1', 'c-1', 'I can help with that');
+    expect(bot.onStaffMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels the assistant’s message and keeps the team’s "waiting for a reply" alert open', async () => {
+    const { service, prisma, notifier } = build();
+    await service.sendAssistant('patient-1', null, 'Here is how');
+    expect(prisma.message.create.mock.calls[0][0].data).toMatchObject({ isAi: true, senderId: 'ai-assistant', senderRole: UserRole.CLINICIAN });
+    expect(notifier.resolve).not.toHaveBeenCalled();
+    expect(notifier.toPatient).toHaveBeenCalled();
+  });
+
+  it('gives the assistant a way to post when the module starts', () => {
+    const { service, bot } = build();
+    service.onModuleInit();
+    expect(bot.useSender).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MessagingService attachments', () => {
+  const build = (own: number) => {
+    const tx: any = { message: { create: jest.fn().mockResolvedValue({ id: 'm-1', patientId: 'patient-1', consultationId: 'c-1', senderRole: 'PATIENT', sentAt: new Date() }) }, uploadedFile: { updateMany: jest.fn().mockResolvedValue({ count: own }) } };
+    const prisma: any = {
+      uploadedFile: { count: jest.fn().mockResolvedValue(own) },
+      consultation: { findUnique: jest.fn().mockResolvedValue({ patientId: 'patient-1' }), findFirst: jest.fn().mockResolvedValue({ id: 'c-1' }) },
+      message: { create: jest.fn(), findUnique: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) },
+      $transaction: jest.fn((fn: any) => fn(tx)),
+    };
+    return { tx, prisma, service: new MessagingService(prisma, { log: jest.fn() } as any, { capture: jest.fn() } as any) };
+  };
+  const patient = { id: 'patient-1', email: 'p@x.com', role: 'PATIENT' } as any;
+
+  it('sends a patient’s own files with the message, saved together', async () => {
+    const { service, tx, prisma } = build(1);
+    await service.sendAs(patient, { consultationId: 'c-1', content: 'screenshot', attachmentIds: ['f-1'] } as any);
+    expect(prisma.uploadedFile.count).toHaveBeenCalledWith({ where: { id: { in: ['f-1'] }, patientId: 'patient-1', kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null } });
+    expect(tx.uploadedFile.updateMany.mock.calls[0][0].data).toEqual({ messageId: 'm-1' });
+  });
+
+  it('allows a message that is only a file', async () => {
+    const { service } = build(1);
+    await expect(service.sendAs(patient, { consultationId: 'c-1', content: '', attachmentIds: ['f-1'] } as any)).resolves.toBeDefined();
+  });
+
+  it('refuses an empty message with nothing attached', async () => {
+    const { service } = build(0);
+    await expect(service.sendAs(patient, { consultationId: 'c-1', content: '   ' } as any)).rejects.toThrow(/write a message/i);
+  });
+
+  it('refuses a file that is not theirs or was already used', async () => {
+    const { service, tx } = build(0);
+    await expect(service.sendAs(patient, { consultationId: 'c-1', content: 'x', attachmentIds: ['someone-elses'] } as any)).rejects.toThrow(/could not be attached/i);
+    expect(tx.message.create).not.toHaveBeenCalled();
+  });
+
+  it('allows at most three files, and only a patient can attach any', async () => {
+    const { service } = build(4);
+    await expect(service.sendAs(patient, { consultationId: 'c-1', content: 'x', attachmentIds: ['a', 'b', 'c', 'd'] } as any)).rejects.toThrow(/up to 3/i);
+    await expect(service.sendAs({ id: 'dr', role: 'CLINICIAN', clinicianRole: 'DOCTOR' } as any, { consultationId: 'c-1', content: 'x', attachmentIds: ['a'] } as any)).rejects.toThrow(/only patients/i);
+  });
+});
+
+describe('MessagingResolver: what the team thinks of the assistant is not for patients', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { MessagingResolver } = require('./messaging.resolver');
+  const resolver = new MessagingResolver({} as any);
+  const message = { aiFeedback: 'BAD', aiArticleId: 'reset-password' };
+
+  it('shows the rating and the article to staff', () => {
+    const staff = { id: 'cx', role: 'CLINICIAN', clinicianRole: 'CX_TEAM' };
+    expect(resolver.aiFeedback(message, staff)).toBe('BAD');
+    expect(resolver.aiArticleId(message, staff)).toBe('reset-password');
+  });
+
+  it('shows a patient neither', () => {
+    const patient = { id: 'p', role: 'PATIENT' };
+    expect(resolver.aiFeedback(message, patient)).toBeNull();
+    expect(resolver.aiArticleId(message, patient)).toBeNull();
+    expect(resolver.aiFeedback(message, undefined)).toBeNull();
+  });
+});

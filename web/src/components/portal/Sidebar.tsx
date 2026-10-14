@@ -9,11 +9,14 @@ export type NavItem = { href: string; label: string; icon: IconName; badge?: 'me
 
 export const BRAND = { name: 'Omopharmacy' };
 
+// Help and messages is not one more page in the list: it is the way to reach us, so it has its own place at the bottom.
+const HELP_HREF = '/messages';
+
 // Flat and quiet, like the sign-in screen's teal: a light rail, hairline borders, small grouped links.
 const GROUPS: { title: string; hrefs: string[] }[] = [
   { title: 'Overview', hrefs: ['/dashboard'] },
   { title: 'Treatment', hrefs: ['/treatment-plan', '/weight-journey', '/doses', '/symptoms'] },
-  { title: 'Care', hrefs: ['/appointments', '/messages', '/care-team'] },
+  { title: 'Care', hrefs: ['/appointments', '/care-team'] },
   { title: 'Account', hrefs: ['/orders', '/prescription', '/documents'] },
 ];
 
@@ -22,7 +25,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
   const { unread } = useUnreadMessages();
   const groups = GROUPS.map((g) => ({ title: g.title, items: g.hrefs.map((h) => items.find((i) => i.href === h)).filter((i): i is NavItem => !!i) }));
   // Anything not placed in a group still shows, so a new page never goes missing from the menu.
-  const placed = new Set(GROUPS.flatMap((g) => g.hrefs));
+  const placed = new Set([...GROUPS.flatMap((g) => g.hrefs), HELP_HREF]);
   const rest = items.filter((i) => !placed.has(i.href));
   if (rest.length) groups.push({ title: 'More', items: rest });
 
@@ -56,12 +59,18 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
       </nav>
 
       <div className="p-2.5 border-t border-slate-200/80">
-        <Link href="/messages" onClick={onNavigate} className="flex items-center gap-2.5 rounded-md border border-slate-200 bg-white hover:border-slate-300 px-3 py-2.5 transition-colors">
-          <span className="w-7 h-7 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center flex-shrink-0"><Icon name="chat" className="w-4 h-4" /></span>
-          <span className="min-w-0">
-            <span className="block text-[13px] font-medium text-slate-900">Need help?</span>
-            <span className="block text-[11px] text-slate-500">Chat with your doctor</span>
+        <Link
+          href={HELP_HREF}
+          onClick={onNavigate}
+          aria-current={pathname === HELP_HREF ? 'page' : undefined}
+          className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 transition-colors ${pathname === HELP_HREF ? 'border-brand-700/40 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+        >
+          <span className="w-8 h-8 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center flex-shrink-0"><Icon name="chat" className="w-4 h-4" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-medium text-slate-900">Help & messages</span>
+            <span className="block text-[11px] text-slate-500">Chat with us, or send a request</span>
           </span>
+          {unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-700 text-white text-[10px] font-semibold flex items-center justify-center">{unread}</span>}
         </Link>
       </div>
     </div>

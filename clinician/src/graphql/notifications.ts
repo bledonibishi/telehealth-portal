@@ -13,6 +13,8 @@ export const GET_NOTIFICATION_COUNTS = gql`
       urgentAppointments
       orderProblems
       refundRequests
+      ticketsToDo
+      ticketsOverdue
     }
   }
 `;

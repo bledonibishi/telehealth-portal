@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { isToday, isYesterday } from 'date-fns';
+import { MessageFiles, type MessageFile } from '@/components/consultation/MessageFiles';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, PATIENT_CONVERSATION, SEND_MESSAGE } from '@/graphql/messaging';
 import { MessageTicks, tickStateOf } from '@/components/consultation/MessageTicks';
@@ -13,7 +14,7 @@ import { getToken } from '@/lib/auth';
 import { SkeletonMessages } from '@telehealth/loading';
 import { DraftReplyButton, TranslateMessage, UrgentTag, useUrgentMessages } from '@/components/ai/MessageAiTools';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
+type Message = { id: string; senderId: string; senderRole: string; isAi?: boolean; attachments?: MessageFile[]; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -231,7 +232,7 @@ export default function PatientChatWindow({
                 <div key={row.m.id} className={`flex flex-col ${row.isMe ? 'items-end' : 'items-start'} ${row.showSender ? 'pt-2' : ''}`}>
                   {row.showSender && (
                     <span className="text-[11px] font-medium text-slate-500 mb-1 px-1.5">
-                      {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : t('Care team')}
+                      {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : row.m.isAi ? t('Automated assistant') : t('Care team')}
                     </span>
                   )}
                   {urgent.has(row.m.id) && <div className="mb-1 px-1"><UrgentTag reason={urgent.get(row.m.id) ?? ''} /></div>}
@@ -243,6 +244,7 @@ export default function PatientChatWindow({
                     }`}
                   >
                     {row.m.content}
+                    <MessageFiles files={row.m.attachments} />
                     <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-0.5 ${row.isMe ? 'text-sky-100' : 'text-slate-400'}`}>
                       {fmt(row.m.sentAt, 'HH:mm')}
                       {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}

@@ -11,3 +11,5 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 export const WithCount: Story = { args: { icon: '🔔', label: 'Notifications', hint: '3 unread', badge: 3 } };
+export const Selected: Story = { args: { icon: '📦', label: 'My delivery', hint: 'Where my order is, or the address', selected: true } };
+export const Unselected: Story = { args: { icon: '📦', label: 'My delivery', hint: 'Where my order is, or the address', selected: false } };

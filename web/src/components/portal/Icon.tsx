@@ -27,6 +27,7 @@ const PATHS: Record<string, string> = {
   pencil: 'M4 20h4L19 9l-4-4L4 16zm9-13 4 4',
   arrow: 'M5 12h14m-5-5 5 5-5 5',
   plus: 'M12 5v14M5 12h14',
+  clip: 'm21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48',
   menu: 'M4 7h16M4 12h16M4 17h16',
   close: 'M6 6l12 12M18 6 6 18',
   chevron: 'm6 9 6 6 6-6',

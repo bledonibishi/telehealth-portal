@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import type { ChatMessage } from './useConsultationChat';
 import { LoadingState } from '@telehealth/loading';
+import { AttachmentButton, AttachmentChips, MessageAttachments, useChatAttachments, type ChatAttachment } from './chat-attachments';
 
 const QUICK_REPLIES = [
   { label: 'I have a question', text: 'Hi, I have a question about my treatment: ' },
@@ -52,13 +53,14 @@ export function ChatDock({
   currentUserId: string | null;
   sending: boolean;
   loading: boolean;
-  onSend: (content: string) => Promise<unknown>;
+  onSend: (content: string, files?: ChatAttachment[]) => Promise<unknown>;
   variant?: 'docked' | 'floating';
   /** Text to start the message with, e.g. when opened from "Message our team"; never overwrites typing. */
   draft?: string;
 }) {
   const floating = variant === 'floating';
   const [content, setContent] = useState('');
+  const attach = useChatAttachments();
   useEffect(() => {
     if (draft) setContent((c) => (c.trim() ? c : draft));
   }, [draft]);
@@ -91,9 +93,11 @@ export function ChatDock({
 
   const submit = async () => {
     const text = content.trim();
-    if (!text || sending) return;
-    await onSend(text);
+    const files = attach.files;
+    if ((!text && files.length === 0) || sending || attach.uploading) return;
+    await onSend(text, files);
     setContent('');
+    attach.reset();
     if (inputRef.current) inputRef.current.style.height = 'auto';
   };
 
@@ -199,7 +203,7 @@ export function ChatDock({
           ) : (
             <div key={row.m.id} className={`flex flex-col ${row.isMe ? 'items-end' : 'items-start'} ${row.showSender ? 'pt-2' : ''}`}>
               {row.showSender && (
-                <span className="text-[11px] font-medium text-slate-500 mb-1 px-1">{row.isMe ? 'You' : 'Your care team'}</span>
+                <span className="text-[11px] font-medium text-slate-500 mb-1 px-1">{row.isMe ? 'You' : row.m.isAi ? 'Automated assistant' : 'Your care team'}</span>
               )}
               <div
                 className={`max-w-[85%] rounded-lg px-4 py-2.5 text-sm leading-snug whitespace-pre-wrap break-words ${
@@ -209,6 +213,7 @@ export function ChatDock({
                 }`}
               >
                 {row.m.content}
+                <MessageAttachments attachments={row.m.attachments} onDark={row.isMe} />
                 <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-brand-100' : 'text-slate-400'}`}>
                   {format(new Date(row.m.sentAt), 'HH:mm')}
                   {row.isMe && <MessageTicks state={tickStateOf(row.m)} onDark />}
@@ -232,10 +237,12 @@ export function ChatDock({
             </button>
           ))}
         </div>
+        <AttachmentChips state={attach} />
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 border border-slate-200 rounded-lg pl-4 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
+          className="flex items-end gap-1 border border-slate-200 rounded-lg pl-1.5 pr-1.5 py-1.5 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20"
         >
+          <AttachmentButton state={attach} />
           <textarea
             ref={inputRef}
             rows={1}
@@ -254,7 +261,7 @@ export function ChatDock({
           />
           <button
             type="submit"
-            disabled={sending || !content.trim()}
+            disabled={sending || attach.uploading || (!content.trim() && attach.files.length === 0)}
             aria-label="Send message"
             className="w-9 h-9 rounded-md bg-brand-600 text-white flex items-center justify-center disabled:bg-slate-200 disabled:text-slate-400"
           >

@@ -6,6 +6,7 @@ import { useMyBookings } from '@telehealth/booking';
 import { useUnreadMessages } from '@/lib/useUnreadMessages';
 import { useRefill } from '@/lib/useRefill';
 import { kg } from '@/lib/weight';
+import { useElementWidth } from '@/lib/useElementWidth';
 import { Icon, type IconName } from '@/components/portal/Icon';
 import type { Plan } from './PlanHero';
 
@@ -30,7 +31,11 @@ const dayOf = (d: Date) => (isToday(d) ? 'Today' : isTomorrow(d) ? 'Tomorrow' : 
  * appointment, unread messages and the next order. Each tile opens the page behind it. A tile only shows
  * when there is something real to put in it.
  */
-export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan | null }) {
+/** `compact`: the tiles in two columns at most, for a card that is not the full width of the row; `narrow`: one column. */
+export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan | null; compact?: boolean; narrow?: boolean }) {
+  // As many tiles per row as the card's own width has room for.
+  const [ref, width] = useElementWidth<HTMLElement>();
+  const columns = width == null ? 3 : width < 420 ? 1 : width < 760 ? 2 : width < 1500 ? 3 : 6;
   const { bookings } = useMyBookings();
   const { unread } = useUnreadMessages();
   const { status: supply, requested } = useRefill();
@@ -39,7 +44,7 @@ export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan
   const days: number | null = supply?.daysUntilNextSupply ?? null;
 
   return (
-    <section aria-label="Your treatment progress" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6 gap-3 mb-5 [&>*]:min-w-0">
+    <section ref={ref} aria-label="Your treatment progress" className="grid gap-3 mb-5 [&>*]:min-w-0" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
       {journey?.progressPercentage != null && (
         <Tile href="/weight-journey" icon="flag" tone="green" label="Progress to goal" value={`${Math.round(journey.progressPercentage)}%`}
           hint={journey.targetWeightKg ? `${kg(journey.remainingKg)} to go · goal ${kg(journey.targetWeightKg)}` : undefined} />

@@ -39,11 +39,12 @@ export class NotificationsResolver {
       includeOrderProblems: role === 'ADMIN',
       // A doctor counts what is theirs to do: what nobody has picked up yet, and what they have.
       forClinicianId: role === 'DOCTOR' ? user.id : undefined,
+      tickets: role === 'ADMIN' ? { userId: user.id, kind: 'ALL' } : role === 'CX_TEAM' ? { userId: user.id, kind: 'NON_CLINICAL' } : role === 'DOCTOR' ? { userId: user.id, kind: 'CLINICAL' } : undefined,
     });
     // The pharmacy partner sees only the number of orders waiting for it: leads, consultations and
     // patient messages are not its business.
     if (role && !CLINICAL_STAFF.includes(role)) {
-      return { ...counts, newLeads: 0, pendingConsultations: 0, patientMessages: 0, missedDoseAlerts: 0, shipmentsDue: 0, sideEffectAlerts: 0, urgentAppointments: 0, orderProblems: 0, refundRequests: 0 };
+      return { ...counts, newLeads: 0, pendingConsultations: 0, patientMessages: 0, missedDoseAlerts: 0, shipmentsDue: 0, sideEffectAlerts: 0, urgentAppointments: 0, orderProblems: 0, refundRequests: 0, ticketsToDo: 0, ticketsOverdue: 0 };
     }
     return counts;
   }

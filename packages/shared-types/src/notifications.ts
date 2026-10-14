@@ -34,6 +34,8 @@ export enum NotificationKind {
   SIDE_EFFECT_SEVERE = 'SIDE_EFFECT_SEVERE',
   REFUND_REQUESTED = 'REFUND_REQUESTED',
   ORDER_PROBLEM = 'ORDER_PROBLEM',
+  TICKET_OPENED = 'TICKET_OPENED',
+  TICKET_ASSIGNED = 'TICKET_ASSIGNED',
 }
 
 /** `urgent` ones are shown in red and, for staff, also emailed. */
@@ -69,6 +71,8 @@ export const NOTIFICATION_TEXT: Record<NotificationKind, NotificationText> = {
   [NotificationKind.SIDE_EFFECT_SEVERE]: { title: 'Severe side effects reported', body: '{patient} needs a doctor to look today', tone: 'urgent' },
   [NotificationKind.REFUND_REQUESTED]: { title: '{patient} asked for a refund', body: 'Waiting for an admin to decide', tone: 'warning' },
   [NotificationKind.ORDER_PROBLEM]: { title: 'An order could not be delivered', body: '{patient}’s parcel needs attention', tone: 'warning' },
+  [NotificationKind.TICKET_OPENED]: { title: 'New ticket from {patient}', body: '{subject}', tone: 'info' },
+  [NotificationKind.TICKET_ASSIGNED]: { title: '{by} gave you a ticket', body: '{subject}', tone: 'info' },
 };
 
 export type NotificationParams = Record<string, string | number>;

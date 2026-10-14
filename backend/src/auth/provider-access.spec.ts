@@ -105,6 +105,7 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "PartnerOrdersCronController.sweep",
   "QuestionnairesResolver.questionnaire",
   "StripeWebhookController.handleWebhook",
+  "SupportBotCronController.trigger",
   "UploadsCleanupController.purge",
   "UploadsController.getFile",
   "UploadsController.upload",

@@ -46,6 +46,11 @@ import { DeviceReadingsModule } from './device-readings/device-readings.module';
 import { TrendsModule } from './trends/trends.module';
 import { LabsModule } from './labs/labs.module';
 import { InsightsModule } from './insights/insights.module';
+import { TicketsModule } from './tickets/tickets.module';
+import { SupportActionsModule } from './support-actions/support-actions.module';
+import { DashboardLayoutModule } from './dashboard-layout/dashboard-layout.module';
+import { TicketConversationModule } from './ticket-conversation/ticket-conversation.module';
+import { SavedRepliesModule } from './saved-replies/saved-replies.module';
 
 @Module({
   imports: [
@@ -112,6 +117,11 @@ import { InsightsModule } from './insights/insights.module';
     TrendsModule,
     LabsModule,
     InsightsModule,
+    TicketsModule,
+    SupportActionsModule,
+    DashboardLayoutModule,
+    TicketConversationModule,
+    SavedRepliesModule,
   ],
 })
 export class AppModule {}

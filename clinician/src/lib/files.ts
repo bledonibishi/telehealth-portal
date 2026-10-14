@@ -1,0 +1,17 @@
+import { ApiError } from '@telehealth/shared-types';
+import { getToken } from './auth';
+
+const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL ?? 'http://localhost:4000/graphql';
+export const API_ROOT = GRAPHQL_URL.replace(/\/graphql$/, '');
+
+/** The path a stored file is served from, for AuthedImage and openAuthedFile. */
+export const filePath = (id: string) => `/uploads/${id}/file`;
+
+/** Opens a file the API only serves to a signed-in user (a PDF) in a new tab. Opening it is recorded in the audit log. */
+export async function openAuthedFile(path: string): Promise<void> {
+  const res = await fetch(`${API_ROOT}${path}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw ApiError.fromResponse(res.status, '', 'We couldn’t open that file.');
+  const url = URL.createObjectURL(await res.blob());
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

@@ -680,6 +680,7 @@ async function main() {
     data: [
       {
         id: 'seed-msg-001',
+        patientId: patientEmma.id,
         consultationId: consultApproved.id,
         senderId: patientEmma.id,
         senderRole: Role.PATIENT,
@@ -688,6 +689,7 @@ async function main() {
       },
       {
         id: 'seed-msg-002',
+        patientId: patientEmma.id,
         consultationId: consultApproved.id,
         senderId: doctor.id,
         senderRole: Role.CLINICIAN,
@@ -696,6 +698,7 @@ async function main() {
       },
       {
         id: 'seed-msg-003',
+        patientId: patientJames.id,
         consultationId: consultInReview.id,
         senderId: doctor.id,
         senderRole: Role.CLINICIAN,

@@ -73,7 +73,7 @@ export function SmartPatientSearch({ medicationOptions, onApply, onReset }: { me
 
   return (
     <div className="shrink-0 space-y-1.5">
-      <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-1.5">
+      <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-1.5 transition-shadow focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-200">
         <AiMark />
         <input
           value={text}
@@ -82,7 +82,7 @@ export function SmartPatientSearch({ medicationOptions, onApply, onReset }: { me
           placeholder={t('Ask in plain words, e.g. “HRT patients waiting for a reply”')}
           aria-label={t('Ask in plain words')}
           maxLength={300}
-          className="flex-1 min-w-0 bg-transparent text-sm focus:outline-none placeholder:text-gray-400"
+          className="flex-1 min-w-0 bg-transparent text-sm focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-400"
         />
         <button type="button" onClick={run} disabled={loading || text.trim().length < 3} className="text-xs font-medium px-3 py-1 rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40">
           {loading ? t('Looking…') : t('Find')}

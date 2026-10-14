@@ -30,7 +30,7 @@ export function hasAccess(allowed: ClinicianRole[]): boolean {
 const LANDING_PATH: Record<ClinicianRole, string> = {
   ADMIN: '/',
   DOCTOR: '/queue',
-  CX_TEAM: '/leads',
+  CX_TEAM: '/tickets',
   PROVIDER: '/orders',
 };
 

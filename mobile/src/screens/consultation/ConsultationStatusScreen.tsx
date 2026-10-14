@@ -1,130 +1,122 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, View } from 'react-native';
 import { useQuery } from '@apollo/client';
-import { MY_CONSULTATIONS, MY_TREATMENT_PLAN } from '../../graphql/operations';
+import { ME_NAME, MY_CONSULTATIONS, MY_TREATMENT_PLAN } from '../../graphql/operations';
 import { careStage } from '../../lib/careStage';
-import { signOut } from '../../lib/session';
+import { countdown, fmtDate } from '../../lib/format';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { LoadingState } from '../../components/Skeleton';
+import { MenuRow } from '../../components/MenuRow';
+import { Button, Card, CardTitle, Columns, Notice, Pill, ProgressBar, Screen, Stat } from '../../components/ui';
+import { colors } from '../../theme';
 
 // The doctor's decision arrives while the app is open: look again this often.
 const POLL_MS = 30_000;
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  SUBMITTED: { label: 'Submitted', color: '#3b82f6' },
-  IN_REVIEW: { label: 'In review', color: '#f59e0b' },
-  MORE_INFO_REQUESTED: { label: 'Awaiting info', color: '#f97316' },
-  APPROVED: { label: 'Approved', color: '#22c55e' },
-  DECLINED: { label: 'Declined', color: '#9ca3af' },
+const STATUS: Record<string, { label: string; tone: 'plain' | 'good' | 'warn' | 'info' }> = {
+  SUBMITTED: { label: 'Sent to your doctor', tone: 'info' },
+  IN_REVIEW: { label: 'Being reviewed', tone: 'warn' },
+  MORE_INFO_REQUESTED: { label: 'Needs a little more', tone: 'warn' },
+  APPROVED: { label: 'Approved', tone: 'good' },
+  DECLINED: { label: 'Not prescribed', tone: 'plain' },
 };
 
+const KIND: Record<string, { icon: string; label: string }> = {
+  HRT: { icon: '🌸', label: 'Hormone therapy' },
+  GLP1: { icon: '⚖️', label: 'Weight management' },
+  TRT: { icon: '💪', label: 'Testosterone therapy' },
+};
+
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+};
+
+/** The home screen: a warm greeting, where the treatment stands, what to do next, and the consultations so far. */
 export function ConsultationStatusScreen({ navigation }: any) {
   const { data, loading, error, refetch } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only', pollInterval: POLL_MS });
   const { data: planData, refetch: refetchPlan } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'network-only', pollInterval: POLL_MS });
+  const { data: nameData } = useQuery(ME_NAME, { fetchPolicy: 'cache-first' });
 
   // Coming back to this tab shows where things stand now.
   React.useEffect(() => navigation.addListener('focus', () => { refetch(); refetchPlan(); }), [navigation, refetch, refetchPlan]);
 
   if (loading && !data) return <LoadingState fill label="Loading your treatment…" />;
-  if (error && !data) return <View style={styles.errorBox}><ErrorNotice error={error} title="We couldn’t load your consultation" onRetry={() => refetch()} /></View>;
+  if (error && !data) return <View style={{ padding: 16 }}><ErrorNotice error={error} title="We couldn’t load your home screen" onRetry={() => refetch()} /></View>;
 
-  const consultations = data?.myConsultations ?? [];
+  const consultations: any[] = data?.myConsultations ?? [];
   const plan = planData?.myTreatmentPlan;
   const next = careStage(consultations, plan);
+  const firstName: string | undefined = nameData?.me?.firstName;
+  const hasDoses = (navigation.getState?.()?.routeNames ?? []).includes('Injections');
+
+  const goToNext = () => {
+    if (!next.action) return;
+    if (next.action.tab === 'New Consultation') navigation.navigate('More', { screen: 'NewConsultation' });
+    else navigation.navigate(next.action.tab === 'Status' ? 'Status' : next.action.tab);
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>My consultations</Text>
-        <TouchableOpacity onPress={signOut}><Text style={styles.signOut}>Sign out</Text></TouchableOpacity>
-      </View>
-      <FlatList
-        ListHeaderComponent={
-          <View>
-            <View style={[styles.stage, next.stage === 'MORE_INFO' && styles.stageWarn, next.stage === 'DECLINED' && styles.stageMuted]}>
-              <Text style={styles.stageTitle}>{next.title}</Text>
-              <Text style={styles.stageText}>{next.text}</Text>
-              {next.action && (
-                <TouchableOpacity style={styles.stageButton} onPress={() => (next.action!.tab === 'New Consultation' ? navigation.navigate('More', { screen: 'NewConsultation' }) : navigation.navigate(next.action!.tab))}>
-                  <Text style={styles.stageButtonText}>{next.action.label}</Text>
-                </TouchableOpacity>
-              )}
+    <Screen
+      title={`${greeting()}${firstName ? `, ${firstName}` : ''} 👋`}
+      subtitle={plan ? 'Here’s how your treatment is going.' : 'We’re here with you at every step.'}
+      refreshing={loading}
+      onRefresh={() => { refetch(); refetchPlan(); }}
+    >
+      {!plan && (
+        <Notice tone={next.stage === 'MORE_INFO' ? 'warn' : 'info'} title={next.title} action={next.action ? <Button label={next.action.label} onPress={goToNext} small /> : undefined}>
+          {next.text}
+        </Notice>
+      )}
+
+      {plan && (
+        <Card tone="info" style={{ marginBottom: 14 }}>
+          <CardTitle title={plan.productName} subtitle={[plan.strength, plan.programme].filter(Boolean).join(' · ')} right={<Pill label="Active" tone="good" />} />
+          {plan.dosesPlanned > 0 && (
+            <View style={{ marginTop: 4, marginBottom: 14 }}>
+              <ProgressBar percent={(plan.dosesTaken / plan.dosesPlanned) * 100} label={`${plan.dosesTaken} of ${plan.dosesPlanned} doses taken`} />
+              <Text style={{ fontSize: 12, color: colors.slate500, marginTop: 6 }}>{plan.dosesTaken} of {plan.dosesPlanned} doses taken</Text>
             </View>
-            {plan && (
-              <View style={styles.plan}>
-                <Text style={styles.planLabel}>Current treatment plan</Text>
-                <Text style={styles.planName}>{plan.productName}{plan.strength ? ` · ${plan.strength}` : ''}</Text>
-                {!!plan.directions && <Text style={styles.planLine}>{plan.directions}</Text>}
-                {!!plan.frequency && <Text style={styles.planLine}>Frequency: {plan.frequency}</Text>}
-                {plan.nextDoseAt && <Text style={styles.planLine}>Next dose: {new Date(plan.nextDoseAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</Text>}
-                {plan.dosesPlanned > 0 && <Text style={styles.planLine}>Doses taken: {plan.dosesTaken} of {plan.dosesPlanned}</Text>}
-                {plan.repeatsLeft != null && <Text style={styles.planLine}>Repeats left: {plan.repeatsLeft}</Text>}
-                {!!plan.prescriberName && <Text style={styles.planMeta}>Prescribed by {plan.prescriberName}</Text>}
-              </View>
-            )}
+          )}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Stat label="Next dose" value={plan.nextDoseAt ? countdown(plan.nextDoseAt) : '—'} />
+            {plan.nextDoseAt && <Stat label="On" value={fmtDate(plan.nextDoseAt, { weekday: 'short', day: 'numeric', month: 'short' })} />}
+            {plan.repeatsLeft != null && <Stat label="Repeats left" value={String(plan.repeatsLeft)} />}
           </View>
-        }
-        data={consultations}
-        keyExtractor={(item: any) => item.id}
-        onRefresh={refetch}
-        refreshing={loading}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No consultations yet.</Text>
-        }
-        renderItem={({ item }: any) => {
-          const badge = STATUS_LABELS[item.status] ?? { label: item.status, color: '#9ca3af' };
-          return (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => navigation.navigate('Messages', { consultationId: item.id })}
-            >
-              <View style={styles.row}>
-                <Text style={styles.kind}>{item.kind}</Text>
-                <View style={[styles.badge, { borderColor: badge.color }]}>
-                  <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+          {!!plan.directions && <Text style={{ fontSize: 13, color: colors.slate600, lineHeight: 19, marginTop: 14 }}>{plan.directions}</Text>}
+          {!!plan.prescriberName && <Text style={{ fontSize: 12, color: colors.slate400, marginTop: 8 }}>Prescribed by {plan.prescriberName}</Text>}
+          {hasDoses && <View style={{ marginTop: 14 }}><Button label="Open my doses" onPress={() => navigation.navigate('Injections')} /></View>}
+        </Card>
+      )}
+
+      <Columns>
+        <Card style={{ padding: 6 }}>
+          <View style={{ padding: 10 }}><CardTitle title="How can we help today?" /></View>
+          <MenuRow icon="💬" label="Message us" hint="Questions, delivery, payments, or your doctor" onPress={() => navigation.navigate('Messages')} />
+          <MenuRow icon="📦" label="My orders" hint="Where your medicine is, and what’s next" onPress={() => navigation.navigate('More', { screen: 'Orders' })} />
+          <MenuRow icon="🤒" label="Not feeling right?" hint="Tell your doctor about a side effect" onPress={() => navigation.navigate('More', { screen: 'SideEffects' })} />
+        </Card>
+
+        <Card>
+          <CardTitle title="Your consultations" subtitle={consultations.length ? undefined : 'Nothing here yet'} />
+          {consultations.map((c) => {
+            const kind = KIND[c.kind] ?? { icon: '🩺', label: c.kind };
+            const status = STATUS[c.status] ?? { label: c.status, tone: 'plain' as const };
+            return (
+              <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.ink50, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18 }}>{kind.icon}</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink900 }}>{kind.label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.slate500, marginTop: 1 }} numberOfLines={2}>
+                    Sent {fmtDate(c.submittedAt)}{c.prescription ? ` · ${c.prescription.medication}` : ''}
+                  </Text>
                 </View>
+                <Pill label={status.label} tone={status.tone} />
               </View>
-              <Text style={styles.date}>
-                Submitted {new Date(item.submittedAt).toLocaleDateString('en-GB')}
-              </Text>
-              {item.prescription && (
-                <Text style={styles.rx}>
-                  Rx: {item.prescription.medication} · {item.prescription.dosage}
-                </Text>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-      />
-    </View>
+            );
+          })}
+        </Card>
+      </Columns>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb', padding: 16, width: '100%', alignSelf: 'center', maxWidth: 960 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: '600', color: '#111827' },
-  signOut: { fontSize: 13, color: '#6b7280' },
-  stage: { backgroundColor: '#e0f2fe', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#bae6fd' },
-  stageWarn: { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
-  stageMuted: { backgroundColor: '#f3f4f6', borderColor: '#e5e7eb' },
-  stageTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  stageText: { fontSize: 13, color: '#4b5563', marginTop: 4, lineHeight: 19 },
-  stageButton: { alignSelf: 'flex-start', backgroundColor: '#0ea5e9', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9, marginTop: 12 },
-  stageButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-  plan: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#e5e7eb' },
-  planLabel: { fontSize: 12, fontWeight: '600', color: '#0369a1' },
-  planName: { fontSize: 17, fontWeight: '700', color: '#111827', marginTop: 4 },
-  planLine: { fontSize: 13, color: '#374151', marginTop: 4 },
-  planMeta: { fontSize: 12, color: '#9ca3af', marginTop: 8 },
-  card: { backgroundColor: '#fff', borderRadius: 10, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e5e7eb' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  kind: { fontSize: 15, fontWeight: '500', color: '#111827' },
-  badge: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 12, fontWeight: '500' },
-  date: { fontSize: 13, color: '#6b7280' },
-  rx: { fontSize: 13, color: '#22c55e', marginTop: 4 },
-  empty: { textAlign: 'center', color: '#9ca3af', marginTop: 40, fontSize: 14 },
-  center: { flex: 1, justifyContent: 'center' },
-  errorBox: { padding: 16 },
-});

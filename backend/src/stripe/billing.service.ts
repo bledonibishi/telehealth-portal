@@ -281,6 +281,26 @@ export class BillingService {
     });
   }
 
+  /**
+   * Tries again to collect the patient's newest unpaid invoice, with the card Stripe already holds for them. Never throws:
+   * a card that is declined, or nothing owed, comes back as `ok: false` with a note a person can act on.
+   */
+  async retryUnpaidInvoice(patient: BillingPatient): Promise<BillingResult> {
+    if (!this.configured) return { ok: false, note: 'Stripe is not configured — collect the payment by hand' };
+    try {
+      const customerId = patient.stripeCustomerId ?? (await this.findCustomerIdByEmail(patient.email));
+      if (!customerId) return { ok: false, note: 'No Stripe customer found for this patient' };
+      const { data } = await this.stripe.invoices.list({ customer: customerId, status: 'open', limit: 1 });
+      const invoice = data[0];
+      if (!invoice) return { ok: false, note: 'This patient has no unpaid invoice to retry' };
+      const paid = await this.stripe.invoices.pay(invoice.id);
+      return paid.status === 'paid' ? { ok: true, note: 'The payment went through' } : { ok: false, note: 'The payment did not complete — ask the patient to check their card' };
+    } catch (err: any) {
+      this.logger.error(`Retrying an invoice for ${patient.email} failed: ${err.message}`);
+      return { ok: false, note: err?.type === 'StripeCardError' ? 'The card was declined — the patient needs to update their card' : 'The payment could not be retried — check it in Stripe' };
+    }
+  }
+
   /** Skips charging while treatment is on hold. */
   async pause(patient: BillingPatient): Promise<string> {
     return this.withSubscription(patient, async (sub) => {

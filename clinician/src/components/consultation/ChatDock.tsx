@@ -8,10 +8,11 @@ import { ConversationWatchers } from './ConversationWatchers';
 import { MessageTicks, tickStateOf } from './MessageTicks';
 import { realtime } from '@/lib/apollo';
 import { useRealtimeConnected } from '@/lib/realtime';
+import { MessageFiles, type MessageFile } from '@/components/consultation/MessageFiles';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { SkeletonMessages } from '@telehealth/loading';
 
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
+type Message = { id: string; senderId: string; senderRole: string; isAi?: boolean; attachments?: MessageFile[]; content: string; sentAt: string; readAt?: string | null };
 
 // While live updates aren't arriving, poll so the thread still moves.
 const FALLBACK_POLL_MS = 10_000;
@@ -256,7 +257,7 @@ export function ChatDock({
             <div key={row.m.id} className={`flex flex-col ${row.isMe ? 'items-end' : 'items-start'} ${row.showSender ? 'pt-2' : ''}`}>
               {row.showSender && (
                 <span className="text-[11px] font-medium text-gray-500 mb-1 px-1">
-                  {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : t('Care team')}
+                  {row.isMe ? t('You') : row.m.senderRole === 'PATIENT' ? patientName.split(' ')[0] : row.m.isAi ? t('Automated assistant') : t('Care team')}
                 </span>
               )}
               <div
@@ -267,6 +268,7 @@ export function ChatDock({
                 }`}
               >
                 {row.m.content}
+                <MessageFiles files={row.m.attachments} />
                 <span className={`flex items-center justify-end gap-1.5 text-[10px] mt-1 ${row.isMe ? 'text-blue-100' : 'text-gray-400'}`}>
                   {fmt(row.m.sentAt, 'HH:mm')}
                   {row.m.senderRole !== 'PATIENT' && <MessageTicks state={tickStateOf(row.m)} onDark={row.isMe} />}

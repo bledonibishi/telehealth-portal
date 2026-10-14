@@ -43,6 +43,37 @@ enum ClinicianRole {
   PROVIDER
 }
 
+enum TicketType {
+  TECHNICAL
+  BILLING
+  DELIVERY
+  ACCOUNT
+  CLINICAL
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_PATIENT
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportThreadStatus {
+  ACTIVE
+  AWAITING_PATIENT
+  ESCALATED
+  DONE
+}
+
 enum CheckInStatus {
   SCHEDULED
   SENT
@@ -125,6 +156,8 @@ enum UploadKind {
   PROGRESS_PHOTO
   // A lab's report (PDF or photo) a patient or a doctor attached, kept as the source of the results typed from it.
   LAB_REPORT
+  // A screenshot, photo or PDF a patient attached to a help request, so support can see the problem.
+  SUPPORT_ATTACHMENT
 }
 
 enum LabReportSource {
@@ -319,6 +352,7 @@ model Clinician {
   enteredLabResults   LabResult[]            @relation("LabResultEnteredBy")
   reviewedLabResults  LabResult[]            @relation("LabResultReviewedBy")
   notifications       Notification[]
+  assignedTickets     Ticket[]               @relation("TicketAssignee")
 
   @@map("clinicians")
 }
@@ -474,6 +508,10 @@ model Patient {
   pushReminders            Boolean   @default(true) @map("push_reminders")
   pushRewards              Boolean   @default(true) @map("push_rewards")
   emailUnreadMessages      Boolean   @default(true) @map("email_unread_messages")
+  // How the patient arranged the cards on their home screen: only their choices (see shared-types dashboard.ts).
+  dashboardLayout          Json?     @map("dashboard_layout")
+  // What support has done to this patient's home screen for a while (hidden or shown a card); each ends by itself.
+  dashboardOverrides       Json?     @map("dashboard_overrides")
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
@@ -507,6 +545,7 @@ model Patient {
   refundRequests        RefundRequest[]
   pushDevices           PushDevice[]
   notifications         Notification[]
+  tickets               Ticket[]
 
   @@map("patients")
 }
@@ -886,9 +925,18 @@ model Message {
   aiUrgent       Boolean   @default(false) @map("ai_urgent")
   aiUrgentReason String?   @map("ai_urgent_reason")
   aiCheckedAt    DateTime? @map("ai_checked_at")
+  // Written by the automated support assistant, not by a person. Shown to the patient and the team as such.
+  isAi           Boolean   @default(false) @map("is_ai")
+  // For an assistant message: which help article it came from, and how the team rated it ("GOOD" or "BAD").
+  aiArticleId    String?   @map("ai_article_id")
+  aiFeedback     String?   @map("ai_feedback")
+  aiFeedbackNote String?   @map("ai_feedback_note")
+  aiFeedbackById String?   @map("ai_feedback_by_id")
+  aiFeedbackAt   DateTime? @map("ai_feedback_at")
 
-  patient      Patient       @relation(fields: [patientId], references: [id])
-  consultation Consultation? @relation(fields: [consultationId], references: [id])
+  patient      Patient        @relation(fields: [patientId], references: [id])
+  consultation Consultation?  @relation(fields: [consultationId], references: [id])
+  attachments  UploadedFile[]
 
   @@index([consultationId, readAt])
   @@index([patientId, consultationId])
@@ -922,11 +970,19 @@ model UploadedFile {
   mimeType   String     @map("mime_type")
   storageKey String     @map("storage_key")
   createdAt  DateTime   @default(now()) @map("created_at")
+  // The help request a support attachment belongs to; null until it is sent.
+  ticketId   String?    @map("ticket_id")
+  // The chat message a support attachment was sent with; null otherwise.
+  messageId  String?    @map("message_id")
 
   patient     Patient      @relation(fields: [patientId], references: [id])
+  ticket      Ticket?      @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  message     Message?     @relation(fields: [messageId], references: [id], onDelete: SetNull)
   weightEntry WeightEntry?
   labReport   LabReport?
 
+  @@index([ticketId])
+  @@index([messageId])
   @@map("uploaded_files")
 }
 
@@ -1017,21 +1073,21 @@ model AiOutput {
 // A lab report someone attached: the file (kept encrypted like other uploads) and where it stands. A patient's upload
 // waits here as PENDING until a doctor types in its results; those results then point back at it.
 model LabReport {
-  id            String          @id @default(cuid())
-  patientId     String          @map("patient_id")
-  fileId        String          @unique @map("file_id")
-  source        LabReportSource
-  status        LabReportStatus @default(PENDING)
+  id           String          @id @default(cuid())
+  patientId    String          @map("patient_id")
+  fileId       String          @unique @map("file_id")
+  source       LabReportSource
+  status       LabReportStatus @default(PENDING)
   // What the patient wrote with it, or the doctor's reason for rejecting it.
-  note          String?
-  uploadedById  String?         @map("uploaded_by_id")
-  handledById   String?         @map("handled_by_id")
-  handledAt     DateTime?       @map("handled_at")
-  createdAt     DateTime        @default(now()) @map("created_at")
+  note         String?
+  uploadedById String?         @map("uploaded_by_id")
+  handledById  String?         @map("handled_by_id")
+  handledAt    DateTime?       @map("handled_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
 
-  patient    Patient      @relation(fields: [patientId], references: [id])
-  file       UploadedFile @relation(fields: [fileId], references: [id])
-  results    LabResult[]
+  patient Patient      @relation(fields: [patientId], references: [id])
+  file    UploadedFile @relation(fields: [fileId], references: [id])
+  results LabResult[]
 
   @@index([patientId, createdAt])
   @@index([status, createdAt])
@@ -1457,4 +1513,108 @@ model PasswordReset {
 
   @@index([accountType, accountId])
   @@map("password_resets")
+}
+
+// A request from a patient (or a lead) that the support team works through. CLINICAL tickets are for the doctors: support
+// staff can see that one exists and hand it over, but a doctor answers it.
+model Ticket {
+  id                  String         @id @default(cuid())
+  // A short number people can say out loud ("ticket 1042").
+  number              Int            @unique @default(autoincrement())
+  patientId           String?        @map("patient_id")
+  type                TicketType     @default(OTHER)
+  status              TicketStatus   @default(OPEN)
+  priority            TicketPriority @default(NORMAL)
+  subject             String
+  description         String?
+  assigneeId          String?        @map("assignee_id")
+  createdById         String         @map("created_by_id")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  // When a person first picked it up; the time from createdAt to this is the first-reply time.
+  firstResponseAt     DateTime?      @map("first_response_at")
+  resolvedAt          DateTime?      @map("resolved_at")
+  // Passed to the engineers by support, with what support wrote for them; "done" when they have dealt with it.
+  engineeringSentAt   DateTime?      @map("engineering_sent_at")
+  engineeringSentById String?        @map("engineering_sent_by_id")
+  engineeringNote     String?        @map("engineering_note")
+  engineeringDoneAt   DateTime?      @map("engineering_done_at")
+
+  patient     Patient?       @relation(fields: [patientId], references: [id])
+  assignee    Clinician?     @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  notes       TicketNote[]
+  attachments UploadedFile[]
+
+  @@index([status, type])
+  @@index([patientId])
+  @@index([assigneeId, status])
+  @@map("tickets")
+}
+
+// Internal only: never shown to the patient.
+model TicketNote {
+  id        String   @id @default(cuid())
+  ticketId  String   @map("ticket_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_notes")
+}
+
+// Where the automated support assistant is in one message thread (a consultation's, or the pre-consultation one).
+model SupportThread {
+  id               String              @id @default(cuid())
+  // "<patientId>:<consultationId or pre>": one row per thread.
+  threadKey        String              @unique @map("thread_key")
+  patientId        String              @map("patient_id")
+  consultationId   String?             @map("consultation_id")
+  status           SupportThreadStatus @default(ACTIVE)
+  // The assistant replies once this time has passed with no newer message from the patient (each message pushes it back).
+  replyDueAt       DateTime?           @map("reply_due_at")
+  // How many answers it has given that the patient has not accepted. At the limit the thread goes to a person.
+  attempts         Int                 @default(0)
+  // The help articles it has already used on this problem: repeating one that did not help would only annoy the patient.
+  usedArticles     String[]            @default([]) @map("used_articles")
+  ticketId         String?             @map("ticket_id")
+  // When it last answered and is waiting to hear whether that helped; a long silence closes the ticket.
+  awaitingSince    DateTime?           @map("awaiting_since")
+  // Why a person took over, for the team reviewing the assistant.
+  escalationReason String?             @map("escalation_reason")
+  escalatedAt      DateTime?           @map("escalated_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@index([status, replyDueAt])
+  @@map("support_threads")
+}
+
+// What the automated support assistant may tell a patient. It answers only from these; the team edits them in the portal.
+model SupportArticle {
+  id          String   @id
+  title       String
+  body        String
+  // The answer is only a first step: a person must follow up, so the conversation is also handed to the team.
+  handoff     Boolean  @default(false)
+  active      Boolean  @default(true)
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("support_articles")
+}
+
+// A ready-made answer the support team can insert into a reply with one click. Shared by the whole team.
+model SavedReply {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("saved_replies")
 }

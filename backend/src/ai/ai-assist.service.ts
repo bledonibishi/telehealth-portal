@@ -9,15 +9,19 @@ import { SUPPORTS_EFFORT, SUPPORTS_FALLBACKS } from '../onboarding/proof-reader.
  * already set for another feature (the document readers) never switches these on, because they send patients' messages
  * and records to an outside AI service. AI_DISABLED_FEATURES can still veto one that "all" would turn on.
  */
-export type AiFeature = 'brief' | 'reply' | 'translate' | 'urgency' | 'search' | 'labs';
-export const AI_FEATURES: AiFeature[] = ['brief', 'reply', 'translate', 'urgency', 'search', 'labs'];
+export type AiFeature = 'brief' | 'reply' | 'translate' | 'urgency' | 'search' | 'labs' | 'support';
+export const AI_FEATURES: AiFeature[] = ['brief', 'reply', 'translate', 'urgency', 'search', 'labs', 'support'];
 
 const list = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 /** Whether a helper has been switched on, and not vetoed. (Whether there is a key is checked separately.) */
 export function featureSwitchedOn(config: { get: (key: string) => string | undefined }, feature: AiFeature): boolean {
   const on = list(config.get('AI_ENABLED_FEATURES'));
-  return (on.includes('all') || on.includes(feature)) && !list(config.get('AI_DISABLED_FEATURES')).includes(feature);
+  // "all" covers the helpers that assist the team. The support assistant writes to patients on its own, so it is only ever
+  // switched on by naming it.
+  const named = on.includes(feature);
+  const viaAll = on.includes('all') && feature !== 'support';
+  return (named || viaAll) && !list(config.get('AI_DISABLED_FEATURES')).includes(feature);
 }
 
 // These tasks are summarising, drafting and translating short texts, with a person checking the result. The mid-tier model

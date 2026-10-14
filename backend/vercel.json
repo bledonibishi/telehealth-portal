@@ -9,6 +9,7 @@
     { "path": "/internal/cron/unread-message-emails", "schedule": "*/30 * * * *" },
     { "path": "/internal/cron/prune-notifications", "schedule": "30 3 * * *" },
     { "path": "/internal/cron/lead-reminders", "schedule": "15 * * * *" },
-    { "path": "/internal/cron/urgency-sweep", "schedule": "*/10 * * * *" }
+    { "path": "/internal/cron/urgency-sweep", "schedule": "*/10 * * * *" },
+    { "path": "/internal/cron/support-bot", "schedule": "* * * * *" }
   ]
 }

@@ -106,9 +106,32 @@ describe('UploadsCleanupService.purgeOrphanedBodyPhotos', () => {
   });
 });
 
+describe('support attachment clean-up', () => {
+  const NOW = new Date('2026-10-05T03:00:00Z');
+
+  it('removes attachments that were uploaded but never sent with a request', async () => {
+    const { service, prisma, storage, audit } = fakeDb();
+    prisma.uploadedFile.findMany.mockResolvedValueOnce([{ id: 'f-1', patientId: 'p-1', storageKey: 'p-1/f-1.png' }]).mockResolvedValueOnce([]);
+    expect(await service.purgeSupportAttachments(NOW)).toBe(1);
+    expect(prisma.uploadedFile.findMany.mock.calls[0][0].where).toMatchObject({ kind: 'SUPPORT_ATTACHMENT', ticketId: null });
+    expect(storage.delete).toHaveBeenCalledWith('p-1/f-1.png');
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SUPPORT_ATTACHMENT_PURGED_UNSENT' }));
+  });
+
+  it('removes attachments of requests finished more than 90 days ago, and only those', async () => {
+    const { service, prisma, audit } = fakeDb();
+    prisma.uploadedFile.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'f-2', patientId: 'p-1', storageKey: 'p-1/f-2.pdf' }]);
+    expect(await service.purgeSupportAttachments(NOW)).toBe(1);
+    const where = prisma.uploadedFile.findMany.mock.calls[1][0].where;
+    expect(where.ticket.status.in).toEqual(['RESOLVED', 'CLOSED']);
+    expect(where.ticket.resolvedAt.lt).toEqual(new Date(NOW.getTime() - 90 * 24 * 3_600_000));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SUPPORT_ATTACHMENT_PURGED_RETENTION' }));
+  });
+});
+
 describe('UploadsCleanupController', () => {
   const build = (secret?: string) => {
-    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2), purgeOrphanedBodyPhotos: jest.fn().mockResolvedValue(1), purgeOrphanedLabReports: jest.fn().mockResolvedValue(0) };
+    const cleanup = { purgeOrphanedProgressPhotos: jest.fn().mockResolvedValue(2), purgeOrphanedBodyPhotos: jest.fn().mockResolvedValue(1), purgeOrphanedLabReports: jest.fn().mockResolvedValue(0), purgeSupportAttachments: jest.fn().mockResolvedValue(4) };
     return { controller: new UploadsCleanupController({ get: jest.fn().mockReturnValue(secret) } as any, cleanup as any), cleanup };
   };
 
@@ -118,6 +141,6 @@ describe('UploadsCleanupController', () => {
     await expect(controller.purge('Bearer wrong')).rejects.toThrow(UnauthorizedException);
     await expect(build(undefined).controller.purge('Bearer anything')).rejects.toThrow(UnauthorizedException);
     expect(cleanup.purgeOrphanedProgressPhotos).not.toHaveBeenCalled();
-    expect(await controller.purge('Bearer s3cret')).toEqual({ removed: 3 });
+    expect(await controller.purge('Bearer s3cret')).toEqual({ removed: 7 });
   });
 });

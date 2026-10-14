@@ -102,6 +102,12 @@ export const GET_CONSULTATION = gql`
         id
         senderId
         senderRole
+        isAi
+        attachments {
+          id
+          filename
+          mimeType
+        }
         content
         sentAt
       }
