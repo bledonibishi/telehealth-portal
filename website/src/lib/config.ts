@@ -8,10 +8,9 @@ export const CONFIG = {
   PLAY_STORE_URL: process.env.NEXT_PUBLIC_PLAY_STORE_URL ?? '',
   CONTACT: {
     email: 'primaverahealthcare@gmail.com',
-    phones: [
-      { label: 'Phone (Kosovo)', number: '+383 44 123 123' },
-    ],
-    whatsapp: '+383 44 123 123',
+    // No public phone or WhatsApp number until the business has one; the contact section shows only what is set here.
+    phones: [] as { label: string; number: string }[],
+    whatsapp: '',
   },
   PLANS: {
     // Internal keys stay HRT_STARTER / HRT_COMPLETE (they're in links and saved checkouts);

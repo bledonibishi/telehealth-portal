@@ -82,6 +82,12 @@ const STATS = [
   { num: '5★', label: 'Average trust rating' },
 ];
 
+/** "email", "email or phone", "email, phone or WhatsApp": only the ways of reaching us that are set. */
+const contactChannels = () => {
+  const ways = ['email', ...(CONFIG.CONTACT.phones.length ? ['phone'] : []), ...(CONFIG.CONTACT.whatsapp ? ['WhatsApp'] : [])];
+  return ways.length > 1 ? `${ways.slice(0, -1).join(', ')} or ${ways[ways.length - 1]}` : ways[0];
+};
+
 export default function HomePage() {
   return (
     <>
@@ -318,7 +324,7 @@ export default function HomePage() {
                 <div className="pv-info-card-tag">Contact us</div>
                 <h3 className="pv-info-card-h3">We're here to help</h3>
                 <p className="pv-info-card-desc">
-                  Have questions before you start? Our team is available by email, phone, or WhatsApp.
+                  Have questions before you start? Our team is available by {contactChannels()}.
                   We typically respond within a few hours on weekdays.
                 </p>
                 <div>
@@ -336,17 +342,19 @@ export default function HomePage() {
                       </a>
                     </div>
                   ))}
-                  <a
-                    className="pv-wa-btn"
-                    href={`https://wa.me/${CONFIG.CONTACT.whatsapp.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
-                    </svg>
-                    Chat on WhatsApp
-                  </a>
+                  {CONFIG.CONTACT.whatsapp && (
+                    <a
+                      className="pv-wa-btn"
+                      href={`https://wa.me/${CONFIG.CONTACT.whatsapp.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+                      </svg>
+                      Chat on WhatsApp
+                    </a>
+                  )}
                 </div>
                 <p className="pv-info-note">
                   Omo Pharmacy operates under Kosovo healthcare regulations.
