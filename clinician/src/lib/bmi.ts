@@ -15,7 +15,7 @@ export function bmiBand(bmi: number): BmiBand {
   if (bmi < 30) return { key: 'OVER', label: 'Overweight', cls: 'text-orange-400' };
   if (bmi < 35) return { key: 'OBESE_1', label: 'Obesity I', cls: 'text-red-400' };
   if (bmi < 40) return { key: 'OBESE_2', label: 'Obesity II', cls: 'text-red-300 font-semibold' };
-  return { key: 'OBESE_3', label: 'Obesity III', cls: 'text-red-200 font-semibold bg-red-500/15 rounded px-1.5 -mx-1.5' };
+  return { key: 'OBESE_3', label: 'Obesity III', cls: 'text-red-200 font-semibold' };
 }
 
 export type BmiRange = 'ALL' | '25-30' | '30-35' | '35+' | 'NONE';

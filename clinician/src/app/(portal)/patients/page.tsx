@@ -328,9 +328,10 @@ function Patients() {
           if (patient.bmi == null) return <span className="text-[color:var(--t-dim)]" title={patient.heightCm == null ? t('No height on file') : undefined}>—</span>;
           const band = bmiBand(patient.bmi);
           return (
-            <span className={band.cls} title={t(band.label)}>
+            <span className={`inline-flex items-center gap-2 ${band.cls}`} title={t(band.label)}>
+              <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
               <span className="tabular-nums font-medium">{patient.bmi}</span>
-              <span className="block text-[11px] font-normal opacity-80">{t(band.label)}</span>
+              <span className="text-[11px] font-normal opacity-80">{t(band.label)}</span>
             </span>
           );
         },
