@@ -12,7 +12,7 @@ import { withEngineering, type Ticket } from './ticket-meta';
  * Passing a ticket to the engineers. Support writes what is wrong (the engineers are told in Slack, with that text, the ticket
  * number and a link); the ticket then shows it is with them, and support marks it done when they have dealt with it.
  */
-export default function EngineeringHandoff({ ticket }: { ticket: Ticket }) {
+export default function EngineeringHandoff({ ticket, readOnly = false }: { ticket: Ticket; readOnly?: boolean }) {
   const { t, timeAgo } = useI18n();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -43,9 +43,9 @@ export default function EngineeringHandoff({ ticket }: { ticket: Ticket }) {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm font-medium text-amber-900">{t('With the engineers')} <span className="font-normal text-amber-800">· {t('since')} {timeAgo(ticket.engineeringSentAt!)}{ticket.engineeringSentByName ? ` · ${ticket.engineeringSentByName}` : ''}</span></p>
           {ticket.engineeringNote && <p className="text-sm text-amber-900 mt-1 whitespace-pre-wrap">{ticket.engineeringNote}</p>}
-          <button type="button" disabled={finishing} onClick={() => finish({ variables: { ticketId: ticket.id } })} className="mt-2 text-xs font-medium border border-amber-300 text-amber-900 bg-white rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50">{finishing ? t('Working…') : t('The engineers are done')}</button>
+          {!readOnly && <button type="button" disabled={finishing} onClick={() => finish({ variables: { ticketId: ticket.id } })} className="mt-2 text-xs font-medium border border-amber-300 text-amber-900 bg-white rounded-lg px-3 py-1.5 hover:bg-amber-100 disabled:opacity-50">{finishing ? t('Working…') : t('The engineers are done')}</button>}
         </div>
-      ) : (
+      ) : readOnly ? null : (
         <button type="button" onClick={() => { setOpen(true); setSlackIssue(null); }} className="text-sm font-medium border border-gray-300 text-gray-700 bg-white rounded-lg px-3.5 py-1.5 hover:bg-gray-50">
           {ticket.engineeringDoneAt ? t('Send to engineering again') : t('Send to engineering')}
         </button>

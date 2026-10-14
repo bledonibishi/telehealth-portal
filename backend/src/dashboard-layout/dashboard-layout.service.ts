@@ -47,6 +47,7 @@ export class DashboardLayoutService {
    * Treatment and emergency cards can't be hidden by support.
    */
   async setHold(user: AuthUser, patientId: string, input: { cardId: string; action: 'HIDE' | 'SHOW' | 'CLEAR'; days?: number | null; reason?: string | null }) {
+    if (!['HIDE', 'SHOW', 'CLEAR'].includes(input.action)) throw appError(ErrorCode.BAD_REQUEST, 'Choose to hide the card, show it, or lift the hold.');
     const widget = DASHBOARD_WIDGETS.find((w) => w.id === input.cardId);
     if (!widget) throw appError(ErrorCode.BAD_REQUEST, 'That card doesn’t exist.');
     if (input.action === 'HIDE' && widget.staffCannotHide) throw appError(ErrorCode.FORBIDDEN, `“${widget.title}” holds treatment or safety information, so support can’t hide it from a patient.`);

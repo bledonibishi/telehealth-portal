@@ -37,7 +37,11 @@ export class TicketConversationService {
     if (!text) throw appError(ErrorCode.BAD_REQUEST, 'Write something first.');
     if (text.length > 2000) throw appError(ErrorCode.BAD_REQUEST, 'That message is too long (2000 characters at most).');
     const ticket = await this.tickets.assertCanReply(user, ticketId);
-    const message = await this.messaging.sendAs(user, { patientId: ticket.patientId!, content: text } as any);
+    // The reply goes into the conversation this ticket came from, not whichever chat the patient has opened since.
+    const thread = await this.prisma.supportThread.findFirst({ where: { ticketId }, select: { patientId: true, consultationId: true } });
+    const message = thread
+      ? await this.messaging.sendToThread(user, thread, text)
+      : await this.messaging.sendAs(user, { patientId: ticket.patientId!, content: text } as any);
     const updated = await this.tickets.recordStaffReply(user, ticketId);
     return { message, ticket: updated };
   }

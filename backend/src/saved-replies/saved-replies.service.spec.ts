@@ -9,6 +9,8 @@ function setup(count = 0) {
       create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'r-1', ...data })), update: jest.fn().mockResolvedValue({ id: 'r-1' }), deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   };
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
+  prisma.$transaction = jest.fn((fn: any) => fn(prisma));
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   return { service: new SavedRepliesService(prisma, audit as any), prisma, audit };
 }

@@ -154,11 +154,25 @@ describe('help articles from the database', () => {
 
 describe('what it never answers', () => {
   it('hands over a message that has a file, because it cannot see it', async () => {
-    const { bot, prisma, ai, tickets } = setup({ messages: [msg('m1', 'PATIENT', 'here is the error')] });
+    const { bot, prisma, tickets, sent } = setup({ messages: [msg('m1', 'PATIENT', 'here is the error')] });
     prisma.uploadedFile.count.mockResolvedValue(1);
     await bot.processDue(NOW);
-    expect(ai.json).not.toHaveBeenCalled();
     expect(tickets.notifyStaffAbout).toHaveBeenCalled();
+    expect(sent.join(' ')).not.toMatch(/help article|did that help/i);
+  });
+
+  it('sends a health message with a photo to the doctors, not to support', async () => {
+    const { bot, prisma, tickets } = setup({ ai: decision({ intent: 'MEDICAL', articleId: null, answer: '' }), messages: [msg('m1', 'PATIENT', 'my injection site looks like this')] });
+    prisma.uploadedFile.count.mockResolvedValue(1);
+    await bot.processDue(NOW);
+    expect(tickets.openForAssistant).toHaveBeenCalledWith('p-1', expect.objectContaining({ type: 'CLINICAL' }));
+  });
+
+  it('does not answer when the patient wrote again while the model was thinking', async () => {
+    const { bot, prisma, sent } = setup();
+    prisma.supportThread.findUnique.mockResolvedValue({ replyDueAt: new Date(NOW.getTime() + 30_000) });
+    await bot.processDue(NOW);
+    expect(sent).toHaveLength(0);
   });
 
   it('hands a health question to the doctors without answering it', async () => {

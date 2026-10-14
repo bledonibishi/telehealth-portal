@@ -3,9 +3,9 @@ import { TicketConversationService } from './ticket-conversation.service';
 const cx = { id: 'cx-1', email: 'cx@x.com', role: 'CLINICIAN', clinicianRole: 'CX_TEAM' } as any;
 
 function setup(ticket: any = { id: 't-1', patientId: 'p-1', type: 'BILLING' }) {
-  const prisma: any = { message: { findMany: jest.fn().mockResolvedValue([{ id: 'm2' }, { id: 'm1' }]) } };
+  const prisma: any = { message: { findMany: jest.fn().mockResolvedValue([{ id: 'm2' }, { id: 'm1' }]) }, supportThread: { findFirst: jest.fn().mockResolvedValue(null) } };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
-  const messaging = { sendAs: jest.fn().mockResolvedValue({ id: 'm-new' }) };
+  const messaging = { sendAs: jest.fn().mockResolvedValue({ id: 'm-new' }), sendToThread: jest.fn().mockResolvedValue({ id: 'm-thread' }) };
   const tickets = {
     get: jest.fn().mockResolvedValue(ticket),
     assertCanReply: jest.fn().mockResolvedValue(ticket),
@@ -48,6 +48,14 @@ describe('TicketConversationService.reply', () => {
     expect(messaging.sendAs).toHaveBeenCalledWith(cx, expect.objectContaining({ patientId: 'p-1', content: 'Your card was charged once.' }));
     expect(tickets.recordStaffReply).toHaveBeenCalledWith(cx, 't-1');
     expect(result.ticket.status).toBe('WAITING_ON_PATIENT');
+  });
+
+  it('replies in the conversation the ticket came from, not the newest chat', async () => {
+    const { service, messaging, prisma } = setup();
+    prisma.supportThread.findFirst.mockResolvedValue({ patientId: 'p-1', consultationId: 'c-old' });
+    await service.reply(cx, 't-1', 'Sorted now');
+    expect(messaging.sendToThread).toHaveBeenCalledWith(cx, { patientId: 'p-1', consultationId: 'c-old' }, 'Sorted now');
+    expect(messaging.sendAs).not.toHaveBeenCalled();
   });
 
   it('sends nothing when the reply is not allowed (a medical ticket answered by support)', async () => {

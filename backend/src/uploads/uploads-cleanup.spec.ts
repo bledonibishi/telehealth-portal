@@ -111,7 +111,7 @@ describe('support attachment clean-up', () => {
 
   it('removes attachments that were uploaded but never sent with a request', async () => {
     const { service, prisma, storage, audit } = fakeDb();
-    prisma.uploadedFile.findMany.mockResolvedValueOnce([{ id: 'f-1', patientId: 'p-1', storageKey: 'p-1/f-1.png' }]).mockResolvedValueOnce([]);
+    prisma.uploadedFile.findMany.mockResolvedValueOnce([{ id: 'f-1', patientId: 'p-1', storageKey: 'p-1/f-1.png' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     expect(await service.purgeSupportAttachments(NOW)).toBe(1);
     expect(prisma.uploadedFile.findMany.mock.calls[0][0].where).toMatchObject({ kind: 'SUPPORT_ATTACHMENT', ticketId: null });
     expect(storage.delete).toHaveBeenCalledWith('p-1/f-1.png');
@@ -120,11 +120,24 @@ describe('support attachment clean-up', () => {
 
   it('removes attachments of requests finished more than 90 days ago, and only those', async () => {
     const { service, prisma, audit } = fakeDb();
-    prisma.uploadedFile.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'f-2', patientId: 'p-1', storageKey: 'p-1/f-2.pdf' }]);
+    prisma.uploadedFile.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'f-2', patientId: 'p-1', storageKey: 'p-1/f-2.pdf' }]).mockResolvedValueOnce([]);
     expect(await service.purgeSupportAttachments(NOW)).toBe(1);
     const where = prisma.uploadedFile.findMany.mock.calls[1][0].where;
     expect(where.ticket.status.in).toEqual(['RESOLVED', 'CLOSED']);
     expect(where.ticket.resolvedAt.lt).toEqual(new Date(NOW.getTime() - 90 * 24 * 3_600_000));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SUPPORT_ATTACHMENT_PURGED_RETENTION' }));
+  });
+});
+
+describe('chat attachment clean-up', () => {
+  it('removes files sent in the chat once the message is older than the retention period', async () => {
+    const NOW = new Date('2026-10-05T03:00:00Z');
+    const { service, prisma, audit } = fakeDb();
+    prisma.uploadedFile.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'f-3', patientId: 'p-1', storageKey: 'p-1/f-3.png' }]);
+    expect(await service.purgeSupportAttachments(NOW)).toBe(1);
+    const where = prisma.uploadedFile.findMany.mock.calls[2][0].where;
+    expect(where).toMatchObject({ kind: 'SUPPORT_ATTACHMENT', ticketId: null });
+    expect(where.message.sentAt.lt).toEqual(new Date(NOW.getTime() - 90 * 24 * 3_600_000));
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'SUPPORT_ATTACHMENT_PURGED_RETENTION' }));
   });
 });

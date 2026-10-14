@@ -90,6 +90,12 @@ export class MessagingService implements OnModuleInit {
     return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content, false, attachmentIds);
   }
 
+  /** A message from staff into a thread that is already known (a consultation, or the pre-consultation one when `consultationId` is null). */
+  sendToThread(user: AuthUser, thread: { patientId: string; consultationId: string | null }, content: string) {
+    if (user.role === UserRole.PATIENT) throw new ForbiddenException();
+    return this.deliver(user.id, user.role as UserRole, thread, content, false, []);
+  }
+
   /** A message on a known consultation, e.g. posted by the system on a clinician's behalf. */
   async send(senderId: string, senderRole: UserRole, input: { consultationId: string; content: string }) {
     const consultation = await this.prisma.consultation.findUniqueOrThrow({ where: { id: input.consultationId }, select: { patientId: true } });
@@ -114,7 +120,9 @@ export class MessagingService implements OnModuleInit {
     const message = attachmentIds.length
       ? await this.prisma.$transaction(async (tx) => {
           const created = await tx.message.create({ data });
-          await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { messageId: created.id } });
+          const claimed = await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { messageId: created.id } });
+          // Another send took a file first: undo this one rather than send a message without the files the patient chose.
+          if (claimed.count !== attachmentIds.length) throw new BadRequestException('One of the files could not be attached. Please add it again.');
           return created;
         })
       : await this.prisma.message.create({ data });
@@ -161,7 +169,7 @@ export class MessagingService implements OnModuleInit {
       // The care team answered this thread: its "waiting for a reply" alert is done. Other threads stay as they are.
       // The assistant's answer does not count: the team's "waiting for a reply" alert stays until a person has answered.
       if (!isAi) await this.resolveStaffAlert(patientId, consultationId);
-      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId, consultationId) });
+      await this.notifier.toPatient(patientId, { kind: isAi ? NotificationKind.ASSISTANT_MESSAGE : NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId, consultationId) });
       // The patient may have opened the chat while the notification was being written: then it is already handled.
       const stored = await this.prisma.message.findUnique({ where: { id: message.id }, select: { readAt: true } });
       if (stored?.readAt) await this.notifier.resolve(patientMessageKey(patientId, consultationId));
@@ -203,8 +211,22 @@ export class MessagingService implements OnModuleInit {
 
   /** The files sent with one message (names only; the bytes are served, with an audit entry, from /uploads). */
   attachmentsOf(messageId: string) {
-    return this.prisma.uploadedFile.findMany({ where: { messageId }, select: { id: true, filename: true, mimeType: true }, orderBy: { createdAt: 'asc' } });
+    // Collected for a moment and fetched together: a list of messages costs one query, not one per message.
+    return new Promise<Array<{ id: string; filename: string; mimeType: string }>>((resolve, reject) => {
+      this.attachmentQueue.push({ messageId, resolve, reject });
+      if (this.attachmentQueue.length > 1) return;
+      setImmediate(async () => {
+        const batch = this.attachmentQueue.splice(0);
+        try {
+          const rows = await this.prisma.uploadedFile.findMany({ where: { messageId: { in: [...new Set(batch.map((b) => b.messageId))] } }, select: { id: true, filename: true, mimeType: true, messageId: true }, orderBy: { createdAt: 'asc' } });
+          for (const b of batch) b.resolve(rows.filter((r) => r.messageId === b.messageId).map(({ id, filename, mimeType }) => ({ id, filename, mimeType })));
+        } catch (err) {
+          for (const b of batch) b.reject(err);
+        }
+      });
+    });
   }
+  private attachmentQueue: Array<{ messageId: string; resolve: (v: any) => void; reject: (e: unknown) => void }> = [];
 
   /** Messages a patient sent or received before they had a consultation. */
   findPreConsultation(patientId: string) {

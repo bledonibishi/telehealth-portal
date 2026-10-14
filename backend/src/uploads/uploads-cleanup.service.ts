@@ -89,7 +89,12 @@ export class UploadsCleanupService {
     const finished = { ticket: { status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] }, resolvedAt: { lt: cutoff } } };
     const expired = await this.prisma.uploadedFile.findMany({ where: { kind: UploadKind.SUPPORT_ATTACHMENT, ...finished }, select: { id: true, patientId: true, storageKey: true }, orderBy: { createdAt: 'asc' }, take: BATCH });
     const removedExpired = await this.purgeAll(expired, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, ...finished } })) === 1, 'SUPPORT_ATTACHMENT_PURGED_RETENTION');
-    return removedUnsent + removedExpired;
+
+    // Files sent in the chat belong to a message, not a ticket: they go the same time after the message was sent.
+    const sentInChat = { ticketId: null, message: { sentAt: { lt: cutoff } } };
+    const expiredChat = await this.prisma.uploadedFile.findMany({ where: { kind: UploadKind.SUPPORT_ATTACHMENT, ...sentInChat }, select: { id: true, patientId: true, storageKey: true }, orderBy: { createdAt: 'asc' }, take: BATCH });
+    const removedChat = await this.purgeAll(expiredChat, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, ...sentInChat } })) === 1, 'SUPPORT_ATTACHMENT_PURGED_RETENTION');
+    return removedUnsent + removedExpired + removedChat;
   }
 
   private async purgeAll(files: Array<{ id: string; patientId: string; storageKey: string }>, stillOrphan: (tx: Prisma.TransactionClient, file: { id: string }) => Promise<boolean>, auditAction = 'ORPHAN_PHOTO_PURGED'): Promise<number> {

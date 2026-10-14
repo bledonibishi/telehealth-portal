@@ -25,7 +25,11 @@ export class SavedRepliesService {
 
   async list() {
     if ((await this.prisma.savedReply.count()) === 0) {
-      await this.prisma.savedReply.createMany({ data: STARTER_REPLIES.map((r) => ({ ...r, createdById: 'system' })) });
+      // Under a lock, so two people opening the list for the first time together don't both add the starter set.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(727001)`;
+        if ((await tx.savedReply.count()) === 0) await tx.savedReply.createMany({ data: STARTER_REPLIES.map((r) => ({ ...r, createdById: 'system' })) });
+      });
     }
     return this.prisma.savedReply.findMany({ orderBy: { title: 'asc' } });
   }

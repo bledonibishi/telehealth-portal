@@ -15,6 +15,10 @@ import { Language, TEMPLATES } from './support-templates';
 export const QUIET_MS = 30_000;
 /** Answers it may give to one problem before a person takes over. */
 export const MAX_ATTEMPTS = 5;
+/** After a person writes in a chat the assistant has not touched, it stays out for this long. */
+const HUMAN_LED_HOURS = 24;
+/** How long to wait before trying again when a hand-over to a person failed. */
+const RETRY_MS = 2 * 60_000;
 /** After its answer, this long without a reply and the ticket is closed (a reply reopens the conversation). */
 export const CLOSE_AFTER_HOURS = 48;
 const BATCH = 10;
@@ -124,6 +128,11 @@ export class SupportBotService {
         // A person has it. Once their ticket is finished, a new message starts a fresh conversation with the assistant.
         const ticket = row.ticketId ? await this.prisma.ticket.findUnique({ where: { id: row.ticketId }, select: { status: true } }) : null;
         if (ticket && ticket.status !== 'RESOLVED' && ticket.status !== 'CLOSED') return;
+        // No ticket: a person simply started writing in this chat. They keep it while they are still active in it.
+        if (!ticket) {
+          const staff = await this.prisma.message.findFirst({ where: { patientId: m.patientId, consultationId: m.consultationId, senderRole: { not: UserRole.PATIENT }, isAi: false }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } });
+          if (staff && Date.now() - staff.sentAt.getTime() < HUMAN_LED_HOURS * 3_600_000) return;
+        }
         await this.prisma.supportThread.update({ where: { id: row.id }, data: { status: 'ACTIVE', attempts: 0, usedArticles: [], ticketId: null, awaitingSince: null, replyDueAt: dueAt } });
         return;
       }
@@ -170,7 +179,11 @@ export class SupportBotService {
       } catch (err) {
         this.logger.error(`Support assistant failed on thread ${thread.threadKey}: ${(err as Error)?.message}`);
         // Never leave a patient waiting on a failure: a person looks at it.
-        await this.escalate(thread, { type: 'OTHER', reason: 'The assistant hit an error and could not answer.', language: 'en', quiet: true }).catch(() => undefined);
+        await this.escalate(thread, { type: 'OTHER', reason: 'The assistant hit an error and could not answer.', language: 'en', quiet: true }).catch(async (e) => {
+          // Even the hand-over failed: put the timer back so the next run tries again, rather than leaving the patient unanswered.
+          this.logger.error(`Hand-over to a person failed on thread ${thread.threadKey}: ${(e as Error)?.message}`);
+          await this.prisma.supportThread.updateMany({ where: { id: thread.id, replyDueAt: null, status: { in: ['ACTIVE', 'AWAITING_PATIENT'] } }, data: { replyDueAt: new Date(now.getTime() + RETRY_MS) } }).catch(() => undefined);
+        });
       }
     }
     return handled;
@@ -180,11 +193,15 @@ export class SupportBotService {
   async closeStale(now = new Date()): Promise<number> {
     if (!this.enabled) return 0;
     const stale = await this.prisma.supportThread.findMany({ where: { status: 'AWAITING_PATIENT', replyDueAt: null, awaitingSince: { lte: new Date(now.getTime() - CLOSE_AFTER_HOURS * 3_600_000) } }, take: BATCH });
+    let closed = 0;
     for (const thread of stale) {
+      // Claim it first, only if nothing changed since it was read: a patient who wrote a moment ago keeps their conversation.
+      const claimed = await this.prisma.supportThread.updateMany({ where: { id: thread.id, status: 'AWAITING_PATIENT', replyDueAt: null, awaitingSince: thread.awaitingSince }, data: { status: 'DONE', awaitingSince: null } });
+      if (claimed.count !== 1) continue;
+      closed += 1;
       if (thread.ticketId) await this.tickets.assistantUpdate(thread.ticketId, { status: TicketStatus.CLOSED, note: `No reply for ${CLOSE_AFTER_HOURS} hours after the answer, so the assistant closed this. A new message from the patient reopens the conversation.` });
-      await this.prisma.supportThread.update({ where: { id: thread.id }, data: { status: 'DONE', awaitingSince: null } });
     }
-    return stale.length;
+    return closed;
   }
 
   private async post(thread: SupportThread, content: string, meta?: { articleId?: string }) {
@@ -222,9 +239,9 @@ export class SupportBotService {
       return;
     }
 
-    // The assistant cannot see a photo or a file, so a message that has one is for a person.
+    // The assistant cannot see a photo or a file, so a message that has one is for a person. It is still read first, so a
+    // health message with a photo goes to a doctor rather than to support.
     const withFiles = await this.prisma.uploadedFile.count({ where: { messageId: { in: fresh.map((m) => m.id) } } });
-    if (withFiles > 0) return this.escalate(thread, { type: 'OTHER', reason: 'The patient sent a file, which the assistant cannot read.', language: 'en' });
 
     // An urgent message never waits for the assistant: the urgency check runs now if it has not yet, and a doctor is told.
     for (const m of fresh) if (!m.aiCheckedAt) await this.urgency?.check(m.id);
@@ -237,9 +254,16 @@ export class SupportBotService {
     const articles = await this.articles.active();
     const result = await this.interpret({ articles, transcript, attempts: thread.attempts, awaiting: thread.status === 'AWAITING_PATIENT', patientId: thread.patientId });
     if (result.status !== 'COMPLETED') return this.escalate(thread, { type: 'OTHER', reason: 'The assistant could not reach its AI service.', language: 'en', quiet: true });
+    // The patient wrote again while the model was thinking: wait for them to finish, then answer everything at once.
+    const current = await this.prisma.supportThread.findUnique({ where: { id: thread.id }, select: { replyDueAt: true } });
+    if (current?.replyDueAt) return;
     const d = result.data;
     const language: Language = d.language in TEMPLATES ? (d.language as Language) : 'en';
     const T = TEMPLATES[language];
+
+    if (withFiles > 0 && d.intent !== 'MEDICAL') {
+      return this.escalate(thread, { type: this.type(d), subject: d.subject, reason: 'The patient sent a file, which the assistant cannot read.', language });
+    }
 
     switch (d.intent) {
       case 'MEDICAL':

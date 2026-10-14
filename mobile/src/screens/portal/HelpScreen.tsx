@@ -38,6 +38,7 @@ export function HelpScreen() {
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [sent, setSent] = useState<Request | null>(null);
   const [problem, setProblem] = useState<unknown>(null);
 
@@ -86,11 +87,11 @@ export function HelpScreen() {
               <Field label="More detail (optional)" value={description} onChangeText={setDescription} maxLength={4000} multiline numberOfLines={4} style={{ minHeight: 96, textAlignVertical: 'top' }} />
               <View style={{ gap: 6 }}>
                 <Text style={{ fontSize: 13, fontWeight: '600', color: colors.slate700 }}>A photo or screenshot that shows the problem (optional)</Text>
-                <AttachmentsField kind="SUPPORT_ATTACHMENT" files={files} onChange={setFiles} />
+                <AttachmentsField kind="SUPPORT_ATTACHMENT" files={files} onChange={setFiles} onUploadingChange={setUploading} />
                 {topic !== 'CLINICAL' && <Text style={{ fontSize: 12, color: colors.amber800 }}>Please don’t send ID documents, prescriptions or test results here. For health questions choose “A question for my doctor”.</Text>}
               </View>
               <ErrorText error={problem} />
-              <Button label="Send request" loading={sending} disabled={subject.trim().length < 3} onPress={submit} />
+              <Button label="Send request" loading={sending} disabled={subject.trim().length < 3 || uploading} onPress={submit} />
             </View>
           </Card>
         )}

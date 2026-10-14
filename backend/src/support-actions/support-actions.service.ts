@@ -73,6 +73,14 @@ export class SupportActionsService {
       select: { id: true, email: true, firstName: true, activatedAt: true, stripeCustomerId: true, stripeSubscriptionId: true },
     });
     if (!patient) throw appError(ErrorCode.NOT_FOUND, 'That patient doesn’t exist.');
+    // The same rules the screen shows: a fix that does not apply to this patient is refused here too, not only greyed out.
+    const blocked = actionBlockedReason(input.action, patient);
+    if (blocked) throw appError(ErrorCode.BAD_REQUEST, blocked);
+    // A note goes only onto a ticket of this same patient.
+    if (input.ticketId) {
+      const own = await this.prisma.ticket.findFirst({ where: { id: input.ticketId, patientId: patient.id }, select: { id: true } });
+      if (!own) throw appError(ErrorCode.BAD_REQUEST, 'That ticket belongs to a different patient.');
+    }
 
     const auditAction = `SUPPORT_${input.action}`;
     const since = new Date(Date.now() - COOLDOWN_MINUTES * 60_000);
@@ -114,14 +122,9 @@ export class SupportActionsService {
 
     const since = Date.now() - COOLDOWN_MINUTES * 60_000;
     const hasPaymentProfile = !!(patient.stripeCustomerId || patient.stripeSubscriptionId);
-    const rules: Record<SupportAction, string | null> = {
-      [SupportAction.RESEND_ACTIVATION_LINK]: patient.activatedAt ? 'This patient has already set up their account. Send a password reset link instead.' : null,
-      [SupportAction.SEND_PASSWORD_RESET]: patient.activatedAt ? null : 'This patient hasn’t set up their account yet. Resend the activation link instead.',
-      [SupportAction.RETRY_FAILED_PAYMENT]: hasPaymentProfile ? null : 'There is no payment profile on file for this patient, so there is nothing to retry.',
-    };
     const actions: ActionState[] = (Object.values(SupportAction) as SupportAction[]).map((action) => {
       const last = history.find((h) => h.action === action && h.at.getTime() >= since);
-      const blocked = rules[action];
+      const blocked = actionBlockedReason(action, patient);
       return { action, available: !blocked && !last, unavailableReason: blocked ?? (last ? `Already done ${Math.max(1, Math.round((Date.now() - last.at.getTime()) / 60_000))} minute(s) ago by ${last.byName}.` : undefined), cooldownUntil: last ? new Date(last.at.getTime() + COOLDOWN_MINUTES * 60_000) : undefined };
     });
     return { patientName: `${patient.firstName} ${patient.lastName}`.trim(), email: patient.email, activated: !!patient.activatedAt, hasPaymentProfile, actions, history };
@@ -150,3 +153,17 @@ export const ACTION_LABEL: Record<SupportAction, string> = {
   [SupportAction.SEND_PASSWORD_RESET]: 'Sent a password reset link',
   [SupportAction.RETRY_FAILED_PAYMENT]: 'Retried the failed payment',
 };
+
+/** Why a quick fix does not apply to this patient, or null when it does. Used by the screen and again when the fix is run. */
+export function actionBlockedReason(action: SupportAction, patient: { activatedAt: Date | null; stripeCustomerId: string | null; stripeSubscriptionId: string | null }): string | null {
+  switch (action) {
+    case SupportAction.RESEND_ACTIVATION_LINK:
+      return patient.activatedAt ? 'This patient has already set up their account. Send a password reset link instead.' : null;
+    case SupportAction.SEND_PASSWORD_RESET:
+      return patient.activatedAt ? null : 'This patient hasn’t set up their account yet. Resend the activation link instead.';
+    case SupportAction.RETRY_FAILED_PAYMENT:
+      return patient.stripeCustomerId || patient.stripeSubscriptionId ? null : 'There is no payment profile on file for this patient, so there is nothing to retry.';
+    default:
+      return null;
+  }
+}
