@@ -3,7 +3,7 @@ import Link from 'next/link';
 /** The white panel every dashboard block sits on. */
 export function Card({ children, className = '', labelledBy }: { children: React.ReactNode; className?: string; labelledBy?: string }) {
   return (
-    <section aria-labelledby={labelledBy} className={`bg-white rounded-lg border border-slate-200 p-5 ${className}`}>
+    <section aria-labelledby={labelledBy} className={`bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_1px_2px_rgba(10,56,54,0.04)] ${className}`}>
       {children}
     </section>
   );
@@ -22,7 +22,7 @@ export function CardHeader({ id, title, subtitle, href, action, children }: { id
   );
 }
 
-export const btnPrimary = 'inline-flex items-center justify-center gap-2 rounded-md bg-ink-800 hover:bg-ink-900 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-colors';
-export const btnBlue = 'inline-flex items-center justify-center gap-2 rounded-md bg-ink-600 hover:bg-ink-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 transition-colors';
-export const btnOutline = 'inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 text-ink-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2 transition-colors';
-export const btnSoft = 'inline-flex items-center justify-center gap-2 rounded-md bg-ink-50 hover:bg-ink-100 text-ink-800 text-sm font-semibold px-4 py-2.5 transition-colors';
+export const btnPrimary = 'inline-flex items-center justify-center gap-2 rounded-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-colors';
+export const btnBlue = 'inline-flex items-center justify-center gap-2 rounded-full bg-ink-600 hover:bg-ink-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 transition-colors';
+export const btnOutline = 'inline-flex items-center justify-center gap-2 rounded-full border border-slate-300 text-ink-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2 transition-colors';
+export const btnSoft = 'inline-flex items-center justify-center gap-2 rounded-full bg-ink-50 hover:bg-ink-100 text-ink-800 text-sm font-semibold px-4 py-2.5 transition-colors';

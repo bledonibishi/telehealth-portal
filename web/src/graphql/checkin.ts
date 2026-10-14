@@ -21,3 +21,15 @@ export const SUBMIT_CHECK_IN = gql`
     }
   }
 `;
+
+export const MY_CHECK_IN_STATUS = gql`
+  query MyCheckInStatus {
+    myCheckInStatus {
+      state
+      url
+      nextDueAt
+      lastCompletedAt
+      linkExpired
+    }
+  }
+`;

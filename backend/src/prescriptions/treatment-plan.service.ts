@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DosingService } from '../dosing/dosing.service';
-import { ConsultationKind, DoseStatus, PrescriptionStatus } from '../common/enums';
+import { ConsultationKind, DoseStatus, PrescriptionStatus, ProductForm } from '../common/enums';
 import { ShipmentsService } from './shipments.service';
 import { DEFAULT_SUPPLY_CYCLE_DAYS } from './shipment-alerts';
 import { PROGRAMME, frequencyOf, planSpan, supplyDoses } from './treatment-plan';
@@ -67,6 +67,7 @@ export class TreatmentPlanService {
     return {
       prescriptionId: rx.id,
       kind,
+      form: (item?.product.form as ProductForm | undefined) ?? null,
       programme: (kind && PROGRAMME[kind]) || 'Your treatment',
       productName: item?.product.brandName ?? item?.product.name ?? rx.medication,
       genericName: item?.product.brandName ? item.product.name : null,

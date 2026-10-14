@@ -7,12 +7,15 @@ import { ORDER_POLL_MS, expectedDelivery } from '@/lib/delivery';
 import { Card, CardHeader, btnPrimary, btnOutline } from '@/components/portal/Card';
 import { Icon } from '@/components/portal/Icon';
 import { useRefill } from '@/lib/useRefill';
+import { MY_TREATMENT_PLAN } from '@/graphql/portal';
 import { OrderTracker, ORDER_STATUS } from './OrderTracker';
 
 /** The latest order with its tracker, and when the next one should be placed. */
 export function RecentOrders() {
   const { data } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network', pollInterval: ORDER_POLL_MS });
   const refill = useRefill();
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-first' });
+  const onTreatment = !!planData?.myTreatmentPlan;
   const supply = refill.status;
   const order = (data?.myOrders ?? []).find((o: any) => o.status !== 'CANCELLED');
   const days: number | null = supply?.daysUntilNextSupply ?? null;
@@ -43,7 +46,9 @@ export function RecentOrders() {
           )}
         </div>
       ) : (
-        <p className="text-sm text-slate-500 bg-slate-50 rounded-md p-4">Your first order appears here once your doctor has prescribed your treatment.</p>
+        <p className="text-sm text-slate-500 bg-slate-50 rounded-md p-4">
+          {onTreatment ? 'No orders to show yet. Each supply shows here with its delivery once the pharmacy has it.' : 'Your first order appears here once your doctor has prescribed your treatment.'}
+        </p>
       )}
 
       {when && (
@@ -54,7 +59,8 @@ export function RecentOrders() {
               <p className="text-xs font-semibold text-ink-900">Next order reminder</p>
               <p className="text-[11px] text-slate-500">{refill.requested ? 'Requested — waiting for your doctor' : `Your next order is recommended ${when}`}</p>
             </div>
-            {!refill.requested && (
+            {/* Only offered when it can be used; otherwise the line above says when. */}
+            {!refill.requested && (refill.canRequest || refill.loading) && (
               <button type="button" onClick={refill.request} disabled={!refill.canRequest || refill.loading} title={refill.hint ?? undefined} className={`${btnOutline} !px-3 !py-1.5 !text-xs`}>
                 Prepare Order
               </button>

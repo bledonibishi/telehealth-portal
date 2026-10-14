@@ -32,7 +32,8 @@ describe('normalizeLayout', () => {
 
   it('lets any card sit in any place, wherever the patient put it', () => {
     const l = normalizeLayout({ top: ['chat'], main: ['emergency', 'plan'], side: ['treatment', 'orders'] });
-    expect(l.top[0]).toBe('chat');
+    // The Today card, new to this saved screen, leads; the patient's own choice comes right after it.
+    expect(l.top.slice(0, 2)).toEqual(['today', 'chat']);
     expect(l.main.slice(0, 2)).toEqual(['emergency', 'plan']);
     expect(l.side.slice(0, 2)).toEqual(['treatment', 'orders']);
   });
@@ -42,7 +43,12 @@ describe('normalizeLayout', () => {
     expect(l.main[0]).toBe('plan');
     expect(l.main).toEqual(expect.arrayContaining(['treatment', 'updates', 'orders', 'quickLinks']));
     expect(l.side).toEqual(expect.arrayContaining(['profile', 'chat', 'appointment', 'emergency', 'contact']));
-    expect(l.top).toEqual(['progress']);
+    expect(l.top).toEqual(['today', 'progress']);
+  });
+
+  it('puts the Today card first on a screen saved before it existed', () => {
+    const l = normalizeLayout({ top: ['progress'], main: ['plan'], side: ['chat'], hidden: [] });
+    expect(l.top).toEqual(['today', 'progress']);
   });
 
   it('puts every card in exactly one place, shown or hidden', () => {

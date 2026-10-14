@@ -2,8 +2,10 @@
 
 import { PageHeader } from '@/components/portal/PageHeader';
 import { EmptyState } from '@/components/portal/EmptyState';
-import { MY_PRODUCT_KIND } from '@/graphql/intake';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DOSE_EARLY_LOG_HOURS } from '@telehealth/shared-types';
+import { MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { doseWords } from '@/lib/dose-words';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import FullCalendar from '@fullcalendar/react';
@@ -140,8 +142,8 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const advice = missedDoseAdvice(dose, needsClinician);
   const pen = isRotatingPen(dose);
   // Offered while logging, and afterwards if it was left out.
-  // Logging an injection is for the day it is due (or after): a dose on a later day can only be looked at.
-  const notYet = dose.status === 'SCHEDULED' && differenceInCalendarDays(new Date(dose.scheduledFor), new Date()) > 0;
+  // The backend takes a dose from DOSE_EARLY_LOG_HOURS before its time, so nothing earlier is offered here either.
+  const notYet = dose.status === 'SCHEDULED' && new Date(dose.scheduledFor).getTime() - Date.now() > DOSE_EARLY_LOG_HOURS * 3_600_000;
   const askSite = pen && !notYet && (dose.status === 'SCHEDULED' || dose.status === 'MISSED' || (dose.status === 'TAKEN' && !dose.injectionSite));
 
   return (
@@ -233,6 +235,15 @@ export default function DosesPage() {
 
   const doses: DoseEvent[] = data?.myDoseCalendar ?? [];
   const selected = doses.find((d) => d.id === selectedId) ?? null;
+  // A link from the home screen (/doses?dose=…) opens that dose straight away, once the calendar has it.
+  const [linkedDose, setLinkedDose] = useState<string | null>(null);
+  useEffect(() => setLinkedDose(new URLSearchParams(window.location.search).get('dose')), []);
+  useEffect(() => {
+    if (linkedDose && doses.some((d) => d.id === linkedDose)) {
+      setSelectedId(linkedDose);
+      setLinkedDose(null);
+    }
+  }, [linkedDose, doses]);
   const overdue = overdueDose(doses);
 
   const next = useMemo(
@@ -241,8 +252,8 @@ export default function DosesPage() {
   );
 
   // Worked out by the backend on the active prescription only, so misses on a replaced one don't count.
-  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-first' });
   const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-first' });
   const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
   const needsClinician: boolean = missed.needsClinician;
   // Straight into the conversation (on the newest consultation, where replies go) rather than the
@@ -280,7 +291,9 @@ export default function DosesPage() {
   };
 
   // The hormone programmes use gels, patches and capsules; only GLP-1 and testosterone are injected.
-  const injections = kindData?.myProductKind !== 'HRT';
+  // Named by the active prescription's form, like the menu (not by old doses, nor the programme signed up for): a hormone
+  // gel, patch or capsule is never called an injection. Each dose's own controls still follow that dose's form.
+  const injections = planData?.myTreatmentPlan ? doseWords(planData.myTreatmentPlan.form).calendar === 'Injections' : doses.length > 0 && doses.every(isInjected);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">

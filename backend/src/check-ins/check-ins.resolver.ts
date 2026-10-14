@@ -1,7 +1,7 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { CheckInsService } from './check-ins.service';
-import { CheckInModel, CheckInReportModel } from './models/check-in.model';
+import { CheckInModel, CheckInReportModel, CheckInStatusModel } from './models/check-in.model';
 import { CheckInReportService } from './check-in-report.service';
 import { SubmitCheckInInput } from './dto/submit-check-in.input';
 import { ReviewCheckInInput } from './dto/review-check-in.input';
@@ -23,6 +23,12 @@ export class CheckInsResolver {
   @Query(() => [CheckInReportModel], { description: 'The signed-in patient’s check-in reports (weeks 4, 8, 12 …), newest first' })
   myCheckInReports(@CurrentUser() user: AuthUser) {
     return this.reports.listFor(user.id);
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => CheckInStatusModel, { nullable: true, description: 'The signed-in patient’s monthly check-in: open now, just done, or when the next one is. Null without an active prescription.' })
+  myCheckInStatus(@CurrentUser() user: AuthUser) {
+    return this.checkInsService.statusFor(user.id);
   }
 
   @Authorized(...PRESCRIBERS)

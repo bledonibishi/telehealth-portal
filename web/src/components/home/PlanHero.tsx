@@ -7,19 +7,20 @@ import { Icon } from '@/components/portal/Icon';
 import { btnPrimary } from '@/components/portal/Card';
 import { PenIllustration } from './PenIllustration';
 import { OrderEarlyButton } from './OrderEarlyButton';
+import { doseWords } from '@/lib/dose-words';
 
 export type Plan = {
-  programme: string; productName: string; genericName?: string | null; strength?: string | null; frequency: string; dosesPerWeek?: number | null;
+  form?: string | null; programme: string; productName: string; genericName?: string | null; strength?: string | null; frequency: string; dosesPerWeek?: number | null;
   startedAt: string; validUntil?: string | null; durationWeeks?: number | null; weeksElapsed: number; dosesTaken: number; dosesPlanned?: number | null;
   supplyDosesTotal?: number | null; supplyDosesTaken?: number | null; nextDoseAt?: string | null; prescriberName?: string | null; directions?: string | null; repeatsLeft: number;
 };
 
-/** A ring that fills as the plan's injections are taken. */
-export function DoseRing({ taken, total, size = 96 }: { taken: number; total: number; size?: number }) {
+/** A ring that fills as the plan's doses are taken. `many` names them ("injections", "capsules"…). */
+export function DoseRing({ taken, total, size = 96, many = 'doses' }: { taken: number; total: number; size?: number; many?: string }) {
   const r = 42, c = 2 * Math.PI * r;
   const pct = total > 0 ? Math.min(taken / total, 1) : 0;
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`${taken} of ${total} injections taken`}>
+    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={`${taken} of ${total} ${many} taken`}>
       <circle cx="50" cy="50" r={r} fill="none" strokeWidth="8" className="stroke-slate-100" />
       <circle cx="50" cy="50" r={r} fill="none" strokeWidth="8" strokeLinecap="round" className="stroke-emerald-500"
         strokeDasharray={`${pct * c} ${c}`} transform="rotate(-90 50 50)" />
@@ -28,11 +29,11 @@ export function DoseRing({ taken, total, size = 96 }: { taken: number; total: nu
   );
 }
 
-/** One dot per injection in the current supply (or the plan), filled once taken. */
-export function DoseDots({ taken, total }: { taken: number; total: number }) {
+/** One dot per dose in the current supply (or the plan), filled once taken. */
+export function DoseDots({ taken, total, many = 'doses' }: { taken: number; total: number; many?: string }) {
   const n = Math.min(total, 16);
   return (
-    <ul className="flex items-center gap-2" aria-label={`${taken} of ${total} injections taken`}>
+    <ul className="flex items-center gap-2" aria-label={`${taken} of ${total} ${many} taken`}>
       {Array.from({ length: n }, (_, i) => (
         <li key={i} className={`w-2.5 h-2.5 rounded-full ${i < taken ? 'bg-ink-800' : i === taken ? 'bg-ink-600/50' : 'bg-ink-100'}`} />
       ))}
@@ -48,6 +49,7 @@ export function PlanHero({ plan, detailsHref = '/treatment-plan', compact: force
   const [ref, width] = useElementWidth<HTMLElement>();
   const compact = forceCompact || (width != null && width < 640);
   const tight = width != null && width < 420;
+  const words = doseWords(plan.form);
   const total = plan.dosesPlanned ?? plan.supplyDosesTotal ?? plan.dosesTaken;
   const dotsTotal = plan.supplyDosesTotal ?? total;
   const dotsTaken = plan.supplyDosesTotal != null ? plan.supplyDosesTaken ?? 0 : plan.dosesTaken;
@@ -66,20 +68,22 @@ export function PlanHero({ plan, detailsHref = '/treatment-plan', compact: force
             </dl>
             <Link href={detailsHref} className={`${btnPrimary} mt-5 whitespace-nowrap`}>View Plan Details <Icon name="arrow" className="w-4 h-4" /></Link>
           </div>
-          <div className={`${compact ? 'hidden' : 'hidden sm:flex'} items-center justify-center rounded-lg bg-white/70 border border-white h-36`}>
-            <PenIllustration label={plan.productName} className="w-28 h-28" />
-          </div>
+          {words.pen && (
+            <div className={`${compact ? 'hidden' : 'hidden sm:flex'} items-center justify-center rounded-lg bg-white/70 border border-white h-36`}>
+              <PenIllustration label={plan.productName} className="w-28 h-28" />
+            </div>
+          )}
         </div>
 
         <div className="bg-surface rounded-md border border-slate-200 p-4">
           <p className="text-sm font-medium text-ink-700">Your Progress</p>
           <div className="flex items-center gap-3 mt-3">
-            <DoseRing taken={plan.dosesTaken} total={Math.max(total, plan.dosesTaken)} size={84} />
-            <p className="text-sm text-slate-600 leading-snug">injections<br />taken</p>
+            <DoseRing taken={plan.dosesTaken} total={Math.max(total, plan.dosesTaken)} size={84} many={words.many} />
+            <p className="text-sm text-slate-600 leading-snug">{words.many}<br />taken</p>
           </div>
-          {dotsTotal > 0 && <div className="mt-4"><DoseDots taken={dotsTaken} total={dotsTotal} /></div>}
+          {dotsTotal > 0 && <div className="mt-4"><DoseDots taken={dotsTaken} total={dotsTotal} many={words.many} /></div>}
           <p className="text-sm text-slate-600 mt-4">
-            Next injection due: <b className="text-ink-900">{plan.nextDoseAt ? format(new Date(plan.nextDoseAt), 'dd MMM yyyy') : '—'}</b>
+            {words.next} due: <b className="text-ink-900">{plan.nextDoseAt ? format(new Date(plan.nextDoseAt), 'dd MMM yyyy') : '—'}</b>
           </p>
           <OrderEarlyButton className="mt-3" fullWidth />
         </div>

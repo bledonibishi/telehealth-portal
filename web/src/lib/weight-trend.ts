@@ -47,12 +47,14 @@ export function trendMessage(t: WeightTrend): TrendMessage | null {
       };
     case 'STEADY_LOSS':
       return {
-        tone: 'green',
+        // Faster than usual is something to tell the doctor about, so it is shown as a caution, not as good news.
+        tone: t.unusuallyFast ? 'orange' : 'green',
         icon: '📉',
         title: `You’re losing about ${Math.abs(t.kgPerWeek ?? 0)} kg a week`,
         text:
           (t.kgIn3Months ? `At this pace you’d be around ${kg(t.kgIn3Months)} in 3 months. ` : '') +
           (t.unusuallyFast ? 'That is faster than is usual. If you aren’t eating enough or you feel unwell, tell your doctor.' : 'Keep going.'),
+        ...(t.unusuallyFast ? { action: 'MESSAGE_DOCTOR' as const } : {}),
       };
     case 'HOLDING':
       return { tone: 'gray', icon: '➡️', title: 'Your weight is holding steady', text: 'No big change in the last few weeks. Your doctor reviews your progress at each check-in.' };

@@ -5,12 +5,14 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { Sidebar, type NavItem } from '@/components/portal/Sidebar';
 import { TopBar } from '@/components/portal/TopBar';
+import { BottomNav } from '@/components/portal/BottomNav';
 import { Icon } from '@/components/portal/Icon';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
-import { MY_PRODUCT_KIND } from '@/graphql/intake';
+import { MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { doseWords } from '@/lib/dose-words';
 import { LoadingState } from '@telehealth/loading';
 
 const NAV: NavItem[] = [
@@ -57,11 +59,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const { data: scaleData } = useQuery(MY_SYMPTOM_SCALE, {
     skip: !isAuthenticated() || onboardingStatus !== 'APPROVED',
   });
-  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED' });
-  // Hormone treatment is gels, patches and capsules — calling its schedule "Injections" would be wrong.
-  const hormone = kindData?.myProductKind === 'HRT';
+  // Shares the cache with the dashboard. Hormone treatment is gels, patches and capsules: the menu names the dose calendar by
+  // the form of the medicine actually prescribed, so "Injections" appears only for pens and vials.
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED', fetchPolicy: 'cache-first' });
+  const calendarLabel = doseWords(planData?.myTreatmentPlan?.form).calendar;
   const navItems: NavItem[] = [
-    ...NAV.filter((i) => i.href !== WEIGHT_HREF || journeyData?.myWeightJourney).map((i) => (i.href === '/doses' && hormone ? { ...i, label: 'My doses' } : i)),
+    ...NAV.filter((i) => i.href !== WEIGHT_HREF || journeyData?.myWeightJourney).map((i) => (i.href === '/doses' ? { ...i, label: calendarLabel, icon: calendarLabel === 'Injections' ? i.icon : 'calendar' } : i)),
     ...(scaleData?.mySymptomScale ? [SYMPTOMS_NAV] : []),
   ];
   const [menuOpen, setMenuOpen] = useState(false);
@@ -125,10 +128,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       )}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <main className="flex-1 overflow-y-auto">
+        {/* Room at the bottom on phones for the bottom menu. */}
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
           <TopBar onMenu={() => setMenuOpen(true)} onSignOut={handleLogout} />
           {authChecked ? children : null}
         </main>
+        <BottomNav dosesLabel={calendarLabel} dosesIcon={calendarLabel === 'Injections' ? 'syringe' : 'calendar'} onMore={() => setMenuOpen(true)} />
       </div>
     </div>
   );
