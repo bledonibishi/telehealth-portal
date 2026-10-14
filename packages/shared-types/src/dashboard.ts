@@ -31,6 +31,11 @@ export interface DashboardWidget {
   confirmHide?: string;
   /** Cannot be taken off. No card is at the moment: a patient may arrange the whole screen as they like. */
   required?: boolean;
+  /**
+   * Not on the screen to begin with, but in the "add a card" list. For cards that repeat what another card or the menu
+   * already shows, so a first look at the home screen is not a wall of the same things.
+   */
+  startsHidden?: boolean;
 }
 
 const ANYWHERE: DashboardZone[] = ['top', 'main', 'side'];
@@ -39,18 +44,22 @@ const ALL_SIZES: DashboardSize[] = ['small', 'medium', 'large'];
 export const DASHBOARD_WIDGETS: DashboardWidget[] = [
   { id: 'progress', title: 'Progress at a glance', description: 'Your weight, doses and next steps in a row of small tiles', zone: 'top', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   { id: 'plan', staffCannotHide: true, title: 'Current treatment plan', description: 'Your medicine and what comes next', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
-  { id: 'treatment', staffCannotHide: true, title: 'Treatment details', description: 'Your dose, schedule and timeline', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
+  // The plan card above already shows the medicine, the next dose and a link to these details.
+  { id: 'treatment', staffCannotHide: true, startsHidden: true, title: 'Treatment details', description: 'Your dose, schedule and timeline', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   { id: 'updates', title: 'Recent updates', description: 'Replies, decisions and order news', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
   { id: 'orders', title: 'Recent orders', description: 'Your latest deliveries and tracking', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
-  { id: 'quickLinks', title: 'Quick links', description: 'Shortcuts to the pages you use most', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
-  { id: 'profile', title: 'Profile summary', description: 'Your details and progress numbers', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
+  // The same pages as the menu.
+  { id: 'quickLinks', startsHidden: true, title: 'Quick links', description: 'Shortcuts to the pages you use most', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
+  // Personal details belong on the Profile page; the weight numbers are in the progress tiles.
+  { id: 'profile', startsHidden: true, title: 'Profile summary', description: 'Your details and progress numbers', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
   { id: 'chat', title: 'Chat with us', description: 'A shortcut to your messages', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
   { id: 'appointment', title: 'Appointments', description: 'Book or see your appointments', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
   {
     id: 'emergency', staffCannotHide: true, title: 'In an emergency', description: 'What to do if you feel very unwell', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small',
     confirmHide: 'This card tells you what to do if you feel very unwell. The same advice is always shown under the message box in Help & messages. Remove it from your home screen anyway?',
   },
-  { id: 'contact', title: 'Contact us', description: 'Ways to reach the clinic', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
+  // Messages and the emergency number are on the chat and emergency cards.
+  { id: 'contact', startsHidden: true, title: 'Contact us', description: 'Ways to reach the clinic', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
 ];
 
 export interface DashboardLayout {
@@ -66,15 +75,17 @@ export interface DashboardLayout {
 
 const byId = new Map(DASHBOARD_WIDGETS.map((w) => [w.id, w]));
 
-/** Everything shown, in the app's own order. */
+/** The app's own arrangement: every card in its place, except those that start in the "add a card" list. */
 export function defaultLayout(): DashboardLayout {
-  const inZone = (zone: DashboardZone) => DASHBOARD_WIDGETS.filter((w) => w.zone === zone).map((w) => w.id);
-  return { top: inZone('top'), main: inZone('main'), side: inZone('side'), hidden: [], sizes: {} };
+  const inZone = (zone: DashboardZone) => DASHBOARD_WIDGETS.filter((w) => w.zone === zone && !w.startsHidden).map((w) => w.id);
+  return { top: inZone('top'), main: inZone('main'), side: inZone('side'), hidden: DASHBOARD_WIDGETS.filter((w) => w.startsHidden).map((w) => w.id), sizes: {} };
 }
 
 /** A saved layout (or nothing) made complete and valid. Never throws, whatever it is given. */
 export function normalizeLayout(saved: unknown): DashboardLayout {
-  const raw = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>;
+  // Nothing saved: the app's own arrangement, with the cards that start in the "add a card" list kept there.
+  if (!saved || typeof saved !== 'object') return defaultLayout();
+  const raw = saved as Record<string, unknown>;
   const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
   const seen = new Set<string>();
   const keep = (ids: string[], zone: DashboardZone) => ids.filter((id) => {
@@ -92,7 +103,8 @@ export function normalizeLayout(saved: unknown): DashboardLayout {
     seen.add(id);
     return true;
   });
-  // Anything not mentioned (a new card, or one a patient never touched) is shown at the end of its place.
+  // Anything not mentioned (a new card, or one a patient never touched) is shown at the end of its place. (`startsHidden`
+  // only shapes the app's own arrangement, for a patient who has not arranged theirs: a saved screen is left as it is.)
   for (const w of DASHBOARD_WIDGETS) if (!seen.has(w.id)) placed[w.zone].push(w.id);
   // Sizes: only for cards that can be resized, and only to a size they offer.
   const sizes: Record<string, DashboardSize> = {};
