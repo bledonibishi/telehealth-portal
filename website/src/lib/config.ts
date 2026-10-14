@@ -9,10 +9,9 @@ export const CONFIG = {
   CONTACT: {
     email: 'primaverahealthcare@gmail.com',
     phones: [
-      { label: 'Phone (Kosovo)', number: '+383 49 696 967' },
-      { label: 'Phone (Germany)', number: '+49 177 4014024' },
+      { label: 'Phone (Kosovo)', number: '+383 44 123 123' },
     ],
-    whatsapp: '+49 177 4014024',
+    whatsapp: '+383 44 123 123',
   },
   PLANS: {
     // Internal keys stay HRT_STARTER / HRT_COMPLETE (they're in links and saved checkouts);
@@ -59,7 +58,7 @@ export const CONFIG = {
       name: 'TRT Standard',
       desc: 'Testosterone replacement therapy',
       // Set the real monthly price here (it must match the Stripe price above).
-      price: process.env.NEXT_PUBLIC_PRICE_TRT_STANDARD ?? '£—',
+      price: process.env.NEXT_PUBLIC_PRICE_TRT_STANDARD ?? '€—',
       per: '/mo',
     },
   },

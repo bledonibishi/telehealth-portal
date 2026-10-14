@@ -99,24 +99,29 @@ function SuccessInner() {
           <div className="pv-result-icon success">✓</div>
           <h1 className="pv-result-h1">You&apos;re all set{info?.firstName ? `, ${info.firstName}` : ''}!</h1>
           <p className="pv-result-sub" style={{ marginBottom: 0 }}>
-            Your payment was successful. Set up your account to complete your medical questionnaire and ID check, so a doctor can review your assessment.
+            Your payment went through and your answers are saved. One last step in the app, then a doctor reviews everything.
           </p>
         </div>
 
         <div className="th-success-card highlight">
-          <h2>Next: set up your account</h2>
+          <h2>Next: check your email</h2>
           <p>
-            Enter your email in the patient app and we&apos;ll send you a link to choose your password
-            {email ? <> (we&apos;ll use <strong>{email}</strong>)</> : null}.
+            We&apos;ve sent a link to {email ? <strong>{email}</strong> : 'the address you gave us'}. Open it to choose your
+            password, then add the last things the doctor needs: your date of birth and address, a photo of your ID and a
+            full-body photo (and proof of your current treatment, if you&apos;re already on one).
           </p>
-          <a href={portalUrl} className="btn-primary" style={{ justifyContent: 'center', width: '100%' }}>
-            Set up my account →
-          </a>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            No email after a few minutes? Check your spam folder, or{' '}
+            <a href={portalUrl} style={{ color: 'var(--c-brand)', fontWeight: 600 }}>
+              send the link again
+            </a>
+            .
+          </p>
         </div>
 
         <div className="th-success-card referral">
-          <h2>Give <span className="th-price">$20</span>, get <span className="th-price">$20</span></h2>
-          <p>Share your link. When a friend joins, they get <span className="th-price">$20</span> off their first order and you get <span className="th-price">$20</span> off your next one.</p>
+          <h2>Give <span className="th-price">€20</span>, get <span className="th-price">€20</span></h2>
+          <p>Share your link. When a friend joins, they get <span className="th-price">€20</span> off their first order and you get <span className="th-price">€20</span> off your next one.</p>
           {info?.referralLink ? (
             <div className="th-ref-row">
               <input className="th-ref-input" readOnly value={info.referralLink} onFocus={(e) => e.target.select()} />
@@ -138,11 +143,11 @@ function SuccessInner() {
           <div className="pv-result-steps" style={{ marginBottom: 0 }}>
             <div className="pv-result-step">
               <div className="pv-result-step-num">1</div>
-              <span>Set your password, then complete your medical questionnaire and ID check in the app.</span>
+              <span>Set your password from the email, then add your ID and photos in the app. Your health answers are already there.</span>
             </div>
             <div className="pv-result-step">
               <div className="pv-result-step-num">2</div>
-              <span>A licensed doctor reviews your assessment within 24 hours.</span>
+              <span>A licensed doctor reviews your assessment within 24 hours of your last step.</span>
             </div>
             <div className="pv-result-step">
               <div className="pv-result-step-num">3</div>

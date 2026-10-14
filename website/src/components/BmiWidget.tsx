@@ -49,6 +49,8 @@ export default function BmiWidget() {
       }
 
       q('.pvb-result').setAttribute('data-tone', tone);
+      // The assessment opens on these same two numbers, so they go with the click instead of being asked again.
+      q('.pvb-cta').setAttribute('href', `/glp1-eligibility?h=${h}&w=${w}`);
       q('[data-v=status]').textContent = status;
       q('[data-v=note]').textContent = note;
       fillR(hR); fillR(wR);

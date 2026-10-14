@@ -15,6 +15,8 @@ export default function CheckoutCancelPage() {
         ? `/checkout?plan=${encodeURIComponent(s.plan)}`
         : s.product === 'HRT'
         ? '/hrt-eligibility?resume=1'
+        : s.product === 'TRT'
+        ? '/trt-eligibility?resume=1'
         : '/glp1-eligibility?resume=1';
       setResumeHref(href);
     }

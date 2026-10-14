@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import BmiWidget from '@/components/BmiWidget';
 import Navbar from '@/components/Navbar';
+import HeroChooser from '@/components/HeroChooser';
 import ScrollReveal from '@/components/ScrollReveal';
 import { CONFIG } from '@/lib/config';
 
@@ -54,18 +55,23 @@ const FEATURES = [
 const STEPS = [
   {
     num: '1',
-    title: 'Complete the eligibility quiz',
-    desc: 'Answer a few simple questions about your health. Takes about 5 minutes. No account needed.',
+    title: 'Answer the health questions',
+    desc: 'About 5 minutes, no account needed. The doctor reads every answer.',
   },
   {
     num: '2',
-    title: 'A doctor reviews your assessment',
-    desc: 'A licensed clinician checks your answers and approves your prescription within 24 hours.',
+    title: 'Pay, then finish in the app',
+    desc: 'We email you a link to set your password. Add your date of birth, a photo of your ID and a full-body photo.',
   },
   {
     num: '3',
-    title: 'Medication delivered to you',
-    desc: 'Your prescription is dispensed by a registered pharmacy and delivered directly to your address.',
+    title: 'A doctor reviews it',
+    desc: 'A licensed clinician reviews everything within 24 hours of your last step and decides on your treatment.',
+  },
+  {
+    num: '4',
+    title: 'Delivered to your door',
+    desc: 'A registered pharmacy dispenses your prescription and it is delivered free to your address.',
   },
 ];
 
@@ -99,11 +105,9 @@ export default function HomePage() {
                 Free delivery to your door. Check your eligibility in about 5 minutes.
               </p>
               <div className="pv-hero-ctas">
-                <Link href="/hrt-eligibility" className="btn-primary">
-                  Check eligibility →
-                </Link>
-                <Link href="/glp1-eligibility" className="btn-secondary">
-                  Weight management
+                <HeroChooser />
+                <Link href="/#how-it-works" className="btn-secondary">
+                  How it works
                 </Link>
               </div>
               <div className="pv-hero-trust">
@@ -118,7 +122,7 @@ export default function HomePage() {
             <div className="pv-hero-visual pv-anim">
               <div className="pv-hero-img">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={CONFIG.IMAGES.hero} alt="Doctor consultation" loading="eager" />
+                <img src={CONFIG.IMAGES.hero} alt="" loading="eager" />
               </div>
               <div className="pv-float-a">
                 <div className="pv-float-a-icon">
@@ -247,9 +251,9 @@ export default function HomePage() {
           <div className="container">
             <div className="th-section-head pv-anim">
               <div className="th-section-tag">How it works</div>
-              <h2 className="th-section-h2">From quiz to prescription in 3 steps</h2>
+              <h2 className="th-section-h2">From questions to your door in 4 steps</h2>
               <p className="th-section-lead">
-                We've made the process as simple as possible while keeping every safety check in place.
+                Simple, with every safety check in place. Have your ID and a phone camera ready for step 2.
               </p>
             </div>
           </div>
@@ -364,13 +368,14 @@ export default function HomePage() {
               <span>Omo <span>Pharmacy</span></span>
             </div>
             <p className="pv-footer-tagline">
-              Licensed prescription healthcare for HRT and weight management, delivered online to Kosovo.
+              Licensed prescription healthcare for menopause, men’s health and weight management, delivered online to Kosovo.
             </p>
           </div>
           <div>
             <div className="pv-footer-col-title">Treatments</div>
             <div className="pv-footer-links">
               <Link href="/hrt-eligibility">HRT – Hormone Replacement Therapy</Link>
+              <Link href="/trt-eligibility">TRT – Testosterone Replacement Therapy</Link>
               <Link href="/glp1-eligibility">GLP-1 – Weight Management</Link>
             </div>
           </div>

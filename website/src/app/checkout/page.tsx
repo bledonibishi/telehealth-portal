@@ -29,7 +29,7 @@ const COUNTRIES: Array<[string, string]> = [
 ];
 
 const money = (cents: number, currency: string | null) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'gbp').toUpperCase() }).format(cents / 100);
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'eur').toUpperCase() }).format(cents / 100);
 
 /* ── Helper ── */
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -437,7 +437,7 @@ function CheckoutInner() {
   const medName =
     plan!.product === 'GLP1' && !storeProduct && session?.med && CONFIG.MEDICATIONS[session.med] ? CONFIG.MEDICATIONS[session.med] : null;
 
-  const currencySymbol = (planAvailable && plan!.price.match(/^[^\d]+/)?.[0]) || '£';
+  const currencySymbol = (planAvailable && plan!.price.match(/^[^\d]+/)?.[0]) || '€';
   const planAmount = parseAmount(plan!.price);
   const rewardOff = reward?.amountOffCents != null ? reward.amountOffCents / 100 : reward?.percentOff != null ? (planAmount * reward.percentOff) / 100 : 0;
   const rewardLabel =
