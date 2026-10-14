@@ -8,6 +8,7 @@ export { type OrderUpdateKind, orderUpdateEmail } from './order-update';
 export { partnerOrderEmail } from './partner-order';
 export { leadReminderEmail } from './lead-reminder';
 export { passwordChangedEmail } from './password-changed';
+export { emailChangedEmail } from './email-changed';
 export { passwordResetEmail } from './password-reset';
 export { paymentReceiptEmail } from './payment-receipt';
 export { referralRewardEmail } from './referral-reward';

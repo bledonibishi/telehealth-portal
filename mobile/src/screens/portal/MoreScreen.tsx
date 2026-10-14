@@ -13,7 +13,7 @@ export function MoreScreen({ navigation }: any) {
   const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { fetchPolicy: 'cache-and-network' });
   const unread: number = unreadData?.unreadNotificationCount ?? 0;
   return (
-    <Screen title="More" subtitle="Your treatment, orders and account.">
+    <Screen profileMenu title="More" subtitle="Your treatment, orders and account.">
       <Columns>
         <Card style={{ padding: 6 }}>
           <MenuRow icon="🔔" label="Notifications" hint={unread ? `${unread} unread` : 'Replies, decisions and order updates'} badge={unread} onPress={() => navigation.navigate('Notifications')} />

@@ -1,5 +1,6 @@
 import { Resolver, Mutation, Args, Context } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { EmailChangeService } from './email-change.service';
 import { AuthService, LoginAttempt } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { ActivateAccountInput, RequestActivationLinkInput, RequestPasswordResetInput, ResetPasswordInput } from './dto/activation.input';
@@ -15,7 +16,7 @@ function loginAttempt(ctx: any): LoginAttempt {
 
 @Resolver()
 export class AuthResolver {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService, private emailChange: EmailChangeService) {}
 
   @ThrottleLoginAttempts()
   @Mutation(() => AuthResponse)
@@ -73,6 +74,31 @@ export class AuthResolver {
   @Mutation(() => Boolean, { description: 'Spends a password-reset link to set a new password and ends every open session. Does not sign in.' })
   resetPassword(@Args('input') input: ResetPasswordInput, @Context() ctx: any) {
     return this.authService.resetPassword(input.token, input.newPassword, loginAttempt(ctx));
+  }
+
+  @Authorized('PATIENT')
+  @ThrottleRequests()
+  @Mutation(() => Boolean, { description: 'Step 1 of changing your sign-in email: checks your password and sends a code to the new address.' })
+  requestMyEmailChange(
+    @CurrentUser() user: AuthUser,
+    @Args('newEmail') newEmail: string,
+    @Args('currentPassword') currentPassword: string,
+    @Context() ctx: any,
+  ) {
+    return this.emailChange.request(user.id, newEmail, currentPassword, loginAttempt(ctx));
+  }
+
+  @Authorized('PATIENT')
+  @ThrottleRequests()
+  @Mutation(() => RefreshResponse, { description: 'Step 2 of changing your sign-in email: the code from the new address. Ends your other sessions and returns fresh tokens. Audited.' })
+  confirmMyEmailChange(
+    @CurrentUser() user: AuthUser,
+    @Args('newEmail') newEmail: string,
+    @Args('code') code: string,
+    @Args('currentPassword') currentPassword: string,
+    @Context() ctx: any,
+  ) {
+    return this.emailChange.confirm(user.id, newEmail, code, currentPassword, loginAttempt(ctx));
   }
 
   @Authorized('PATIENT', ...STAFF)

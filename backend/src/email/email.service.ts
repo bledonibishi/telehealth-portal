@@ -14,6 +14,7 @@ import {
   orderUpdateEmail,
   partnerOrderEmail,
   passwordChangedEmail,
+  emailChangedEmail,
   passwordResetEmail,
   paymentReceiptEmail,
   referralRewardEmail,
@@ -103,6 +104,14 @@ export class EmailService {
       return false;
     }
     return !(await this.deliver({ to, kind: 'password-changed', ...passwordChangedEmail({ firstName, audience }) }));
+  }
+
+  async sendEmailChangedEmail(to: string, firstName: string, newEmail: string): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Email changed notice to ${to}`);
+      return false;
+    }
+    return !(await this.deliver({ to, kind: 'email-changed', ...emailChangedEmail({ firstName, newEmail }) }));
   }
 
   async sendVerificationCodeEmail(to: string, code: string) {

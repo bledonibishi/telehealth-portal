@@ -37,7 +37,7 @@ export function InjectionsScreen({ navigation }: any) {
   const upcoming = doses.filter((d) => d.status !== 'TAKEN' && d.status !== 'SKIPPED' && visualStatus(d) !== 'DUE' && visualStatus(d) !== 'MISSED').sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)).slice(0, 5);
 
   return (
-    <Screen title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} refreshing={loading} onRefresh={() => refetch()}>
+    <Screen profileMenu title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} refreshing={loading} onRefresh={() => refetch()}>
       {loading && !data && <SkeletonCard lines={4} label="Loading your doses…" />}
       {!data && <ErrorText error={error} />}
       {!loading && !error && doses.length === 0 && (
