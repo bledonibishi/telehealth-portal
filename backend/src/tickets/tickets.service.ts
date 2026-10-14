@@ -73,11 +73,12 @@ export class TicketsService {
   async list(user: AuthUser, filter?: TicketFilterInput) {
     const rows = await this.prisma.ticket.findMany({
       where: {
-        ...this.scope(user),
         ...(filter?.status ? { status: filter.status } : {}),
         ...(filter?.type ? { type: filter.type } : {}),
         ...(filter?.patientId ? { patientId: filter.patientId } : {}),
         ...(filter?.mine ? { assigneeId: user.id } : {}),
+        // Last, so no filter can widen what the caller may see (a doctor asking for another type still gets clinical ones only).
+        ...this.scope(user),
       },
       include: INCLUDE,
       // Oldest first: the one that has waited longest is at the top.
@@ -273,7 +274,8 @@ export class TicketsService {
         include: INCLUDE,
       });
       if (attachmentIds.length) {
-        await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { ticketId: created.id } });
+        const claimed = await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { ticketId: created.id } });
+        if (claimed.count !== attachmentIds.length) throw appError(ErrorCode.BAD_REQUEST, 'One of the files could not be attached. Please add it again.');
         created.attachments = await tx.uploadedFile.findMany({ where: { ticketId: created.id }, select: { id: true, filename: true, mimeType: true, createdAt: true }, orderBy: { createdAt: 'asc' } });
       }
       await this.audit.log(
@@ -365,7 +367,7 @@ export class TicketsService {
     });
 
     const base = (process.env.CLINICIAN_APP_URL ?? 'http://localhost:3002').replace(/\/$/, '');
-    const slack = (await this.engineering?.post(`:bug: *Ticket #${ticket.number}* passed to engineering (${ticket.priority.toLowerCase()} priority)\n${text}\n${base}/tickets/${ticket.id}`)) ?? 'NOT_CONFIGURED';
+    const slack = (await this.engineering?.post(`:bug: *Ticket #${ticket.number}* passed to engineering (${ticket.priority.toLowerCase()} priority)\n${scrubForEngineers(text, ticket.patient)}\n${base}/tickets/${ticket.id}`)) ?? 'NOT_CONFIGURED';
     return { ticket: await this.get(ticket.id, user), slack };
   }
 
@@ -380,9 +382,9 @@ export class TicketsService {
     return this.get(ticket.id, user);
   }
 
-  /** What the patient sees of their own requests: no internal notes, no assignee. */
+  /** What the patient sees of their own requests (the ones they sent themselves): no internal notes, no assignee. */
   async listForPatient(patientId: string) {
-    const rows = await this.prisma.ticket.findMany({ where: { patientId }, include: INCLUDE, orderBy: { createdAt: 'desc' }, take: 50 });
+    const rows = await this.prisma.ticket.findMany({ where: { patientId, createdById: patientId }, include: INCLUDE, orderBy: { createdAt: 'desc' }, take: 50 });
     return rows.map(toPatientModel);
   }
 
@@ -427,4 +429,19 @@ function toModel(row: TicketRow, names: Map<string, string>) {
 
 function toPatientModel(row: TicketRow) {
   return { id: row.id, number: row.number, type: row.type, status: row.status, subject: row.subject, description: row.description ?? undefined, createdAt: row.createdAt, resolvedAt: row.resolvedAt ?? undefined, attachments: row.attachments.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType, createdAt: a.createdAt })) };
+}
+
+/**
+ * The note support writes for the engineers goes to Slack, which is not a place for patient details. People paste things, so
+ * emails, phone-like numbers and the patient's own name are replaced before it is sent (the full note stays on the ticket).
+ */
+export function scrubForEngineers(text: string, patient?: { firstName?: string | null; lastName?: string | null } | null): string {
+  let out = text
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email removed]')
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, '[number removed]');
+  for (const name of [patient?.firstName, patient?.lastName]) {
+    const n = name?.trim();
+    if (n && n.length >= 3) out = out.replace(new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '[name removed]');
+  }
+  return out;
 }

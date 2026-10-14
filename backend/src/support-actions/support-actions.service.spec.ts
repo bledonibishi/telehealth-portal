@@ -8,6 +8,7 @@ function setup(over: Partial<typeof patient> = {}) {
     patient: { findUnique: jest.fn().mockResolvedValue({ ...patient, ...over }) },
     auditLogEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     ticketNote: { create: jest.fn().mockResolvedValue({}) },
+    ticket: { findFirst: jest.fn().mockResolvedValue({ id: 't-1' }) },
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const auth = { requestActivationLink: jest.fn().mockResolvedValue(true), requestPasswordReset: jest.fn().mockResolvedValue(true) };
@@ -34,14 +35,13 @@ describe('SupportActionsService.perform', () => {
 
   it('does not resend an activation link to an account that is already active', async () => {
     const { service, auth } = setup({ activatedAt: new Date() });
-    const result = await service.perform(support, { ...base, action: SupportAction.RESEND_ACTIVATION_LINK });
-    expect(result.ok).toBe(false);
+    await expect(service.perform(support, { ...base, action: SupportAction.RESEND_ACTIVATION_LINK })).rejects.toThrow(/already set up/i);
     expect(auth.requestActivationLink).not.toHaveBeenCalled();
   });
 
   it('sends a password reset only to an activated account', async () => {
     const inactive = setup();
-    expect((await inactive.service.perform(support, { ...base, action: SupportAction.SEND_PASSWORD_RESET })).ok).toBe(false);
+    await expect(inactive.service.perform(support, { ...base, action: SupportAction.SEND_PASSWORD_RESET })).rejects.toThrow(/hasn’t set up/i);
     expect(inactive.auth.requestPasswordReset).not.toHaveBeenCalled();
 
     const active = setup({ activatedAt: new Date() });
@@ -68,6 +68,19 @@ describe('SupportActionsService.perform', () => {
     const { service, prisma } = setup();
     await service.perform(support, { ...base, action: SupportAction.RESEND_ACTIVATION_LINK, ticketId: 't-1' });
     expect(prisma.ticketNote.create.mock.calls[0][0].data).toMatchObject({ ticketId: 't-1', authorId: 'cx-1' });
+  });
+
+  it('refuses a payment retry when there is no payment profile, even if called directly', async () => {
+    const { service, billing } = setup({ stripeCustomerId: null as any, stripeSubscriptionId: null as any });
+    await expect(service.perform(support, { ...base, action: SupportAction.RETRY_FAILED_PAYMENT })).rejects.toThrow(/no payment profile/i);
+    expect(billing.retryUnpaidInvoice).not.toHaveBeenCalled();
+  });
+
+  it('refuses a note on another patient’s ticket', async () => {
+    const { service, prisma, auth } = setup();
+    prisma.ticket.findFirst.mockResolvedValue(null);
+    await expect(service.perform(support, { ...base, action: SupportAction.RESEND_ACTIVATION_LINK, ticketId: 't-other' })).rejects.toThrow(/different patient/i);
+    expect(auth.requestActivationLink).not.toHaveBeenCalled();
   });
 
   it('refuses an unknown patient', async () => {

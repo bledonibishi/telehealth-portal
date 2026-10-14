@@ -103,16 +103,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
             const kind = KIND[c.kind] ?? { icon: '🩺', label: c.kind };
             const status = STATUS[c.status] ?? { label: c.status, tone: 'plain' as const };
             return (
-              <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.ink50, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 18 }}>{kind.icon}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.ink900 }}>{kind.label}</Text>
-                  <Text style={{ fontSize: 12, color: colors.slate500, marginTop: 1 }} numberOfLines={2}>
-                    Sent {fmtDate(c.submittedAt)}{c.prescription ? ` · ${c.prescription.medication}` : ''}
-                  </Text>
-                </View>
-                <Pill label={status.label} tone={status.tone} />
-              </View>
+              <MenuRow key={c.id} icon={kind.icon} label={kind.label} hint={`${status.label} · sent ${fmtDate(c.submittedAt)}${c.prescription ? ` · ${c.prescription.medication}` : ''}`} onPress={() => navigation.navigate('Messages')} />
             );
           })}
         </Card>

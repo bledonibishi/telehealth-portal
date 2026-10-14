@@ -66,7 +66,8 @@ export default function MessagesPage() {
     try {
       await chat.send(text, sending);
     } catch (err: any) {
-      setContent(text); // not sent: give the words back
+      setContent(text); // not sent: give the words and the files back
+      attach.restore(sending)
       setProblem(err);
     }
   };

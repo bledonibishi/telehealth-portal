@@ -83,6 +83,7 @@ const TONE_TILE: Record<NotificationTone, string> = {
 
 const KIND_ICON: Record<string, IconName> = {
   CARE_TEAM_MESSAGE: 'chat',
+  ASSISTANT_MESSAGE: 'chat',
   TREATMENT_UPDATE: 'rx',
   CHECK_IN_READY: 'heart',
   DOSE_DUE: 'syringe',

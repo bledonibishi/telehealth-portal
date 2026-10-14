@@ -73,7 +73,7 @@ export default function TicketDetail({ ticket }: { ticket: Ticket }) {
 
       <InlineError error={error} className="mb-4" />
 
-      {(canHandOff || ticket.engineeringSentAt) && <div className="mb-4"><EngineeringHandoff ticket={ticket} /></div>}
+      {(canHandOff || ticket.engineeringSentAt) && <div className="mb-4"><EngineeringHandoff ticket={ticket} readOnly={!canHandOff} /></div>}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
         <div className="space-y-5 min-w-0">

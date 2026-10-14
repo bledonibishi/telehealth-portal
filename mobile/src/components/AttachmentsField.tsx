@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage, type UploadKind } from '../lib/upload';
@@ -19,6 +19,7 @@ export function AttachmentsField({
   max = 3,
   label = 'Attach a photo or screenshot',
   disabled,
+  onUploadingChange,
 }: {
   kind: UploadKind;
   files: Attachment[];
@@ -26,10 +27,13 @@ export function AttachmentsField({
   max?: number;
   label?: string;
   disabled?: boolean;
+  /** Tells the form when a picture is still on its way up, so it can hold the Send button until the file is attached. */
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  useEffect(() => { onUploadingChange?.(uploading); }, [uploading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handle = async (result: ImagePicker.ImagePickerResult) => {
     if (result.canceled || !result.assets?.length) return;

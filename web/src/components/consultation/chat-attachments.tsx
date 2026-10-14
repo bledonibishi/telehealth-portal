@@ -37,7 +37,7 @@ export function useChatAttachments() {
     }
   };
 
-  return { files, uploading, error, add, remove: (id: string) => setFiles((cur) => cur.filter((f) => f.id !== id)), reset: () => { setFiles([]); setError(null); } };
+  return { files, uploading, error, add, remove: (id: string) => setFiles((cur) => cur.filter((f) => f.id !== id)), reset: () => { setFiles([]); setError(null); }, restore: (list: ChatAttachment[]) => setFiles(list) };
 }
 
 /** The files chosen so far, above the message box, with a way to take each off again. */

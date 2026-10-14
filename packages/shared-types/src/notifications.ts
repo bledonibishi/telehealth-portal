@@ -14,6 +14,7 @@
 export enum NotificationKind {
   // To a patient.
   CARE_TEAM_MESSAGE = 'CARE_TEAM_MESSAGE',
+  ASSISTANT_MESSAGE = 'ASSISTANT_MESSAGE',
   TREATMENT_UPDATE = 'TREATMENT_UPDATE',
   CHECK_IN_READY = 'CHECK_IN_READY',
   DOSE_DUE = 'DOSE_DUE',
@@ -50,6 +51,7 @@ export interface NotificationText {
 }
 
 export const NOTIFICATION_TEXT: Record<NotificationKind, NotificationText> = {
+  [NotificationKind.ASSISTANT_MESSAGE]: { title: 'New reply from our automated assistant', titleMany: '{count} new replies from our automated assistant', body: 'Open the chat to read it. You can ask for a person at any time.', tone: 'info' },
   [NotificationKind.CARE_TEAM_MESSAGE]: { title: 'New message from your care team', titleMany: '{count} new messages from your care team', body: 'Open the chat to read it.', tone: 'info' },
   // The headline is one of a fixed set chosen on the backend (e.g. "Your treatment has been approved").
   [NotificationKind.TREATMENT_UPDATE]: { title: '{headline}', body: 'Open the app to see the details.', tone: 'info' },
@@ -104,6 +106,7 @@ export type NotificationCategory = 'messages' | 'orders' | 'reminders' | 'reward
 
 const CATEGORY: Partial<Record<NotificationKind, NotificationCategory>> = {
   [NotificationKind.CARE_TEAM_MESSAGE]: 'messages',
+  [NotificationKind.ASSISTANT_MESSAGE]: 'messages',
   [NotificationKind.ORDER_SHIPPED]: 'orders',
   [NotificationKind.ORDER_OUT_FOR_DELIVERY]: 'orders',
   [NotificationKind.ORDER_DELIVERED]: 'orders',
