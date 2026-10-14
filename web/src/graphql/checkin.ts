@@ -29,6 +29,7 @@ export const MY_CHECK_IN_STATUS = gql`
       url
       nextDueAt
       lastCompletedAt
+      linkExpired
     }
   }
 `;

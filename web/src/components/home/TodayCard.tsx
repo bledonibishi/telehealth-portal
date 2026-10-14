@@ -8,6 +8,7 @@ import { MY_DOSE_SUMMARY } from '@/graphql/dosing';
 import { MY_CHECK_IN_STATUS } from '@/graphql/checkin';
 import { Icon, type IconName } from '@/components/portal/Icon';
 import { doseWords } from '@/lib/dose-words';
+import { DOSE_EARLY_LOG_HOURS } from '@telehealth/shared-types';
 
 type Tone = 'brand' | 'amber' | 'lav' | 'leaf';
 const TONE: Record<Tone, string> = {
@@ -50,11 +51,13 @@ export function TodayCard() {
   const plan = planData?.myTreatmentPlan;
   const dose = doseData?.myDoseSummary;
   const ci = ciData?.myCheckInStatus;
-  const words = doseWords(plan?.form);
+  // Named by the next dose's own medicine: one prescription can hold a gel and a capsule.
+  const words = doseWords(dose?.nextDoseForm ?? plan?.form);
 
   const nextAt = dose?.nextDoseAt ? new Date(dose.nextDoseAt) : null;
   const daysToDose = nextAt ? differenceInCalendarDays(nextAt, new Date()) : null;
-  const doseNow = daysToDose != null && daysToDose <= 0;
+  // Offered only when the backend will take it: from DOSE_EARLY_LOG_HOURS before the scheduled time.
+  const doseNow = !!nextAt && nextAt.getTime() - Date.now() <= DOSE_EARLY_LOG_HOURS * 3_600_000;
   const doseHref = dose?.nextDoseId ? `/doses?dose=${dose.nextDoseId}` : '/doses';
 
   const doseRow = nextAt ? (
@@ -84,6 +87,11 @@ export function TodayCard() {
     checkInRow = (
       <Row icon="check" tone="leaf" label="Monthly check-in" title="Done, thank you"
         detail={ci.lastCompletedAt ? `Sent ${format(new Date(ci.lastCompletedAt), 'd MMM')} · your doctor reviews it` : 'Your doctor reviews it'} />
+    );
+  } else if (ci?.linkExpired) {
+    checkInRow = (
+      <Row icon="note" tone="amber" label="Monthly check-in" title="Your link has expired" detail="Ask us for a new one: your doctor needs it before your next supply"
+        action={<Link href="/messages" className={`${pill} text-brand-600 hover:bg-brand-50`}>Ask us <Icon name="arrow" className="w-4 h-4" /></Link>} />
     );
   } else if (ci?.nextDueAt) {
     checkInRow = (

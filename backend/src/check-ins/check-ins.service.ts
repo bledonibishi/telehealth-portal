@@ -158,8 +158,13 @@ export class CheckInsService {
     return this.toModel(dueAt <= new Date() ? await this.send(updated) : updated);
   }
 
-  /** The signed-in patient's monthly check-in: open now, just done, or when the next one is. */
+  /**
+   * The signed-in patient's monthly check-in: open now, just done, or when the next one is. Null when they have no active
+   * prescription: check-ins left over from a treatment that stopped must not ask them for anything.
+   */
   async statusFor(patientId: string) {
+    const active = await this.prisma.prescription.count({ where: { patientId, status: PrescriptionStatus.ACTIVE } });
+    if (!active) return null;
     const checkIns = await this.prisma.checkIn.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } });
     return checkInStatusOf(checkIns, (t) => this.buildUrl(t));
   }

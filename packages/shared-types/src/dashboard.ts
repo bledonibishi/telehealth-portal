@@ -36,13 +36,15 @@ export interface DashboardWidget {
    * already shows, so a first look at the home screen is not a wall of the same things.
    */
   startsHidden?: boolean;
+  /** Added at the start of its place, not the end, when a saved screen does not have it yet (a card that has to lead). */
+  placeFirst?: boolean;
 }
 
 const ANYWHERE: DashboardZone[] = ['top', 'main', 'side'];
 const ALL_SIZES: DashboardSize[] = ['small', 'medium', 'large'];
 
 export const DASHBOARD_WIDGETS: DashboardWidget[] = [
-  { id: 'today', title: 'Today', description: 'Your next dose and your monthly check-in', zone: 'top', zones: ANYWHERE },
+  { id: 'today', placeFirst: true, title: 'Today', description: 'Your next dose and your monthly check-in', zone: 'top', zones: ANYWHERE },
   { id: 'progress', title: 'Progress at a glance', description: 'Your weight, doses and next steps in a row of small tiles', zone: 'top', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   { id: 'plan', staffCannotHide: true, title: 'Current treatment plan', description: 'Your medicine and what comes next', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   // The plan card above already shows the medicine, the next dose and a link to these details.
@@ -106,7 +108,11 @@ export function normalizeLayout(saved: unknown): DashboardLayout {
   });
   // Anything not mentioned (a new card, or one a patient never touched) is shown at the end of its place. (`startsHidden`
   // only shapes the app's own arrangement, for a patient who has not arranged theirs: a saved screen is left as it is.)
-  for (const w of DASHBOARD_WIDGETS) if (!seen.has(w.id)) placed[w.zone].push(w.id);
+  for (const w of DASHBOARD_WIDGETS) {
+    if (seen.has(w.id)) continue;
+    if (w.placeFirst) placed[w.zone].unshift(w.id);
+    else placed[w.zone].push(w.id);
+  }
   // Sizes: only for cards that can be resized, and only to a size they offer.
   const sizes: Record<string, DashboardSize> = {};
   const rawSizes = raw.sizes && typeof raw.sizes === 'object' ? (raw.sizes as Record<string, unknown>) : {};
@@ -165,3 +171,6 @@ export function applyOverrides(layout: DashboardLayout, overrides: DashboardOver
   }
   return { ...out, staffHidden };
 }
+
+/** How many hours before its scheduled time a dose may be logged as taken. The backend refuses anything earlier. */
+export const DOSE_EARLY_LOG_HOURS = 12;

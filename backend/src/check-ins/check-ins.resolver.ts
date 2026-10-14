@@ -26,7 +26,7 @@ export class CheckInsResolver {
   }
 
   @Authorized('PATIENT')
-  @Query(() => CheckInStatusModel, { description: 'The signed-in patient’s monthly check-in: open now, just done, or when the next one is' })
+  @Query(() => CheckInStatusModel, { nullable: true, description: 'The signed-in patient’s monthly check-in: open now, just done, or when the next one is. Null without an active prescription.' })
   myCheckInStatus(@CurrentUser() user: AuthUser) {
     return this.checkInsService.statusFor(user.id);
   }

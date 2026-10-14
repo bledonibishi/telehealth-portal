@@ -124,4 +124,7 @@ export class CheckInStatusModel {
 
   @Field({ nullable: true })
   lastCompletedAt?: Date;
+
+  @Field({ nullable: true, description: 'A sent check-in ran out before it was done; the patient should ask for a new link' })
+  linkExpired?: boolean;
 }

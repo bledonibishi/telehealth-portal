@@ -15,9 +15,6 @@ import { checkInStatusOf } from '../check-ins/check-in-status';
 export const MIN_WEIGHT_KG = 30;
 export const MAX_WEIGHT_KG = 300;
 
-// How long after finishing a check-in the dashboard keeps saying it's done,
-// before switching to the countdown to the next one.
-
 const JOURNEY_INCLUDE = {
   lead: { select: { productKind: true } },
   weightGoal: true,

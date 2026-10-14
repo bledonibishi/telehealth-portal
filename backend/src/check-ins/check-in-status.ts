@@ -13,6 +13,11 @@ export interface CheckInStatusSummary {
   /** When the open one was due (READY), or when the next one is (UPCOMING). */
   nextDueAt?: Date;
   lastCompletedAt?: Date;
+  /**
+   * A check-in was sent and its link ran out before it was done. Nothing re-sends it by itself, so the patient has to be told
+   * to ask for a new one (the state stays UPCOMING, as the weight journey has always shown it).
+   */
+  linkExpired?: boolean;
 }
 
 /**
@@ -29,5 +34,11 @@ export function checkInStatusOf(checkIns: Row[], buildUrl: (token?: string | nul
 
   if (ready) return { state: MonthlyCheckInState.READY, url: buildUrl(ready.token) ?? undefined, nextDueAt: ready.dueAt ?? undefined, lastCompletedAt };
   const justDone = !!lastDone && now.getTime() - lastDone.completedAt!.getTime() < COMPLETED_BANNER_DAYS * 86_400_000;
-  return { state: justDone ? MonthlyCheckInState.COMPLETED : MonthlyCheckInState.UPCOMING, nextDueAt: upcoming?.dueAt ?? undefined, lastCompletedAt };
+  const expired = checkIns.some((c) => c.status === CheckInStatus.SENT && (!c.tokenExpiresAt || c.tokenExpiresAt <= now));
+  return {
+    state: justDone ? MonthlyCheckInState.COMPLETED : MonthlyCheckInState.UPCOMING,
+    nextDueAt: upcoming?.dueAt ?? undefined,
+    lastCompletedAt,
+    ...(expired && !justDone ? { linkExpired: true } : {}),
+  };
 }

@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ProductForm } from '../../common/enums';
 
 @ObjectType('DoseSummary', { description: 'What the patient is on now and when the next dose is due' })
 export class DoseSummaryModel {
@@ -10,4 +11,7 @@ export class DoseSummaryModel {
 
   @Field({ nullable: true })
   nextDoseAt?: Date;
+
+  @Field(() => ProductForm, { nullable: true, description: 'The form of the next dose’s medicine, which can differ between the items of one prescription' })
+  nextDoseForm?: ProductForm | null;
 }
