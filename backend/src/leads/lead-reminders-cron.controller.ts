@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LeadRemindersService } from './lead-reminders.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /**
  * Called hourly by Vercel Cron (see ../../vercel.json), authenticated like the other /internal/cron jobs: the in-process
@@ -15,8 +16,7 @@ export class LeadRemindersCronController {
 
   @Get('lead-reminders')
   async trigger(@Headers('authorization') authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
     const sent = await this.reminders.sendDue();
     this.logger.log(`Cron-triggered lead reminders: ${sent} sent`);
     return { sent };

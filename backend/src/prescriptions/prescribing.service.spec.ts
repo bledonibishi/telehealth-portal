@@ -145,6 +145,17 @@ describe('PrescribingService first decision', () => {
     });
   });
 
+  it('stops a decision when the identity check is rejected after onboarding was approved', async () => {
+    const approved = { ...submitted, status: 'APPROVED', identityViaVerifyService: true };
+    expect(await build(approved, { status: 'REJECTED' }).service.notReadyReason('p-1')).toMatch(/identity check was rejected/);
+    await expect(build(approved, { status: 'REJECTED' }).service.assertReadyForDecision('p-1')).rejects.toThrow(ForbiddenException);
+    await expect(build(approved, { status: 'REJECTED' }).service.assertIdentityVerified('p-1')).rejects.toThrow(ForbiddenException);
+    // An approved result, or a patient whose identity a clinician checked by hand, is unaffected.
+    expect(await build(approved, { status: 'APPROVED' }).service.notReadyReason('p-1')).toBeNull();
+    expect(await build({ ...approved, identityViaVerifyService: false }, { status: 'REJECTED' }).service.notReadyReason('p-1')).toBeNull();
+    await expect(build(approved, { status: 'APPROVED' }).service.assertIdentityVerified('p-1')).resolves.toBeUndefined();
+  });
+
   it('leaves an onboarding that was already approved alone, and refuses to approve over an identity rejection', async () => {
     const approved = build({ ...submitted, status: 'APPROVED' });
     expect(await approved.service.approveOnboarding(approved.prisma, 'p-1', 'doc-1')).toBe(false);
@@ -209,6 +220,34 @@ describe('PrescribingService.issue', () => {
     );
 
     expect(dosing.generateForItem).toHaveBeenCalledWith(item, 'p-1', expect.any(Date), db);
+  });
+
+  describe('a first prescription above the starting dose', () => {
+    const order = { patientId: 'p-1', kind: 'GLP1' as any, answers: [], items: [{ productId: 'sema', strengthId: 'str-2', quantity: 1, directions: 'Weekly' }] };
+    const onboarding = (assessment: object | undefined) => ({
+      status: 'APPROVED', priorMedicationUse: true, prescriptionProofUnavailable: false, prescriptionProofFileId: 'f-1',
+      prescriptionProofReview: { fileId: 'f-1', ...(assessment ? { assessment } : {}) },
+    });
+    const codes = async (assessment: object | undefined) => {
+      const { db, service } = setup([]);
+      db.prescriptionItem.findFirst.mockResolvedValue(null); // nothing prescribed yet
+      db.onboardingSubmission.findUnique.mockResolvedValue(onboarding(assessment));
+      return (await service.check(order, db)).violations.map((v) => v.code);
+    };
+
+    it('counts the proof as verified prior use when its name and date checked out', async () => {
+      expect(await codes({ safeMaxStep: 2, documentVerifiesPriorUse: true })).not.toContain('GLP1_START_DOSE');
+    });
+
+    it('asks for a reason when the proof on file failed its name or date check, approved onboarding or not', async () => {
+      expect(await codes({ safeMaxStep: 2, documentVerifiesPriorUse: false })).toContain('GLP1_START_DOSE');
+    });
+
+    it('leaves a review with no verdict as it was: one stored before the check existed, or a document nobody could read', async () => {
+      expect(await codes({ safeMaxStep: 2 })).not.toContain('GLP1_START_DOSE');
+      expect(await codes({ safeMaxStep: 2, documentVerifiesPriorUse: null })).not.toContain('GLP1_START_DOSE');
+      expect(await codes(undefined)).not.toContain('GLP1_START_DOSE');
+    });
   });
 
   it('refuses repeats: every order gets its own prescription', async () => {

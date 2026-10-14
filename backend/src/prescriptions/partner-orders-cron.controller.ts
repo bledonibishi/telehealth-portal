@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PartnerOrdersService } from './partner-orders.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /**
  * Retries partner deliveries that failed and sends orders nobody has sent yet. Called by Vercel
@@ -18,8 +19,7 @@ export class PartnerOrdersCronController {
 
   @Get('partner-orders')
   async sweep(@Headers('authorization') authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
 
     const result = await this.partner.sweep();
     if (result.attempted) this.logger.log(`Partner order sweep: ${JSON.stringify(result)}`);

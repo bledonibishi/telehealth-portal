@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UploadsCleanupService } from './uploads-cleanup.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /** Called daily by Vercel Cron (see ../../vercel.json), authenticated like the other /internal/cron jobs. */
 @Controller('internal/cron')
@@ -14,8 +15,7 @@ export class UploadsCleanupController {
 
   @Get('purge-orphan-photos')
   async purge(@Headers('authorization') authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
 
     const progress = await this.cleanup.purgeOrphanedProgressPhotos();
     const body = await this.cleanup.purgeOrphanedBodyPhotos();

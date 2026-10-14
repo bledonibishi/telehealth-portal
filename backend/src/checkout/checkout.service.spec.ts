@@ -388,10 +388,10 @@ describe('CheckoutService.successInfo', () => {
     const stripe = {
       checkout: { sessions: { retrieve: jest.fn().mockResolvedValue({ payment_status: 'paid', customer_details: { email: 'a@b.com' } }) } },
     };
-    const referrals = { referralLinkFor: jest.fn().mockResolvedValue('http://site/?ref=CODE') };
+    const referrals = { referralLinkFor: jest.fn().mockResolvedValue('http://site/?ref=CODE'), rewardLabel: () => '€20.00' };
     const result = await build(prismaWith({ id: 'p-1', firstName: 'Ann', email: 'a@b.com' }), stripe, referrals).successInfo({ sessionId: 'cs_1' });
 
-    expect(result).toEqual({ ready: true, firstName: 'Ann', email: 'a@b.com', referralLink: 'http://site/?ref=CODE' });
+    expect(result).toEqual({ ready: true, firstName: 'Ann', email: 'a@b.com', referralLink: 'http://site/?ref=CODE', referralRewardLabel: '€20.00' });
   });
 
   it('says not ready while the webhook has not created the patient yet', async () => {
@@ -406,7 +406,7 @@ describe('CheckoutService.successInfo', () => {
       paymentIntents: { retrieve: jest.fn().mockResolvedValue({ status: 'succeeded', customer: { email: 'a@b.com' } }) },
     };
     const prisma = prismaWith({ id: 'p-1', firstName: 'Ann', email: 'a@b.com' });
-    const referrals = { referralLinkFor: jest.fn().mockResolvedValue('link') };
+    const referrals = { referralLinkFor: jest.fn().mockResolvedValue('link'), rewardLabel: () => '£20.00' };
     const result = await build(prisma, stripe, referrals).successInfo({ paymentIntentId: 'pi_1' });
 
     expect(result.ready).toBe(true);

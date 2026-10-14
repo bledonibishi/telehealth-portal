@@ -126,4 +126,11 @@ describe('CheckInReportService', () => {
       ['ci-1', 'Week 4', '/check-ins/ci-1/report'],
     ]);
   });
+
+  it('numbers and compares against GLP-1 check-ins only, so another programme’s check-ins don’t shift the week', async () => {
+    await service.listFor('p-1');
+    expect(prisma.checkIn.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { patientId: 'p-1', kind: 'GLP1', status: 'COMPLETED', completedAt: { not: null } } }));
+    await service.build(await service.load('ci-2'));
+    expect(prisma.checkIn.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ patientId: 'p-1', kind: 'GLP1', status: 'COMPLETED' }) }));
+  });
 });

@@ -38,6 +38,10 @@ function notReady(
   onboarding: { status: string; identityViaVerifyService: boolean } | null,
   identityStatus: string | null,
 ): string | null {
+  // Checked before the approved shortcut: a rejection that arrives after the onboarding was approved still stops prescribing.
+  if (onboarding?.identityViaVerifyService && identityStatus === IdentityVerificationStatus.REJECTED) {
+    return 'The identity check was rejected';
+  }
   if (onboarding?.status === OnboardingStatus.APPROVED) return null;
   if (onboarding?.status === OnboardingStatus.REJECTED) return 'Waiting for the patient to redo the steps you asked them to';
   if (onboarding?.status !== OnboardingStatus.PENDING_REVIEW) return 'The patient hasn’t finished onboarding yet';
@@ -74,7 +78,10 @@ export class PrescribingService {
 
   async assertIdentityVerified(patientId: string) {
     const onboarding = await this.prisma.onboardingSubmission.findUnique({ where: { patientId } });
-    if (onboarding?.status !== OnboardingStatus.APPROVED) {
+    const idv = onboarding?.identityViaVerifyService
+      ? await this.prisma.identityVerification.findFirst({ where: { patientId }, orderBy: { createdAt: 'desc' } })
+      : null;
+    if (onboarding?.status !== OnboardingStatus.APPROVED || idv?.status === IdentityVerificationStatus.REJECTED) {
       throw new ForbiddenException("The patient's identity and onboarding checks must be approved before prescribing");
     }
   }
@@ -251,17 +258,21 @@ export class PrescribingService {
     ]);
     const ordered = await findGlp1Dose(db, orderedTreatmentText(patient?.lead?.quizAnswers));
     const proof = onboarding?.prescriptionProofReview as
-      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null } }
+      | { fileId?: string; assessment?: { safeMaxStep: number | null; safeMaxDoseLabel?: string | null; documentVerifiesPriorUse?: boolean | null } }
       | null
       | undefined;
     // A patient who said they have no proof isn't verified, whatever an earlier upload showed.
     const noProof = onboarding?.prescriptionProofUnavailable === true;
     const proofCurrent = !noProof && !!proof && proof.fileId === onboarding?.prescriptionProofFileId;
+    // The proof on file failed its name or date check: approving the onboarding does not turn it into verified prior use.
+    // The prescriber can still go above the starting dose, with a reason (a soft rule). Reviews stored before this
+    // result existed carry no verdict and are left as they were.
+    const proofFailedChecks = proofCurrent && proof!.assessment?.documentVerifiesPriorUse === false;
     return checkPrescribingRules({
       kind: input.kind,
       items,
       answers: input.answers,
-      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof,
+      verifiedPriorGlp1Use: onboarding?.priorMedicationUse === true && onboarding.status === 'APPROVED' && !noProof && !proofFailedChecks,
       currentGlp1Step: current,
       priorDoseSafeMaxStep: proofCurrent ? proof!.assessment?.safeMaxStep ?? null : null,
       priorDoseSafeMaxLabel: proofCurrent ? proof!.assessment?.safeMaxDoseLabel ?? null : null,

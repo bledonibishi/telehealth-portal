@@ -153,7 +153,8 @@ export class CliniciansService {
     if (before.deactivatedAt) return before;
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.clinician.update({ where: { id }, data: { deactivatedAt: new Date(), inviteToken: null, inviteTokenExpiresAt: null } });
+      // The session version moves on too, so a token issued before this stays dead if the account is turned back on.
+      const updated = await tx.clinician.update({ where: { id }, data: { deactivatedAt: new Date(), tokenVersion: { increment: 1 }, inviteToken: null, inviteTokenExpiresAt: null } });
       const released = await tx.consultation.updateMany({ where: { clinicianId: id, status: ConsultationStatus.IN_REVIEW }, data: { status: ConsultationStatus.SUBMITTED, clinicianId: null } });
       await this.audit.log({ actorId, actorRole: UserRole.CLINICIAN, action: 'CLINICIAN_DEACTIVATED', resourceType: 'Clinician', resourceId: id, metadata: { releasedConsultations: released.count } }, tx);
       return updated;

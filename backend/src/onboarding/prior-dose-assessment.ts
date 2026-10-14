@@ -129,6 +129,10 @@ export interface Assessment {
   // Titration step on the requested product that the document proves. Null
   // unless the document is readable, in the patient's name and the same medicine.
   verifiedStep: number | null;
+  // Whether the document stands as proof of earlier use: it is prescription evidence, fully in the patient's name and
+  // dated within the window. False when one of those failed; null when no document could be read, so there was nothing
+  // to judge. Stored with the review and read when prescribing (see PrescribingService.evaluate).
+  documentVerifiesPriorUse: boolean | null;
   // Highest step it would be safe to prescribe next, if it could be worked out.
   safeMaxStep: number | null;
   safeMaxDoseLabel: string | null;
@@ -290,6 +294,8 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
     checks.push({ key, status, value, hint });
   let nameMatch: NameMatch | null = null;
   let documentTrusted = false;
+  // Stricter than documentTrusted: the name and the date must both check out before the document's dose counts as verified.
+  let proofVerifiesDose = true;
   if (!document) {
     flag('WARNING', 'UNVERIFIED', 'Document was not checked automatically — review it manually');
   } else if (!document.readable) {
@@ -322,9 +328,11 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
         check('NAME', 'FAIL', document.patientName, issue('NAME_MISMATCH', `Expected: ${patientName}`));
       }
     } else if (nameMatch === 'PARTIAL') {
+      proofVerifiesDose = false;
       flag('WARNING', 'CAUTION', `Name on document (“${document.patientName}”) only partly matches the patient (“${patientName}”)`);
       check('NAME', 'PASS', document.patientName);
     } else if (nameMatch === 'NOT_FOUND') {
+      proofVerifiesDose = false;
       flag('WARNING', 'CAUTION', 'No patient name visible on the document');
       check('NAME', 'FAIL', null, issue('NAME_MISSING', 'Not visible on the document'));
     } else {
@@ -381,14 +389,17 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
     const date = document.documentDate ? new Date(`${document.documentDate}T00:00:00Z`) : null;
     const dateShown = document.documentDate ? `${DATE_KIND_LABEL[document.dateKind] ?? 'Dated'} ${document.documentDate}` : null;
     if (!date || Number.isNaN(date.getTime())) {
+      proofVerifiesDose = false;
       flag('WARNING', 'CAUTION', 'No date visible on the document — cannot tell how recent it is');
       check('DATE', 'FAIL', null, issue('DATE_MISSING', 'Not visible on the document'));
     } else {
       const ageDays = Math.floor((today.getTime() - date.getTime()) / 86_400_000);
       if (ageDays < -1) {
+        proofVerifiesDose = false;
         flag('CRITICAL', 'HIGH', `Document is dated in the future (${document.documentDate})`);
         check('DATE', 'FAIL', dateShown, issue('DATE_FUTURE', 'Couldn’t read the date clearly'));
       } else if (ageDays > PRIOR_DOSE_RULES.maxDocumentAgeDays) {
+        proofVerifiesDose = false;
         flag('WARNING', 'CAUTION', `Document is ${ageDays} days old (${document.dateKind} ${document.documentDate}) — does not show current use`);
         check('DATE', 'FAIL', dateShown, issue('DATE_OLD', 'Must be from the last 3 months'));
       } else {
@@ -430,7 +441,7 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
     if (priorStep === null) {
       flag('WARNING', 'CAUTION', `Previous dose ${formatMg(priorMg)} is below the lowest ${requested.productName} strength`);
     } else {
-      if (priorFromDocument && documentTrusted && docMolecule === requested.molecule) verifiedStep = priorStep;
+      if (priorFromDocument && documentTrusted && proofVerifiesDose && docMolecule === requested.molecule) verifiedStep = priorStep;
 
       const gap = reported?.lastDose ? GAP_DAYS[reported.lastDose] : null;
       const longEnough = reported?.weeksOnDose === '4_plus_weeks';
@@ -492,6 +503,7 @@ export function assessPriorDose(input: AssessmentInput): Assessment {
     riskLevel: risk,
     nameMatch,
     verifiedStep,
+    documentVerifiesPriorUse: document?.readable ? documentTrusted && proofVerifiesDose : null,
     safeMaxStep,
     safeMaxDoseLabel: safeMaxStep !== null && requested ? labelForStep(requested.ladder, safeMaxStep) : null,
     requestedDoseLabel: requested?.label ?? null,

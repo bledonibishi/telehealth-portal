@@ -1,6 +1,7 @@
-import { Controller, Get, Headers, Logger, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Headers, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageUrgencyService } from './message-urgency.service';
+import { assertCronAuth } from '../common/cron-auth';
 
 /** Called every 10 minutes by Vercel Cron (see ../../vercel.json), authenticated like the other /internal/cron jobs. */
 @Controller('internal/cron')
@@ -11,8 +12,7 @@ export class UrgencyCronController {
 
   @Get('urgency-sweep')
   async trigger(@Headers('authorization') authorization?: string) {
-    const secret = this.config.get<string>('CRON_SECRET');
-    if (!secret || authorization !== `Bearer ${secret}`) throw new UnauthorizedException();
+    assertCronAuth(authorization, this.config.get<string>('CRON_SECRET'));
     const marked = await this.urgency.sweep();
     if (marked) this.logger.log(`Urgency sweep: ${marked} message(s) marked`);
     return { marked };

@@ -177,13 +177,13 @@ export function partnerPingSummary(p: { reference: string; requiresColdChain?: b
   return { subject: `New order ${p.reference}${p.requiresColdChain ? ' (cold chain)' : ''}`, html };
 }
 
-/** The email for a withdrawn order: short and unmissable, with the JSON attached. */
+/** The email for a withdrawn order: short and unmissable. Like the new-order ping, it carries no attachment. */
 export function partnerCancelEmailSummary(p: PartnerCancelPayload): { subject: string; html: string } {
   const html = `
     <div style="font-family:sans-serif;max-width:620px">
       <h2 style="margin:0 0 4px;color:#b91c1c">Order ${p.reference} CANCELLED — do not dispatch</h2>
       <p style="color:#475569;margin:0 0 16px">The order we sent you earlier has been withdrawn${p.reason === 'PRESCRIPTION_WITHDRAWN' ? ' because its prescription was stopped or replaced' : ''}. If it has not left your premises, please do not ship it. If it already has, let us know.</p>
-      <p style="color:#94a3b8;font-size:12px">Order id ${p.orderId}. The structured message is attached as JSON.</p>
+      <p style="color:#94a3b8;font-size:12px">Order id ${p.orderId}.</p>
     </div>`;
   return { subject: `CANCELLED: order ${p.reference} — do not dispatch`, html };
 }

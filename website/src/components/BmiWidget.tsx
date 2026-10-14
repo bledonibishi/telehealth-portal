@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { saveBmiCarry } from '@/lib/bmi-carry';
 
 export default function BmiWidget() {
   const ref = useRef<HTMLDivElement>(null);
@@ -53,6 +54,10 @@ export default function BmiWidget() {
       q('[data-v=note]').textContent = note;
       fillR(hR); fillR(wR);
     };
+
+    // The assessment opens on these same two numbers, so they go with the click instead of being asked again. They are
+    // handed over in this tab's storage, not the address: a URL with a weight in it would reach analytics and history.
+    q('.pvb-cta').addEventListener('click', () => saveBmiCarry(+hR.value, +wR.value));
 
     hR.addEventListener('input', upd);
     wR.addEventListener('input', upd);

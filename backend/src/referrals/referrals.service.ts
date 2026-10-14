@@ -10,8 +10,10 @@ import { PostHogService } from '../posthog/posthog.service';
 import { PostHogLoggerService } from '../posthog/posthog-logger.service';
 import { VoucherKind, VoucherStatus } from '../common/enums';
 
-const REFERRAL_REWARD_CENTS = 2000; // £20, both sides
-const REWARD_CURRENCY = 'gbp';
+const REFERRAL_REWARD_CENTS = 2000; // 20 in the reward currency, both sides
+// The store's currency for the referrer's voucher (a Stripe balance credit is in one currency). REFERRAL_REWARD_CURRENCY
+// overrides it; it must match the prices and the friend coupon (STRIPE_REFERRAL_FRIEND_COUPON_ID_<CURRENCY>).
+const DEFAULT_REWARD_CURRENCY = 'gbp';
 
 @Injectable()
 export class ReferralsService {
@@ -29,6 +31,16 @@ export class ReferralsService {
   ) {
     this.stripe = new Stripe(config.get<string>('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2023-10-16' as any });
     this.webflowSiteUrl = config.get<string>('WEBFLOW_SITE_URL', 'http://localhost:3000');
+  }
+
+  /** The currency the referral reward is paid in. */
+  rewardCurrency(): string {
+    return (this.config.get<string>('REFERRAL_REWARD_CURRENCY') || DEFAULT_REWARD_CURRENCY).trim().toLowerCase();
+  }
+
+  /** The reward as people read it, e.g. "£20" — what the website promises must be what is given. */
+  rewardLabel(): string {
+    return formatAmount(REFERRAL_REWARD_CENTS, this.rewardCurrency());
   }
 
   /** Returns the patient's own shareable code, generating one on first use. */
@@ -115,7 +127,7 @@ export class ReferralsService {
         referralId: referral.id,
         kind: VoucherKind.REFEREE_REWARD,
         amountCents: REFERRAL_REWARD_CENTS,
-        currency: REWARD_CURRENCY,
+        currency: this.rewardCurrency(),
         status: friendRewardApplied ? VoucherStatus.APPLIED : VoucherStatus.ISSUED,
         appliedAt: friendRewardApplied ? new Date() : null,
         note: friendRewardApplied ? 'Applied as a discount on your first order' : null,
@@ -129,7 +141,7 @@ export class ReferralsService {
         referralId: referral.id,
         kind: VoucherKind.REFERRER_REWARD,
         amountCents: REFERRAL_REWARD_CENTS,
-        currency: REWARD_CURRENCY,
+        currency: this.rewardCurrency(),
       },
     });
 
@@ -140,7 +152,7 @@ export class ReferralsService {
     }
 
     await this.notifier?.toPatient(referrer.id, { kind: NotificationKind.REFERRAL_REWARD, href: '/rewards' });
-    const amountLabel = formatAmount(REFERRAL_REWARD_CENTS, REWARD_CURRENCY);
+    const amountLabel = this.rewardLabel();
     const portal = this.config.get<string>('PATIENT_APP_URL') ?? 'http://localhost:3000';
     await this.email.sendReferralRewardEmail(referrer.email, referrer.firstName, amountLabel, referrer.voucherAutoApply, `${portal}/rewards`);
   }

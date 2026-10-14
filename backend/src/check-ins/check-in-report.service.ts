@@ -67,7 +67,8 @@ export class CheckInReportService {
   async build(checkIn: Awaited<ReturnType<CheckInReportService['load']>>): Promise<CheckInReportData> {
     const [completed, goal, issued] = await Promise.all([
       this.prisma.checkIn.findMany({
-        where: { patientId: checkIn.patientId, status: CheckInStatus.COMPLETED, completedAt: { lte: checkIn.completedAt! } },
+        // GLP-1 only: the week number and the weight compared against must not come from another programme's check-ins.
+        where: { patientId: checkIn.patientId, kind: ConsultationKind.GLP1, status: CheckInStatus.COMPLETED, completedAt: { lte: checkIn.completedAt! } },
         orderBy: { completedAt: 'asc' },
         select: { id: true, weightKg: true },
       }),
@@ -94,13 +95,13 @@ export class CheckInReportService {
   /** A patient's reports, newest first: one per reviewed GLP-1 check-in. */
   async listFor(patientId: string): Promise<CheckInReportListItem[]> {
     const rows = await this.prisma.checkIn.findMany({
-      where: { patientId, status: CheckInStatus.COMPLETED, completedAt: { not: null } },
+      where: { patientId, kind: ConsultationKind.GLP1, status: CheckInStatus.COMPLETED, completedAt: { not: null } },
       orderBy: { completedAt: 'asc' },
-      select: { id: true, completedAt: true, reviewedAt: true, outcome: true, kind: true },
+      select: { id: true, completedAt: true, reviewedAt: true, outcome: true },
     });
     return rows
       .map((r, i) => ({ r, number: i + 1 }))
-      .filter(({ r }) => r.reviewedAt && r.kind === ConsultationKind.GLP1)
+      .filter(({ r }) => r.reviewedAt)
       .map(({ r, number }) => ({
         id: r.id,
         weekLabel: weekLabelFor(number),

@@ -12,7 +12,7 @@ import { loadAssessment, mergeAssessment, type Assessment } from '@/lib/storage'
 interface Reward { title: string; description: string; amountOffCents: number | null; percentOff: number | null; currency: string | null }
 
 const money = (cents: number, currency: string | null) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'gbp').toUpperCase() }).format(cents / 100);
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'eur').toUpperCase() }).format(cents / 100);
 
 /**
  * The step between choosing a treatment and paying: change the dose, add progesterone, and apply or remove
