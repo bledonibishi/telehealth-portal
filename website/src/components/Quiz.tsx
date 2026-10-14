@@ -7,6 +7,7 @@ import { loadAssessment, mergeAssessment, saveAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { loadReferralCode } from '@/lib/referral';
 import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
+import { takeBmiCarry } from '@/lib/bmi-carry';
 import { track } from '@/lib/analytics';
 import { fetchIntake, hasAnswer, isVisible, prefillFromBmi, toAnswer, type IntakeQuestion, type IntakeValues } from '@/lib/intake';
 import { requestEmailCode, verifyEmailCode } from '@/lib/email-verification';
@@ -163,7 +164,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [restored, setRestored] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [calcErr, setCalcErr] = useState('');
-  // Height and weight brought from the BMI calculator on the home page (?h=…&w=…), shown filled in on that question.
+  // Height and weight brought from the BMI calculator on the home page (see lib/bmi-carry), shown filled in on that question.
   const [carried, setCarried] = useState<{ h: number; w: number } | null>(null);
   const [detailsErr, setDetailsErr] = useState('');
   const [emailTaken, setEmailTaken] = useState(false);
@@ -211,10 +212,9 @@ export default function Quiz({ product }: { product: ProductKind }) {
       setSt(saved);
       setRestored(true);
     }
-    const params = new URLSearchParams(window.location.search);
-    const h = Number(params.get('h'));
-    const w = Number(params.get('w'));
-    if (questions.some((qq) => qq.type === 'measure') && h >= 120 && h <= 230 && w >= 35 && w <= 300) setCarried({ h, w });
+    // Read once (the storage is cleared as it is read), so a second run of this effect must not wipe what the first found.
+    const fromCalculator = questions.some((qq) => qq.type === 'measure') ? takeBmiCarry() : null;
+    if (fromCalculator) setCarried(fromCalculator);
     setHydrated(true);
   }, [product, questions]);
 
