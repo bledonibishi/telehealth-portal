@@ -92,7 +92,7 @@ export const GET_PATIENT = gql`
           id medication dosage instructions issuedAt pharmacyRef dispatchedAt
           carrier trackingNumber trackingUrl outForDeliveryAt deliveredAt
         }
-        messages { id senderId senderRole content sentAt }
+        messages { id senderId senderRole isAi attachments { id filename mimeType } content sentAt }
         clinician { id firstName lastName }
       }
       checkIns {

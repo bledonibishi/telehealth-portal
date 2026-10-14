@@ -20,7 +20,8 @@ export class UploadsCleanupController {
     const progress = await this.cleanup.purgeOrphanedProgressPhotos();
     const body = await this.cleanup.purgeOrphanedBodyPhotos();
     const labReports = await this.cleanup.purgeOrphanedLabReports();
-    if (progress || body || labReports) this.logger.log(`Purged ${progress} unattached progress photo(s), ${body} unused body photo(s) and ${labReports} unsent lab report(s)`);
-    return { removed: progress + body + labReports };
+    const support = await this.cleanup.purgeSupportAttachments();
+    if (progress || body || labReports || support) this.logger.log(`Purged ${progress} unattached progress photo(s), ${body} unused body photo(s), ${labReports} unsent lab report(s) and ${support} support attachment(s)`);
+    return { removed: progress + body + labReports + support };
   }
 }

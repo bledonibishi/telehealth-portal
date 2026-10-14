@@ -19,7 +19,7 @@ const NAV: NavItem[] = [
   { href: '/weight-journey', label: 'Weight Journey', icon: 'scale' },
   { href: '/doses', label: 'Injections', icon: 'syringe' },
   { href: '/appointments', label: 'Appointments', icon: 'calendar' },
-  { href: '/messages', label: 'Messages', icon: 'chat', badge: 'messages' },
+  { href: '/messages', label: 'Help & messages', icon: 'chat', badge: 'messages' },
   { href: '/care-team', label: 'My Doctor', icon: 'heart' },
   { href: '/orders', label: 'Orders', icon: 'cart' },
   { href: '/prescription', label: 'Prescriptions', icon: 'rx' },

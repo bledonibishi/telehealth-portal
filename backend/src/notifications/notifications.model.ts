@@ -31,6 +31,12 @@ export class NotificationCounts {
 
   @Field(() => Int, { description: 'Refund requests from patients waiting for an admin (admins only; others get 0)' })
   refundRequests: number;
+
+  @Field(() => Int, { description: 'Tickets that need this person: not finished, not waiting on the patient, and theirs or nobody’s yet' })
+  ticketsToDo: number;
+
+  @Field(() => Int, { description: 'Of those, how many have passed the time they should have had a first reply' })
+  ticketsOverdue: number;
 }
 
 @ObjectType()

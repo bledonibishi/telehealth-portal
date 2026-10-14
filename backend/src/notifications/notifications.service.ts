@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { replyDueAt } from '../tickets/ticket-sla';
 import { PrismaService } from '../prisma/prisma.service';
 import { OPEN_ALERTS_WHERE } from '../side-effects/side-effects';
 import { DosingService } from '../dosing/dosing.service';
@@ -30,6 +31,7 @@ export class NotificationsService {
     includeAppointments = false,
     includeOrderProblems = false,
     forClinicianId,
+    tickets,
   }: {
     includeMissedDoses?: boolean;
     includeShipments?: boolean;
@@ -38,6 +40,8 @@ export class NotificationsService {
     includeOrderProblems?: boolean;
     /** Count only what nobody has picked up yet or this clinician has (consultations, patient messages). */
     forClinicianId?: string;
+    /** Whose tickets to count, and which kind: support sees all but the medical ones, a doctor only those, an admin everything. */
+    tickets?: { userId: string; kind: 'NON_CLINICAL' | 'CLINICAL' | 'ALL' };
   } = {}) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -84,7 +88,28 @@ export class NotificationsService {
     const pendingOrders = pendingOrdersAll - problems.stillPending;
     const orderProblems = problems.total;
 
-    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests };
+    const { ticketsToDo, ticketsOverdue } = await this.countTickets(tickets);
+
+    return { newLeads, pendingConsultations, patientMessages, pendingOrders, missedDoseAlerts, shipmentsDue, sideEffectAlerts, urgentAppointments, orderProblems, refundRequests, ticketsToDo, ticketsOverdue };
+  }
+
+  /**
+   * Tickets that need this person now: not finished, not waiting on the patient, and theirs or nobody's yet. "Overdue" are those
+   * that have waited longer than their priority allows for a first reply.
+   */
+  private async countTickets(scope?: { userId: string; kind: 'NON_CLINICAL' | 'CLINICAL' | 'ALL' }): Promise<{ ticketsToDo: number; ticketsOverdue: number }> {
+    if (!scope) return { ticketsToDo: 0, ticketsOverdue: 0 };
+    const rows = await this.prisma.ticket.findMany({
+      where: {
+        status: { in: ['OPEN', 'IN_PROGRESS'] },
+        OR: [{ assigneeId: null }, { assigneeId: scope.userId }],
+        ...(scope.kind === 'CLINICAL' ? { type: 'CLINICAL' as const } : scope.kind === 'NON_CLINICAL' ? { type: { not: 'CLINICAL' as const } } : {}),
+      },
+      select: { createdAt: true, priority: true, status: true, firstResponseAt: true },
+      take: 500,
+    });
+    const now = Date.now();
+    return { ticketsToDo: rows.length, ticketsOverdue: rows.filter((t) => { const due = replyDueAt(t); return !!due && due.getTime() < now; }).length };
   }
 
   /**

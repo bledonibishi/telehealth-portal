@@ -6,6 +6,12 @@ export const GET_MESSAGES = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
       readAt
@@ -19,6 +25,12 @@ export const SEND_MESSAGE = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
       readAt
@@ -32,6 +44,12 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
       readAt
@@ -48,6 +66,12 @@ export const PATIENT_CONVERSATION = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
       readAt
@@ -61,6 +85,12 @@ export const PATIENT_CONVERSATION = gql`
           id
           senderId
           senderRole
+          isAi
+          attachments {
+            id
+            filename
+            mimeType
+          }
           content
           sentAt
           readAt

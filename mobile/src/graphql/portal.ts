@@ -427,3 +427,40 @@ export const MY_WEIGHT_TREND = gql`
     }
   }
 `;
+
+// ── Help requests ───────────────────────────────────────────────────────────
+
+const SUPPORT_REQUEST_FIELDS = gql`
+  fragment SupportRequestFields on SupportRequest {
+    id
+    number
+    type
+    status
+    subject
+    description
+    createdAt
+    resolvedAt
+    attachments {
+      id
+      filename
+    }
+  }
+`;
+
+export const MY_SUPPORT_REQUESTS = gql`
+  query MySupportRequests {
+    mySupportRequests {
+      ...SupportRequestFields
+    }
+  }
+  ${SUPPORT_REQUEST_FIELDS}
+`;
+
+export const CREATE_SUPPORT_REQUEST = gql`
+  mutation CreateSupportRequest($input: SupportRequestInput!) {
+    createSupportRequest(input: $input) {
+      ...SupportRequestFields
+    }
+  }
+  ${SUPPORT_REQUEST_FIELDS}
+`;

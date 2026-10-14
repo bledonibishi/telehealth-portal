@@ -15,7 +15,7 @@ import { Icon, type IconName } from '@/components/portal/Icon';
 type Update = { key: string; at: number; icon: IconName; tone: string; title: string; detail?: string; href?: string; extra?: React.ReactNode };
 
 /** The latest things that happened on the patient's journey, from their own data, newest first. */
-export function RecentUpdates() {
+export function RecentUpdates({ limit = 4 }: { limit?: number }) {
   const { points } = useRecentWeights();
   const { data: photos } = useQuery(MY_PROGRESS_PHOTOS, { fetchPolicy: 'cache-first' });
   const { data: rx } = useQuery(MY_PRESCRIPTIONS_BRIEF, { fetchPolicy: 'cache-and-network' });
@@ -41,7 +41,7 @@ export function RecentUpdates() {
   for (const a of (appts?.myAppointments ?? []) as any[]) {
     if (a.status === 'SCHEDULED' && a.scheduledFor) updates.push({ key: `a${a.id}`, at: Date.parse(a.createdAt), icon: 'calendar', tone: 'bg-ink-50 text-ink-700', title: 'Appointment booked', detail: format(new Date(a.scheduledFor), 'EEE d MMM, HH:mm'), href: '/appointments' });
   }
-  const latest = updates.sort((a, b) => b.at - a.at).slice(0, 4);
+  const latest = updates.sort((a, b) => b.at - a.at).slice(0, limit);
 
   return (
     <Card labelledBy="updates-title" className="h-full">

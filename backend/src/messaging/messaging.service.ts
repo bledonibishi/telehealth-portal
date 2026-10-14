@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { NotificationKind } from '@telehealth/shared-types';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,8 +10,13 @@ import { AuthUser } from '../auth/access-roles';
 import { NotifierService } from '../notifications/notifier.service';
 import { ClinicianRole } from '../common/enums';
 import { MessageUrgencyService } from '../ai/message-urgency.service';
+import { SupportBotService } from '../support-bot/support-bot.service';
+import { ASSISTANT_ID } from '../tickets/tickets.service';
 
 const pubSub = new PubSub();
+
+/** Files a patient can send with one chat message. */
+export const MAX_MESSAGE_ATTACHMENTS = 3;
 
 // One notification per conversation thread and side (see NotifierService groupKey). A thread is a consultation, or the
 // pre-consultation thread; a patient can have several, and each keeps its own notification, so reading or answering one
@@ -25,7 +30,7 @@ const legacyPatientMessageKey = (patientId: string) => `team-msg:${patientId}`;
 const legacyStaffMessageKey = (patientId: string) => `patient-msg:${patientId}`;
 
 @Injectable()
-export class MessagingService {
+export class MessagingService implements OnModuleInit {
   private readonly logger = new Logger(MessagingService.name);
 
   constructor(
@@ -34,7 +39,18 @@ export class MessagingService {
     private posthog: PostHogService,
     @Optional() private notifier?: NotifierService,
     @Optional() private urgency?: MessageUrgencyService,
+    @Optional() private supportBot?: SupportBotService,
   ) {}
+
+  onModuleInit() {
+    // The automated assistant posts through here, so its messages reach the thread live like anyone else's.
+    this.supportBot?.useSender(async (patientId, consultationId, content, meta) => { await this.sendAssistant(patientId, consultationId, content, meta); });
+  }
+
+  /** A message from the automated support assistant, labelled as such. */
+  sendAssistant(patientId: string, consultationId: string | null, content: string, meta: { articleId?: string } = {}) {
+    return this.deliver(ASSISTANT_ID, UserRole.CLINICIAN, { patientId, consultationId }, content, true, [], meta.articleId);
+  }
 
   // Staff can reach any thread; a patient only threads on their own consultations.
   async assertCanAccess(user: AuthUser, consultationId: string) {
@@ -66,7 +82,18 @@ export class MessagingService {
 
   /** A message written in the app: the thread is worked out from the sender (see resolveThread). */
   async sendAs(user: AuthUser, input: SendMessageInput) {
-    return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content);
+    // Only a patient sends files, and only their own, uploaded for this purpose and not yet used.
+    const attachmentIds = user.role === UserRole.PATIENT ? [...new Set(input.attachmentIds ?? [])] : [];
+    if (input.attachmentIds?.length && user.role !== UserRole.PATIENT) throw new BadRequestException('Only patients can attach files');
+    if (!input.content.trim() && attachmentIds.length === 0) throw new BadRequestException('Write a message or attach a file');
+    if (attachmentIds.length > MAX_MESSAGE_ATTACHMENTS) throw new BadRequestException(`You can attach up to ${MAX_MESSAGE_ATTACHMENTS} files`);
+    return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content, false, attachmentIds);
+  }
+
+  /** A message from staff into a thread that is already known (a consultation, or the pre-consultation one when `consultationId` is null). */
+  sendToThread(user: AuthUser, thread: { patientId: string; consultationId: string | null }, content: string) {
+    if (user.role === UserRole.PATIENT) throw new ForbiddenException();
+    return this.deliver(user.id, user.role as UserRole, thread, content, false, []);
   }
 
   /** A message on a known consultation, e.g. posted by the system on a clinician's behalf. */
@@ -80,10 +107,25 @@ export class MessagingService {
     senderRole: UserRole,
     { patientId, consultationId }: { patientId: string; consultationId: string | null },
     content: string,
+    isAi = false,
+    attachmentIds: string[] = [],
+    aiArticleId?: string,
   ) {
-    const message = await this.prisma.message.create({
-      data: { patientId, consultationId, senderId, senderRole, content },
-    });
+    if (attachmentIds.length) {
+      const own = await this.prisma.uploadedFile.count({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null } });
+      if (own !== attachmentIds.length) throw new BadRequestException('One of the files could not be attached. Please add it again.');
+    }
+    const data = { patientId, consultationId, senderId, senderRole, content, isAi, ...(aiArticleId ? { aiArticleId } : {}) };
+    // With files, the message and the link to them are saved together, so a file is never half attached.
+    const message = attachmentIds.length
+      ? await this.prisma.$transaction(async (tx) => {
+          const created = await tx.message.create({ data });
+          const claimed = await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { messageId: created.id } });
+          // Another send took a file first: undo this one rather than send a message without the files the patient chose.
+          if (claimed.count !== attachmentIds.length) throw new BadRequestException('One of the files could not be attached. Please add it again.');
+          return created;
+        })
+      : await this.prisma.message.create({ data });
 
     await this.audit.log({
       actorId: senderId,
@@ -92,7 +134,7 @@ export class MessagingService {
       resourceType: 'Message',
       resourceId: message.id,
       patientId,
-      metadata: { consultationId },
+      metadata: { consultationId, ...(attachmentIds.length ? { attachments: attachmentIds.length } : {}) },
     });
 
     this.posthog.capture(senderId, 'message_sent', {
@@ -105,10 +147,13 @@ export class MessagingService {
     if (consultationId) pubSub.publish(`NEW_MESSAGE.${consultationId}`, { newMessage: message });
     // Waited for, so the notification is recorded before this request ends (an un-awaited write can be cut off on a
     // serverless host, or land after the message was already read). It never throws: the message is saved.
-    await this.notifyOtherSide(message, consultationId).catch((err) => this.logger.error(`Notifying about message ${message.id} failed: ${err?.message}`, err?.stack));
+    await this.notifyOtherSide(message, consultationId, isAi).catch((err) => this.logger.error(`Notifying about message ${message.id} failed: ${err?.message}`, err?.stack));
     // A patient's message is also checked for urgency, in the background so sending never waits on it: the mark only ever
     // adds visibility, and a check that fails leaves the message as it was. (It never throws.)
     if (senderRole === UserRole.PATIENT) void this.urgency?.check(message.id);
+    // The automated assistant starts its quiet timer on a patient's message, and steps back when a person writes.
+    if (senderRole === UserRole.PATIENT) await this.supportBot?.onPatientMessage({ patientId, consultationId });
+    else if (!isAi) await this.supportBot?.onStaffMessage({ patientId, consultationId });
     return message;
   }
 
@@ -117,13 +162,14 @@ export class MessagingService {
    * and the "waiting for a reply" notifications on the staff side are done. The patient wrote: the clinician on the
    * consultation hears about it, or the whole clinical team when nobody has picked it up yet.
    */
-  private async notifyOtherSide(message: { id: string; patientId: string; senderRole: string; sentAt: Date }, consultationId: string | null) {
+  private async notifyOtherSide(message: { id: string; patientId: string; senderRole: string; sentAt: Date }, consultationId: string | null, isAi = false) {
     if (!this.notifier) return;
     const { patientId } = message;
     if (message.senderRole !== UserRole.PATIENT) {
       // The care team answered this thread: its "waiting for a reply" alert is done. Other threads stay as they are.
-      await this.resolveStaffAlert(patientId, consultationId);
-      await this.notifier.toPatient(patientId, { kind: NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId, consultationId) });
+      // The assistant's answer does not count: the team's "waiting for a reply" alert stays until a person has answered.
+      if (!isAi) await this.resolveStaffAlert(patientId, consultationId);
+      await this.notifier.toPatient(patientId, { kind: isAi ? NotificationKind.ASSISTANT_MESSAGE : NotificationKind.CARE_TEAM_MESSAGE, href: '/messages', groupKey: patientMessageKey(patientId, consultationId) });
       // The patient may have opened the chat while the notification was being written: then it is already handled.
       const stored = await this.prisma.message.findUnique({ where: { id: message.id }, select: { readAt: true } });
       if (stored?.readAt) await this.notifier.resolve(patientMessageKey(patientId, consultationId));
@@ -147,7 +193,7 @@ export class MessagingService {
     );
     // Someone from the care team may have replied while the notification was being written: then it is answered.
     // Only a reply in this same thread counts.
-    const replied = await this.prisma.message.count({ where: { patientId, consultationId, senderRole: { not: UserRole.PATIENT }, sentAt: { gt: message.sentAt } } });
+    const replied = await this.prisma.message.count({ where: { patientId, consultationId, senderRole: { not: UserRole.PATIENT }, isAi: false, sentAt: { gt: message.sentAt } } });
     if (replied > 0) await this.notifier.resolve(staffMessageKey(patientId, consultationId));
   }
 
@@ -162,6 +208,25 @@ export class MessagingService {
     await this.notifier?.resolve(patientMessageKey(patientId, consultationId));
     await this.notifier?.resolve(legacyPatientMessageKey(patientId));
   }
+
+  /** The files sent with one message (names only; the bytes are served, with an audit entry, from /uploads). */
+  attachmentsOf(messageId: string) {
+    // Collected for a moment and fetched together: a list of messages costs one query, not one per message.
+    return new Promise<Array<{ id: string; filename: string; mimeType: string }>>((resolve, reject) => {
+      this.attachmentQueue.push({ messageId, resolve, reject });
+      if (this.attachmentQueue.length > 1) return;
+      setImmediate(async () => {
+        const batch = this.attachmentQueue.splice(0);
+        try {
+          const rows = await this.prisma.uploadedFile.findMany({ where: { messageId: { in: [...new Set(batch.map((b) => b.messageId))] } }, select: { id: true, filename: true, mimeType: true, messageId: true }, orderBy: { createdAt: 'asc' } });
+          for (const b of batch) b.resolve(rows.filter((r) => r.messageId === b.messageId).map(({ id, filename, mimeType }) => ({ id, filename, mimeType })));
+        } catch (err) {
+          for (const b of batch) b.reject(err);
+        }
+      });
+    });
+  }
+  private attachmentQueue: Array<{ messageId: string; resolve: (v: any) => void; reject: (e: unknown) => void }> = [];
 
   /** Messages a patient sent or received before they had a consultation. */
   findPreConsultation(patientId: string) {

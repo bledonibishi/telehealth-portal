@@ -1,18 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useMutation, useQuery } from '@apollo/client';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
-import { MARK_MESSAGES_READ, MARK_PRE_CONSULTATION_READ, MY_CONVERSATION, SEND_MESSAGE } from '../../graphql/operations';
+import React, { useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ChatBubble } from '../../components/ChatBubble';
+import { ChatComposer } from '../../components/ChatComposer';
+import type { Attachment } from '../../components/AttachmentsField';
+import { useConversation, type ChatMessage } from '../../lib/useConversation';
 import { colors } from '../../theme';
-import { ErrorText } from '../../components/ui';
-
-type Message = { id: string; senderId: string; senderRole: string; content: string; sentAt: string; readAt?: string | null };
-
-const unreadFromTeam = (ms: Message[] | undefined) => (ms ?? []).some((m) => m.senderRole !== 'PATIENT' && !m.readAt);
-
-// How often to look for replies: the thread before a consultation has no live channel.
-const POLL_MS = 10_000;
 
 /**
  * The care-team chat during onboarding, opened as a sheet from the bottom of the screen. It works
@@ -20,64 +12,21 @@ const POLL_MS = 10_000;
  * questionnaire is submitted (see ConsultationsService.submitIntakeQuiz).
  */
 export function OnboardingChatScreen({ navigation, route }: any) {
-  const insets = useSafeAreaInsets();
+  const { messages, me, loading, sending, send } = useConversation();
   const [content, setContent] = useState<string>(route?.params?.draft ?? '');
-  const [me, setMe] = useState<string | null>(null);
+  const [files, setFiles] = useState<Attachment[]>([]);
   const [problem, setProblem] = useState<unknown>(null);
-  const listRef = useRef<FlatList<Message>>(null);
+  const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  useEffect(() => {
-    SecureStore.getItemAsync('access_token').then((token) => {
-      try {
-        if (token) setMe(JSON.parse(atob(token.split('.')[1])).sub);
-      } catch {
-        /* no id: every message just shows on the team's side */
-      }
-    });
-  }, []);
-
-  const { data, loading, refetch } = useQuery(MY_CONVERSATION, { pollInterval: POLL_MS, fetchPolicy: 'cache-and-network' });
-  const consultations: Array<{ id: string; messages: Message[] }> = data?.myConsultations ?? [];
-  const messages = useMemo(() => {
-    const byId = new Map<string, Message>();
-    consultations.forEach((c) => (c.messages ?? []).forEach((m) => byId.set(m.id, m)));
-    ((data?.myPreConsultationMessages ?? []) as Message[]).forEach((m) => byId.set(m.id, m));
-    return [...byId.values()].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
-
-  const [sendMessage, { loading: sending }] = useMutation(SEND_MESSAGE);
-  const [markRead] = useMutation(MARK_MESSAGES_READ);
-  const [markPreRead] = useMutation(MARK_PRE_CONSULTATION_READ);
-
-  // The chat fills the screen, so what arrives while it's open has been read: tell the server, once
-  // per thread with something unread (a failure is tried again on the next poll).
-  const marking = useRef(new Set<string>());
-  useEffect(() => {
-    const mark = (key: string, run: () => Promise<unknown>) => {
-      if (marking.current.has(key)) return;
-      marking.current.add(key);
-      run()
-        .then(() => refetch())
-        .catch(() => undefined)
-        .finally(() => marking.current.delete(key));
-    };
-    consultations.forEach((c) => unreadFromTeam(c.messages) && mark(c.id, () => markRead({ variables: { consultationId: c.id } })));
-    if (unreadFromTeam(data?.myPreConsultationMessages)) mark('pre', () => markPreRead());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
-
-  const send = async () => {
+  const submit = async () => {
     const text = content.trim();
-    if (!text || sending) return;
+    if ((!text && files.length === 0) || sending) return;
     setProblem(null);
-    // Consultations come newest first; with none, the server keeps it on the pre-consultation thread.
-    const replyTo = consultations[0]?.id;
     try {
-      await sendMessage({ variables: { input: replyTo ? { consultationId: replyTo, content: text } : { content: text } } });
+      await send(text, files.map((f) => f.id));
       setContent('');
-      await refetch();
-    } catch (err: any) {
+      setFiles([]);
+    } catch (err) {
       setProblem(err);
     }
   };
@@ -100,6 +49,7 @@ export function OnboardingChatScreen({ navigation, route }: any) {
         contentContainerStyle={messages.length ? styles.list : styles.emptyList}
         data={messages}
         keyExtractor={(m) => m.id}
+        keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           loading ? null : (
@@ -109,29 +59,21 @@ export function OnboardingChatScreen({ navigation, route }: any) {
             </View>
           )
         }
-        renderItem={({ item: m }) => {
-          const mine = m.senderId === me || (m.senderRole === 'PATIENT' && !me);
-          return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-              <Text style={[styles.bubbleText, mine && { color: colors.white }]}>{m.content}</Text>
-              <Text style={[styles.time, mine && { color: colors.brand100 }]}>
-                {new Date(m.sentAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-          );
-        }}
+        renderItem={({ item: m }) => (
+          <ChatBubble mine={m.senderId === me || (m.senderRole === 'PATIENT' && !me)} text={m.content} sentAt={m.sentAt} assistant={m.isAi} files={m.attachments} />
+        )}
       />
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <ErrorText error={problem} />
-        <View style={styles.inputRow}>
-          <TextInput style={styles.input} value={content} onChangeText={setContent} placeholder="Write a message…" multiline maxLength={2000} />
-          <Pressable onPress={send} disabled={!content.trim() || sending} style={[styles.send, (!content.trim() || sending) && { opacity: 0.4 }]}>
-            <Text style={styles.sendText}>Send</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.note}>In a medical emergency, call your local emergency number instead of using chat.</Text>
-      </View>
+      <ChatComposer
+        value={content}
+        onChangeText={setContent}
+        onSend={submit}
+        sending={sending}
+        files={files}
+        onFilesChange={setFiles}
+        problem={problem}
+        note="In a medical emergency, call your local emergency number instead of using chat."
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -148,16 +90,4 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center' },
   emptyTitle: { fontSize: 15, fontWeight: '600', color: colors.slate700 },
   emptyBody: { fontSize: 13, color: colors.slate400, marginTop: 4 },
-  bubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
-  mine: { alignSelf: 'flex-end', backgroundColor: colors.brand600, borderBottomRightRadius: 6 },
-  theirs: { alignSelf: 'flex-start', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.slate100, borderBottomLeftRadius: 6 },
-  bubbleText: { fontSize: 15, color: colors.slate900, lineHeight: 20 },
-  time: { fontSize: 10, color: colors.slate400, marginTop: 3, alignSelf: 'flex-end' },
-  composer: { borderTopWidth: 1, borderTopColor: colors.slate100, backgroundColor: colors.white, paddingHorizontal: 12, paddingTop: 10 },
-  problem: { color: colors.danger, fontSize: 12, marginBottom: 6 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  input: { flex: 1, borderWidth: 1, borderColor: colors.slate200, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, maxHeight: 120 },
-  send: { backgroundColor: colors.brand600, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10 },
-  sendText: { color: colors.white, fontWeight: '600' },
-  note: { fontSize: 11, color: colors.slate400, marginTop: 8, textAlign: 'center' },
 });

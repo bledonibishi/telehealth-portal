@@ -14,6 +14,7 @@
 export enum NotificationKind {
   // To a patient.
   CARE_TEAM_MESSAGE = 'CARE_TEAM_MESSAGE',
+  ASSISTANT_MESSAGE = 'ASSISTANT_MESSAGE',
   TREATMENT_UPDATE = 'TREATMENT_UPDATE',
   CHECK_IN_READY = 'CHECK_IN_READY',
   DOSE_DUE = 'DOSE_DUE',
@@ -34,6 +35,8 @@ export enum NotificationKind {
   SIDE_EFFECT_SEVERE = 'SIDE_EFFECT_SEVERE',
   REFUND_REQUESTED = 'REFUND_REQUESTED',
   ORDER_PROBLEM = 'ORDER_PROBLEM',
+  TICKET_OPENED = 'TICKET_OPENED',
+  TICKET_ASSIGNED = 'TICKET_ASSIGNED',
 }
 
 /** `urgent` ones are shown in red and, for staff, also emailed. */
@@ -48,6 +51,7 @@ export interface NotificationText {
 }
 
 export const NOTIFICATION_TEXT: Record<NotificationKind, NotificationText> = {
+  [NotificationKind.ASSISTANT_MESSAGE]: { title: 'New reply from our automated assistant', titleMany: '{count} new replies from our automated assistant', body: 'Open the chat to read it. You can ask for a person at any time.', tone: 'info' },
   [NotificationKind.CARE_TEAM_MESSAGE]: { title: 'New message from your care team', titleMany: '{count} new messages from your care team', body: 'Open the chat to read it.', tone: 'info' },
   // The headline is one of a fixed set chosen on the backend (e.g. "Your treatment has been approved").
   [NotificationKind.TREATMENT_UPDATE]: { title: '{headline}', body: 'Open the app to see the details.', tone: 'info' },
@@ -69,6 +73,8 @@ export const NOTIFICATION_TEXT: Record<NotificationKind, NotificationText> = {
   [NotificationKind.SIDE_EFFECT_SEVERE]: { title: 'Severe side effects reported', body: '{patient} needs a doctor to look today', tone: 'urgent' },
   [NotificationKind.REFUND_REQUESTED]: { title: '{patient} asked for a refund', body: 'Waiting for an admin to decide', tone: 'warning' },
   [NotificationKind.ORDER_PROBLEM]: { title: 'An order could not be delivered', body: '{patient}’s parcel needs attention', tone: 'warning' },
+  [NotificationKind.TICKET_OPENED]: { title: 'New ticket from {patient}', body: '{subject}', tone: 'info' },
+  [NotificationKind.TICKET_ASSIGNED]: { title: '{by} gave you a ticket', body: '{subject}', tone: 'info' },
 };
 
 export type NotificationParams = Record<string, string | number>;
@@ -100,6 +106,7 @@ export type NotificationCategory = 'messages' | 'orders' | 'reminders' | 'reward
 
 const CATEGORY: Partial<Record<NotificationKind, NotificationCategory>> = {
   [NotificationKind.CARE_TEAM_MESSAGE]: 'messages',
+  [NotificationKind.ASSISTANT_MESSAGE]: 'messages',
   [NotificationKind.ORDER_SHIPPED]: 'orders',
   [NotificationKind.ORDER_OUT_FOR_DELIVERY]: 'orders',
   [NotificationKind.ORDER_DELIVERED]: 'orders',

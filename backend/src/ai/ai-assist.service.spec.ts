@@ -22,6 +22,10 @@ describe('AiAssistService feature switches', () => {
 
   it('"all" turns on every helper, and a veto still wins', () => {
     expect(service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'all' }).enabledFeatures()).toEqual(['brief', 'reply', 'translate', 'urgency', 'search', 'labs']);
+    // The support assistant writes to patients by itself, so "all" never switches it on: it has to be named.
+    expect(service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'all' }).isEnabled('support')).toBe(false);
+    expect(service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'search, support' }).isEnabled('support')).toBe(true);
+    expect(service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'support', AI_DISABLED_FEATURES: 'support' }).isEnabled('support')).toBe(false);
     expect(service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'all', AI_DISABLED_FEATURES: ' Reply, urgency ' }).enabledFeatures()).toEqual(['brief', 'translate', 'search', 'labs']);
   });
 

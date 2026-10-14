@@ -230,3 +230,49 @@ describe('lab reports', () => {
     expect(staffMayView('LAB_REPORT' as any, staff('PROVIDER'))).toBe(false);
   });
 });
+
+describe('support attachments', () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(20)]);
+  const make = (waiting = 0) => {
+    const prisma: any = { uploadedFile: { create: jest.fn(({ data }) => Promise.resolve({ id: 'f-1', ...data })), count: jest.fn().mockResolvedValue(waiting), findUnique: jest.fn() }, ticket: { findUnique: jest.fn() } };
+    const storage = { put: jest.fn(), get: jest.fn(), delete: jest.fn() };
+    return { prisma, service: new UploadsService(prisma, { get: jest.fn() } as any, storage as any) };
+  };
+  const file = (over: Partial<Express.Multer.File>) => ({ originalname: 'error.png', mimetype: 'image/png', buffer: PNG, ...over }) as Express.Multer.File;
+
+  it('accepts a screenshot and a PDF', async () => {
+    const { service } = make();
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({}))).resolves.toMatchObject({ kind: 'SUPPORT_ATTACHMENT' });
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({ originalname: 'receipt.pdf', mimetype: 'application/pdf', buffer: Buffer.from('%PDF-1.7 rest') }))).resolves.toBeDefined();
+  });
+
+  it('refuses anything else, even when it claims to be an image', async () => {
+    const { service } = make();
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({ originalname: 'a.exe', mimetype: 'application/octet-stream', buffer: Buffer.from('MZ....') }))).rejects.toThrow(/photo or screenshot/i);
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({ buffer: Buffer.from('<html>not a png</html>') }))).rejects.toThrow(/photo or screenshot/i);
+  });
+
+  it('refuses a file over 10 MB', async () => {
+    const { service } = make();
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({ buffer: Buffer.concat([PNG, Buffer.alloc(10 * 1024 * 1024)]) }))).rejects.toThrow(/too large/i);
+  });
+
+  it('stops one account piling up files that were never sent', async () => {
+    const { service } = make(10);
+    await expect(service.save('p-1', 'SUPPORT_ATTACHMENT' as any, file({}))).rejects.toThrow(/send your request first/i);
+  });
+
+  it('lets support and admins open them, but a doctor only on a clinical ticket, and never the pharmacy', async () => {
+    const { service, prisma } = make();
+    prisma.uploadedFile.findUnique.mockResolvedValue({ id: 'f-1', patientId: 'p-1', kind: 'SUPPORT_ATTACHMENT', ticketId: 't-1' });
+    await expect(service.findForAccess('f-1', { id: 'cx', role: 'CLINICIAN', clinicianRole: 'CX_TEAM' } as any)).resolves.toBeDefined();
+    await expect(service.findForAccess('f-1', { id: 'ad', role: 'CLINICIAN', clinicianRole: 'ADMIN' } as any)).resolves.toBeDefined();
+    prisma.ticket.findUnique.mockResolvedValue({ type: 'BILLING' });
+    await expect(service.findForAccess('f-1', { id: 'dr', role: 'CLINICIAN', clinicianRole: 'DOCTOR' } as any)).rejects.toThrow(/not found/i);
+    prisma.ticket.findUnique.mockResolvedValue({ type: 'CLINICAL' });
+    await expect(service.findForAccess('f-1', { id: 'dr', role: 'CLINICIAN', clinicianRole: 'DOCTOR' } as any)).resolves.toBeDefined();
+    await expect(service.findForAccess('f-1', { id: 'pr', role: 'CLINICIAN', clinicianRole: 'PROVIDER' } as any)).rejects.toThrow(/not found/i);
+    await expect(service.findForAccess('f-1', { id: 'other', role: 'PATIENT' } as any)).rejects.toThrow(/not found/i);
+    await expect(service.findForAccess('f-1', { id: 'p-1', role: 'PATIENT' } as any)).resolves.toBeDefined();
+  });
+});

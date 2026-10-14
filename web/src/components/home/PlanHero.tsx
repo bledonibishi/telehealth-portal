@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { useElementWidth } from '@/lib/useElementWidth';
 import { Icon } from '@/components/portal/Icon';
 import { btnPrimary } from '@/components/portal/Card';
 import { PenIllustration } from './PenIllustration';
@@ -41,26 +42,31 @@ export function DoseDots({ taken, total }: { taken: number; total: number }) {
 
 /** The top card: which programme the patient is on, since when and for how long, and how far through it they are. */
 /** `detailsHref` is where "View Plan Details" goes; the My Treatment page points it at its own details card. */
-export function PlanHero({ plan, detailsHref = '/treatment-plan' }: { plan: Plan; detailsHref?: string }) {
+/** `compact`: everything in one column, for when the card is small or in the narrow column. */
+export function PlanHero({ plan, detailsHref = '/treatment-plan', compact: forceCompact = false }: { plan: Plan; detailsHref?: string; compact?: boolean }) {
+  // Laid out by the card's own width: two panels side by side when there is room, one under the other when there is not.
+  const [ref, width] = useElementWidth<HTMLElement>();
+  const compact = forceCompact || (width != null && width < 640);
+  const tight = width != null && width < 420;
   const total = plan.dosesPlanned ?? plan.supplyDosesTotal ?? plan.dosesTaken;
   const dotsTotal = plan.supplyDosesTotal ?? total;
   const dotsTaken = plan.supplyDosesTotal != null ? plan.supplyDosesTaken ?? 0 : plan.dosesTaken;
   return (
-    <section aria-labelledby="plan-title" className="h-full rounded-lg border border-slate-200 bg-white p-5">
-      <div className="h-full grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_13rem] gap-4 items-center [&>*]:min-w-0">
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_7.5rem] gap-3 items-center">
+    <section ref={ref} aria-labelledby="plan-title" className={`h-full rounded-lg border border-slate-200 bg-white ${tight ? 'p-4' : 'p-5'}`}>
+      <div className={`h-full grid grid-cols-1 ${compact ? '' : 'md:grid-cols-[minmax(0,1fr)_13rem]'} gap-4 items-center [&>*]:min-w-0`}>
+        <div className={`grid grid-cols-1 ${compact ? '' : 'sm:grid-cols-[minmax(0,1fr)_7.5rem]'} gap-3 items-center`}>
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink-700">Current Treatment Plan</p>
             <h2 id="plan-title" className="text-xl font-bold text-ink-900 mt-2 leading-tight">{plan.programme}</h2>
             <p className="text-sm font-medium text-ink-600 mt-1">{plan.productName}{plan.genericName ? ` (${plan.genericName})` : ''}{plan.strength ? ` · ${plan.strength}` : ''}</p>
             <span className="inline-flex items-center rounded-full bg-emerald-500 text-white text-xs font-semibold px-3 py-1 mt-4">Active</span>
             <dl className="mt-4 space-y-2 text-sm">
-              <div className="flex items-center gap-2.5 text-slate-600"><Icon name="calendar" className="w-4 h-4 text-ink-800 flex-shrink-0" /><dt className="whitespace-nowrap">Started on:</dt><dd className="font-semibold text-ink-900 whitespace-nowrap">{format(new Date(plan.startedAt), 'd MMM yyyy')}</dd></div>
-              {plan.durationWeeks && <div className="flex items-center gap-2.5 text-slate-600"><Icon name="clock" className="w-4 h-4 text-ink-800" /><dt>Duration:</dt><dd className="font-semibold text-ink-900">{plan.durationWeeks} weeks</dd></div>}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-slate-600"><Icon name="calendar" className="w-4 h-4 text-ink-800 flex-shrink-0" /><dt className="whitespace-nowrap">Started on:</dt><dd className="font-semibold text-ink-900">{format(new Date(plan.startedAt), 'd MMM yyyy')}</dd></div>
+              {plan.durationWeeks && <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-slate-600"><Icon name="clock" className="w-4 h-4 text-ink-800" /><dt>Duration:</dt><dd className="font-semibold text-ink-900">{plan.durationWeeks} weeks</dd></div>}
             </dl>
             <Link href={detailsHref} className={`${btnPrimary} mt-5 whitespace-nowrap`}>View Plan Details <Icon name="arrow" className="w-4 h-4" /></Link>
           </div>
-          <div className="hidden sm:flex items-center justify-center rounded-lg bg-white/70 border border-white h-36">
+          <div className={`${compact ? 'hidden' : 'hidden sm:flex'} items-center justify-center rounded-lg bg-white/70 border border-white h-36`}>
             <PenIllustration label={plan.productName} className="w-28 h-28" />
           </div>
         </div>

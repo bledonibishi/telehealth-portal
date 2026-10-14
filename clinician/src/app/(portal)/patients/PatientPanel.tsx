@@ -22,6 +22,7 @@ import WeightJourneyPanel from '@/components/weight/WeightJourneyPanel';
 import { GET_WEIGHT_JOURNEY } from '@/graphql/weight';
 import LabsPanel from '@/components/labs/LabsPanel';
 import { PATIENT_LAB_REPORTS } from '@/graphql/labs';
+import PatientDashboardCards from '@/components/tickets/PatientDashboardCards';
 import SymptomsPanel from '@/components/symptoms/SymptomsPanel';
 import { PATIENT_SYMPTOM_ASSESSMENTS } from '@/graphql/symptoms';
 import { hasAccess } from '@/lib/role';
@@ -44,8 +45,8 @@ const KIND_BADGE: Record<string, string> = {
   GLP1: 'bg-teal-100 text-teal-700',
 };
 
-export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs';
-export const TABS: Tab[] = ['overview', 'prescriptions', 'orders', 'onboarding', 'messages', 'checkin', 'weight', 'symptoms', 'labs'];
+export type Tab = 'overview' | 'prescriptions' | 'orders' | 'onboarding' | 'messages' | 'checkin' | 'weight' | 'symptoms' | 'labs' | 'homescreen';
+export const TABS: Tab[] = ['overview', 'prescriptions', 'orders', 'onboarding', 'messages', 'checkin', 'weight', 'symptoms', 'labs', 'homescreen'];
 
 // A patient's messages live in each consultation's thread, so listen to every one of them
 // and reload the patient when anything arrives.
@@ -65,6 +66,8 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
 
   const isAdmin = hasAccess(['ADMIN']);
   const canReviewOnboarding = hasAccess(['ADMIN', 'DOCTOR']);
+  // Support and admins settle what the patient's home screen shows, for a while.
+  const canSetHomeScreen = hasAccess(['ADMIN', 'CX_TEAM']);
 
   const { data, loading, refetch, startPolling, stopPolling } = useQuery(GET_PATIENT, { variables: { id: patientId } });
   const connected = useRealtimeConnected(realtime);
@@ -185,6 +188,7 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
     { key: 'orders',        label: `${t('Orders')} (${orders.length})` },
     { key: 'messages',      label: `${t('Messages')} (${allMessages.length})` },
     { key: 'checkin',       label: t('Check-in') },
+    ...(canSetHomeScreen ? [{ key: 'homescreen' as Tab, label: t('Home screen') }] : []),
     ...(canReviewOnboarding ? [{ key: 'labs' as Tab, label: waitingLabReports ? `${t('Labs')} (${waitingLabReports} ${t('new')})` : t('Labs') }] : []),
     ...(weightJourney ? [{ key: 'weight' as Tab, label: t('Weight') }] : []),
     // Hormone programmes track symptoms instead of weight.
@@ -454,6 +458,8 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
 
         {/* ── Symptoms ── */}
         {tab === 'symptoms' && <SymptomsPanel assessments={symptomAssessments} />}
+
+        {tab === 'homescreen' && canSetHomeScreen && <div className="p-5"><PatientDashboardCards patientId={patientId} /></div>}
 
         {/* ── Labs ── */}
         {tab === 'labs' && <LabsPanel patientId={patientId} canRecord={canReviewOnboarding} patientName={`${p.firstName} ${p.lastName}`} gender={p.gender} />}

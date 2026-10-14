@@ -1,6 +1,18 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
 import { UserRole } from '../../common/enums';
 
+@ObjectType('MessageAttachment')
+export class MessageAttachmentModel {
+  @Field(() => ID)
+  id: string;
+
+  @Field()
+  filename: string;
+
+  @Field()
+  mimeType: string;
+}
+
 @ObjectType('Message')
 export class MessageModel {
   @Field(() => ID)
@@ -23,6 +35,15 @@ export class MessageModel {
 
   @Field()
   sentAt: Date;
+
+  @Field({ description: 'Written by the automated support assistant, not a person' })
+  isAi: boolean;
+
+  @Field(() => String, { nullable: true, description: 'Staff only: which help article an assistant answer came from' })
+  aiArticleId?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Staff only: how the team rated an assistant answer (GOOD or BAD)' })
+  aiFeedback?: string | null;
 
   @Field({ nullable: true, description: 'When the other side first read it; null until they have' })
   readAt?: Date | null;

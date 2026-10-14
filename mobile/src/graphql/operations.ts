@@ -86,6 +86,12 @@ export const GET_MY_CONSULTATION = gql`
         id
         senderId
         senderRole
+        isAi
+        attachments {
+          id
+          filename
+          mimeType
+        }
         content
         sentAt
       }
@@ -99,6 +105,12 @@ export const SEND_MESSAGE = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
     }
@@ -111,6 +123,12 @@ export const NEW_MESSAGE_SUBSCRIPTION = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
     }
@@ -185,6 +203,12 @@ export const MY_CONVERSATION = gql`
         id
         senderId
         senderRole
+        isAi
+        attachments {
+          id
+          filename
+          mimeType
+        }
         content
         sentAt
         readAt
@@ -194,6 +218,12 @@ export const MY_CONVERSATION = gql`
       id
       senderId
       senderRole
+      isAi
+      attachments {
+        id
+        filename
+        mimeType
+      }
       content
       sentAt
       readAt
@@ -353,5 +383,15 @@ export const MY_NOTIFICATION_PREFERENCES = gql`
 export const UPDATE_NOTIFICATION_PREFERENCES = gql`
   mutation UpdateMyNotificationPreferences($input: UpdateNotificationPreferencesInput!) {
     updateMyNotificationPreferences(input: $input) { pushMessages pushOrders pushReminders pushRewards emailUnreadMessages }
+  }
+`;
+
+// Just the patient's first name, for the greeting on the home screen.
+export const ME_NAME = gql`
+  query MeName {
+    me {
+      id
+      firstName
+    }
   }
 `;

@@ -1,4 +1,5 @@
 import { registerEnumType } from '@nestjs/graphql';
+import { TicketPriority, TicketStatus, TicketType } from '@prisma/client';
 import {
   ConsultationStatus,
   ConsultationKind,
@@ -69,6 +70,9 @@ registerEnumType(LabResultKind, { name: 'LabResultKind' });
 registerEnumType(ReferralStatus, { name: 'ReferralStatus' });
 registerEnumType(VoucherKind, { name: 'VoucherKind' });
 registerEnumType(VoucherStatus, { name: 'VoucherStatus' });
+registerEnumType(TicketType, { name: 'TicketType' });
+registerEnumType(TicketStatus, { name: 'TicketStatus' });
+registerEnumType(TicketPriority, { name: 'TicketPriority' });
 
 export {
   ConsultationStatus,
@@ -98,4 +102,7 @@ export {
   ReferralStatus,
   VoucherKind,
   VoucherStatus,
+  TicketType,
+  TicketStatus,
+  TicketPriority,
 };

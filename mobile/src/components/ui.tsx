@@ -4,14 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { describeError } from '@telehealth/shared-types';
 import { colors } from '../theme';
 import { useLayout } from '../lib/layout';
+import { useHasNativeHeader } from '../lib/nativeHeader';
 
 /** The page every treatment screen sits on: a title, a scrolling body that is a centred column on a tablet. */
 export function Screen({ title, subtitle, right, children, refreshing, onRefresh }: {
   title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode; refreshing?: boolean; onRefresh?: () => void;
 }) {
   const { gutter, contentMaxWidth } = useLayout();
+  // Under a native header bar the top is already cleared; leaving room for it again made a gap above the title.
+  const hasHeader = useHasNativeHeader();
   return (
-    <SafeAreaView style={s.page} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={s.page} edges={hasHeader ? ['left', 'right'] : ['top', 'left', 'right']}>
       <ScrollView
         contentContainerStyle={{ padding: gutter, paddingBottom: 40, width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center' }}
         refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined}

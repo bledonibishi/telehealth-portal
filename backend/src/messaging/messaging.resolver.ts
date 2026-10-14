@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
-import { Resolver, Query, Mutation, Subscription, Args, ID, Int } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Subscription, Args, ID, Int, ResolveField, Parent } from '@nestjs/graphql';
 import { AuditRead } from '../audit/audit-read.interceptor';
 import { MessagingService } from './messaging.service';
-import { MessageModel, MessagesReadModel } from './models/message.model';
+import { MessageAttachmentModel, MessageModel, MessagesReadModel } from './models/message.model';
 import { SendMessageInput } from './dto/send-message.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -11,6 +11,22 @@ import { AuthUser, CLINICAL_STAFF } from '../auth/access-roles';
 @Resolver(() => MessageModel)
 export class MessagingResolver {
   constructor(private messagingService: MessagingService) {}
+
+  // How the team judged the assistant is for the team: a patient is never shown it.
+  @ResolveField(() => String, { nullable: true })
+  aiFeedback(@Parent() message: { aiFeedback?: string | null }, @CurrentUser() user?: AuthUser) {
+    return user && user.role !== 'PATIENT' ? message.aiFeedback ?? null : null;
+  }
+
+  @ResolveField(() => String, { nullable: true })
+  aiArticleId(@Parent() message: { aiArticleId?: string | null }, @CurrentUser() user?: AuthUser) {
+    return user && user.role !== 'PATIENT' ? message.aiArticleId ?? null : null;
+  }
+
+  @ResolveField(() => [MessageAttachmentModel], { description: 'Files sent with the message' })
+  attachments(@Parent() message: { id: string }) {
+    return this.messagingService.attachmentsOf(message.id);
+  }
 
   @Authorized(...CLINICAL_STAFF, 'PATIENT')
   @AuditRead('Consultation', 'consultationId')

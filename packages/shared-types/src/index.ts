@@ -196,3 +196,4 @@ export interface QuizAnswer {
 
 export * from './errors';
 export * from './notifications';
+export * from './dashboard';

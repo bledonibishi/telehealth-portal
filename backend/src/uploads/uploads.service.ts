@@ -39,6 +39,10 @@ const LAB_REPORT_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 const MAX_PROGRESS_PHOTO_BYTES = 10 * 1024 * 1024;
 
+/** What a patient may attach to a help request, and how many files they can have waiting to be sent. */
+export const SUPPORT_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const SUPPORT_ATTACHMENT_MAX_PENDING = 10;
+
 /** The file's first bytes agree with an image format (a client-declared type alone proves nothing). */
 export function looksLikeImage(buf: Buffer): boolean {
   const starts = (...bytes: number[]) => bytes.every((b, i) => buf[i] === b);
@@ -87,6 +91,16 @@ export class UploadsService {
       if (file.buffer.length > MAX_LAB_REPORT_BYTES) throw new BadRequestException('That file is too large — please use one under 15 MB');
     }
 
+    if (kind === UploadKind.SUPPORT_ATTACHMENT) {
+      const isPdf = file.mimetype === 'application/pdf' && looksLikePdf(file.buffer);
+      const isPhoto = IMAGE_TYPES.includes(file.mimetype) && looksLikeImage(file.buffer);
+      if (!isPdf && !isPhoto) throw new BadRequestException('Please attach a photo or screenshot (JPEG, PNG, WebP or HEIC) or a PDF.');
+      if (file.buffer.length > SUPPORT_ATTACHMENT_MAX_BYTES) throw new BadRequestException('That file is too large. Please use one under 10 MB.');
+      // Files wait here until the request is sent; this stops one account piling them up.
+      const waiting = await this.prisma.uploadedFile.count({ where: { patientId, kind, ticketId: null, messageId: null, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } } });
+      if (waiting >= SUPPORT_ATTACHMENT_MAX_PENDING) throw new BadRequestException('You have attached a lot of files today. Please send your request first.');
+    }
+
     const storageKey = `${patientId}/${randomUUID()}-${safeFilename(file.originalname)}`;
     await this.storage.put(storageKey, this.encrypt(file.buffer));
 
@@ -111,6 +125,12 @@ export class UploadsService {
 
     const isOwner = requester.role === 'PATIENT' && requester.id === file.patientId;
     if (!isOwner && !staffMayView(file.kind, requester)) throw new NotFoundException('File not found');
+    // A doctor sees the attachments of clinical tickets only, like the tickets themselves; support and admins see them all.
+    // (A file sent in the chat belongs to the care conversation, which doctors read.)
+    if (!isOwner && file.kind === UploadKind.SUPPORT_ATTACHMENT && !file.messageId && requester.clinicianRole === 'DOCTOR') {
+      const ticket = file.ticketId ? await this.prisma.ticket.findUnique({ where: { id: file.ticketId }, select: { type: true } }) : null;
+      if (ticket?.type !== 'CLINICAL') throw new NotFoundException('File not found');
+    }
 
     return file;
   }

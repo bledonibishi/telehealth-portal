@@ -9,11 +9,12 @@ const LINKS: Array<{ href: string; icon: IconName; title: string; text: string }
   { href: '/settings#help', icon: 'help', title: 'Support & FAQ', text: 'Answers to common questions' },
 ];
 
-export function QuickLinks() {
+/** `columns`: the links in one list, or two side by side when the card is wide. */
+export function QuickLinks({ columns = 1 }: { columns?: 1 | 2 }) {
   return (
     <Card labelledBy="links-title" className="h-full">
       <h2 id="links-title" className="text-base font-semibold text-ink-900 mb-2">Quick Links</h2>
-      <ul className="divide-y divide-slate-100">
+      <ul className={columns === 2 ? 'grid sm:grid-cols-2 gap-x-6 divide-y divide-slate-100 sm:divide-y-0' : 'divide-y divide-slate-100'}>
         {LINKS.map((l) => (
           <li key={l.href}>
             <Link href={l.href} className="flex items-center gap-3 py-3 group">

@@ -11,7 +11,10 @@ export type ChatMessage = {
   id: string;
   senderId: string;
   senderRole: string;
+  /** Written by the automated support assistant, not a person. */
+  isAi?: boolean;
   content: string;
+  attachments?: { id: string; filename: string; mimeType: string }[];
   sentAt: string;
   /** When the other side read it; null until they have. */
   readAt?: string | null;
@@ -136,15 +139,16 @@ export function useConversationChat({ currentUserId }: { currentUserId: string |
     writeStorage(OPEN_PREF_KEY, next ? '1' : '0');
   };
 
-  const send = async (content: string) => {
-    const temp: ChatMessage = { id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`, senderId: currentUserId ?? '', senderRole: 'PATIENT', content, sentAt: new Date().toISOString(), pending: true };
+  const send = async (content: string, files: { id: string; filename: string; mimeType: string }[] = []) => {
+    const attachmentIds = files.length ? files.map((f) => f.id) : undefined;
+    const temp: ChatMessage = { id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`, senderId: currentUserId ?? '', senderRole: 'PATIENT', content, attachments: files, sentAt: new Date().toISOString(), pending: true };
     setPending((p) => [...p, temp]);
     try {
       if (replyTo) {
-        const res = await sendMessage({ variables: { input: { consultationId: replyTo, content } } });
+        const res = await sendMessage({ variables: { input: { consultationId: replyTo, content, attachmentIds } } });
         if (res.data?.sendMessage) receive(replyTo, res.data.sendMessage);
       } else {
-        const res = await sendMessage({ variables: { input: { content } } });
+        const res = await sendMessage({ variables: { input: { content, attachmentIds } } });
         const saved = res.data?.sendMessage;
         if (saved) patchPre((ms) => (ms.some((m) => m.id === saved.id) ? ms : [...ms, { readAt: null, ...saved }]));
       }

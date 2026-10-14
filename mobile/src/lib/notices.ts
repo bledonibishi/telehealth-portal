@@ -32,6 +32,7 @@ export async function markNoticeRead(id: string) {
 
 const KIND_ICON: Record<string, string> = {
   CARE_TEAM_MESSAGE: '💬',
+  ASSISTANT_MESSAGE: '🤖',
   TREATMENT_UPDATE: '📄',
   CHECK_IN_READY: '🩺',
   DOSE_DUE: '💉',

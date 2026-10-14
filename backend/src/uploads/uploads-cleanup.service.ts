@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Prisma, UploadKind } from '@prisma/client';
+import { Prisma, TicketStatus, UploadKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
@@ -8,6 +8,9 @@ import { FILE_STORAGE, FileStorage } from './file-storage';
 /** A photo is uploaded just before the weight it belongs to is saved, so one this old was never attached. */
 export const ORPHAN_AFTER_MS = 24 * 3_600_000;
 const BATCH = 100;
+
+/** How long a help request's attachments are kept after it is resolved or closed. Confirm the period with the clinic's lawyer. */
+export const SUPPORT_ATTACHMENT_RETENTION_DAYS = 90;
 
 /**
  * Progress photos are uploaded first and attached when the weight is saved. If that save fails and
@@ -69,7 +72,32 @@ export class UploadsCleanupService {
     );
   }
 
-  private async purgeAll(files: Array<{ id: string; patientId: string; storageKey: string }>, stillOrphan: (tx: Prisma.TransactionClient, file: { id: string }) => Promise<boolean>): Promise<number> {
+  /**
+   * Support attachments that were uploaded but never sent with a request (a closed tab), and the ones whose request was
+   * finished long ago. Both are removed, bytes and record, and noted in the audit log.
+   */
+  async purgeSupportAttachments(now = new Date()): Promise<number> {
+    const unsent = await this.prisma.uploadedFile.findMany({
+      where: { kind: UploadKind.SUPPORT_ATTACHMENT, ticketId: null, messageId: null, createdAt: { lt: new Date(now.getTime() - ORPHAN_AFTER_MS) } },
+      select: { id: true, patientId: true, storageKey: true },
+      orderBy: { createdAt: 'asc' },
+      take: BATCH,
+    });
+    const removedUnsent = await this.purgeAll(unsent, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, ticketId: null, messageId: null } })) === 1, 'SUPPORT_ATTACHMENT_PURGED_UNSENT');
+
+    const cutoff = new Date(now.getTime() - SUPPORT_ATTACHMENT_RETENTION_DAYS * 24 * 3_600_000);
+    const finished = { ticket: { status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] }, resolvedAt: { lt: cutoff } } };
+    const expired = await this.prisma.uploadedFile.findMany({ where: { kind: UploadKind.SUPPORT_ATTACHMENT, ...finished }, select: { id: true, patientId: true, storageKey: true }, orderBy: { createdAt: 'asc' }, take: BATCH });
+    const removedExpired = await this.purgeAll(expired, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, ...finished } })) === 1, 'SUPPORT_ATTACHMENT_PURGED_RETENTION');
+
+    // Files sent in the chat belong to a message, not a ticket: they go the same time after the message was sent.
+    const sentInChat = { ticketId: null, message: { sentAt: { lt: cutoff } } };
+    const expiredChat = await this.prisma.uploadedFile.findMany({ where: { kind: UploadKind.SUPPORT_ATTACHMENT, ...sentInChat }, select: { id: true, patientId: true, storageKey: true }, orderBy: { createdAt: 'asc' }, take: BATCH });
+    const removedChat = await this.purgeAll(expiredChat, async (tx, file) => (await tx.uploadedFile.count({ where: { id: file.id, ...sentInChat } })) === 1, 'SUPPORT_ATTACHMENT_PURGED_RETENTION');
+    return removedUnsent + removedExpired + removedChat;
+  }
+
+  private async purgeAll(files: Array<{ id: string; patientId: string; storageKey: string }>, stillOrphan: (tx: Prisma.TransactionClient, file: { id: string }) => Promise<boolean>, auditAction = 'ORPHAN_PHOTO_PURGED'): Promise<number> {
     let removed = 0;
     for (const file of files) {
       try {
@@ -88,7 +116,7 @@ export class UploadsCleanupService {
           { timeout: 20_000 },
         );
         if (!gone) continue;
-        await this.audit.log({ actorId: 'system:uploads-cleanup', actorRole: UserRole.ADMIN, action: 'ORPHAN_PHOTO_PURGED', resourceType: 'UploadedFile', resourceId: file.id, patientId: file.patientId });
+        await this.audit.log({ actorId: 'system:uploads-cleanup', actorRole: UserRole.ADMIN, action: auditAction, resourceType: 'UploadedFile', resourceId: file.id, patientId: file.patientId });
         removed++;
       } catch (err: any) {
         this.logger.error(`Could not purge upload ${file.id}: ${err?.message ?? err}`);

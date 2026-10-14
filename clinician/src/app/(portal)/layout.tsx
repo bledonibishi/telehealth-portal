@@ -29,12 +29,16 @@ type NotifCounts = {
   pendingOrders: number;
   shipmentsDue: number;
   urgentAppointments: number;
+  ticketsToDo: number;
+  ticketsOverdue: number;
 };
 
 const NAV: NavItem[] = [
   { href: '/',         label: 'Dashboard',     icon: 'home',     group: 'Overview', roles: ['ADMIN'] },
   { href: '/leads',    label: 'Leads',         icon: 'flag',     group: 'Clinical', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
+  { href: '/tickets', label: 'Tickets',        icon: 'inbox',    group: 'Clinical', roles: ['ADMIN', 'CX_TEAM', 'DOCTOR'],                     badgeKey: 'ticketsToDo' },
   { href: '/patients', label: 'Patients',       icon: 'user',     group: 'Clinical', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'],                     badgeKey: 'patientMessages' },
+  { href: '/assistant', label: 'Assistant',      icon: 'bot',      group: 'Clinical', roles: ['ADMIN', 'CX_TEAM'] },
   { href: '/queue',    label: 'Review queue',   icon: 'plan',     group: 'Clinical', roles: ['ADMIN', 'DOCTOR'],                                badgeKey: 'pendingConsultations' },
   { href: '/check-ins', label: 'Check-ins',     icon: 'heart',    group: 'Clinical', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/appointments', label: 'Appointments', icon: 'calendar', group: 'Clinical', roles: ['ADMIN', 'DOCTOR'],                          badgeKey: 'urgentAppointments' },
@@ -67,7 +71,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const { data } = useQuery(GET_NOTIFICATION_COUNTS, { pollInterval: 30_000, skip: !role });
   const raw: NotifCounts & { orderProblems?: number; refundRequests?: number } = data?.notificationCounts ?? {
-    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0,
+    newLeads: 0, pendingConsultations: 0, patientMessages: 0, pendingOrders: 0, shipmentsDue: 0, urgentAppointments: 0, ticketsToDo: 0, ticketsOverdue: 0,
   };
   // Orders needing attention (admin only) add to the Orders badge.
   const counts: NotifCounts = { ...raw, pendingOrders: raw.pendingOrders + (raw.orderProblems ?? 0) + (raw.refundRequests ?? 0) };
@@ -102,13 +106,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         className={`fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)] transition-transform duration-200 lg:static lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="px-4 h-12 border-b border-[color:var(--border-subtle)] flex items-center gap-2.5 shrink-0">
-          <span className="w-6 h-6 rounded-md bg-brand-500 text-white flex items-center justify-center text-[11px] font-bold" aria-hidden>T</span>
-          <span className="text-sm font-semibold text-[color:var(--t-strong)] truncate">{t('Telehealth Portal')}</span>
-          {badge && (
-            <span className={`ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
-              {t(badge.label)}
-            </span>
-          )}
+          <span className="w-7 h-7 rounded-md bg-brand-500 text-white flex items-center justify-center text-xs font-bold shrink-0" aria-hidden>T</span>
+          {/* The name and, under it, who is signed in: one line each, never wrapped or cut by the other. */}
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="text-sm font-semibold text-[color:var(--t-strong)] truncate">{t('Telehealth Portal')}</p>
+            {badge && <span className={`mt-0.5 inline-block max-w-full truncate text-[10px] font-medium px-1.5 py-px rounded-full whitespace-nowrap ${badge.cls}`}>{t(badge.label)}</span>}
+          </div>
         </div>
 
         <nav className="flex-1 px-2.5 py-3 overflow-y-auto">
