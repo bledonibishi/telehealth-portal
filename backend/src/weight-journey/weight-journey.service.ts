@@ -8,6 +8,7 @@ import { CorrectCheckInWeightInput, CorrectWeightGoalInput } from './dto/weight-
 import { MonthlyCheckInState, WeightEntryModel, WeightJourneyModel } from './models/weight-journey.model';
 import { computeProgress, motivationMessage, round1 } from './weight-math';
 import { latestOf } from './weight-timeline';
+import { checkInStatusOf } from '../check-ins/check-in-status';
 
 // Same bounds as the `weight_kg` question in the questionnaires, so a weight
 // that's valid there is valid here.
@@ -16,7 +17,6 @@ export const MAX_WEIGHT_KG = 300;
 
 // How long after finishing a check-in the dashboard keeps saying it's done,
 // before switching to the countdown to the next one.
-const COMPLETED_BANNER_DAYS = 14;
 
 const JOURNEY_INCLUDE = {
   lead: { select: { productKind: true } },
@@ -238,28 +238,8 @@ export class WeightJourneyService {
   }
 
   private checkInStatus(checkIns: any[]) {
-    const now = new Date();
-    const ready = checkIns.find((c) => c.status === CheckInStatus.SENT && c.tokenExpiresAt && c.tokenExpiresAt > now);
-    const lastDone = checkIns
-      .filter((c) => c.status === CheckInStatus.COMPLETED && c.completedAt)
-      .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0];
-    const upcoming = checkIns.find((c) => c.status === CheckInStatus.SCHEDULED);
-    const lastCheckInCompletedAt = lastDone?.completedAt;
-
-    if (ready) {
-      return {
-        checkInState: MonthlyCheckInState.READY,
-        checkInUrl: this.checkIns.buildUrl(ready.token) ?? undefined,
-        nextCheckInDueAt: ready.dueAt,
-        lastCheckInCompletedAt,
-      };
-    }
-    const justDone = lastDone && now.getTime() - lastDone.completedAt.getTime() < COMPLETED_BANNER_DAYS * 86_400_000;
-    return {
-      checkInState: justDone ? MonthlyCheckInState.COMPLETED : MonthlyCheckInState.UPCOMING,
-      nextCheckInDueAt: upcoming?.dueAt,
-      lastCheckInCompletedAt,
-    };
+    const s = checkInStatusOf(checkIns, (t) => this.checkIns.buildUrl(t));
+    return { checkInState: s.state, checkInUrl: s.url, nextCheckInDueAt: s.nextDueAt, lastCheckInCompletedAt: s.lastCompletedAt };
   }
 }
 

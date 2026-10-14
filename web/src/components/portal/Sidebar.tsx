@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUnreadMessages } from '@/lib/useUnreadMessages';
-import { Icon, Logo, type IconName } from './Icon';
+import { Icon, type IconName } from './Icon';
+import { BrandMark } from './BrandMark';
 
 export type NavItem = { href: string; label: string; icon: IconName; badge?: 'messages' };
 
-export const BRAND = { name: 'Omopharmacy' };
+export const BRAND = { name: 'Omo Pharmacy' };
 
 // Help and messages is not one more page in the list: it is the way to reach us, so it has its own place at the bottom.
 const HELP_HREF = '/messages';
@@ -30,10 +31,9 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
   if (rest.length) groups.push({ title: 'More', items: rest });
 
   return (
-    <div className="h-full flex flex-col bg-[#fbfbf9] text-slate-700 border-r border-slate-200/80">
+    <div className="h-full flex flex-col bg-white text-slate-700 border-r border-slate-200/80">
       <div className="px-4 h-14 flex items-center gap-2.5 border-b border-slate-200/80">
-        <span className="w-7 h-7 rounded-md bg-brand-700 text-white flex items-center justify-center flex-shrink-0"><Logo className="w-5 h-5" /></span>
-        <p className="text-[15px] font-semibold tracking-tight text-slate-900">{BRAND.name}</p>
+        <Link href="/dashboard" onClick={onNavigate} aria-label={`${BRAND.name} home`}><BrandMark size={30} /></Link>
       </div>
 
       <nav className="flex-1 px-2.5 py-3 overflow-y-auto" aria-label="Main">

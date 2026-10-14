@@ -45,13 +45,21 @@ export function AppointmentCard() {
 
 /** For severe symptoms: the emergency number, plus the clinic's urgent line and a 24-hour urgent request. */
 export function EmergencyCard() {
+  // Always there, but quiet: one line, the number, and the non-urgent route beside it.
   return (
-    <section className="rounded-lg border border-red-200 bg-red-50/70 p-5">
-      <Lead icon="alert" tone="red" title="Urgent / Emergency" text="Severe side effects? Contact us immediately." />
-      <a href={telHref(CONTACT.urgentPhone ?? EMERGENCY_NUMBER)} className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2.5">
-        <Icon name="phone" className="w-4 h-4" /> {CONTACT.urgentPhone ? 'Call Now (24/7)' : `Call ${EMERGENCY_NUMBER}`}
-      </a>
-      <Link href="/appointments?new=1&urgent=1" className="block text-center text-xs font-medium text-red-700 hover:text-red-800 mt-2.5">Not life-threatening? Request an urgent appointment (answered within 24h) →</Link>
+    <section aria-label="In an emergency" className="rounded-2xl border border-red-200 bg-red-50/60 px-4 py-3">
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-full bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0"><Icon name="alert" className="w-4 h-4" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-red-900"><b>Severe side effects?</b> Get help now.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <a href={telHref(CONTACT.urgentPhone ?? EMERGENCY_NUMBER)} className="inline-flex items-center gap-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3.5 py-1.5">
+              <Icon name="phone" className="w-4 h-4" /> {CONTACT.urgentPhone ? 'Call 24/7' : `Call ${EMERGENCY_NUMBER}`}
+            </a>
+            <Link href="/appointments?new=1&urgent=1" className="text-xs font-medium text-red-700 hover:text-red-800">Not life-threatening? Urgent appointment, within 24h →</Link>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

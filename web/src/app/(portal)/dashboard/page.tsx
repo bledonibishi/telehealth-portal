@@ -18,6 +18,7 @@ import { AppointmentCard, ChatCard, ContactCard, EmergencyCard } from '@/compone
 import { RecentUpdates } from '@/components/home/RecentUpdates';
 import { RecentOrders } from '@/components/home/RecentOrders';
 import { QuickLinks } from '@/components/home/QuickLinks';
+import { TodayCard } from '@/components/home/TodayCard';
 import { Card, btnPrimary } from '@/components/portal/Card';
 import { useCareStage } from '@/lib/useCareStage';
 import { Icon } from '@/components/portal/Icon';
@@ -64,6 +65,7 @@ export default function DashboardPage() {
   const isNarrow = (id: string) => placeOfCard(id) === 'side' || (placeOfCard(id) === 'main' && sizeOf(dash.layout, id) === 'small');
   const isCompact = (id: string) => placeOfCard(id) === 'main' && sizeOf(dash.layout, id) === 'medium';
   const cards: Record<string, { node: React.ReactNode; span?: string }> = {
+    today: { node: <TodayCard /> },
     progress: {
       node: planLoading && !plan ? (
         <section aria-label="Your treatment progress" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6 gap-3">
@@ -167,7 +169,7 @@ export default function DashboardPage() {
     <div className="px-4 sm:px-6 lg:px-8 pb-8">
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 mb-5 -mt-1">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink-900">{firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'}</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-ink-900">{firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'}</h1>
           <p className="text-sm text-slate-500 mt-0.5 mb-2">Here’s your health journey at a glance.</p>
           <SubscriptionStatus />
         </div>

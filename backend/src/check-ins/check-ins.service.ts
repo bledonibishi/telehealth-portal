@@ -13,6 +13,7 @@ import { findQuestionnaire, versionTag, Flag } from '../questionnaires/definitio
 import { evaluateAnswers } from '../questionnaires/evaluate';
 import { missedStreak, needsRetitrationReview, retitrationFlag } from '../dosing/missed-doses';
 import { noteFlags } from './note-signals';
+import { checkInStatusOf } from './check-in-status';
 
 // GLP-1 titration is reviewed every 4 weeks (weeks 4, 8, 12 …), so a check-in is due 28 days after the last one.
 export const CHECK_IN_INTERVAL_DAYS = 28;
@@ -155,6 +156,12 @@ export class CheckInsService {
       include: { patient: true },
     });
     return this.toModel(dueAt <= new Date() ? await this.send(updated) : updated);
+  }
+
+  /** The signed-in patient's monthly check-in: open now, just done, or when the next one is. */
+  async statusFor(patientId: string) {
+    const checkIns = await this.prisma.checkIn.findMany({ where: { patientId }, orderBy: { createdAt: 'asc' } });
+    return checkInStatusOf(checkIns, (t) => this.buildUrl(t));
   }
 
   buildUrl(token?: string | null) {

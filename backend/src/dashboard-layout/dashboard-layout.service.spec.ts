@@ -42,7 +42,7 @@ describe('normalizeLayout', () => {
     expect(l.main[0]).toBe('plan');
     expect(l.main).toEqual(expect.arrayContaining(['treatment', 'updates', 'orders', 'quickLinks']));
     expect(l.side).toEqual(expect.arrayContaining(['profile', 'chat', 'appointment', 'emergency', 'contact']));
-    expect(l.top).toEqual(['progress']);
+    expect(l.top).toEqual(['today', 'progress']);
   });
 
   it('puts every card in exactly one place, shown or hidden', () => {

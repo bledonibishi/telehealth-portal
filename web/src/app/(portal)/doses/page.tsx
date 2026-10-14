@@ -2,7 +2,7 @@
 
 import { PageHeader } from '@/components/portal/PageHeader';
 import { EmptyState } from '@/components/portal/EmptyState';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import FullCalendar from '@fullcalendar/react';
@@ -232,6 +232,15 @@ export default function DosesPage() {
 
   const doses: DoseEvent[] = data?.myDoseCalendar ?? [];
   const selected = doses.find((d) => d.id === selectedId) ?? null;
+  // A link from the home screen (/doses?dose=…) opens that dose straight away, once the calendar has it.
+  const [linkedDose, setLinkedDose] = useState<string | null>(null);
+  useEffect(() => setLinkedDose(new URLSearchParams(window.location.search).get('dose')), []);
+  useEffect(() => {
+    if (linkedDose && doses.some((d) => d.id === linkedDose)) {
+      setSelectedId(linkedDose);
+      setLinkedDose(null);
+    }
+  }, [linkedDose, doses]);
   const overdue = overdueDose(doses);
 
   const next = useMemo(

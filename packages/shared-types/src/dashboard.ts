@@ -42,6 +42,7 @@ const ANYWHERE: DashboardZone[] = ['top', 'main', 'side'];
 const ALL_SIZES: DashboardSize[] = ['small', 'medium', 'large'];
 
 export const DASHBOARD_WIDGETS: DashboardWidget[] = [
+  { id: 'today', title: 'Today', description: 'Your next dose and your monthly check-in', zone: 'top', zones: ANYWHERE },
   { id: 'progress', title: 'Progress at a glance', description: 'Your weight, doses and next steps in a row of small tiles', zone: 'top', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   { id: 'plan', staffCannotHide: true, title: 'Current treatment plan', description: 'Your medicine and what comes next', zone: 'main', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'large' },
   // The plan card above already shows the medicine, the next dose and a link to these details.

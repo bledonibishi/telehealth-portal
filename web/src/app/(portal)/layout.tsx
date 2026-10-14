@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { Sidebar, type NavItem } from '@/components/portal/Sidebar';
 import { TopBar } from '@/components/portal/TopBar';
+import { BottomNav } from '@/components/portal/BottomNav';
 import { Icon } from '@/components/portal/Icon';
 import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
@@ -127,10 +128,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       )}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <main className="flex-1 overflow-y-auto">
+        {/* Room at the bottom on phones for the bottom menu. */}
+        <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">
           <TopBar onMenu={() => setMenuOpen(true)} onSignOut={handleLogout} />
           {authChecked ? children : null}
         </main>
+        <BottomNav dosesLabel={calendarLabel} dosesIcon={calendarLabel === 'Injections' ? 'syringe' : 'calendar'} onMore={() => setMenuOpen(true)} />
       </div>
     </div>
   );
