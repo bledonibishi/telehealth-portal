@@ -19,6 +19,7 @@ import { Card, CardHeader, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { Icon } from '@/components/portal/Icon';
+import { doseWords } from '@/lib/dose-words';
 
 const dayLabel = (d: Date) => (isToday(d) ? 'Today' : isTomorrow(d) ? 'Tomorrow' : format(d, 'EEEE d MMMM'));
 
@@ -39,6 +40,7 @@ export default function TreatmentPlanPage() {
   const [reporting, setReporting] = useState(false);
   const { data: jData } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-first' });
   const plan = data?.myTreatmentPlan;
+  const words = doseWords(plan?.form);
   const upcoming = ((cal?.myDoseCalendar ?? []) as any[]).filter((d) => d.status === 'SCHEDULED' && Date.parse(d.scheduledFor) >= Date.now() - 86_400_000).slice(0, 5);
 
   return (
@@ -58,9 +60,9 @@ export default function TreatmentPlanPage() {
               {plan.supplyDosesTotal != null ? (
                 <>
                   <div className="flex items-baseline justify-between mb-2">
-                    <p className="text-3xl font-bold text-ink-900">{plan.supplyDosesTaken ?? 0}<span className="text-base font-medium text-slate-400"> / {plan.supplyDosesTotal} injections used</span></p>
+                    <p className="text-3xl font-bold text-ink-900">{plan.supplyDosesTaken ?? 0}<span className="text-base font-medium text-slate-400"> / {plan.supplyDosesTotal} {words.many} used</span></p>
                   </div>
-                  <SupplyBar used={plan.supplyDosesTaken ?? 0} total={plan.supplyDosesTotal} />
+                  <SupplyBar used={plan.supplyDosesTaken ?? 0} total={plan.supplyDosesTotal} words={words} />
                 </>
               ) : (
                 <p className="text-sm text-slate-500">Your supply count starts once your first delivery has been sent.</p>
@@ -86,7 +88,7 @@ export default function TreatmentPlanPage() {
               ) : (
                 <p className="text-sm text-slate-500">Your next doses will appear here once they are scheduled.</p>
               )}
-              <p className="text-xs text-slate-500 mt-3">Log each injection on the <Link href="/doses" className="text-ink-600 underline">dose calendar</Link> so your supply count stays right.</p>
+              <p className="text-xs text-slate-500 mt-3">Log each {words.one} on the <Link href="/doses" className="text-ink-600 underline">dose calendar</Link> so your supply count stays right.</p>
             </Card>
           </div>
 

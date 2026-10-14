@@ -1,5 +1,5 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
-import { ConsultationKind } from '../../common/enums';
+import { ConsultationKind, ProductForm } from '../../common/enums';
 
 @ObjectType('TreatmentPlan', { description: 'The signed-in patient’s current treatment, for the dashboard and the plan page' })
 export class TreatmentPlanModel {
@@ -8,6 +8,9 @@ export class TreatmentPlanModel {
 
   @Field(() => ConsultationKind, { nullable: true })
   kind?: ConsultationKind | null;
+
+  @Field(() => ProductForm, { nullable: true, description: 'Pen, vial, gel, patch, tablet… — what the patient is told to inject, apply or take' })
+  form?: ProductForm | null;
 
   @Field({ description: 'e.g. "GLP-1 Weight Loss Program"' })
   programme: string;

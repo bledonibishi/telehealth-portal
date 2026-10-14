@@ -10,7 +10,8 @@ import { isAuthenticated, clearToken } from '@/lib/auth';
 import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
-import { MY_PRODUCT_KIND } from '@/graphql/intake';
+import { MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { doseWords } from '@/lib/dose-words';
 import { LoadingState } from '@telehealth/loading';
 
 const NAV: NavItem[] = [
@@ -57,11 +58,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const { data: scaleData } = useQuery(MY_SYMPTOM_SCALE, {
     skip: !isAuthenticated() || onboardingStatus !== 'APPROVED',
   });
-  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED' });
-  // Hormone treatment is gels, patches and capsules — calling its schedule "Injections" would be wrong.
-  const hormone = kindData?.myProductKind === 'HRT';
+  // Shares the cache with the dashboard. Hormone treatment is gels, patches and capsules: the menu names the dose calendar by
+  // the form of the medicine actually prescribed, so "Injections" appears only for pens and vials.
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED', fetchPolicy: 'cache-first' });
+  const calendarLabel = doseWords(planData?.myTreatmentPlan?.form).calendar;
   const navItems: NavItem[] = [
-    ...NAV.filter((i) => i.href !== WEIGHT_HREF || journeyData?.myWeightJourney).map((i) => (i.href === '/doses' && hormone ? { ...i, label: 'My doses' } : i)),
+    ...NAV.filter((i) => i.href !== WEIGHT_HREF || journeyData?.myWeightJourney).map((i) => (i.href === '/doses' ? { ...i, label: calendarLabel, icon: calendarLabel === 'Injections' ? i.icon : 'calendar' } : i)),
     ...(scaleData?.mySymptomScale ? [SYMPTOMS_NAV] : []),
   ];
   const [menuOpen, setMenuOpen] = useState(false);

@@ -2,7 +2,6 @@
 
 import { PageHeader } from '@/components/portal/PageHeader';
 import { EmptyState } from '@/components/portal/EmptyState';
-import { MY_PRODUCT_KIND } from '@/graphql/intake';
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
@@ -241,7 +240,6 @@ export default function DosesPage() {
   );
 
   // Worked out by the backend on the active prescription only, so misses on a replaced one don't count.
-  const { data: kindData } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-first' });
   const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });
   const missed = missedData?.myMissedDoseStatus ?? { missedInARow: 0, needsClinician: false };
   const needsClinician: boolean = missed.needsClinician;
@@ -280,7 +278,9 @@ export default function DosesPage() {
   };
 
   // The hormone programmes use gels, patches and capsules; only GLP-1 and testosterone are injected.
-  const injections = kindData?.myProductKind !== 'HRT';
+  // Named by what is actually prescribed (the doses carry their product's form), not by the programme the patient signed up
+  // for: a hormone gel, patch or capsule is never called an injection, and neither is anything we can't tell.
+  const injections = doses.length > 0 && doses.every(isInjected);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">

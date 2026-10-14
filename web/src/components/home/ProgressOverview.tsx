@@ -9,6 +9,7 @@ import { kg } from '@/lib/weight';
 import { useElementWidth } from '@/lib/useElementWidth';
 import { Icon, type IconName } from '@/components/portal/Icon';
 import type { Plan } from './PlanHero';
+import { doseWords } from '@/lib/dose-words';
 
 function Tile({ href, icon, label, value, hint, tone = 'ink' }: { href: string; icon: IconName; label: string; value: string; hint?: string; tone?: 'ink' | 'green' | 'amber' }) {
   const tones = { ink: 'bg-ink-50 text-ink-700', green: 'bg-emerald-50 text-emerald-700', amber: 'bg-amber-50 text-amber-700' };
@@ -50,7 +51,7 @@ export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan
           hint={journey.targetWeightKg ? `${kg(journey.remainingKg)} to go · goal ${kg(journey.targetWeightKg)}` : undefined} />
       )}
       {plan && (
-        <Tile href="/doses" icon="syringe" label="Next injection" value={plan.nextDoseAt ? dayOf(new Date(plan.nextDoseAt)) : 'Not scheduled'}
+        <Tile href="/doses" icon={doseWords(plan.form).icon} label={doseWords(plan.form).next} value={plan.nextDoseAt ? dayOf(new Date(plan.nextDoseAt)) : 'Not scheduled'}
           hint={plan.nextDoseAt ? `${plan.productName}${plan.strength ? ` ${plan.strength}` : ''}` : undefined} />
       )}
       {left != null && (
