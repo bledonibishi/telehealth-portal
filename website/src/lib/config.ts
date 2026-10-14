@@ -66,8 +66,9 @@ export const CONFIG = {
   IMAGES: {
     hero: 'https://images.unsplash.com/photo-1624486217002-846e654ac969?auto=format&fit=crop&w=1400&q=80',
     bmi: 'https://images.unsplash.com/photo-1534180477871-5d6cc81f3920?auto=format&fit=crop&w=1200&q=80',
-    products: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=80',
-    contact: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=1200&q=80',
+    // The men's health card: a male doctor.
+    'p-trt': 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=1200&q=80',
+    contact: 'https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?auto=format&fit=crop&w=1200&q=80',
     'p-hrt-starter': 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=800&q=80',
     'p-hrt-complete': 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=800&q=80',
     'p-wegovy': 'https://images.unsplash.com/photo-1745939921744-ba8ef27940bf?auto=format&fit=crop&w=800&q=80',

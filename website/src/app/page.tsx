@@ -224,7 +224,7 @@ export default function HomePage() {
             <div className="th-product-card-hrt pv-anim">
               <div
                 className="th-product-img"
-                style={{ backgroundImage: `url(${CONFIG.IMAGES['products']})` }}
+                style={{ backgroundImage: `url(${CONFIG.IMAGES['p-trt']})` }}
               >
                 <div className="th-product-badge">Men&apos;s health</div>
               </div>
