@@ -67,7 +67,7 @@ export class EmailVerificationService {
   }
 
   /** Checks the code and, if it is right, returns the proof the quiz needs to save a lead for this email. */
-  async verifyCode(rawEmail: string, code: string, now = new Date()): Promise<string> {
+  async verifyCode(rawEmail: string, code: string, now = new Date(), consume = true): Promise<string> {
     const email = normalise(rawEmail);
     const row = await this.prisma.emailVerification.findUnique({ where: { email } });
     if (!row?.codeHash || !row.codeSalt || !row.codeExpiresAt || row.codeExpiresAt.getTime() < now.getTime()) {
@@ -80,6 +80,8 @@ export class EmailVerificationService {
       throw new BadRequestException('That code isn’t right. Please check it and try again.');
     }
 
+    // Only checking: the code stays valid, for a caller that has more to do before it is used up.
+    if (!consume) return '';
     const token = crypto.randomBytes(32).toString('hex');
     await this.prisma.emailVerification.update({
       where: { email },
@@ -87,6 +89,11 @@ export class EmailVerificationService {
       data: { codeHash: null, codeSalt: null, codeExpiresAt: null, attempts: 0, tokenHash: sha256(token), tokenExpiresAt: new Date(now.getTime() + TOKEN_TTL_MS) },
     });
     return token;
+  }
+
+  /** Throws unless the code is right, without using it up. Wrong guesses still count. */
+  async checkCode(rawEmail: string, code: string, now = new Date()): Promise<void> {
+    await this.verifyCode(rawEmail, code, now, false);
   }
 
   /** Throws unless `token` is the live proof for this email. */

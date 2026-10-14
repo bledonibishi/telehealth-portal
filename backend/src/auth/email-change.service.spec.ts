@@ -16,7 +16,7 @@ describe('EmailChangeService', () => {
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     email = { sendEmailChangedEmail: jest.fn().mockResolvedValue(true) };
-    verification = { requestCode: jest.fn(), verifyCode: jest.fn() };
+    verification = { requestCode: jest.fn(), checkCode: jest.fn(), verifyCode: jest.fn().mockResolvedValue('proof') };
     auth = { issueTokens: jest.fn().mockReturnValue({ accessToken: 'a', refreshToken: 'r' }) };
     service = new EmailChangeService(prisma, audit, email, verification, auth);
   });
@@ -41,6 +41,7 @@ describe('EmailChangeService', () => {
   it('changes the address, ends other sessions, tells the old inbox and returns fresh tokens', async () => {
     prisma.patient.findUnique.mockResolvedValueOnce(patient).mockResolvedValueOnce(null);
     const tokens = await service.confirm('p1', 'new@example.com', '123456', 'Right-pass-1');
+    expect(verification.checkCode).toHaveBeenCalledWith('new@example.com', '123456');
     expect(verification.verifyCode).toHaveBeenCalledWith('new@example.com', '123456');
     expect(prisma.patient.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { email: 'new@example.com', tokenVersion: { increment: 1 } } }));
     expect(email.sendEmailChangedEmail).toHaveBeenCalledWith('old@example.com', 'Ana', 'new@example.com');
@@ -52,7 +53,7 @@ describe('EmailChangeService', () => {
 
   it('needs the password again on the second step, so a code alone is not enough', async () => {
     await expect(service.confirm('p1', 'new@example.com', '123456', 'wrong')).rejects.toThrow('current password');
-    expect(verification.verifyCode).not.toHaveBeenCalled();
+    expect(verification.checkCode).not.toHaveBeenCalled();
     expect(prisma.patient.updateMany).not.toHaveBeenCalled();
   });
 
@@ -70,9 +71,17 @@ describe('EmailChangeService', () => {
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'AUTH_EMAIL_CHANGED_NOTICE_NOT_SENT' }));
   });
 
+  it('leaves the code unused when the save fails, so the patient can try again', async () => {
+    prisma.patient.findUnique.mockResolvedValueOnce(patient).mockResolvedValueOnce(null);
+    prisma.patient.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.confirm('p1', 'new@example.com', '123456', 'Right-pass-1')).rejects.toThrow();
+    expect(verification.checkCode).toHaveBeenCalled();
+    expect(verification.verifyCode).not.toHaveBeenCalled();
+  });
+
   it('changes nothing when the code is wrong', async () => {
     prisma.patient.findUnique.mockResolvedValueOnce(patient).mockResolvedValueOnce(null);
-    verification.verifyCode.mockRejectedValue(new Error('bad code'));
+    verification.checkCode.mockRejectedValue(new Error('bad code'));
     await expect(service.confirm('p1', 'new@example.com', '000000', 'Right-pass-1')).rejects.toThrow('bad code');
     expect(prisma.patient.updateMany).not.toHaveBeenCalled();
   });

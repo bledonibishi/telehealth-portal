@@ -66,7 +66,8 @@ export class EmailChangeService {
     const newEmail = normalise(rawNewEmail);
     const row = await this.patientWithPassword(patientId, password, attempt);
     await this.assertFree(newEmail, row.email);
-    await this.verification.verifyCode(newEmail, code);
+    // Checked now, used up only once the address has really changed: a failed save leaves the code valid for another try.
+    await this.verification.checkCode(newEmail, code);
 
     const oldEmail = row.email;
     try {
@@ -85,6 +86,7 @@ export class EmailChangeService {
       if (err?.code === 'P2002') throw appError(ErrorCode.BAD_REQUEST, 'That email address can’t be used. Please choose another.');
       throw err;
     }
+    await this.verification.verifyCode(newEmail, code).catch(() => undefined);
     // The old inbox is told; if that could not be sent, it is recorded so the team can see it.
     let noticeSent = false;
     try {

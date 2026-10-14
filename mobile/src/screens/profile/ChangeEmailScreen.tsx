@@ -4,6 +4,9 @@ import { useMutation, useQuery } from '@apollo/client';
 import { Button, Card, CardTitle, ErrorText, Field, Notice, Screen } from '../../components/ui';
 import { PasswordField } from '../../components/PasswordField';
 import { CONFIRM_MY_EMAIL_CHANGE, MY_PROFILE, REQUEST_MY_EMAIL_CHANGE } from '../../graphql/profile';
+import { describeError, ErrorCode } from '@telehealth/shared-types';
+import { apolloClient } from '../../lib/apollo';
+import { LOGIN_PATIENT } from '../../graphql/operations';
 import { setTokens } from '../../lib/tokens';
 import { colors } from '../../theme';
 
@@ -41,7 +44,26 @@ export function ChangeEmailScreen({ navigation }: any) {
       setStep('done');
       refetch().catch(() => undefined);
     } catch (e) {
+      // A wrong code is just that. Anything else (a dropped connection, a refused session) may mean the change went through
+      // and only the reply was lost: signing in with the new address and the password just given settles it.
+      const code = describeError(e)?.code;
+      if (code !== ErrorCode.BAD_REQUEST && code !== ErrorCode.RATE_LIMITED && (await recoverSession())) return;
       setProblem(e);
+    }
+  };
+
+  const recoverSession = async () => {
+    try {
+      const res = await apolloClient.mutate({ mutation: LOGIN_PATIENT, variables: { input: { email: newEmail.trim().toLowerCase(), password } } });
+      const tokens = res.data?.loginPatient;
+      if (!tokens) return false;
+      await setTokens(tokens.accessToken, tokens.refreshToken);
+      setPassword('');
+      setStep('done');
+      refetch().catch(() => undefined);
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -70,7 +92,6 @@ export function ChangeEmailScreen({ navigation }: any) {
             <Field label="Code" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} textContentType="oneTimeCode" />
           </View>
           <ErrorText error={problem} />
-          {!!problem && <Text style={s.lostReply}>If this keeps failing, your email may already have changed: try signing in again with the new address.</Text>}
           <Button label="Change my email" onPress={verify} loading={confirming} disabled={code.trim().length < 6} style={{ marginTop: 12 }} />
           <Button label="Use a different address" variant="outline" onPress={() => { setStep('form'); setCode(''); setProblem(null); }} style={{ marginTop: 8 }} />
         </Card>
@@ -91,5 +112,4 @@ const s = StyleSheet.create({
   label: { fontSize: 12, color: colors.slate500 },
   current: { fontSize: 16, fontWeight: '700', color: colors.ink900, marginTop: 2 },
   fields: { gap: 10, marginTop: 8 },
-  lostReply: { fontSize: 12, color: colors.slate500, marginTop: 6, lineHeight: 17 },
 });
