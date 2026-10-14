@@ -59,7 +59,7 @@ export function WeightScreen({ navigation }: any) {
   const line = journey ? checkInLine(journey) : null;
 
   return (
-    <Screen title="Weight Journey" subtitle="Your weigh-ins over time." refreshing={loading} onRefresh={() => refetch()}>
+    <Screen profileMenu title="Weight Journey" subtitle="Your weigh-ins over time." refreshing={loading} onRefresh={() => refetch()}>
       {loading && !journey && <SkeletonCard lines={4} label="Loading your weight journey…" />}
       {!journey && <ErrorText error={error} />}
       {!loading && !error && !journey && <Card><Empty>The Weight Journey is available on our weight-management programme.</Empty></Card>}

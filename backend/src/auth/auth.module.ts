@@ -7,6 +7,7 @@ import { AuditModule } from '../audit/audit.module';
 import { EmailModule } from '../email/email.module';
 import { AuthService } from './auth.service';
 import { AuthResolver } from './auth.resolver';
+import { EmailChangeService } from './email-change.service';
 import { EmailVerificationService } from './email-verification.service';
 import { EmailVerificationResolver } from './email-verification.resolver';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -42,7 +43,7 @@ import { PrismaThrottlerStorage } from './guards/prisma-throttler.storage';
       }),
     }),
   ],
-  providers: [AuthService, AuthResolver, JwtStrategy, EmailVerificationService, EmailVerificationResolver],
+  providers: [AuthService, EmailChangeService, AuthResolver, JwtStrategy, EmailVerificationService, EmailVerificationResolver],
   exports: [AuthService, JwtModule, EmailVerificationService],
 })
 export class AuthModule {}

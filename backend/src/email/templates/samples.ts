@@ -22,6 +22,7 @@ export const SAMPLES: Array<{ name: string; content: t.EmailContent }> = [
   { name: 'referral-reward', content: t.referralRewardEmail({ firstName: 'Redon', amountLabel: '€20', autoApplied: true, rewardsUrl: `${P}/rewards` }) },
   { name: 'clinician-invite', content: t.clinicianInviteEmail({ firstName: 'Dr Hoxha', inviteUrl: `${C}/set-password?token=sample`, firstTime: true }) },
   { name: 'password-reset', content: t.passwordResetEmail({ firstName: 'Redon', resetUrl: `${P}/reset-password?token=sample`, expiresInMinutes: 60 }) },
+  { name: 'email-changed', content: t.emailChangedEmail({ firstName: 'Redon', newEmail: 'redon@example.com' }) },
   { name: 'password-changed', content: t.passwordChangedEmail({ firstName: 'Redon' }) },
   { name: 'partner-order', content: t.partnerOrderEmail({ subject: 'New order OMO-1042', html: '<h2 style="margin:0 0 4px">New order OMO-1042 is waiting for you</h2><p>Patient and prescription details are in the portal only.</p>' }) },
 ];

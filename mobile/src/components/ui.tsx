@@ -5,10 +5,13 @@ import { describeError } from '@telehealth/shared-types';
 import { colors } from '../theme';
 import { useLayout } from '../lib/layout';
 import { useHasNativeHeader } from '../lib/nativeHeader';
+import { ProfileMenuButton } from './ProfileMenuButton';
 
 /** The page every treatment screen sits on: a title, a scrolling body that is a centred column on a tablet. */
-export function Screen({ title, subtitle, right, children, refreshing, onRefresh }: {
+export function Screen({ title, subtitle, right, profileMenu, children, refreshing, onRefresh }: {
   title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode; refreshing?: boolean; onRefresh?: () => void;
+  /** Adds the round profile button (profile, email, password and settings) at the top right. Used on the main tabs. */
+  profileMenu?: boolean;
 }) {
   const { gutter, contentMaxWidth } = useLayout();
   // Under a native header bar the top is already cleared; leaving room for it again made a gap above the title.
@@ -26,6 +29,7 @@ export function Screen({ title, subtitle, right, children, refreshing, onRefresh
             {!!subtitle && <Text style={s.subtitle}>{subtitle}</Text>}
           </View>
           {right}
+          {profileMenu && <ProfileMenuButton />}
         </View>
         {children}
       </ScrollView>

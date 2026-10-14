@@ -494,7 +494,7 @@ export class AuthService {
     if ((payload.tv ?? 0) !== (current ?? 0)) throw authFailure(AuthFailureReason.SESSION_REVOKED);
   }
 
-  private issueTokens(sub: string, role: string, tokenVersion = 0) {
+  issueTokens(sub: string, role: string, tokenVersion = 0) {
     return {
       accessToken: this.jwtService.sign({ sub, role, tv: tokenVersion }),
       refreshToken: this.jwtService.sign(

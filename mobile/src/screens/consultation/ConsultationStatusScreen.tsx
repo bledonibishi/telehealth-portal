@@ -58,6 +58,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
 
   return (
     <Screen
+      profileMenu
       title={`${greeting()}${firstName ? `, ${firstName}` : ''} 👋`}
       subtitle={plan ? 'Here’s how your treatment is going.' : 'We’re here with you at every step.'}
       refreshing={loading}

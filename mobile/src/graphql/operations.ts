@@ -392,6 +392,7 @@ export const ME_NAME = gql`
     me {
       id
       firstName
+      lastName
     }
   }
 `;

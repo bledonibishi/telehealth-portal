@@ -32,6 +32,11 @@ import { UNREAD_NOTIFICATION_COUNT } from '../graphql/operations';
 import { colors } from '../theme';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { listenForNoticeTaps, registerForPush } from '../lib/push';
+import { ProfileScreen } from '../screens/profile/ProfileScreen';
+import { ProfileDetailsScreen } from '../screens/profile/ProfileDetailsScreen';
+import { ChangeEmailScreen } from '../screens/profile/ChangeEmailScreen';
+import { ChangePasswordScreen } from '../screens/profile/ChangePasswordScreen';
+import { NotificationSettingsScreen } from '../screens/profile/NotificationSettingsScreen';
 import { navigationRef } from './navigationRef';
 import { withNativeHeader } from '../lib/nativeHeader';
 
@@ -50,6 +55,11 @@ const SideEffectsWithHeader = withNativeHeader(SideEffectsScreen);
 const ReportsWithHeader = withNativeHeader(ReportsScreen);
 const NewConsultationWithHeader = withNativeHeader(IntakeQuizScreen);
 const HelpWithHeader = withNativeHeader(HelpScreen);
+const ProfileWithHeader = withNativeHeader(ProfileScreen);
+const ProfileDetailsWithHeader = withNativeHeader(ProfileDetailsScreen);
+const ChangeEmailWithHeader = withNativeHeader(ChangeEmailScreen);
+const ChangePasswordWithHeader = withNativeHeader(ChangePasswordScreen);
+const NotificationSettingsWithHeader = withNativeHeader(NotificationSettingsScreen);
 const MessagesStack = createNativeStackNavigator();
 
 // The chat, and the written-request form it opens.
@@ -136,6 +146,14 @@ export function AppNavigator() {
         <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingFlow} />
         <Stack.Screen name="Main" component={PatientTabs} />
+        {/* Opened from the round button on the main screens: profile, email, password and settings. */}
+        <Stack.Group screenOptions={{ headerShown: true, headerTintColor: colors.ink700, headerShadowVisible: false, headerStyle: { backgroundColor: colors.page }, title: '' }}>
+          <Stack.Screen name="Profile" component={ProfileWithHeader} options={{ headerBackTitle: 'Back' }} />
+          <Stack.Screen name="ProfileDetails" component={ProfileDetailsWithHeader} options={{ headerBackTitle: 'Profile' }} />
+          <Stack.Screen name="ChangeEmail" component={ChangeEmailWithHeader} options={{ headerBackTitle: 'Profile' }} />
+          <Stack.Screen name="ChangePassword" component={ChangePasswordWithHeader} options={{ headerBackTitle: 'Profile' }} />
+          <Stack.Screen name="NotificationSettings" component={NotificationSettingsWithHeader} options={{ headerBackTitle: 'Profile' }} />
+        </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
   );
