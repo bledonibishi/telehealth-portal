@@ -134,6 +134,8 @@ export enum PrescriptionStatus {
 }
 
 export enum OrderStatus {
+  /** A repeat for a patient who pays per supply: held until they have paid. */
+  AWAITING_PAYMENT = 'AWAITING_PAYMENT',
   PENDING = 'PENDING',
   DISPATCHED = 'DISPATCHED',
   OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',

@@ -86,6 +86,27 @@ export class AppointmentRequestModel {
   @Field({ nullable: true })
   clinicianName?: string | null;
 
+  @Field({ nullable: true, description: 'Where to pay for an extra consultation that is waiting for payment' })
+  paymentUrl?: string | null;
+
+  @Field(() => Int, { nullable: true })
+  paymentAmountCents?: number | null;
+
+  @Field({ nullable: true })
+  paymentCurrency?: string | null;
+
+  @Field({ description: 'The extra consultation has been paid for' })
+  paid: boolean;
+
+  @Field({ nullable: true })
+  refundedAt?: Date | null;
+
+  @Field({ description: 'The patient can still cancel and be refunded: paid, not refunded, and the consultation has not started' })
+  canRefund: boolean;
+
+  @Field({ description: 'The doctor could not make it: the patient is asked to choose a refund or a new time' })
+  refundOffered: boolean;
+
   @Field()
   createdAt: Date;
 
@@ -106,4 +127,13 @@ export class AppointmentAlertModel extends AppointmentRequestModel {
 
   @Field({ description: 'The respond-by time has passed and nobody has answered' })
   overdue: boolean;
+}
+
+@ObjectType('ConsultFee', { description: 'What an extra live consultation costs; amount 0 means it is free' })
+export class ConsultFeeModel {
+  @Field(() => Int)
+  amountCents: number;
+
+  @Field()
+  currency: string;
 }

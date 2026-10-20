@@ -64,7 +64,7 @@ export function evaluateShipment(
   const leadDays = opts.leadDays ?? DEFAULT_ALERT_LEAD_DAYS;
 
   // Already queued with the pharmacy: operations can see it under "To dispatch".
-  if (input.orders.some((o) => o.status === 'PENDING')) return null;
+  if (input.orders.some((o) => o.status === 'PENDING' || o.status === 'AWAITING_PAYMENT')) return null;
 
   const shippedAt = input.orders
     .filter((o) => SHIPPED.includes(o.status) && o.dispatchedAt)

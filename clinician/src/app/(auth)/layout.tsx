@@ -82,6 +82,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute -top-40 -right-40 h-[28rem] w-[28rem] rounded-full bg-brand-500/20 blur-3xl" aria-hidden />
 
         <div className="relative flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white p-1"><img src="/omo-logo.png" alt="" className="h-full w-full" /></span>
           <span className="font-bold text-2xl tracking-tight">Omopharmacy</span>
           <span className="rounded-md border border-white/20 px-2 py-0.5 text-xs uppercase tracking-wider text-white/70">{t('Clinic portal')}</span>
         </div>
@@ -103,6 +104,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute top-4 right-4"><LanguageSwitcher onLight /></div>
         <div className="w-full max-w-sm">
           <div className="md:hidden text-center mb-8">
+            <img src="/omo-logo.png" alt="" className="h-14 w-14 mx-auto mb-2" />
             <span className="font-bold text-2xl text-gray-900 tracking-tight">Omopharmacy</span>
             <p className="text-sm text-gray-500 mt-1">{t('Staff sign-in')}</p>
           </div>

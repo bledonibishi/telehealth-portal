@@ -3,7 +3,7 @@ import { Providers } from '@/components/layout/Providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Telehealth — Patient Portal',
+  title: 'Omopharmacy — Patient Portal',
   description: 'Manage your consultations, messages, and prescriptions.',
 };
 

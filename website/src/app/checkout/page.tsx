@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG, type PlanKey } from '@/lib/config';
-import { useTreatmentPrice } from '@/lib/dose-prices';
+import { formatFee, usePrescriptionFee, useTreatmentPrice, useTreatmentPrices } from '@/lib/dose-prices';
+import { BILLING_COPY } from '@/lib/billing-choice';
 import { loadAssessment, mergeAssessment } from '@/lib/storage';
 import { STORE_PRODUCTS } from '@/lib/catalog';
 
@@ -31,6 +32,22 @@ const COUNTRIES: Array<[string, string]> = [
 const money = (cents: number, currency: string | null) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'gbp').toUpperCase() }).format(cents / 100);
 
+/**
+ * The payment is made once per set of choices: the card form may be mounted twice in a row (development does it on purpose)
+ * and each request would otherwise create its own Stripe customer and subscription. A repeat within a few seconds shares
+ * the first request; a failed one is forgotten at once so it can be tried again.
+ */
+const intents = new Map<string, Promise<unknown>>();
+function postOnce<T>(url: string, body: unknown): Promise<T> {
+  const key = `${url}|${JSON.stringify(body)}`;
+  const existing = intents.get(key);
+  if (existing) return existing as Promise<T>;
+  const request = post<T>(url, body);
+  intents.set(key, request);
+  request.then(() => setTimeout(() => intents.delete(key), 5000), () => intents.delete(key));
+  return request;
+}
+
 /* ── Helper ── */
 async function post<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -48,10 +65,10 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 
 /* ── Stripe inline element mount ── */
 function StripeMount({
-  priceId, planName, leadId, product, dose, applyReward, addProgesterone, confirmRef, onReady, onComplete, onAmounts,
+  priceId, planName, leadId, product, dose, applyReward, addProgesterone, billing, confirmRef, onReady, onComplete, onAmounts,
 }: {
   priceId: string; planName: string; leadId?: string | null;
-  product?: string | null; dose?: string | null; applyReward: boolean; addProgesterone: boolean;
+  product?: string | null; dose?: string | null; applyReward: boolean; addProgesterone: boolean; billing?: 'ONE_TIME' | 'SUBSCRIPTION';
   confirmRef: MutableRefObject<ConfirmFn | null>;
   onReady: (mode: 'element' | 'redirect' | 'error') => void;
   onComplete: (complete: boolean) => void;
@@ -88,9 +105,9 @@ function StripeMount({
         s.onerror = () => rej(new Error('Stripe.js failed to load'));
         document.head.appendChild(s);
       }),
-      post<{ clientSecret: string; intentType?: string } & Partial<Amounts>>(
+      postOnce<{ clientSecret: string; intentType?: string } & Partial<Amounts>>(
         `${apiBase}/api/checkout/stripe-intent`,
-        { priceId, planName, leadId: leadId ?? null, product: product ?? null, dose: dose ?? null, addProgesterone, applyReward },
+        { priceId, planName, leadId: leadId ?? null, product: product ?? null, dose: dose ?? null, addProgesterone, applyReward, billing },
       ),
     ])
       .then(([, d]) => {
@@ -252,6 +269,8 @@ function CheckoutInner() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ReturnType<typeof loadAssessment>>(null);
   const [planKey, setPlanKey] = useState<PlanKey | null>(null);
+  const treatmentPrices = useTreatmentPrices(session?.productName, session?.dose, session?.addProgesterone ?? false);
+  const fee = usePrescriptionFee();
 
   const [chosen, setChosen] = useState<PayMethod | null>(null);
   const [stripeMode, setStripeMode] = useState<'element' | 'redirect' | 'error' | null>(null);
@@ -354,6 +373,7 @@ function CheckoutInner() {
           dose: session?.dose ?? null,
           addProgesterone: session?.addProgesterone ?? false,
           applyReward: rewardApplied,
+          billing: session?.billing,
           shipping: shippingBody,
         });
         if (!d?.url) throw new Error('No payment URL');
@@ -437,8 +457,13 @@ function CheckoutInner() {
   const medName =
     plan!.product === 'GLP1' && !storeProduct && session?.med && CONFIG.MEDICATIONS[session.med] ? CONFIG.MEDICATIONS[session.med] : null;
 
-  const currencySymbol = (planAvailable && plan!.price.match(/^[^\d]+/)?.[0]) || '£';
-  const planAmount = parseAmount(plan!.price);
+  // What this order costs as the buyer chose to pay: once, or on a subscription for less.
+  const subscribing = session?.billing === 'SUBSCRIPTION' && treatmentPrices?.subscription != null;
+  const shownPrice = (subscribing ? treatmentPrices?.subscription : treatmentPrices?.once) ?? plan!.price;
+  const currencySymbol = (planAvailable && shownPrice.match(/^[^\d]+/)?.[0]) || '£';
+  // The doctor's fee is part of the first payment, on its own line.
+  const feeAmount = fee && treatmentPrices ? fee.amountCents / 100 : 0;
+  const planAmount = parseAmount(shownPrice) + feeAmount;
   const rewardOff = reward?.amountOffCents != null ? reward.amountOffCents / 100 : reward?.percentOff != null ? (planAmount * reward.percentOff) / 100 : 0;
   const rewardLabel =
     reward?.amountOffCents != null ? money(reward.amountOffCents, reward.currency) : reward?.percentOff != null ? `${reward.percentOff}%` : '';
@@ -456,7 +481,7 @@ function CheckoutInner() {
   const btnLabel = paying
     ? 'Processing…'
     : chosen
-    ? `Pay ${dueToday}${plan!.per} with ${chosen === 'stripe' ? 'card' : 'Paysera'}`
+    ? `Pay ${dueToday}${subscribing ? plan!.per : ''} with ${chosen === 'stripe' ? 'card' : 'Paysera'}`
     : 'Select a payment method';
 
   const setField = (k: keyof Shipping) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -565,7 +590,7 @@ function CheckoutInner() {
               {chosen === 'stripe' && rewardChecked && (
                 <div className="th-co-panel">
                   <StripeMount
-                    key={rewardApplied ? 'reward' : 'full'}
+                    key={`${rewardApplied ? 'reward' : 'full'}-${session?.billing ?? ''}`}
                     priceId={plan!.priceId}
                     planName={plan!.name}
                     leadId={session?.leadId}
@@ -573,6 +598,7 @@ function CheckoutInner() {
                     dose={session?.dose}
                     applyReward={rewardApplied}
                     addProgesterone={session?.addProgesterone ?? false}
+                    billing={session?.billing}
                     confirmRef={confirmRef}
                     onReady={(mode) => setStripeMode(mode)}
                     onComplete={(complete) => setStripeComplete(complete)}
@@ -624,11 +650,14 @@ function CheckoutInner() {
                 {medName ? ` · Preferred medicine: ${medName} (your doctor confirms the final prescription)` : ''}
               </div>
               <div className="th-co-divider" />
-              <div className="th-co-row"><span>{plan!.name} · billed monthly</span><span>{plan!.price}</span></div>
+              <div className="th-co-row"><span>{plan!.name} · {subscribing ? 'billed monthly' : 'one payment'}</span><span>{shownPrice}</span></div>
+              {fee && treatmentPrices && <div className="th-co-row"><span>Prescription fee</span><span>{formatFee(fee)}</span></div>}
               {rewardApplied && reward && (
                 <div className="th-co-row reward"><span>Referral reward</span><span>−{rewardTaken}</span></div>
               )}
               <div className="th-co-row total"><span>Due today</span><span>{dueToday}</span></div>
+              {fee && treatmentPrices && <p className="th-co-note">{BILLING_COPY.feeNote}</p>}
+              <p className="th-co-note">{subscribing ? BILLING_COPY.renewalNote : BILLING_COPY.onceNote}</p>
               <p className="th-co-note">Your doctor reviews your assessment first. If they can&apos;t prescribe, you&apos;re refunded.</p>
               <div className="th-co-divider" />
               <Link href="/review" style={{ fontSize: 13, color: 'var(--c-brand)', fontWeight: 600 }}>

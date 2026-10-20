@@ -32,7 +32,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
   return (
     <div className="h-full flex flex-col bg-[#fbfbf9] text-slate-700 border-r border-slate-200/80">
       <div className="px-4 h-14 flex items-center gap-2.5 border-b border-slate-200/80">
-        <span className="w-7 h-7 rounded-md bg-brand-700 text-white flex items-center justify-center flex-shrink-0"><Logo className="w-5 h-5" /></span>
+        <Logo className="w-8 h-8 flex-shrink-0" />
         <p className="text-[15px] font-semibold tracking-tight text-slate-900">{BRAND.name}</p>
       </div>
 

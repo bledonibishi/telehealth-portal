@@ -41,6 +41,18 @@ export class InvoiceModel {
   pdfUrl?: string | null;
 }
 
+@ObjectType('SubscriptionState')
+export class SubscriptionStateModel {
+  @Field({ description: 'Stripe’s status: active, incomplete, past_due, canceled …' })
+  status: string;
+
+  @Field({ description: 'The subscription has been stopped and ends after the period already paid for (or has ended)' })
+  endsAtPeriodEnd: boolean;
+
+  @Field(() => Date, { nullable: true, description: 'When the last paid period ends, once it has been stopped' })
+  endsAt?: Date | null;
+}
+
 @ObjectType('BillingPortalSession')
 export class BillingPortalSessionModel {
   @Field({ description: 'Where to send the patient; single use, and it expires shortly' })
@@ -64,6 +76,13 @@ export class BillingPortalResolver {
       select: { email: true, stripeCustomerId: true, stripeSubscriptionId: true },
     });
     return this.billing.listInvoices(patient);
+  }
+
+  @Authorized('PATIENT')
+  @Query(() => SubscriptionStateModel, { nullable: true, description: 'Whether the signed-in patient’s subscription is running or has been stopped; null when they have none' })
+  async mySubscription(@CurrentUser() user: AuthUser): Promise<SubscriptionStateModel | null> {
+    const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: user.id }, select: { email: true, stripeCustomerId: true, stripeSubscriptionId: true } });
+    return this.billing.subscriptionState(patient);
   }
 
   @Authorized('PATIENT')

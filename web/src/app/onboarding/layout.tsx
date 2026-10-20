@@ -46,7 +46,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     <OnboardingChatProvider>
       <div className="min-h-screen bg-slate-50">
         <header className="h-14 px-4 flex items-center justify-between border-b border-slate-100 bg-white">
-          <Link href="/onboarding" className="flex items-center gap-2 text-ink-900"><Logo className="w-7 h-7" /><span className="font-bold text-base tracking-tight">telehealth</span></Link>
+          <Link href="/onboarding" className="flex items-center gap-2 text-ink-900"><Logo className="w-7 h-7" /><span className="font-bold text-base tracking-tight">Omopharmacy</span></Link>
           <div className="flex items-center gap-2">
             <MessageUsButton />
             <div ref={menuRef} className="relative">

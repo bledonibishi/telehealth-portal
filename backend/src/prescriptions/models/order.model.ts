@@ -69,6 +69,18 @@ export class OrderModel {
   @Field(() => DeliveryAddressModel, { nullable: true, description: 'Where it was sent, captured at dispatch' })
   shippingAddress?: DeliveryAddressModel;
 
+  @Field({ nullable: true, description: 'While the order waits for the patient to pay: the page where they pay for it' })
+  paymentUrl?: string;
+
+  @Field(() => Int, { nullable: true, description: 'What the patient is asked to pay for this supply, in cents' })
+  paymentAmountCents?: number;
+
+  @Field({ nullable: true })
+  paymentCurrency?: string;
+
+  @Field({ nullable: true, description: 'When the supply was paid for (patients who pay per supply)' })
+  paidAt?: Date;
+
   @Field({ nullable: true })
   pharmacyRef?: string;
 

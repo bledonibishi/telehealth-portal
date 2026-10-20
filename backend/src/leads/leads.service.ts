@@ -1,5 +1,8 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
+import { OrdersService } from '../prescriptions/orders.service';
+import { BillingService } from '../stripe/billing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { PostHogService } from '../posthog/posthog.service';
@@ -25,7 +28,25 @@ export class LeadsService {
     private posthogLogger: PostHogLoggerService,
     private referrals: ReferralsService,
     private verification: EmailVerificationService,
+    private moduleRef?: ModuleRef,
   ) {}
+
+  /**
+   * Someone with an account signs in instead of starting again. The exception is a patient refunded on their first order,
+   * whose sign-in is closed: if their prescription is still good they are sent their link to buy the medicine without
+   * paying the fee again (and told so here), otherwise they may start over. The email is already proved to be theirs.
+   */
+  private async assertNoAccount(email: string): Promise<boolean> {
+    const taken = await this.prisma.patient.findFirst({ where: { email: { equals: email.trim(), mode: 'insensitive' } }, select: { id: true, accessClosedAt: true, accessClosedReason: true } });
+    if (!taken) return false;
+    if (!taken.accessClosedAt) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
+    // Closed for another reason (six months lapsed): nothing to go back to, they start over.
+    if (taken.accessClosedReason !== 'REFUNDED_FIRST_ORDER') return true;
+    const offer = await this.moduleRef?.get(OrdersService, { strict: false }).offerReturn(taken.id).catch(() => null);
+    if (!offer) return true; // starting over: their old, paid-and-refunded lead is reopened by the caller
+    const until = offer.until.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    throw new ConflictException(`You don’t need to do the quiz again. The prescription we wrote for you is still valid until ${until}, and you won’t pay the prescription fee again. We have emailed you the link to order your medicine.`);
+  }
 
   findAll() {
     return this.prisma.lead.findMany({
@@ -42,14 +63,13 @@ export class LeadsService {
     await this.verification.assertVerified(input.email, input.emailVerificationToken);
 
     // Someone who already has an account (or has paid and is waiting for it) signs in instead of starting again.
-    const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } });
-    if (taken) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
+    const startingOver = await this.assertNoAccount(input.email);
 
     const existingLead = await this.prisma.lead.findUnique({
       where: { email: input.email },
       select: { id: true, convertedAt: true, productKind: true },
     });
-    if (existingLead?.convertedAt) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
+    if (existingLead?.convertedAt && !startingOver) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     const intake = this.checkedIntake(input, meta);
     const lead = await this.prisma.lead.upsert({
       where: { email: input.email },
@@ -68,6 +88,8 @@ export class LeadsService {
         // The health answers come with the quiz. Without them, another treatment's earlier answers don't carry over.
         ...(intake ?? (existingLead && existingLead.productKind !== input.productKind && { intakeAnswers: Prisma.DbNull, intakeConsentVersion: null, intakeSavedAt: null })),
         stripeSessionId: input.stripeSessionId ?? undefined,
+        // A patient refunded and closed who starts over: the earlier payment is behind them, this lead is for the new one.
+        ...(startingOver && existingLead?.convertedAt && { convertedAt: null, stripeSessionId: input.stripeSessionId ?? null }),
       },
     });
 
@@ -98,10 +120,38 @@ export class LeadsService {
     return lead;
   }
 
+  /**
+   * A patient refunded on their first order, whose prescription is still good, who has proved the inbox is theirs: what is on
+   * offer and where to pay for it, so the website can take them straight to it. Null when there is no such offer.
+   */
+  async returnOffer(input: PreviousAssessmentInput) {
+    await this.verification.assertVerified(input.email, input.emailVerificationToken);
+    const patient = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true, accessClosedAt: true, accessClosedReason: true } });
+    if (!patient?.accessClosedAt || patient.accessClosedReason !== 'REFUNDED_FIRST_ORDER') return null;
+    const offer = await this.moduleRef?.get(OrdersService, { strict: false }).offerReturn(patient.id).catch(() => null);
+    if (!offer) return null;
+    const order = await this.prisma.order.findUnique({ where: { id: offer.orderId }, select: { paymentInvoiceId: true, prescription: { select: { items: { select: { product: { select: { name: true, brandName: true } }, strength: { select: { label: true } } } } } } } });
+    const treatment = order?.prescription.items.map((i) => `${i.product.brandName ?? i.product.name} ${i.strength.label}`).join(' + ') || null;
+    const details = order?.paymentInvoiceId ? await this.moduleRef?.get(BillingService, { strict: false }).invoicePaymentDetails(order.paymentInvoiceId) : null;
+    // Vouchers they have not used: a patient who chose to apply them by hand has none taken off yet, and cannot sign in to do it.
+    const waiting = await this.prisma.voucher.aggregate({ where: { patientId: patient.id, status: 'ISSUED' }, _sum: { amountCents: true } });
+    return { ...offer, treatment, clientSecret: details?.clientSecret ?? null, totalCents: details?.totalCents ?? null, unusedVoucherCents: waiting._sum.amountCents ?? 0 };
+  }
+
+  /** The same offer as a subscription (10% cheaper): the payment to take inside our page. Needs the email proof; null when no offer. */
+  async returnSubscription(input: PreviousAssessmentInput) {
+    await this.verification.assertVerified(input.email, input.emailVerificationToken);
+    const patient = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true, accessClosedAt: true, accessClosedReason: true } });
+    if (!patient?.accessClosedAt || patient.accessClosedReason !== 'REFUNDED_FIRST_ORDER') return null;
+    return (await this.moduleRef?.get(OrdersService, { strict: false }).startReturnSubscription(patient.id)) ?? null;
+  }
+
   /** The lead a returning visitor left unpaid, once they have proved the email is theirs. Null when there is nothing to go back to. */
   private async unpaidLeadFor(input: PreviousAssessmentInput) {
     await this.verification.assertVerified(input.email, input.emailVerificationToken);
-    const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { id: true } });
+    const taken = await this.prisma.patient.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' } }, select: { accessClosedAt: true } });
+    // A closed account has no earlier assessment to resume (and must not be sent its offer again from here): nothing to go back to.
+    if (taken?.accessClosedAt) return null;
     if (taken) throw new ConflictException(EMAIL_TAKEN_MESSAGE);
     const lead = await this.prisma.lead.findFirst({ where: { email: { equals: input.email.trim(), mode: 'insensitive' }, convertedAt: null } });
     // Answers for another treatment aren't comparable with this quiz, and a lead with no health answers has nothing to keep.

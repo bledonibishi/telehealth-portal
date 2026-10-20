@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format } from 'date-fns';
-import { APPLY_VOUCHER, MY_REFERRAL, SET_VOUCHER_AUTO_APPLY } from '@/graphql/referrals';
+import { APPLY_VOUCHER, MY_REFERRAL } from '@/graphql/referrals';
+import { VoucherAutoApplyToggle } from '@/components/portal/VoucherAutoApplyToggle';
 import { InlineError } from '@/components/common/Alert';
 
 type Voucher = {
@@ -83,7 +84,6 @@ function ReferralRow({ referral }: { referral: ReferredFriend }) {
 export default function RewardsPage() {
   const { data, loading } = useQuery(MY_REFERRAL, { fetchPolicy: 'cache-and-network' });
   const [copied, setCopied] = useState(false);
-  const [setVoucherAutoApply, { loading: togglingAutoApply }] = useMutation(SET_VOUCHER_AUTO_APPLY);
 
   const referral = data?.myReferral;
   const vouchers: Voucher[] = referral?.vouchers ?? [];
@@ -129,27 +129,7 @@ export default function RewardsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Automatically apply my rewards</p>
-              <p className="text-xs text-slate-400 mt-0.5">When off, new rewards wait on this page until you apply them yourself.</p>
-            </div>
-            <button
-              role="switch"
-              aria-checked={referral.voucherAutoApply}
-              disabled={togglingAutoApply}
-              onClick={() => setVoucherAutoApply({ variables: { autoApply: !referral.voucherAutoApply } })}
-              className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative disabled:opacity-50 ${
-                referral.voucherAutoApply ? 'bg-ink-700' : 'bg-slate-200'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  referral.voucherAutoApply ? 'translate-x-5' : ''
-                }`}
-              />
-            </button>
-          </div>
+          <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4"><VoucherAutoApplyToggle /></div>
 
           <div className="bg-white rounded-lg border border-slate-100 p-6 mb-4">
             <p className="text-sm font-semibold text-slate-900 mb-1">Your rewards</p>

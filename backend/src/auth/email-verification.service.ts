@@ -30,16 +30,21 @@ export class EmailVerificationService {
     return this.config.get<string>('DISABLE_EMAIL_VERIFICATION') === 'true' && this.config.get<string>('NODE_ENV') !== 'production';
   }
 
+  /** A local switch for development: no limit on how many codes one address can ask for. Ignored in production. */
+  private get relaxedLimits() {
+    return this.config.get<string>('RELAX_EMAIL_CODE_LIMITS') === 'true' && this.config.get<string>('NODE_ENV') !== 'production';
+  }
+
   async requestCode(rawEmail: string, now = new Date()): Promise<void> {
     const email = normalise(rawEmail);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new BadRequestException('Please enter a valid email address.');
 
     const row = await this.prisma.emailVerification.findUnique({ where: { email } });
-    if (row && now.getTime() - row.lastSentAt.getTime() < RESEND_COOLDOWN_MS) {
+    if (!this.relaxedLimits && row && now.getTime() - row.lastSentAt.getTime() < RESEND_COOLDOWN_MS) {
       throw tooMany('Please wait a moment before asking for another code.');
     }
     const inWindow = !!row && now.getTime() - row.sentWindowStart.getTime() < HOUR_MS;
-    if (row && inWindow && row.sentCount >= MAX_CODES_PER_HOUR) {
+    if (!this.relaxedLimits && row && inWindow && row.sentCount >= MAX_CODES_PER_HOUR) {
       throw tooMany('Too many codes were sent to this address. Please try again in a while.');
     }
 

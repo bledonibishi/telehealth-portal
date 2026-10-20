@@ -112,6 +112,7 @@ function ChangeDoseForm({ rx, patientId, kind, onDone }: { rx: any; patientId: s
 }
 
 const ORDER_STATE: Record<string, { label: string; cls: string }> = {
+  AWAITING_PAYMENT: { label: 'Awaiting payment', cls: 'bg-amber-50 text-amber-700' },
   PENDING: { label: 'Preparing', cls: 'bg-amber-50 text-amber-700' },
   DISPATCHED: { label: 'Shipped', cls: 'bg-blue-50 text-blue-700' },
   OUT_FOR_DELIVERY: { label: 'Out for delivery', cls: 'bg-blue-50 text-blue-700' },
@@ -166,7 +167,9 @@ export function PrescriptionCard({
   const style = STATUS_STYLE[rx.status] ?? STATUS_STYLE.ACTIVE;
   const isPrescriber = hasAccess(['ADMIN', 'DOCTOR']);
   const canCancel = rx.status === 'ACTIVE' && isPrescriber;
-  const expired = rx.validUntil && new Date(rx.validUntil) < new Date();
+  // The pharmacy's deadline (15 days after issue); an older prescription has only the end of its treatment.
+  const lastDay = rx.dispenseUntil ?? rx.validUntil;
+  const expired = lastDay && new Date(lastDay) < new Date();
   const canRepeat = rx.status === 'ACTIVE' && !expired && isPrescriber && (rx.repeatsRemaining ?? 0) > 0;
   const kind = rx.items?.[0]?.product?.kind as 'HRT' | 'GLP1' | 'TRT' | undefined;
   const canChangeDose = rx.status === 'ACTIVE' && !expired && isPrescriber && !!patientId && !!kind;
@@ -240,7 +243,7 @@ export function PrescriptionCard({
       <dl className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
         <div>
           <dt className="text-gray-400">{t('Valid until')}</dt>
-          <dd className={`mt-0.5 font-medium ${expired ? 'text-red-600' : 'text-gray-800'}`}>{fmtDate(rx.validUntil)}{rx.validUntil && <span className="font-normal text-gray-400"> · {timeAgo(rx.validUntil)}</span>}</dd>
+          <dd className={`mt-0.5 font-medium ${expired ? 'text-red-600' : 'text-gray-800'}`}>{fmtDate(lastDay)}{lastDay && <span className="font-normal text-gray-400"> · {timeAgo(lastDay)}</span>}</dd>
         </div>
         <div>
           <dt className="text-gray-400">{t('Supply')}</dt>

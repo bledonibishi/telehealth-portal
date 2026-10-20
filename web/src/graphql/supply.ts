@@ -23,6 +23,15 @@ export const MY_SUPPLY_STATUS = gql`
   }
 `;
 
+export const RESTART_TREATMENT = gql`
+  ${SUPPLY_STATUS_FIELDS}
+  mutation RestartTreatment {
+    restartTreatment {
+      ...SupplyStatusFields
+    }
+  }
+`;
+
 export const REQUEST_REFILL = gql`
   ${SUPPLY_STATUS_FIELDS}
   mutation RequestRefill {

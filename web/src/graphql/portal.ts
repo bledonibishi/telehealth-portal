@@ -89,6 +89,40 @@ const APPOINTMENT_FIELDS = gql`
     clinicianName
     createdAt
     bookingPurpose
+    paymentUrl
+    paymentAmountCents
+    paymentCurrency
+    paid
+    refundedAt
+    canRefund
+    refundOffered
+  }
+`;
+
+export const CHOOSE_CONSULT_REFUND = gql`
+  ${APPOINTMENT_FIELDS}
+  mutation ChooseConsultationRefund($id: ID!) {
+    chooseConsultationRefund(id: $id) {
+      ...AppointmentFields
+    }
+  }
+`;
+
+export const CHOOSE_CONSULT_RESCHEDULE = gql`
+  ${APPOINTMENT_FIELDS}
+  mutation ChooseConsultationReschedule($id: ID!) {
+    chooseConsultationReschedule(id: $id) {
+      ...AppointmentFields
+    }
+  }
+`;
+
+export const CONSULT_FEE = gql`
+  query ConsultFee {
+    consultFee {
+      amountCents
+      currency
+    }
   }
 `;
 

@@ -67,3 +67,46 @@ export function compareAnswers(earlier: PreviousAnswer[], today: PreviousAnswer[
   for (const r of list) r.changed = norm(r.earlier) !== norm(r.today);
   return list;
 }
+
+export interface ReturnOffer { until: string; treatment: string | null; clientSecret: string | null; totalCents: number | null; unusedVoucherCents: number; payUrl: string | null; amountCents: number | null; currency: string | null }
+
+/**
+ * A patient refunded on their first order whose prescription is still valid: where to pay for the medicine alone. Null when
+ * there is no such offer. Never blocks the quiz: any failure reads as "no offer".
+ */
+export async function fetchReturnOffer(product: string, email: string, token: string): Promise<ReturnOffer | null> {
+  try {
+    const data = await gql<{ returnOffer: ReturnOffer | null }>(
+      `query ReturnOffer($input: PreviousAssessmentInput!) { returnOffer(input: $input) { until treatment clientSecret totalCents unusedVoucherCents payUrl amountCents currency } }`,
+      { email, productKind: product, emailVerificationToken: token },
+    );
+    return data.returnOffer;
+  } catch {
+    return null;
+  }
+}
+
+const OFFER_KEY = 'th_return_offer';
+
+/** What the payment page needs, kept in this tab only: the offer, and the email proof to ask for the subscription with. */
+export interface SavedReturn { offer: ReturnOffer; email: string; token: string }
+
+export function saveReturnOffer(saved: SavedReturn) {
+  try { sessionStorage.setItem(OFFER_KEY, JSON.stringify(saved)); } catch {}
+}
+
+export function loadReturnOffer(): SavedReturn | null {
+  try { return JSON.parse(sessionStorage.getItem(OFFER_KEY) ?? 'null'); } catch { return null; }
+}
+
+export interface ReturnSubscription { clientSecret: string; amountDueCents: number; totalCents: number; currency: string }
+
+/** The first month of the subscription, to be paid on our page. Throws with a message for the visitor when it can't be had. */
+export async function startReturnSubscription(email: string, token: string): Promise<ReturnSubscription> {
+  const data = await gql<{ returnSubscription: ReturnSubscription | null }>(
+    `mutation ReturnSub($input: PreviousAssessmentInput!) { returnSubscription(input: $input) { clientSecret amountDueCents totalCents currency } }`,
+    { email, productKind: 'HRT', emailVerificationToken: token },
+  );
+  if (!data.returnSubscription) throw new Error('We couldn’t start the subscription. You can pay once instead.');
+  return data.returnSubscription;
+}

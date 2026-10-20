@@ -9,6 +9,7 @@ export const PRESCRIPTION_FRAGMENT = gql`
     instructions
     issuedAt
     validUntil
+    dispenseUntil
     refillsAllowed
     supersedesId
     overrideReason

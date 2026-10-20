@@ -48,8 +48,11 @@ export class PrescriptionModel {
   @Field()
   issuedAt: Date;
 
-  @Field({ nullable: true })
+  @Field({ nullable: true, description: 'When the treatment this prescription covers ends' })
   validUntil?: Date;
+
+  @Field({ nullable: true, description: 'The last day a pharmacy may fill it: 15 days after it was issued' })
+  dispenseUntil?: Date;
 
   @Field(() => Int)
   refillsAllowed: number;

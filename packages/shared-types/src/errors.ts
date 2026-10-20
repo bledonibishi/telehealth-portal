@@ -33,6 +33,7 @@ export enum ErrorCode {
   INVALID_MFA_CODE = 'INVALID_MFA_CODE',
   ACCOUNT_NOT_ACTIVATED = 'ACCOUNT_NOT_ACTIVATED',
   ACCOUNT_DEACTIVATED = 'ACCOUNT_DEACTIVATED',
+  ACCOUNT_CLOSED = 'ACCOUNT_CLOSED',
   ACCOUNT_ALREADY_ACTIVATED = 'ACCOUNT_ALREADY_ACTIVATED',
   LINK_INVALID_OR_EXPIRED = 'LINK_INVALID_OR_EXPIRED',
   /** The session cannot continue; `reason` (an AuthFailureReason) says why. Apps sign out, or refresh when expired. */
@@ -70,6 +71,7 @@ export const ERRORS: Record<ErrorCode, ErrorDefinition> = {
   [ErrorCode.WRONG_CURRENT_PASSWORD]: { status: 400, severity: 'error', retryable: false, message: 'Your current password is not right.' },
   [ErrorCode.INVALID_MFA_CODE]: { status: 401, severity: 'error', retryable: false, message: 'That code isn’t right. Please check it and try again.' },
   [ErrorCode.ACCOUNT_NOT_ACTIVATED]: { status: 401, severity: 'warning', retryable: false, message: 'Your account isn’t activated yet. Check your email for the activation link.' },
+  [ErrorCode.ACCOUNT_CLOSED]: { status: 401, severity: 'warning', retryable: false, message: 'Your account has been closed after your refund. To order again, use the link in your refund email, or contact us. You can also ask us for a copy of your records.' },
   [ErrorCode.ACCOUNT_DEACTIVATED]: { status: 401, severity: 'error', retryable: false, message: 'This account has been deactivated.' },
   [ErrorCode.ACCOUNT_ALREADY_ACTIVATED]: { status: 409, severity: 'warning', retryable: false, message: 'A password is already set for this account. Sign in, or reset your password if you have forgotten it.' },
   [ErrorCode.LINK_INVALID_OR_EXPIRED]: { status: 401, severity: 'warning', retryable: false, message: 'This link is invalid or has expired. Request a new one.' },

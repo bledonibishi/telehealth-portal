@@ -45,6 +45,7 @@ const NAV: NavItem[] = [
   { href: '/labs',     label: 'Labs',           icon: 'flask',    group: 'Clinical', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/orders',   label: 'Orders',         icon: 'cart',     group: 'Fulfilment', roles: ['ADMIN', 'PROVIDER'],                            badgeKey: 'pendingOrders' },
   { href: '/shipments', label: 'Next shipments', icon: 'truck',    group: 'Fulfilment', roles: ['ADMIN', 'DOCTOR'],                              badgeKey: 'shipmentsDue' },
+  { href: '/billing',  label: 'Billing',        icon: 'cart',     group: 'Admin', roles: ['ADMIN'] },
   { href: '/team',     label: 'Team & Roles',   icon: 'shield',   group: 'Admin', roles: ['ADMIN'] },
   { href: '/reports',  label: 'Monthly report', icon: 'chart',    group: 'Admin', roles: ['ADMIN'] },
   { href: '/audit',    label: 'Audit log',      icon: 'search',   group: 'Admin', roles: ['ADMIN'] },
@@ -106,10 +107,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         className={`fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r flex flex-col bg-[color:var(--bg-panel)] border-[color:var(--border-subtle)] transition-transform duration-200 lg:static lg:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="px-4 h-12 border-b border-[color:var(--border-subtle)] flex items-center gap-2.5 shrink-0">
-          <span className="w-7 h-7 rounded-md bg-brand-500 text-white flex items-center justify-center text-xs font-bold shrink-0" aria-hidden>T</span>
+          <img src="/omo-logo.png" alt="" className="w-8 h-8 shrink-0" />
           {/* The name and, under it, who is signed in: one line each, never wrapped or cut by the other. */}
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="text-sm font-semibold text-[color:var(--t-strong)] truncate">{t('Telehealth Portal')}</p>
+            <p className="text-sm font-semibold text-[color:var(--t-strong)] truncate">Omopharmacy</p>
             {badge && <span className={`mt-0.5 inline-block max-w-full truncate text-[10px] font-medium px-1.5 py-px rounded-full whitespace-nowrap ${badge.cls}`}>{t(badge.label)}</span>}
           </div>
         </div>

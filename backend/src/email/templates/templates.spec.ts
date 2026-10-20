@@ -11,6 +11,6 @@ describe('email templates', () => {
   });
 
   it('every template has a sample, so the preview shows them all', () => {
-    expect(SAMPLES.map((s) => s.name)).toHaveLength(18);
+    expect(SAMPLES.map((s) => s.name)).toHaveLength(28);
   });
 });

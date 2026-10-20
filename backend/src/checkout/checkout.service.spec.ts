@@ -21,9 +21,19 @@ function build(prisma: any, stripe: any, referrals: any = { referralLinkFor: jes
 const LEAD = { id: 'lead-1', email: 'buyer@b.com', convertedAt: null, productKind: 'HRT', quizAnswers: [{ questionId: 'age', question: 'Age?', answer: '40 to 54' }], checkoutDetails: null, intakeSavedAt: new Date() };
 
 function prismaFor(over: { lead?: any; patient?: any; referral?: any; products?: any[] } = {}) {
+  // The customer the checkout saves on the lead, kept between calls as the database would.
+  const saved = { stripeCustomerId: null as string | null };
   return {
     lead: {
-      findUnique: jest.fn().mockResolvedValue('lead' in over ? over.lead : LEAD),
+      findUnique: jest.fn().mockImplementation(async () => {
+        const lead = 'lead' in over ? over.lead : LEAD;
+        return lead ? { ...lead, stripeCustomerId: saved.stripeCustomerId } : lead;
+      }),
+      updateMany: jest.fn().mockImplementation(async ({ where, data }: any) => {
+        if (saved.stripeCustomerId !== (where.stripeCustomerId ?? null)) return { count: 0 };
+        saved.stripeCustomerId = data.stripeCustomerId;
+        return { count: 1 };
+      }),
       // Looked up by email when a request names only an email.
       findFirst: jest.fn().mockResolvedValue(('lead' in over ? over.lead : LEAD) ? { id: 'lead-1' } : null),
       update: jest.fn().mockResolvedValue({}),
@@ -239,6 +249,11 @@ describe('CheckoutService.createHostedSession', () => {
     await expect(build(prismaFor({ patient: { id: 'p-1' } }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' })).rejects.toThrow(BadRequestException);
   });
 
+  it('does not refuse an email whose account was closed, whose owner starts over', async () => {
+    const closed = { id: 'p-1', accessClosedAt: new Date() };
+    await expect(build(prismaFor({ patient: closed }), stripe).createHostedSession({ priceId: 'price_1', leadId: 'lead-1' })).resolves.toEqual({ url: expect.any(String) });
+  });
+
   it('saves delivery details and the chosen treatment on the lead, storing only whitelisted fields', async () => {
     const prisma = prismaFor();
     await build(prisma, stripe).createHostedSession({
@@ -264,6 +279,86 @@ describe('CheckoutService.createHostedSession', () => {
     const answers = prisma.lead.update.mock.calls[0][0].data.quizAnswers;
     expect(answers).toHaveLength(1);
     expect(answers[0].answer).toBe('Evorel 50 micrograms/24 h + micronised progesterone');
+  });
+});
+
+describe('CheckoutService billing choice', () => {
+  const price = { id: 'price_1', currency: 'eur', unit_amount: 10000, product: 'prod_1', recurring: { interval: 'month' } };
+  function stripeFor() {
+    return {
+      prices: { retrieve: jest.fn().mockResolvedValue(price) },
+      products: { search: jest.fn().mockResolvedValue({ data: [{ id: 'prod_fee' }] }), create: jest.fn().mockResolvedValue({ id: 'prod_fee' }) },
+      customers: { list: jest.fn().mockResolvedValue({ data: [{ id: 'cus_1' }] }), update: jest.fn() },
+      subscriptions: {
+        list: jest.fn().mockResolvedValue({ data: [] }),
+        create: jest.fn().mockResolvedValue({ id: 'sub_1', latest_invoice: { amount_due: 9000, currency: 'eur', total_discount_amounts: [], payment_intent: { client_secret: 'secret' } } }),
+      },
+      invoiceItems: { create: jest.fn().mockResolvedValue({}) },
+      invoices: {
+        list: jest.fn().mockResolvedValue({ data: [{ id: 'in_old', metadata: { leadId: 'lead-1', billing: 'ONE_TIME' } }, { id: 'in_other', metadata: { leadId: 'x', billing: 'ONE_TIME' } }] }),
+        voidInvoice: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'in_new' }),
+        finalizeInvoice: jest.fn().mockResolvedValue({ id: 'in_new', amount_due: 10000, currency: 'eur', total_discount_amounts: [], payment_intent: { id: 'pi_1', client_secret: 'pi_secret' } }),
+      },
+      paymentIntents: { update: jest.fn().mockResolvedValue({}) },
+    };
+  }
+
+  it('charges a subscription 10% less than the monthly price, built on the same product', async () => {
+    const stripe = stripeFor();
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'SUBSCRIPTION' } as any);
+    expect(stripe.subscriptions.create.mock.calls[0][0].items).toEqual([
+      { quantity: 1, price_data: { currency: 'eur', product: 'prod_1', unit_amount: 9000, recurring: { interval: 'month' } } },
+      // the doctor's fee is its own monthly line, and is not part of the subscriber's 10%
+      { quantity: 1, price_data: { currency: 'eur', product: 'prod_fee', unit_amount: 4000, recurring: { interval: 'month' } } },
+    ]);
+    expect(stripe.subscriptions.create.mock.calls[0][0].metadata.billing).toBe('SUBSCRIPTION');
+  });
+
+  it('adds the prescription fee as its own line when paying once', async () => {
+    const stripe = stripeFor();
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', product: 'Wegovy', dose: '0.25 mg', billing: 'ONE_TIME' } as any);
+    expect(stripe.invoiceItems.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 4000, currency: 'eur', description: 'Prescription fee' }));
+    expect(stripe.invoiceItems.create).toHaveBeenCalledTimes(2); // the medicine and the fee
+  });
+
+  it('charges no fee on the old pages (no billing choice) or in a currency other than the euro', async () => {
+    const old = stripeFor();
+    await build(prismaFor(), old).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+    expect(old.subscriptions.create.mock.calls[0][0].items).toEqual([{ price: 'price_1', quantity: 1 }]);
+    const pounds = stripeFor();
+    pounds.prices.retrieve.mockResolvedValue({ ...price, currency: 'gbp' });
+    await build(prismaFor(), pounds).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'SUBSCRIPTION' } as any);
+    expect(pounds.subscriptions.create.mock.calls[0][0].items).toHaveLength(1);
+  });
+
+  it('keeps charging the full monthly price when the page names no billing choice', async () => {
+    const stripe = stripeFor();
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1' } as any);
+    expect(stripe.subscriptions.create.mock.calls[0][0].items).toEqual([{ price: 'price_1', quantity: 1 }]);
+  });
+
+  it('charges one supply once, as an invoice at the full price, and saves the card for the next one', async () => {
+    const stripe = stripeFor();
+    const out = await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', product: 'Wegovy', dose: '0.25 mg', billing: 'ONE_TIME' } as any);
+    expect(stripe.subscriptions.create).not.toHaveBeenCalled();
+    expect(stripe.invoiceItems.create).toHaveBeenCalledWith(expect.objectContaining({ customer: 'cus_1', amount: 10000, currency: 'eur', description: 'Wegovy 0.25 mg' }));
+    expect(stripe.invoices.create).toHaveBeenCalledWith(expect.objectContaining({ collection_method: 'charge_automatically', metadata: expect.objectContaining({ leadId: 'lead-1', billing: 'ONE_TIME' }) }));
+    expect(stripe.paymentIntents.update).toHaveBeenCalledWith('pi_1', { setup_future_usage: 'off_session' });
+    expect(out).toMatchObject({ clientSecret: 'pi_secret', amountDueCents: 10000 });
+  });
+
+  it("voids only this lead's earlier unpaid one-off invoices", async () => {
+    const stripe = stripeFor();
+    await build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'ONE_TIME' } as any);
+    expect(stripe.invoices.voidInvoice).toHaveBeenCalledTimes(1);
+    expect(stripe.invoices.voidInvoice).toHaveBeenCalledWith('in_old');
+  });
+
+  it('refuses a subscription for a price that is not monthly', async () => {
+    const stripe = stripeFor();
+    stripe.prices.retrieve.mockResolvedValue({ ...price, recurring: { interval: 'year' } });
+    await expect(build(prismaFor(), stripe).createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'SUBSCRIPTION' } as any)).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -489,3 +584,99 @@ describe('CheckoutService referral coupon per currency', () => {
     expect(stripe.coupons.retrieve).toHaveBeenCalledWith('coupon_eur');
   });
 });
+
+describe('CheckoutService: two payment forms opened at once for one buyer', () => {
+  it('makes one Stripe customer, not two (the second waits for the first and finds its customer)', async () => {
+    const customers: Array<{ id: string }> = [];
+    const stripe: any = {
+      prices: { retrieve: jest.fn().mockResolvedValue({ id: 'price_1', currency: 'eur', unit_amount: 9900, product: 'prod_1', recurring: { interval: 'month' } }) },
+      products: { search: jest.fn().mockResolvedValue({ data: [{ id: 'prod_fee' }] }), create: jest.fn() },
+      customers: {
+        list: jest.fn(async () => {
+          await new Promise((r) => setTimeout(r, 10)); // Stripe takes a moment, as it does
+          return { data: [...customers] };
+        }),
+        update: jest.fn().mockResolvedValue({}),
+        retrieve: jest.fn(async (id: string) => customers.find((c) => c.id === id)),
+        del: jest.fn().mockResolvedValue({}),
+        create: jest.fn(async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          const c = { id: `cus_${customers.length + 1}` };
+          customers.push(c);
+          return c;
+        }),
+      },
+      subscriptions: {
+        list: jest.fn().mockResolvedValue({ data: [] }),
+        cancel: jest.fn().mockResolvedValue({}),
+        create: jest.fn().mockResolvedValue({ id: 'sub_1', latest_invoice: { amount_due: 8910, currency: 'eur', total_discount_amounts: [], payment_intent: { client_secret: 'secret' } } }),
+      },
+    };
+    const service = build(prismaFor(), stripe);
+    await Promise.all([
+      service.createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'SUBSCRIPTION' } as any),
+      service.createSubscriptionIntent({ priceId: 'price_1', leadId: 'lead-1', billing: 'SUBSCRIPTION' } as any),
+    ]);
+    expect(stripe.customers.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CheckoutService: one Stripe customer per buyer, remembered on the lead', () => {
+  const stripeWithCustomers = (existing: any[] = []) => {
+    const customers = [...existing];
+    return {
+      customers,
+      list: jest.fn(async () => ({ data: [...customers] })),
+      retrieve: jest.fn(async (id: string) => customers.find((c) => c.id === id)),
+      update: jest.fn().mockResolvedValue({}),
+      del: jest.fn().mockResolvedValue({}),
+      create: jest.fn(async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        const c = { id: `cus_${customers.length + 1}` };
+        customers.push(c);
+        return c;
+      }),
+    };
+  };
+  const serviceWith = (customersApi: any) => build(prismaFor(), { customers: customersApi });
+
+  it('reuses the customer saved on the lead on the next checkout, without looking up by email', async () => {
+    const api = stripeWithCustomers();
+    const service: any = serviceWith(api);
+    const lead = { id: 'lead-1', email: 'buyer@b.com' };
+    const first = await service.findOrCreateCustomer(lead);
+    const second = await service.findOrCreateCustomer(lead);
+    expect(second).toBe(first);
+    expect(api.create).toHaveBeenCalledTimes(1);
+    expect(api.list).toHaveBeenCalledTimes(1); // only for the first, to adopt a customer made before this was saved
+  });
+
+  it('adopts the customer an email already has, instead of making another', async () => {
+    const api = stripeWithCustomers([{ id: 'cus_old' }]);
+    const service: any = serviceWith(api);
+    expect(await service.findOrCreateCustomer({ id: 'lead-1', email: 'buyer@b.com' })).toBe('cus_old');
+    expect(api.create).not.toHaveBeenCalled();
+  });
+
+  it('settles on one customer when two requests race (even on separate servers): the later one drops its own', async () => {
+    const api = stripeWithCustomers();
+    const service: any = serviceWith(api);
+    const lead = { id: 'lead-1', email: 'buyer@b.com' };
+    const [a, b] = await Promise.all([service.findOrCreateCustomer(lead), service.findOrCreateCustomer(lead)]);
+    expect(a).toBe(b);
+    expect(api.create).toHaveBeenCalledTimes(2); // both started before either saved
+    expect(api.del).toHaveBeenCalledTimes(1); // the loser removes the customer it made
+    expect(api.del).toHaveBeenCalledWith(a === 'cus_1' ? 'cus_2' : 'cus_1');
+  });
+
+  it('replaces a saved customer locked to another currency, and remembers the new one', async () => {
+    const api = stripeWithCustomers([{ id: 'cus_usd', currency: 'usd' }]);
+    const service: any = serviceWith(api);
+    const lead = { id: 'lead-1', email: 'buyer@b.com' };
+    await service.findOrCreateCustomer(lead, undefined, 'usd'); // saves cus_usd
+    const next = await service.findOrCreateCustomer(lead, undefined, 'eur');
+    expect(next).not.toBe('cus_usd');
+    expect(await service.findOrCreateCustomer(lead, undefined, 'eur')).toBe(next);
+  });
+});
+

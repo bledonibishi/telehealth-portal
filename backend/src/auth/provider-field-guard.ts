@@ -12,7 +12,7 @@ import { accessRoleOf } from './access-roles';
  */
 export const PROVIDER_VISIBLE_FIELDS: Record<string, ReadonlySet<string>> = {
   Patient: new Set(['id', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'postcode', 'country']),
-  Prescription: new Set(['id', 'status', 'medication', 'dosage', 'instructions', 'issuedAt', 'validUntil', 'refillsAllowed', 'documentUrl', 'consultation', 'items']),
+  Prescription: new Set(['id', 'status', 'medication', 'dosage', 'instructions', 'issuedAt', 'validUntil', 'dispenseUntil', 'refillsAllowed', 'documentUrl', 'consultation', 'items']),
   Consultation: new Set(['id', 'kind']),
 };
 

@@ -44,6 +44,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.role === UserRole.PATIENT) {
       const patient = await this.prisma.patient.findUnique({ where: { id: payload.sub } });
       if (!patient) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+      // Read on every request, so closing access ends a session that is already open.
+      if (patient.accessClosedAt) throw authFailure(AuthFailureReason.ACCOUNT_DEACTIVATED);
       if ((payload.tv ?? 0) !== (patient.tokenVersion ?? 0)) throw authFailure(AuthFailureReason.SESSION_REVOKED);
       return { id: patient.id, email: patient.email, role: UserRole.PATIENT };
     }

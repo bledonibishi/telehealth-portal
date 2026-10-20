@@ -2,7 +2,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthUser, PRESCRIBERS } from '../auth/access-roles';
-import { AppointmentAlertModel, AppointmentRequestModel, RequestAppointmentInput, ScheduleAppointmentInput } from './models/appointment.model';
+import { AppointmentAlertModel, ConsultFeeModel, AppointmentRequestModel, RequestAppointmentInput, ScheduleAppointmentInput } from './models/appointment.model';
 import { AppointmentsService } from './appointments.service';
 
 @Resolver()
@@ -23,9 +23,27 @@ export class AppointmentsResolver {
   }
 
   @Authorized('PATIENT')
+  @Query(() => ConsultFeeModel, { description: 'What an extra live consultation costs, shown before the patient asks for one' })
+  consultFee() {
+    return this.appointments.consultFee();
+  }
+
+  @Authorized('PATIENT')
   @Mutation(() => AppointmentRequestModel)
   cancelMyAppointment(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
     return this.appointments.cancelMine(user.id, id);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => AppointmentRequestModel, { description: 'The doctor could not make it: take the money back' })
+  chooseConsultationRefund(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
+    return this.appointments.chooseRefund(user.id, id);
+  }
+
+  @Authorized('PATIENT')
+  @Mutation(() => AppointmentRequestModel, { description: 'The doctor could not make it: keep the payment and be given a new time' })
+  chooseConsultationReschedule(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
+    return this.appointments.chooseReschedule(user.id, id);
   }
 
   @Authorized(...PRESCRIBERS)

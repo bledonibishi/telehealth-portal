@@ -66,6 +66,7 @@ export const ORDER_FIELDS = gql`
       instructions
       issuedAt
       validUntil
+      dispenseUntil
       refillsAllowed
       documentUrl
       consultation {
@@ -125,6 +126,15 @@ export const MARK_ORDER_OUT_FOR_DELIVERY = gql`
   mutation MarkOrderOutForDelivery($id: ID!, $carrier: String, $trackingNumber: String, $trackingUrl: String) {
     markOrderOutForDelivery(id: $id, carrier: $carrier, trackingNumber: $trackingNumber, trackingUrl: $trackingUrl) {
       ...OrderFields
+    }
+  }
+`;
+
+export const MARK_ORDER_RETURNED = gql`
+  mutation MarkOrderReturned($id: ID!) {
+    markOrderReturned(id: $id) {
+      id
+      status
     }
   }
 `;

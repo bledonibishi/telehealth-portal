@@ -18,12 +18,32 @@ export const MY_OPEN_REFUND_REQUEST = gql`
   }
 `;
 
+export const MY_LAST_REFUND_DECISION = gql`
+  query MyLastRefundDecision {
+    myLastRefundDecision {
+      id
+      status
+      decidedAt
+    }
+  }
+`;
+
 export const REQUEST_MY_REFUND = gql`
   mutation RequestMyRefund {
     requestMyRefund {
       id
       status
       requestedAt
+    }
+  }
+`;
+
+export const MY_SUBSCRIPTION = gql`
+  query MySubscription {
+    mySubscription {
+      status
+      endsAtPeriodEnd
+      endsAt
     }
   }
 `;

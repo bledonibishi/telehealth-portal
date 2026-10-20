@@ -5,9 +5,11 @@ import { EmailModule } from '../email/email.module';
 import { BookingModule } from '../booking/booking.module';
 import { AppointmentsService } from './appointments.service';
 import { AppointmentsResolver } from './appointments.resolver';
+import { AppointmentsCronController } from './appointments-cron.controller';
 
 @Module({
   imports: [PrismaModule, AuditModule, EmailModule, BookingModule],
+  controllers: [AppointmentsCronController],
   providers: [AppointmentsService, AppointmentsResolver],
   exports: [AppointmentsService],
 })

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { format, formatDistanceToNowStrict } from 'date-fns';
-import { CANCEL_MY_APPOINTMENT, MY_APPOINTMENTS, REQUEST_APPOINTMENT } from '@/graphql/portal';
+import { CANCEL_MY_APPOINTMENT, CHOOSE_CONSULT_REFUND, CHOOSE_CONSULT_RESCHEDULE, CONSULT_FEE, MY_APPOINTMENTS, REQUEST_APPOINTMENT } from '@/graphql/portal';
 import { CONTACT, EMERGENCY_NUMBER, telHref } from '@/lib/contact';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
@@ -36,7 +36,12 @@ const RED_FLAGS: Array<[string, string]> = [
   ['stroke_signs', 'Face drooping, arm weakness or slurred speech'],
 ];
 
+// Never charged: a symptom or pain is about safety. Keep in step with FREE_REASONS in backend/src/appointments/consult-fee.ts.
+const FREE_REASONS = ['SIDE_EFFECT', 'PAIN'];
+const money = (cents: number, currency: string) => new Intl.NumberFormat('en', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
+
 const STATUS: Record<string, { label: string; cls: string }> = {
+  AWAITING_PAYMENT: { label: 'Waiting for payment', cls: 'bg-amber-50 text-amber-700' },
   REQUESTED: { label: 'Waiting for a doctor', cls: 'bg-amber-50 text-amber-700' },
   SCHEDULED: { label: 'Booked', cls: 'bg-emerald-50 text-emerald-700' },
   COMPLETED: { label: 'Done', cls: 'bg-slate-100 text-slate-600' },
@@ -66,8 +71,11 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
   const [urgent, setUrgent] = useState(startUrgent);
   const [flags, setFlags] = useState<string[]>([]);
   const [send, { loading, error }] = useMutation(REQUEST_APPOINTMENT, { refetchQueries: [{ query: MY_APPOINTMENTS }] });
+  const { data: feeData } = useQuery(CONSULT_FEE);
+  const fee = feeData?.consultFee;
   const askPain = reason === 'PAIN' || reason === 'SIDE_EFFECT';
   const willBeUrgent = urgent || flags.length > 0 || (askPain && pain >= 7);
+  const charged = !!fee?.amountCents && !!reason && !willBeUrgent && !FREE_REASONS.includes(reason);
 
   const toggle = (k: string) => setFlags((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
   const submit = async (e: React.FormEvent) => {
@@ -126,21 +134,35 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         <b>{willBeUrgent ? 'Urgent' : 'Routine'}:</b> {willBeUrgent ? 'a doctor will get back to you within 24 hours.' : 'a doctor will get back to you within 3 days. Questions can also go straight to Messages.'}
       </div>
 
+      {charged && (
+        <div className="rounded-md bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
+          <b>An extra consultation costs {money(fee.amountCents, fee.currency)}.</b> You pay on the next step, and then pick a time. If you can’t make it, cancel before it starts for a full refund. Your monthly check-in, messages, side effects and anything urgent are always free.
+        </div>
+      )}
       <InlineError error={error} />
-      <button type="submit" disabled={loading || !reason} className={btnPrimary}>{loading ? 'Sending…' : 'Continue to pick a time'}</button>
+      <button type="submit" disabled={loading || !reason} className={btnPrimary}>{loading ? 'Sending…' : charged ? `Continue to pay ${money(fee.amountCents, fee.currency)}` : 'Continue to pick a time'}</button>
     </form>
   );
 }
 
 export default function AppointmentsPage() {
   const { data, loading, refetch } = useQuery(MY_APPOINTMENTS, { fetchPolicy: 'cache-and-network' });
-  const [cancel, { loading: cancelling }] = useMutation(CANCEL_MY_APPOINTMENT);
+  const [cancel, { loading: cancelling, error: cancelError }] = useMutation(CANCEL_MY_APPOINTMENT, { refetchQueries: [{ query: MY_APPOINTMENTS }] });
+  const [takeRefund, { loading: refunding, error: refundError }] = useMutation(CHOOSE_CONSULT_REFUND, { refetchQueries: [{ query: MY_APPOINTMENTS }] });
+  const [rebook, { loading: rebooking, error: rebookError }] = useMutation(CHOOSE_CONSULT_RESCHEDULE, { refetchQueries: [{ query: MY_APPOINTMENTS }] });
   // The request whose scheduler is open: a new request opens its own straight away, so asking and booking are one visit.
   const [picking, setPicking] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [startUrgent, setStartUrgent] = useState(false);
-  const [sent, setSent] = useState<{ advice: string | null } | null>(null);
+  const [sent, setSent] = useState<{ advice: string | null; awaitingPayment?: boolean } | null>(null);
   const list: any[] = data?.myAppointments ?? [];
+
+  // Back from paying on Stripe's page: the request has moved on.
+  useEffect(() => {
+    const back = () => { if (document.visibilityState === 'visible') refetch(); };
+    document.addEventListener('visibilitychange', back);
+    return () => document.removeEventListener('visibilitychange', back);
+  }, [refetch]);
 
   // Links like "Book appointment" arrive with ?new=1 (and &urgent=1 from the emergency card).
   useEffect(() => {
@@ -158,7 +180,7 @@ export default function AppointmentsPage() {
       <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem] gap-5 items-start">
         <div className="space-y-5 min-w-0">
           {sent && (sent.advice ? <EmergencyNotice text={sent.advice} /> : (
-            <div role="status" className="rounded-lg bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-800"><b>Request sent.</b> {picking ? 'Pick a time that suits you below.' : 'Your doctor will reply with a time — you’ll get an email, and it will show below.'}</div>
+            <div role="status" className="rounded-lg bg-emerald-50 border border-emerald-100 p-4 text-sm text-emerald-800"><b>Request sent.</b> {sent.awaitingPayment ? 'Pay below to send it to your doctor; then pick a time.' : picking ? 'Pick a time that suits you below.' : 'Your doctor will reply with a time — you’ll get an email, and it will show below.'}</div>
           ))}
 
           <BookedAppointments onChange={() => refetch()} />
@@ -168,7 +190,7 @@ export default function AppointmentsPage() {
               <CardHeader title="Request an appointment">
                 <button type="button" onClick={() => setFormOpen(false)} aria-label="Close" className="text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
               </CardHeader>
-              <RequestForm key={String(startUrgent)} startUrgent={startUrgent} onDone={(advice, created) => { setSent({ advice }); setFormOpen(false); if (!advice && created?.bookingPurpose) setPicking(created.id); }} />
+              <RequestForm key={String(startUrgent)} startUrgent={startUrgent} onDone={(advice, created) => { setSent({ advice, awaitingPayment: (created as any)?.status === 'AWAITING_PAYMENT' }); setFormOpen(false); if (!advice && created?.bookingPurpose) setPicking(created.id); }} />
             </Card>
           )}
 
@@ -189,6 +211,26 @@ export default function AppointmentsPage() {
                     </div>
                     <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${STATUS[a.status]?.cls}`}>{STATUS[a.status]?.label}</span>
                   </div>
+                  {a.status === 'AWAITING_PAYMENT' && (
+                    <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+                      <p>Pay {a.paymentAmountCents != null ? money(a.paymentAmountCents, a.paymentCurrency ?? 'eur') : 'the consultation fee'} to send this to your doctor. Unpaid requests are withdrawn after 7 days.</p>
+                      {a.paymentUrl && <a href={a.paymentUrl} target="_blank" rel="noreferrer" className={`${btnPrimary} !py-1.5 !text-xs mt-2 inline-flex`}>Pay now</a>}
+                    </div>
+                  )}
+                  {a.refundOffered && (
+                    <div role="alert" className="mt-3 rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+                      <p className="font-semibold">Your doctor can’t make this appointment. We’re sorry.</p>
+                      {a.clinicianNote && <p className="mt-1">{a.clinicianNote}</p>}
+                      <p className="mt-1">You’ve already paid{a.paymentAmountCents != null ? ` ${money(a.paymentAmountCents, a.paymentCurrency ?? 'eur')}` : ''}. Choose what you’d like:</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <button type="button" disabled={refunding || rebooking} onClick={() => rebook({ variables: { id: a.id } }).catch(() => undefined)} className={`${btnPrimary} !py-1.5 !text-xs`}>Keep my payment and pick a new time</button>
+                        <button type="button" disabled={refunding || rebooking} onClick={() => takeRefund({ variables: { id: a.id } }).catch(() => undefined)} className={`${btnSoft} !py-1.5 !text-xs`}>Refund me</button>
+                      </div>
+                      <p className="text-[11px] mt-2">If you don’t choose within 7 days, we refund you.</p>
+                      <InlineError error={refundError ?? rebookError} />
+                    </div>
+                  )}
+                  {a.status === 'CANCELLED' && a.refundedAt && <p className="text-xs text-emerald-700 mt-2">Refunded in full. It can take a few days to reach your account.</p>}
                   {a.bookingPurpose && picking === a.id ? (
                     <div className="mt-3">
                       <BookingCard purpose={a.bookingPurpose} referenceId={a.id} onChange={(current) => { refetch(); if (current) setPicking(null); }} />
@@ -209,15 +251,17 @@ export default function AppointmentsPage() {
                   <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-400">
                     <span>Sent {format(new Date(a.createdAt), 'd MMM, HH:mm')}</span>
                     {a.status === 'REQUESTED' && <span>Reply expected {Date.parse(a.respondBy) > Date.now() ? `within ${formatDistanceToNowStrict(new Date(a.respondBy))}` : 'very soon'}</span>}
-                    {(a.status === 'REQUESTED' || a.status === 'SCHEDULED') && (
-                      <button type="button" disabled={cancelling} onClick={() => cancel({ variables: { id: a.id } }).catch(() => undefined)} className="text-slate-500 hover:text-red-600 underline">Cancel</button>
+                    {(a.status === 'AWAITING_PAYMENT' || a.status === 'REQUESTED' || a.status === 'SCHEDULED') && !(a.paid && !a.canRefund) && (
+                      <button type="button" disabled={cancelling} onClick={() => cancel({ variables: { id: a.id } }).catch(() => undefined)} className="text-slate-500 hover:text-red-600 underline">{a.canRefund ? 'Cancel and get a refund' : 'Cancel'}</button>
                     )}
+                    {a.paid && !a.canRefund && !a.refundedAt && (a.status === 'REQUESTED' || a.status === 'SCHEDULED' || a.status === 'COMPLETED') && <span>Paid · can’t be refunded once the consultation has started</span>}
                   </div>
                 </li>
               ))}
             </ul>
           </Card>
 
+          <InlineError error={cancelError} />
           <PastAppointments />
         </div>
 

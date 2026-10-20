@@ -234,13 +234,18 @@ export class ConsultationsService {
     const patient = await this.prisma.patient.findUnique({ where: { id: patientId }, include: { lead: true } });
     const lead = patient?.lead;
     if (!lead || !Array.isArray(lead.intakeAnswers) || !lead.intakeConsentVersion) return null;
-    const exists = await this.prisma.consultation.findFirst({ where: { patientId, kind: lead.productKind }, select: { id: true } });
-    if (exists) return null;
+    const latest = await this.prisma.consultation.findFirst({ where: { patientId, kind: lead.productKind }, orderBy: { submittedAt: 'desc' }, select: { id: true, submittedAt: true } });
+    // A patient who has been here before and paid again (refunded, or back after a lapse) has a consultation already. They
+    // get a new one when the website answers were saved after it: the quiz they just did and paid on. A repeat of the same
+    // payment event finds the new consultation newer than the answers and does nothing.
+    const comingBack = !!latest && !!lead.intakeSavedAt && lead.intakeSavedAt > latest.submittedAt;
+    if (latest && !comingBack) return null;
     try {
       return await this.submitIntakeQuiz(
         patientId,
         { kind: lead.productKind as ConsultationKind, answers: lead.intakeAnswers as any[], telehealthConsentVersion: lead.intakeConsentVersion },
         { ip: lead.intakeConsentIp ?? undefined, userAgent: lead.intakeConsentUserAgent ?? undefined },
+        { paidAgain: comingBack },
       );
     } catch (err: any) {
       this.logger.warn(`Couldn't create the consultation from lead ${lead.id}'s website answers: ${err?.message}`);
@@ -252,7 +257,7 @@ export class ConsultationsService {
   // consultation the doctor reviews. Answers that rule the patient out don't
   // block submission — they have already paid, so the consultation goes to the
   // top of the queue as a critical red flag and a decline refunds them.
-  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}, opts: { consentRecordedElsewhere?: boolean } = {}) {
+  async submitIntakeQuiz(patientId: string, input: SubmitIntakeQuizInput, meta: RequestMeta = {}, opts: { consentRecordedElsewhere?: boolean; /** They paid again after an earlier decline and refund. */ paidAgain?: boolean } = {}) {
     const intake = findQuestionnaire(input.kind, 'INTAKE');
     const evaluation = evaluateAnswers(intake, input.answers, true);
     if (evaluation.errors.length) throw new BadRequestException(evaluation.errors.join(' '));
@@ -264,10 +269,11 @@ export class ConsultationsService {
     const open = await this.prisma.consultation.findFirst({
       where: { patientId, kind: input.kind, status: { in: REVIEWABLE as any } },
     });
-    if (open && open.status !== ConsultationStatus.MORE_INFO_REQUESTED) {
+    // Paying again with new answers replaces what is waiting: the old answers belong to a payment that was refunded.
+    if (open && open.status !== ConsultationStatus.MORE_INFO_REQUESTED && !opts.paidAgain) {
       throw new ConflictException('Your consultation is already with our clinical team — we’ll be in touch soon.');
     }
-    if (!open) {
+    if (!open && !opts.paidAgain) {
       // A decline cancels and refunds the subscription, so a fresh consultation
       // would be unpaid. Starting again goes through support.
       const refunded = await this.prisma.consultation.count({

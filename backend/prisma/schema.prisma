@@ -124,6 +124,7 @@ enum AppointmentUrgency {
 }
 
 enum AppointmentStatus {
+  AWAITING_PAYMENT // a paid extra consultation, not seen by doctors until paid
   REQUESTED
   SCHEDULED
   COMPLETED
@@ -256,6 +257,8 @@ enum PartnerTransmissionStatus {
 }
 
 enum OrderStatus {
+  // A repeat for a patient who pays per supply: it is held until they have paid (see Order.paymentInvoiceId).
+  AWAITING_PAYMENT
   PENDING
   DISPATCHED
   OUT_FOR_DELIVERY
@@ -365,6 +368,8 @@ model Lead {
   productKind            ConsultationKind @map("product_kind")
   quizAnswers            Json             @map("quiz_answers")
   stripeSessionId        String?          @map("stripe_session_id")
+  // The one Stripe customer made for this buyer, reused by every checkout attempt so the same email never gets a second.
+  stripeCustomerId       String?          @map("stripe_customer_id")
   // The referrer's code this lead arrived with, if any — kept even before a
   // Referral row exists, since LeadsService validates it at creation time.
   referralCode           String?          @map("referral_code")
@@ -456,6 +461,9 @@ model RefundRequest {
   decidedById String?   @map("decided_by_id")
   // What happened to the money (the refund and subscription outcome), shown to the admin.
   outcome     String?
+  // REQUESTED, then AWAITING_RETURN while the refund waits for a parcel that is with the courier to come back.
+  awaitingOrderId         String? @map("awaiting_order_id")
+  awaitingEndSubscription Boolean @default(true) @map("awaiting_end_subscription")
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -482,6 +490,20 @@ model Patient {
   // Set when Stripe reports the subscription has ended (the patient cancelled in the billing
   // portal, or it was cancelled by us): no further supplies are shipped.
   subscriptionEndedAt      DateTime? @map("subscription_ended_at")
+  // Set when a renewal payment fails, cleared when one succeeds: no further supply is ordered while it is set.
+  paymentFailedAt          DateTime? @map("payment_failed_at")
+  // What the first payment charged as prescription fee, in cents. Null for patients from before the fee existed: they are
+  // never charged it. Set when the first payment succeeds.
+  prescriptionFeePaidCents Int?      @map("prescription_fee_paid_cents")
+  // Sign-in is closed from this moment: a patient refunded on their first order, or whose subscription ended six months ago.
+  // Their records are kept; they can ask for a copy. Cleared if they order again.
+  // How many of the monthly "we miss you" emails a patient whose subscription ended has had, and when the last went.
+  lapsedEmailsSent         Int       @default(0) @map("lapsed_emails_sent")
+  lapsedEmailAt            DateTime? @map("lapsed_email_at")
+  accessClosedAt           DateTime? @map("access_closed_at")
+  accessClosedReason       String?   @map("access_closed_reason")
+  // Paid once rather than on a subscription: each repeat supply is paid for before it is sent.
+  paysPerSupply            Boolean   @default(false) @map("pays_per_supply")
   // This patient's own shareable referral code — generated lazily on first use.
   referralCode             String?   @unique @map("referral_code")
   // Whether a reward this patient earns is credited automatically, or left for
@@ -599,6 +621,9 @@ model Prescription {
   dosage         String
   instructions   String
   validUntil     DateTime?          @map("valid_until")
+  // The last day a pharmacy may fill it: 15 days after it was issued (Kosovo AI 01/2010, art. 6 and 9). Not the length of the
+  // treatment, which validUntil still sets. Null on older prescriptions, where validUntil applies.
+  dispenseUntil  DateTime?          @map("dispense_until")
   refillsAllowed Int                @default(0) @map("refills_allowed")
   // Why the prescriber went against a prescribing rule, when they did.
   overrideReason String?            @map("override_reason")
@@ -653,6 +678,16 @@ model Order {
   cancelReason          String?     @map("cancel_reason")
   // What happened to the patient's money when an admin cancelled it (refunded, subscription ended, or nothing).
   cancelBillingNote     String?     @map("cancel_billing_note")
+  // A patient who pays per supply pays for each repeat on its own Stripe invoice before it goes to the pharmacy.
+  paymentInvoiceId      String?     @unique @map("payment_invoice_id")
+  paymentUrl            String?     @map("payment_url")
+  paymentAmountCents    Int?        @map("payment_amount_cents")
+  paymentCurrency       String?     @map("payment_currency")
+  paymentReminderAt     DateTime?   @map("payment_reminder_at")
+  paidAt                DateTime?   @map("paid_at")
+  // A second supply on a prescription whose first was refunded before it arrived: the patient pays the medicine only,
+  // because the prescription fee was already paid and kept.
+  reorder               Boolean     @default(false)
   createdAt             DateTime    @default(now()) @map("created_at")
   updatedAt             DateTime    @updatedAt @map("updated_at")
 
@@ -1257,6 +1292,16 @@ model AppointmentRequest {
   clinicianNote    String?            @map("clinician_note")
   handledById      String?            @map("handled_by_id")
   cancelledAt      DateTime?          @map("cancelled_at")
+  // The fee for an extra consultation the patient chose to book: a Stripe invoice they pay on Stripe's own page.
+  paymentInvoiceId   String?          @map("payment_invoice_id")
+  paymentUrl         String?          @map("payment_url")
+  paymentAmountCents Int?             @map("payment_amount_cents")
+  paymentCurrency    String?          @map("payment_currency")
+  paidAt             DateTime?        @map("paid_at")
+  refundedAt         DateTime?        @map("refunded_at")
+  refundId           String?          @map("refund_id")
+  // The doctor could not make a booked, paid appointment: the patient is asked to take a refund or a new time.
+  refundOfferedAt    DateTime?        @map("refund_offered_at")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 

@@ -67,6 +67,7 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
     const unchecked = all.filter((o) => !o.roles).map((o) => o.name);
     expect(unchecked).toMatchInlineSnapshot(`
 [
+  "AppointmentsCronController.sweep",
   "AuthResolver.acceptClinicianInvite",
   "AuthResolver.activateAccount",
   "AuthResolver.loginClinician",
@@ -82,6 +83,7 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "CheckInsResolver.submitCheckIn",
   "CheckoutController.createHostedSession",
   "CheckoutController.createSubscriptionIntent",
+  "CheckoutController.fee",
   "CheckoutController.prices",
   "CheckoutController.rewards",
   "CheckoutController.saveShipping",
@@ -95,13 +97,17 @@ describe('what the pharmacy partner (PROVIDER) can reach', () => {
   "EmailVerificationResolver.requestEmailCode",
   "EmailVerificationResolver.verifyEmailCode",
   "IdentityVerificationController.handleWebhook",
+  "LapsedPatientsCronController.sweep",
   "LeadRemindersController.unsubscribe",
   "LeadRemindersCronController.trigger",
   "LeadsResolver.createLead",
   "LeadsResolver.previousAssessment",
   "LeadsResolver.resumeLead",
+  "LeadsResolver.returnOffer",
+  "LeadsResolver.returnSubscription",
   "NotificationsCronController.pruneNotifications",
   "NotificationsCronController.unreadMessageEmails",
+  "PartnerOrdersCronController.supplyPayments",
   "PartnerOrdersCronController.sweep",
   "QuestionnairesResolver.questionnaire",
   "StripeWebhookController.handleWebhook",

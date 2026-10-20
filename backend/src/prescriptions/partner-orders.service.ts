@@ -118,7 +118,8 @@ export class PartnerOrdersService {
     if (!order) return 'Order not found';
     if (order.status !== OrderStatus.PENDING) return 'The order is no longer waiting to be dispatched';
     if (order.prescription.status !== PrescriptionStatus.ACTIVE) return 'The prescription is no longer active';
-    if (order.prescription.validUntil && order.prescription.validUntil < new Date()) return 'The prescription has expired';
+    const lastDay = order.prescription.dispenseUntil ?? order.prescription.validUntil;
+    if (lastDay && lastDay < new Date()) return 'The prescription has expired';
     const p = order.patient;
     if (p.subscriptionEndedAt) return 'The patient’s subscription has ended';
     if (!p.addressLine1 || !p.city || !p.postcode || !p.country) return 'The patient has no complete delivery address on file';
@@ -353,7 +354,11 @@ export class PartnerOrdersService {
       where: {
         status: OrderStatus.PENDING,
         createdAt: { lt: new Date(now.getTime() - SWEEP_GRACE_MS) },
-        prescription: { status: PrescriptionStatus.ACTIVE, OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
+        prescription: {
+          status: PrescriptionStatus.ACTIVE,
+          // The pharmacy's deadline when it has one (new prescriptions), else the end of the treatment.
+          OR: [{ dispenseUntil: { gt: now } }, { dispenseUntil: null, validUntil: null }, { dispenseUntil: null, validUntil: { gt: now } }],
+        },
         patient: {
           subscriptionEndedAt: null,
           addressLine1: filled,

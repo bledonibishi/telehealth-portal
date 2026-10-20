@@ -13,7 +13,7 @@ import { requestEmailCode, verifyEmailCode } from '@/lib/email-verification';
 import ProductPicker from './ProductPicker';
 import IntakeQuestionView from './IntakeQuestionView';
 import ReturningChoice from './ReturningChoice';
-import { compareAnswers, fetchPrevious, resumeEarlier, type CompareRow, type PreviousAssessment } from '@/lib/returning';
+import { compareAnswers, fetchPrevious, fetchReturnOffer, resumeEarlier, saveReturnOffer, type ReturnOffer, type CompareRow, type PreviousAssessment } from '@/lib/returning';
 
 /* ── Types ── */
 interface Answer { question: string; sel: string[] }
@@ -86,9 +86,14 @@ async function createLead(
     });
     const json = await res.json();
     // The server refuses an email that already has an account (HTTP 409 inside the GraphQL error).
-    if ((json.errors?.[0]?.extensions?.originalError?.statusCode ?? json.errors?.[0]?.extensions?.status) === 409) return 'EMAIL_TAKEN';
+    // The server names what went wrong in `extensions.code` (CONFLICT is its 409, BAD_REQUEST and VALIDATION_FAILED its 400s).
+    const code = json.errors?.[0]?.extensions?.code;
+    if (code === 'CONFLICT') {
+      // Refunded and still inside the prescription's 15 days: the server says so and has emailed their link.
+      return /prescription/i.test(json.errors[0].message ?? '') ? { error: json.errors[0].message } : 'EMAIL_TAKEN';
+    }
     // The server checked the health answers or the consent and found something to put right: say what.
-    if ((json.errors?.[0]?.extensions?.originalError?.statusCode ?? json.errors?.[0]?.extensions?.status) === 400 && json.errors[0].message) return { error: json.errors[0].message };
+    if ((code === 'BAD_REQUEST' || code === 'VALIDATION_FAILED') && json.errors[0].message) return { error: json.errors[0].message };
     if (json.errors?.length) throw new Error(json.errors[0].message);
     const lead = json.data?.createLead;
     if (!lead?.id) throw new Error('No lead ID in response');
@@ -165,6 +170,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [calcErr, setCalcErr] = useState('');
   const [detailsErr, setDetailsErr] = useState('');
   const [emailTaken, setEmailTaken] = useState(false);
+  // A refunded patient whose prescription is still valid: the server's explanation, shown instead of the form.
+  const [comeBack, setComeBack] = useState<{ email: string; token: string; message: string; offer: ReturnOffer | null } | null>(null);
+  // Whether that explanation is on screen: "Use a different email" puts the form back but keeps the offer to go back to.
+  const [offerOpen, setOfferOpen] = useState(true);
   const [saving, setSaving] = useState(false);
   // Someone who answered before and never paid: their earlier answers beside today's, until they choose.
   const [returning, setReturning] = useState<{ previous: PreviousAssessment; rows: CompareRow[]; contact: { firstName: string; lastName: string; email: string }; token: string } | null>(null);
@@ -221,14 +230,19 @@ export default function Quiz({ product }: { product: ProductKind }) {
   // new position is pushed as a history entry, and going back to an entry puts that position back.
   // `depth` counts the entries this quiz has pushed, so the on-screen arrow knows when to use history.
   const depth = useRef(0);
+  // Set when the on-screen arrow steps back without a history entry to go to (the quiz was restored mid-way): the new
+  // position then replaces the current entry, instead of being pushed as if the visitor had moved forward.
+  const replaceNext = useRef(false);
   useEffect(() => {
     if (!hydrated || screen === 'plans') return;
     const key = screen === 'quiz' ? `quiz:${st.view}:${st.idx}` : screen;
     if (window.history.state?.thq?.key === key) return;
     const first = window.history.state?.thq === undefined;
-    if (!first) depth.current += 1;
+    const replace = first || replaceNext.current;
+    replaceNext.current = false;
+    if (!replace) depth.current += 1;
     const entry = { ...window.history.state, thq: { key, screen, view: st.view, idx: st.idx, depth: depth.current } };
-    if (first) window.history.replaceState(entry, '');
+    if (replace) window.history.replaceState(entry, '');
     else window.history.pushState(entry, '');
   }, [hydrated, screen, st.view, st.idx]);
 
@@ -254,10 +268,11 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const hInputRef = useRef<HTMLInputElement>(null);
   const wInputRef = useRef<HTMLInputElement>(null);
 
-  /* Resume: if ?resume=1 and session is already passed for this product, go straight to plans */
+  /* Resume: if ?resume=1, or the page was just reloaded, and the session already passed for this product, go straight to plans */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('resume') !== '1') return;
+    const reloaded = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload';
+    if (params.get('resume') !== '1' && !reloaded) return;
     const s = loadAssessment();
     if (s?.passed && s.product === product) setScreen('plans');
   }, [product]);
@@ -359,6 +374,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
   /* ── Back ── */
   const back = () => {
     if (depth.current > 0) { window.history.back(); return; }
+    replaceNext.current = true;
     setSt((s) => {
       if (s.view === 'details') return healthQs.length ? { ...s, view: 'intake', idx: healthQs.length - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
       if (s.view === 'intake') return s.idx > 0 ? { ...s, idx: s.idx - 1 } : { ...s, view: 'q', idx: visible().length - 1 };
@@ -403,6 +419,18 @@ export default function Quiz({ product }: { product: ProductKind }) {
     setSaving(true);
     const todayHealth = healthQs.concat((intake.questions).filter((x) => x.id in prefilled)).filter((x) => hasAnswer(x, health)).map((x) => toAnswer(x, health[x.id]));
 
+    // Refunded on a first order with the prescription still valid: straight to paying for the medicine, no quiz and no second fee.
+    const offer = await fetchReturnOffer(product, email, token);
+    if (offer) {
+      setComeBack({ email, token, message: '', offer });
+      setOfferOpen(true);
+      setDetailsErr('');
+      setChoiceErr('');
+      setSaving(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     // Someone who answered before and never paid sees their earlier answers beside today's before anything is replaced.
     if (!opts.skipCompare) {
       const previous = await fetchPrevious(product, email, token);
@@ -428,6 +456,14 @@ export default function Quiz({ product }: { product: ProductKind }) {
       { answers: todayHealth, consentVersion: intake.consent.version },
       token,
     );
+    if (lead && typeof lead === 'object' && 'error' in lead && /^you don.t need to do the quiz again/i.test(lead.error)) {
+      setComeBack({ email, token, message: lead.error, offer: null });
+      setOfferOpen(true);
+      setDetailsErr('');
+      setChoiceErr('');
+      setSaving(false);
+      return;
+    }
     if (lead && typeof lead === 'object' && 'error' in lead) {
       // The proof ran out (or was never right): back to asking for a code.
       if (/verify your email/i.test(lead.error)) { setProof(null); setCode(''); setCodeSent(false); setReturning(null); }
@@ -669,8 +705,52 @@ export default function Quiz({ product }: { product: ProductKind }) {
         </div>
         <div className="thq-time">◷ Takes about 5 minutes</div>
 
-        {!codeSent ? (
+        {comeBack && offerOpen ? (
           <>
+            <h2 className="thq-q">Welcome back. Your prescription is still valid</h2>
+            {comeBack.offer ? (
+              <>
+                <p className="thq-help">
+                  You don’t need to do the quiz again. The prescription we wrote for you is valid until <strong>{new Date(comeBack.offer.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>, and you won’t pay the prescription fee again.
+                </p>
+                {comeBack.offer.payUrl ? (
+                  <>
+                    <div className="th-co-summary" style={{ border: '1.5px solid var(--c-border)', borderRadius: 14, padding: '14px 16px', margin: '16px 0' }}>
+                      <div className="th-prod-label">Your prescribed treatment</div>
+                      <div className="th-co-row"><span>{comeBack.offer.treatment ?? 'Your treatment'}</span><span>{comeBack.offer.amountCents != null ? new Intl.NumberFormat('en', { style: 'currency', currency: (comeBack.offer.currency ?? 'eur').toUpperCase() }).format(comeBack.offer.amountCents / 100) : ''}</span></div>
+                      <div className="th-co-row"><span>Prescription fee</span><span>Already paid</span></div>
+                    </div>
+                    <a className="thq-next" href={comeBack.offer.clientSecret ? '/return-payment' : comeBack.offer.payUrl} onClick={() => { if (comeBack.offer) saveReturnOffer({ offer: comeBack.offer, email: comeBack.email, token: comeBack.token }); }} style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
+                      Proceed to payment
+                    </a>
+                    <details className="th-co-more th-co-help">
+                      <summary>Can I change the medicine or dose?</summary>
+                      <div className="th-co-help-body">This is the medicine your doctor prescribed, so the dose can’t be changed here. To change it, message your care team after you sign in.</div>
+                    </details>
+                    <p className="th-co-help-foot">We’ve also emailed you this link, in case you’d like to pay later.</p>
+                  </>
+                ) : (
+                  <p className="thq-help">We’ve emailed you the link to order your medicine. Check your inbox, and your spam folder.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="thq-help">{comeBack.message}</p>
+                <p className="thq-help">Check your inbox, and your spam folder, for the link. It takes you straight to your medicine, with no quiz and no second prescription fee.</p>
+              </>
+            )}
+            <button type="button" className="th-co-other" onClick={() => { setOfferOpen(false); setCodeSent(false); setCode(''); setProof(null); setDetailsErr(''); }}>
+              Not you? Use a different email
+            </button>
+          </>
+        ) : !codeSent ? (
+          <>
+            {comeBack && (
+              <div className="th-co-back">
+                <span>Your earlier order for <strong>{comeBack.email}</strong> is still waiting.</span>
+                <button type="button" onClick={() => setOfferOpen(true)}>Go back to it →</button>
+              </div>
+            )}
             <h2 className="thq-q">Where should we send your results?</h2>
             <p className="thq-help">Your doctor uses these details to review your answers. We’ll email you a code to confirm the address.</p>
             <form
@@ -682,6 +762,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
                 if (!c.firstName || !c.lastName) { setDetailsErr('Please enter your first and last name.'); return; }
                 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) { setDetailsErr('Please enter a valid email address.'); return; }
                 setEmailTaken(false);
+                if (comeBack && comeBack.email.toLowerCase() !== c.email.toLowerCase()) setComeBack(null);
                 // Already proved for this address on this page (for instance saving failed): no second code.
                 if (proof && proof.email.toLowerCase() === c.email.toLowerCase()) { setContact(c); setDetailsErr(''); await submitDetails(c.firstName, c.lastName, c.email, proof.token); return; }
                 await sendCode(c);

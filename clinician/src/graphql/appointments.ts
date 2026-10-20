@@ -19,6 +19,8 @@ const FIELDS = gql`
     meetingUrl
     clinicianNote
     clinicianName
+    paid
+    refundedAt
     createdAt
   }
 `;

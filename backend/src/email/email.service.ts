@@ -6,7 +6,12 @@ import {
   type EmailContent,
   type OrderUpdateKind,
   activationEmail,
+  accountClosedEmail,
+  welcomeBackEmail,
+  lapsedClosedEmail,
+  lapsedEmail,
   checkInEmail,
+  comeBackEmail,
   clinicianInviteEmail,
   consultationUpdateEmail,
   doseReminderEmail,
@@ -15,10 +20,13 @@ import {
   partnerOrderEmail,
   passwordChangedEmail,
   passwordResetEmail,
+  paymentFailedEmail,
   paymentReceiptEmail,
   referralRewardEmail,
+  refundAwaitingReturnEmail,
   refundEmail,
   staffAlertEmail,
+  supplyPaymentEmail,
   verificationCodeEmail,
 } from './templates';
 
@@ -68,6 +76,14 @@ export class EmailService {
       return error.message;
     }
     return null;
+  }
+
+  async sendWelcomeBackEmail(to: string, firstName: string, a: { signInUrl: string; resetUrl: string; idCheckNeeded: boolean }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Welcome back email to ${to}: ${a.signInUrl}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'welcome-back', ...welcomeBackEmail({ firstName, ...a }) });
   }
 
   async sendActivationEmail(to: string, firstName: string, activationUrl: string) {
@@ -133,6 +149,62 @@ export class EmailService {
       return;
     }
     await this.deliver({ to, kind: 'refund', ...refundEmail({ firstName, ...refund }) });
+  }
+
+  async sendSupplyPaymentEmail(to: string, firstName: string, a: { amount: number; currency: string; payUrl: string; reminder?: boolean }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Supply payment${a.reminder ? ' reminder' : ''} email to ${to}: ${formatMoney(a.amount, a.currency)} ${a.payUrl}`);
+      return;
+    }
+    await this.deliver({ to, kind: a.reminder ? 'supply-payment-reminder' : 'supply-payment', ...supplyPaymentEmail({ firstName, ...a }) });
+  }
+
+  async sendPaymentFailedEmail(to: string, firstName: string, settingsUrl: string) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Payment failed email to ${to}: ${settingsUrl}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'payment-failed', ...paymentFailedEmail({ firstName, settingsUrl }) });
+  }
+
+  async sendRefundAwaitingReturnEmail(to: string, firstName: string | null | undefined) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Refund awaiting return email to ${to}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'refund-awaiting-return', ...refundAwaitingReturnEmail({ firstName }) });
+  }
+
+  async sendComeBackEmail(to: string, firstName: string, a: { amount: number; currency: string; payUrl: string; until: string }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Come-back email to ${to}: ${formatMoney(a.amount, a.currency)} until ${a.until} ${a.payUrl}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'come-back', ...comeBackEmail({ firstName, ...a }) });
+  }
+
+  async sendLapsedEmail(to: string, firstName: string, a: { month: number; of: number; portalUrl: string; closesOn: string }) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Lapsed email ${a.month}/${a.of} to ${to}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'lapsed', ...lapsedEmail({ firstName, ...a }) });
+  }
+
+  async sendLapsedClosedEmail(to: string, firstName: string) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Lapsed account closed email to ${to}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'lapsed-closed', ...lapsedClosedEmail({ firstName }) });
+  }
+
+  async sendAccountClosedEmail(to: string, firstName: string) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Account closed email to ${to}`);
+      return;
+    }
+    await this.deliver({ to, kind: 'account-closed', ...accountClosedEmail({ firstName }) });
   }
 
   async sendCheckInEmail(to: string, firstName: string, checkInUrl: string) {

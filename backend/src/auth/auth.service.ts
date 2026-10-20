@@ -148,6 +148,11 @@ export class AuthService {
       await this.auditPatientLoginFailed(email, patient.id, 'NOT_ACTIVATED', attempt);
       throw appError(ErrorCode.ACCOUNT_NOT_ACTIVATED, 'Account not activated — check your email for the activation link');
     }
+    // Sign-in is closed after a first-order refund. The password was right, so this can say so plainly.
+    if (patient.accessClosedAt) {
+      await this.auditPatientLoginFailed(email, patient.id, 'ACCESS_CLOSED', attempt);
+      throw appError(ErrorCode.ACCOUNT_CLOSED);
+    }
 
     await this.audit.log({
       actorId: patient.id,
@@ -481,6 +486,7 @@ export class AuthService {
     if (payload.role === UserRole.PATIENT) {
       const patient = await this.prisma.patient.findUnique({ where: { id: payload.sub } });
       if (!patient) throw authFailure(AuthFailureReason.ACCOUNT_NOT_FOUND);
+      if (patient.accessClosedAt) throw authFailure(AuthFailureReason.ACCOUNT_DEACTIVATED);
       this.assertSessionCurrent(payload, patient.tokenVersion);
       return this.issueTokens(patient.id, UserRole.PATIENT, patient.tokenVersion);
     }

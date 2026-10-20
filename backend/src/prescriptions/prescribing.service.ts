@@ -14,6 +14,8 @@ import { DosingService } from '../dosing/dosing.service';
 
 // One prescription covers one supply (a month), so it is valid for about as long as that supply lasts.
 export const DEFAULT_VALIDITY_DAYS = 30;
+/** A pharmacy may only fill a prescription this many days after it was issued (Kosovo AI 01/2010, art. 6 and 9; 3 days for antibiotics). */
+export const DISPENSE_WINDOW_DAYS = 15;
 const MAX_VALIDITY_DAYS = 365;
 const MAX_DIRECTIONS = 1000;
 
@@ -179,6 +181,7 @@ export class PrescribingService {
 
     const issuedAt = new Date();
     const validUntil = new Date(issuedAt.getTime() + validityDays * 86_400_000);
+    const dispenseUntil = new Date(issuedAt.getTime() + DISPENSE_WINDOW_DAYS * 86_400_000);
     const notes = input.notes?.trim();
 
     if (input.supersedesId) {
@@ -200,6 +203,7 @@ export class PrescribingService {
         supersedesId: input.supersedesId,
         issuedAt,
         validUntil,
+        dispenseUntil,
         refillsAllowed,
         overrideReason: needsReason.length ? overrideReason : null,
         medication: items.map((i) => productLabel(i.product)).join(' + '),
@@ -312,6 +316,8 @@ export function canonicalContent(rx: DocumentPrescription) {
     id: rx.id,
     issuedAt: rx.issuedAt.toISOString(),
     validUntil: rx.validUntil?.toISOString() ?? null,
+    // Only when set, so the hash of a document issued before it existed doesn't change.
+    ...(rx.dispenseUntil ? { dispenseUntil: rx.dispenseUntil.toISOString() } : {}),
     refillsAllowed: rx.refillsAllowed,
     patient: {
       id: rx.patient.id,

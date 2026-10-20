@@ -11,6 +11,8 @@ import { RefillResolver } from './refill.resolver';
 import { TreatmentPlanService } from './treatment-plan.service';
 import { PartnerOrdersResolver } from './partner-orders.resolver';
 import { PartnerOrdersCronController } from './partner-orders-cron.controller';
+import { LapsedPatientsCronController } from './lapsed-patients-cron.controller';
+import { LapsedPatientsService } from './lapsed-patients.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { MessagingModule } from '../messaging/messaging.module';
@@ -25,8 +27,8 @@ import { PrescriptionDocumentController } from './prescription-document.controll
 
 @Module({
   imports: [PrismaModule, AuditModule, MessagingModule, EmailModule, DosingModule, LabsModule, StripeModule, PushModule],
-  controllers: [PrescriptionDocumentController, PartnerOrdersCronController],
-  providers: [PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, OrderFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService, RefillService, RefillResolver, TreatmentPlanService],
+  controllers: [PrescriptionDocumentController, PartnerOrdersCronController, LapsedPatientsCronController],
+  providers: [LapsedPatientsService, PrescriptionsService, PrescriptionsResolver, PrescriptionFieldsResolver, OrderFieldsResolver, PrescribingService, PrescriptionDocumentService, OrdersService, PartnerOrdersService, PartnerOrdersResolver, ShipmentsService, RefillService, RefillResolver, TreatmentPlanService],
   exports: [PrescriptionsService, PrescribingService, OrdersService, PartnerOrdersService, ShipmentsService],
 })
 export class PrescriptionsModule {}

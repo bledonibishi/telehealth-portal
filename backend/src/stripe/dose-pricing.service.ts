@@ -4,13 +4,17 @@ import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConsultationKind, ProductCategory } from '../common/enums';
 import { planFor, planPriceEnvVars } from './plan-pricing';
+import { subscriptionAmount } from './billing-choice';
 
 export type PricedItem = { category: ProductCategory | string; titrationStep: number | null; stripePriceId: string | null };
 
 export interface DosePrice {
   product: string;
   dose: string;
+  /** The price when paid once. */
   amountCents: number;
+  /** The price each month on a subscription, which is less. */
+  subscriptionAmountCents: number;
   currency: string;
 }
 
@@ -84,7 +88,7 @@ export class DosePricingService {
     const prices = await Promise.all(
       strengths.map(async (s) => {
         const amount = await this.amountOf(s.stripePriceId!);
-        return amount ? { product: s.product.brandName ?? s.product.name, dose: s.label, ...amount } : null;
+        return amount ? { product: s.product.brandName ?? s.product.name, dose: s.label, ...amount, subscriptionAmountCents: subscriptionAmount(amount.amountCents) } : null;
       }),
     );
     return prices.filter((p): p is DosePrice => p !== null);

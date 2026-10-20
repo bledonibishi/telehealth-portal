@@ -474,6 +474,20 @@ describe('ConsultationsService', () => {
       expect(prisma.consultation.create).not.toHaveBeenCalled();
     });
 
+    it('creates a new consultation for a patient who paid again with newer answers than their last consultation', async () => {
+      withLead({ intakeSavedAt: new Date('2026-10-20T00:00:00Z') });
+      prisma.consultation.findFirst.mockResolvedValueOnce({ id: 'old', submittedAt: new Date('2026-10-14T00:00:00Z') }).mockResolvedValue(null); // the latest one, then nothing open
+      const result = await service.submitFromLead('patient-1');
+      expect(result).toEqual(expect.objectContaining({ id: 'new-1' }));
+    });
+
+    it('leaves it alone when the latest consultation is newer than the saved answers (a repeat of the same payment)', async () => {
+      withLead({ intakeSavedAt: new Date('2026-10-14T00:00:00Z') });
+      prisma.consultation.findFirst.mockResolvedValue({ id: 'new', submittedAt: new Date('2026-10-20T00:00:00Z') });
+      expect(await service.submitFromLead('patient-1')).toBeNull();
+      expect(prisma.consultation.create).not.toHaveBeenCalled();
+    });
+
     it('falls back to the portal when the answers are refused (for instance the consent wording changed)', async () => {
       withLead();
       consents.record.mockRejectedValue(new Error('The consent statement has been updated'));

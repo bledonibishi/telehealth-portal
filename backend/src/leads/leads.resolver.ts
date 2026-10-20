@@ -1,6 +1,6 @@
 import { Resolver, Query, Mutation, Args, ID, ResolveField, Parent, Context } from '@nestjs/graphql';
 import { LeadsService } from './leads.service';
-import { LeadModel, PreviousAssessmentModel } from './models/lead.model';
+import { LeadModel, PreviousAssessmentModel, ReturnOfferModel, ReturnSubscriptionModel } from './models/lead.model';
 import { PreviousAssessmentInput } from './dto/previous-assessment.input';
 import { CreateLeadInput } from './dto/create-lead.input';
 import { Authorized } from '../auth/decorators/authorized.decorator';
@@ -64,6 +64,16 @@ export class LeadsResolver {
   @Query(() => PreviousAssessmentModel, { nullable: true, description: 'The answers a returning visitor gave before and never paid on, to compare with today’s. Needs the email proof.' })
   previousAssessment(@Args('input') input: PreviousAssessmentInput) {
     return this.leadsService.previousAssessment(input);
+  }
+
+  @Query(() => ReturnOfferModel, { nullable: true, description: 'For a patient refunded on their first order whose prescription is still valid: what to order, and where to pay. Needs the email proof.' })
+  returnOffer(@Args('input') input: PreviousAssessmentInput) {
+    return this.leadsService.returnOffer(input);
+  }
+
+  @Mutation(() => ReturnSubscriptionModel, { nullable: true, description: 'Chooses to subscribe instead of paying once: the payment for the first month. Needs the email proof.' })
+  returnSubscription(@Args('input') input: PreviousAssessmentInput) {
+    return this.leadsService.returnSubscription(input);
   }
 
   @Mutation(() => LeadModel, { description: 'Go on with the answers saved earlier instead of answering again. Needs the email proof.' })

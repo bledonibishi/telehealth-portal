@@ -239,7 +239,7 @@ async function build(prisma: PrismaClient) {
     const dispatched = status === 'PENDING' || status === 'CANCELLED' ? null : daysAgo(ago);
     const created = await prisma.order.create({
       data: {
-        prescriptionId: rxId, patientId: p.id, sequence: seq, status, pharmacyRef: status === 'PENDING' ? null : `SHOW-PH-${rxId.slice(-5).toUpperCase()}`, shippingAddress: { line1: p.addressLine1, city: p.city, postcode: p.postcode, country: p.country },
+        prescriptionId: rxId, patientId: p.id, sequence: seq, status, pharmacyRef: status === 'PENDING' ? null : `SHOW-PH-${rxId.slice(-5).toUpperCase()}`, shippingAddress: { name: `${p.firstName} ${p.lastName}`, phone: p.phone ?? null, addressLine1: p.addressLine1, addressLine2: null, city: p.city, postcode: p.postcode, country: p.country },
         dispatchedAt: dispatched, carrier: dispatched ? 'DHL Express' : null, trackingNumber: dispatched ? `JD01460000${rxId.slice(-6).toUpperCase()}` : null, trackingUrl: dispatched ? 'https://example.com/track' : null,
         estimatedDeliveryFrom: dispatched ? new Date(dispatched.getTime() + 2 * DAY) : null, estimatedDeliveryTo: dispatched ? new Date(dispatched.getTime() + 3 * DAY) : null,
         outForDeliveryAt: status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED' ? hoursAgo(Math.max(ago * 24 - 60, 4)) : null, deliveredAt: status === 'DELIVERED' ? daysAgo(Math.max(ago - 3, 0)) : null,

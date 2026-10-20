@@ -3,7 +3,7 @@ import { Providers } from '@/components/providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Telehealth Portal — Clinician',
+  title: 'Omopharmacy — Clinician',
   description: 'CQC-regulated HRT / GLP-1 clinician portal',
 };
 
