@@ -11,7 +11,8 @@ type Message = { id: string; senderRole: string; content: string; sentAt: string
  */
 export function useUnreadMessages() {
   const { data } = useQuery(MY_CONVERSATION, { fetchPolicy: 'cache-and-network', pollInterval: 60_000 });
-  const messages: Message[] = (data?.myConsultations ?? []).flatMap((c: any) => c.messages ?? []);
+  // Both threads: the consultation's and the support one from before it, which the same query returns.
+  const messages: Message[] = [...(data?.myConsultations ?? []).flatMap((c: any) => c.messages ?? []), ...(data?.myPreConsultationMessages ?? [])];
   const unread = messages.filter((m) => m.senderRole !== 'PATIENT' && !m.readAt).length;
   const latest = messages.length ? messages.reduce((a, b) => (Date.parse(b.sentAt) > Date.parse(a.sentAt) ? b : a)) : null;
   return { unread, latest, messages };

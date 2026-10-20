@@ -88,6 +88,7 @@ export const MY_DOSE_SUMMARY = gql`
       current
       nextDoseId
       nextDoseAt
+      nextDoseForm
     }
   }
 `;

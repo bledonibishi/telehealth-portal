@@ -7,6 +7,7 @@ import { loadAssessment, mergeAssessment, saveAssessment } from '@/lib/storage';
 import { CONFIG, type ProductKind } from '@/lib/config';
 import { loadReferralCode } from '@/lib/referral';
 import { clearProgress, loadProgress, saveProgress } from '@/lib/quiz-progress';
+import { takeBmiCarry } from '@/lib/bmi-carry';
 import { track } from '@/lib/analytics';
 import { fetchIntake, hasAnswer, isVisible, prefillFromBmi, toAnswer, type IntakeQuestion, type IntakeValues } from '@/lib/intake';
 import { requestEmailCode, verifyEmailCode } from '@/lib/email-verification';
@@ -168,6 +169,8 @@ export default function Quiz({ product }: { product: ProductKind }) {
   const [restored, setRestored] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [calcErr, setCalcErr] = useState('');
+  // Height and weight brought from the BMI calculator on the home page (see lib/bmi-carry), shown filled in on that question.
+  const [carried, setCarried] = useState<{ h: number; w: number } | null>(null);
   const [detailsErr, setDetailsErr] = useState('');
   const [emailTaken, setEmailTaken] = useState(false);
   // A refunded patient whose prescription is still valid: the server's explanation, shown instead of the form.
@@ -218,6 +221,10 @@ export default function Quiz({ product }: { product: ProductKind }) {
       setSt(saved);
       setRestored(true);
     }
+    // Read once (the storage is cleared as it is read), so a second run of this effect must not wipe what the first found.
+    // A height and weight the patient already answered with stays theirs: the calculator only fills an empty question.
+    const fromCalculator = questions.some((qq) => qq.type === 'measure') ? takeBmiCarry() : null;
+    if (fromCalculator && !saved?.answers?.bmi) setCarried(fromCalculator);
     setHydrated(true);
   }, [product, questions]);
 
@@ -393,6 +400,7 @@ export default function Quiz({ product }: { product: ProductKind }) {
       return;
     }
     setCalcErr('');
+    setCarried(null); // answered now: from here on the saved answer is the one shown
     // The height and weight step opens the GLP-1 quiz, so it is where a visit starts (as in pick, for the other quizzes).
     if (Object.keys(st.answers).length === 0) track('quiz_started', { product });
     setRestored(false);
@@ -598,14 +606,16 @@ export default function Quiz({ product }: { product: ProductKind }) {
         <div className="thq-time">◷ Takes about 5 minutes</div>
         <h2 className="thq-q">{q.q}</h2>
         {q.help ? <p className="thq-help">{q.help}</p> : <div className="thq-spacer" />}
-        <div className="thq-fields">
+        {carried && <p className="thq-carried">Filled in from the BMI calculator. Change them if they aren’t exact.</p>}
+        {/* Keyed so the fields pick up the calculator's numbers when they arrive after the first render. */}
+        <div className="thq-fields" key={carried ? `${carried.h}-${carried.w}` : 'own'}>
           <div className="thq-field">
             <label htmlFor="thq-h">Height (cm)</label>
-            <input ref={hInputRef} id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168" defaultValue={known?.[1]} />
+            <input ref={hInputRef} id="thq-h" type="number" inputMode="decimal" min={120} max={230} placeholder="168" defaultValue={carried?.h ?? known?.[1]} />
           </div>
           <div className="thq-field">
             <label htmlFor="thq-w">Weight (kg)</label>
-            <input ref={wInputRef} id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92" defaultValue={known?.[2]} />
+            <input ref={wInputRef} id="thq-w" type="number" inputMode="decimal" min={35} max={300} placeholder="92" defaultValue={carried?.w ?? known?.[2]} />
           </div>
         </div>
         {calcErr && <div className="thq-error">{calcErr}</div>}

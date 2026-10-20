@@ -30,7 +30,7 @@ const COUNTRIES: Array<[string, string]> = [
 ];
 
 const money = (cents: number, currency: string | null) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'gbp').toUpperCase() }).format(cents / 100);
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'eur').toUpperCase() }).format(cents / 100);
 
 /**
  * The payment is made once per set of choices: the card form may be mounted twice in a row (development does it on purpose)
@@ -460,7 +460,7 @@ function CheckoutInner() {
   // What this order costs as the buyer chose to pay: once, or on a subscription for less.
   const subscribing = session?.billing === 'SUBSCRIPTION' && treatmentPrices?.subscription != null;
   const shownPrice = (subscribing ? treatmentPrices?.subscription : treatmentPrices?.once) ?? plan!.price;
-  const currencySymbol = (planAvailable && shownPrice.match(/^[^\d]+/)?.[0]) || '£';
+  const currencySymbol = (planAvailable && shownPrice.match(/^[^\d]+/)?.[0]) || '€';
   // The doctor's fee is part of the first payment, on its own line.
   const feeAmount = fee && treatmentPrices ? fee.amountCents / 100 : 0;
   const planAmount = parseAmount(shownPrice) + feeAmount;

@@ -7,6 +7,7 @@ import { MY_ORDERS } from '@/graphql/orders';
 import { Card, CardHeader } from '@/components/portal/Card';
 import { Icon } from '@/components/portal/Icon';
 import type { Plan } from './PlanHero';
+import { doseWords } from '@/lib/dose-words';
 
 type Step = { key: string; title: string; detail?: string; state: 'done' | 'now' | 'next' };
 
@@ -14,7 +15,7 @@ const on = (d?: string | Date | null) => (d ? format(new Date(d), 'd MMM yyyy') 
 
 /**
  * Where the patient is in their treatment, start to renewal, built from what has actually happened:
- * assessment → doctor review → prescription → first delivery → injections → review → renewal.
+ * assessment → doctor review → prescription → first delivery → doses → review → renewal.
  */
 export function TreatmentTimeline({ plan, journey }: { plan?: Plan | null; journey?: any }) {
   const { data: cData } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'cache-first' });
@@ -25,14 +26,15 @@ export function TreatmentTimeline({ plan, journey }: { plan?: Plan | null; journ
   const delivered = ((oData?.myOrders ?? []) as any[]).filter((o) => o.deliveredAt).sort((a, b) => Date.parse(a.deliveredAt) - Date.parse(b.deliveredAt))[0];
   const started = !!delivered || (plan?.dosesTaken ?? 0) > 0;
   const total = plan?.dosesPlanned ?? null;
+  const words = doseWords(plan?.form);
   const allTaken = total != null && (plan?.dosesTaken ?? 0) >= total;
 
   const facts: Array<Omit<Step, 'state'> & { done: boolean }> = [
     { key: 'assessment', title: 'Assessment', detail: first ? `Questionnaire sent ${on(first.submittedAt)}` : 'Your medical questionnaire', done: !!first },
     { key: 'review', title: 'Doctor review', detail: reviewed ? 'Reviewed by a doctor' : first ? 'A doctor is reviewing your answers' : undefined, done: reviewed },
     { key: 'rx', title: 'Prescription approved', detail: plan ? `${plan.productName}${plan.strength ? ` ${plan.strength}` : ''} · ${on(plan.startedAt)}` : undefined, done: !!plan },
-    { key: 'start', title: 'Treatment started', detail: delivered ? `First supply delivered ${on(delivered.deliveredAt)}` : started ? 'First injection logged' : 'When your first supply arrives', done: started },
-    { key: 'doses', title: 'Injections', detail: plan ? (total ? `${plan.dosesTaken} of ${total} taken` : `${plan.dosesTaken} taken so far`) : undefined, done: allTaken },
+    { key: 'start', title: 'Treatment started', detail: delivered ? `First supply delivered ${on(delivered.deliveredAt)}` : started ? `First ${words.one} logged` : 'When your first supply arrives', done: started },
+    { key: 'doses', title: words.calendar === 'Injections' ? 'Injections' : 'Doses', detail: plan ? (total ? `${plan.dosesTaken} of ${total} taken` : `${plan.dosesTaken} taken so far`) : undefined, done: allTaken },
     { key: 'checkin', title: 'Review with your doctor', detail: journey?.checkInState === 'READY' ? 'Your check-in is ready' : journey?.nextCheckInDueAt ? `Next check-in ${on(journey.nextCheckInDueAt)}` : 'A check-in every 4 weeks, before each new supply', done: false },
     { key: 'renewal', title: 'Renewal', detail: plan?.validUntil ? `Prescription runs until ${on(plan.validUntil)}` : 'Your doctor renews your prescription when it runs out', done: false },
   ];

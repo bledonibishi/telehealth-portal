@@ -48,6 +48,7 @@ export const MY_TREATMENT_PLAN = gql`
     myTreatmentPlan {
       prescriptionId
       kind
+      form
       programme
       productName
       genericName

@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useApolloClient, useLazyQuery, useMutation, useQuery } from '@apollo/client';
 import { format, formatDistanceToNowStrict, isToday, isTomorrow } from 'date-fns';
 import { notificationText, type NotificationTone } from '@telehealth/shared-types';
-import { MY_PROFILE, MY_PRESCRIPTION_HISTORY } from '@/graphql/portal';
+import { MY_PROFILE, MY_PRESCRIPTION_HISTORY, MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { doseWords } from '@/lib/dose-words';
 import { MY_SUPPLY_STATUS } from '@/graphql/supply';
 import { MY_BOOKINGS } from '@telehealth/booking';
 import { MY_DOSE_SUMMARY } from '@/graphql/dosing';
@@ -44,6 +45,8 @@ const DAY = 86_400_000;
 function useReminders(): Note[] {
   const { data: booked } = useQuery(MY_BOOKINGS, { fetchPolicy: 'cache-first', pollInterval: 120_000 });
   const { data: dose } = useQuery(MY_DOSE_SUMMARY, { fetchPolicy: 'cache-first' });
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-first' });
+  const words = doseWords(planData?.myTreatmentPlan?.form);
   const { data: supply } = useQuery(MY_SUPPLY_STATUS, { fetchPolicy: 'cache-first' });
   const { data: rx } = useQuery(MY_PRESCRIPTION_HISTORY, { fetchPolicy: 'cache-first' });
   const now = Date.now();
@@ -60,7 +63,7 @@ function useReminders(): Note[] {
 
   const next = dose?.myDoseSummary?.nextDoseAt;
   if (next && Date.parse(next) < now + DAY) {
-    notes.push({ key: 'dose', title: Date.parse(next) < now - DAY ? 'An injection is overdue' : 'Injection due today', detail: dose.myDoseSummary.current, href: '/doses', icon: 'syringe' });
+    notes.push({ key: 'dose', title: Date.parse(next) < now - DAY ? `Your ${words.one} is overdue` : `${words.one[0].toUpperCase()}${words.one.slice(1)} due today`, detail: dose.myDoseSummary.current, href: '/doses', icon: words.icon });
   }
 
   if (supply?.mySupplyStatus?.refillState === 'READY') notes.push({ key: 'refill', title: 'Time to order your next supply', detail: 'Your doctor approves it first', href: '/treatment-plan', icon: 'cart' });

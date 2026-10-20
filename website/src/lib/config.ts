@@ -8,11 +8,9 @@ export const CONFIG = {
   PLAY_STORE_URL: process.env.NEXT_PUBLIC_PLAY_STORE_URL ?? '',
   CONTACT: {
     email: 'primaverahealthcare@gmail.com',
-    phones: [
-      { label: 'Phone (Kosovo)', number: '+383 49 696 967' },
-      { label: 'Phone (Germany)', number: '+49 177 4014024' },
-    ],
-    whatsapp: '+49 177 4014024',
+    // No public phone or WhatsApp number until the business has one; the contact section shows only what is set here.
+    phones: [] as { label: string; number: string }[],
+    whatsapp: '',
   },
   PLANS: {
     // Internal keys stay HRT_STARTER / HRT_COMPLETE (they're in links and saved checkouts);
@@ -59,7 +57,7 @@ export const CONFIG = {
       name: 'TRT Standard',
       desc: 'Testosterone replacement therapy',
       // Set the real monthly price here (it must match the Stripe price above).
-      price: process.env.NEXT_PUBLIC_PRICE_TRT_STANDARD ?? '£—',
+      price: process.env.NEXT_PUBLIC_PRICE_TRT_STANDARD ?? '€—',
       per: '/mo',
     },
   },
@@ -67,8 +65,9 @@ export const CONFIG = {
   IMAGES: {
     hero: 'https://images.unsplash.com/photo-1624486217002-846e654ac969?auto=format&fit=crop&w=1400&q=80',
     bmi: 'https://images.unsplash.com/photo-1534180477871-5d6cc81f3920?auto=format&fit=crop&w=1200&q=80',
-    products: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=1200&q=80',
-    contact: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=1200&q=80',
+    // The men's health card: a male doctor.
+    'p-trt': 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=1200&q=80',
+    contact: 'https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?auto=format&fit=crop&w=1200&q=80',
     'p-hrt-starter': 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=800&q=80',
     'p-hrt-complete': 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=800&q=80',
     'p-wegovy': 'https://images.unsplash.com/photo-1745939921744-ba8ef27940bf?auto=format&fit=crop&w=800&q=80',

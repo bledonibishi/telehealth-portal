@@ -128,7 +128,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     generic: 'Testosterone gel 2%',
     blurb: 'A daily testosterone gel applied to the skin to restore healthy levels.',
     format: 'Daily gel · 60 g pump',
-    image: 'products',
+    image: 'p-trt',
     doses: [
       { label: '20 mg (2 pumps)', pack: '60 g metered-dose pump' },
       { label: '40 mg (4 pumps)', pack: '60 g metered-dose pump' },
@@ -141,7 +141,7 @@ export const STORE_PRODUCTS: StoreProduct[] = [
     generic: 'Testosterone (mixed esters)',
     blurb: 'A periodic injection of testosterone esters for steady, long-acting levels.',
     format: 'Injection',
-    image: 'products',
+    image: 'p-trt',
     doses: [{ label: '250 mg/mL', pack: '1 mL ampoule' }],
   },
 ];

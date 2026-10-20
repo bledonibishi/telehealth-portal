@@ -507,7 +507,7 @@ describe('DosingService.sendReminders', () => {
 });
 
 describe('DosingService.summaryFor', () => {
-  const item = { id: 'item-1', product: { name: 'Semaglutide', brandName: 'Wegovy' }, strength: { label: '0.25 mg' } };
+  const item = { id: 'item-1', product: { name: 'Semaglutide', brandName: 'Wegovy', form: 'INJECTION_PEN' }, strength: { label: '0.25 mg' } };
   const build = (rx: any, next: any) => {
     const prisma = makePrisma() as any;
     prisma.prescription.findFirst = jest.fn().mockResolvedValue(rx);
@@ -518,14 +518,22 @@ describe('DosingService.summaryFor', () => {
   it('names the current dose and gives the date of the next injection', async () => {
     const at = new Date(Date.now() + 3 * DAY);
     const { service, prisma } = build({ medication: 'Semaglutide', dosage: '0.25 mg', items: [item] }, { id: 'ev-1', scheduledFor: at, prescriptionItem: item });
-    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: 'ev-1', nextDoseAt: at });
+    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: 'ev-1', nextDoseAt: at, nextDoseForm: 'INJECTION_PEN' });
     // only the patient's own, still-scheduled doses of the active prescription
     expect(prisma.doseEvent.findFirst.mock.calls[0][0].where).toMatchObject({ patientId: 'p-1', prescriptionItemId: { in: ['item-1'] }, status: 'SCHEDULED' });
   });
 
+  it('names the form of the next dose’s own medicine when a prescription holds two (a gel and a capsule)', async () => {
+    const gel = { id: 'item-gel', product: { name: 'Oestrogel', brandName: null, form: 'GEL' }, strength: { label: '0.75 mg' } };
+    const capsule = { id: 'item-cap', product: { name: 'Utrogestan', brandName: null, form: 'CAPSULE' }, strength: { label: '100 mg' } };
+    const at = new Date(Date.now() + DAY);
+    const { service } = build({ medication: 'HRT', dosage: '', items: [gel, capsule] }, { id: 'ev-2', scheduledFor: at, prescriptionItem: capsule });
+    expect(await service.summaryFor('p-1')).toMatchObject({ current: 'Utrogestan 100 mg', nextDoseForm: 'CAPSULE' });
+  });
+
   it('still shows the dose when no further dose has been scheduled yet', async () => {
     const { service } = build({ medication: 'Semaglutide', dosage: '0.25 mg', items: [item] }, null);
-    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: undefined, nextDoseAt: undefined });
+    expect(await service.summaryFor('p-1')).toEqual({ current: 'Wegovy 0.25 mg', nextDoseId: undefined, nextDoseAt: undefined, nextDoseForm: 'INJECTION_PEN' });
   });
 
   it('is null without an active prescription', async () => {

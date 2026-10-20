@@ -352,6 +352,7 @@ export class CheckoutService {
       firstName: patient.firstName,
       email: patient.email,
       referralLink: await this.referrals.referralLinkFor(patient.id),
+      referralRewardLabel: this.referrals.rewardLabel(),
     };
   }
 

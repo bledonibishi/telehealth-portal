@@ -5,7 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useApolloClient } from '@apollo/client';
 import { clearToken, isAuthenticated } from '@/lib/auth';
-import { Icon, Logo } from '@/components/portal/Icon';
+import { Icon } from '@/components/portal/Icon';
+import { BrandMark } from '@/components/portal/BrandMark';
 import { OnboardingChatProvider, useOpenOnboardingChat } from '@/components/onboarding/OnboardingChat';
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
@@ -46,7 +47,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
     <OnboardingChatProvider>
       <div className="min-h-screen bg-slate-50">
         <header className="h-14 px-4 flex items-center justify-between border-b border-slate-100 bg-white">
-          <Link href="/onboarding" className="flex items-center gap-2 text-ink-900"><Logo className="w-7 h-7" /><span className="font-bold text-base tracking-tight">Omopharmacy</span></Link>
+          <Link href="/onboarding" aria-label="Omo Pharmacy"><BrandMark size={28} textClassName="text-base" /></Link>
           <div className="flex items-center gap-2">
             <MessageUsButton />
             <div ref={menuRef} className="relative">

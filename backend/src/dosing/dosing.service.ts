@@ -11,6 +11,7 @@ import { DosePattern, dosePattern, nextDoseDates } from './dose-pattern';
 import { missedStreak, needsRetitrationReview } from './missed-doses';
 import { MissedDoseAlertModel } from './models/missed-dose-alert.model';
 import { DoseSummaryModel } from './models/dose-summary.model';
+import { DOSE_EARLY_LOG_HOURS } from '@telehealth/shared-types';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -23,7 +24,7 @@ const FRESH_PRESCRIPTION_MS = 7 * 86_400_000;
 const MISSED_GRACE_HOURS = 24;
 // A dose can be logged as taken from its own day. The app is strict by the patient's calendar day; the server cannot know the
 // patient's time zone, so it only refuses what is clearly ahead, with slack for a patient logging in the small hours.
-export const FUTURE_DOSE_SLACK_HOURS = 12;
+export const FUTURE_DOSE_SLACK_HOURS = DOSE_EARLY_LOG_HOURS;
 // How far ahead of a dose we email the patient a reminder.
 const REMINDER_WINDOW_HOURS = 24;
 
@@ -185,7 +186,7 @@ export class DosingService {
     const rx = await this.prisma.prescription.findFirst({
       where: { patientId, status: PrescriptionStatus.ACTIVE },
       orderBy: { issuedAt: 'desc' },
-      select: { medication: true, dosage: true, items: { select: { id: true, product: { select: { name: true, brandName: true } }, strength: { select: { label: true } } } } },
+      select: { medication: true, dosage: true, items: { select: { id: true, product: { select: { name: true, brandName: true, form: true } }, strength: { select: { label: true } } } } },
     });
     if (!rx) return null;
 
@@ -196,7 +197,7 @@ export class DosingService {
     });
     const item = next?.prescriptionItem ?? rx.items[0];
     const current = item ? `${item.product.brandName ?? item.product.name} ${item.strength.label}` : `${rx.medication} ${rx.dosage}`.trim();
-    return { current, nextDoseId: next?.id, nextDoseAt: next?.scheduledFor };
+    return { current, nextDoseId: next?.id, nextDoseAt: next?.scheduledFor, nextDoseForm: (item?.product.form as ProductForm | undefined) ?? null };
   }
 
   /**

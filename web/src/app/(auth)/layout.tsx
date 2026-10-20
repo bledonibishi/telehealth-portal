@@ -1,6 +1,8 @@
+import { BrandMark } from '@/components/portal/BrandMark';
+
 // Split-screen shell for every sign-in page: the brand on the left, the form on the right.
 // To use a photo, save it as web/public/auth/hero.jpg; until then the gradient shows.
-const BACKDROP = 'linear-gradient(to bottom right, rgba(11,26,61,.88), rgba(19,78,74,.78)), url(/auth/hero.jpg)';
+const BACKDROP = 'linear-gradient(to bottom right, rgba(6,31,30,.92), rgba(12,111,106,.8)), url(/auth/hero.jpg)';
 
 // One 15 s loop, five seconds per scene: a line drawing (a doctor, a treatment pen, a parcel) that draws itself,
 // holds, and is rubbed out. The matching line of the list below brightens while its drawing is on screen.
@@ -66,10 +68,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-brand-500/20 blur-3xl" aria-hidden />
         <div className="absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-ink-500/20 blur-3xl" aria-hidden />
 
-        <div className="relative flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white p-1.5"><img src="/omo-logo.png" alt="" className="h-full w-full" /></span>
-          <span className="font-bold text-3xl tracking-tight">Omopharmacy</span>
-        </div>
+        <BrandMark size={40} tone="light" textClassName="text-2xl" className="relative" />
 
         <div className="relative max-w-xl">
           <h2 className="text-3xl lg:text-4xl xl:text-5xl font-semibold leading-tight tracking-tight">Your care, all in one place.</h2>
@@ -91,8 +90,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <main className="flex flex-1 items-center justify-center px-4 md:px-8 py-10 md:py-12">
         <div className="w-full max-w-sm">
           <div className="md:hidden text-center mb-8">
-            <img src="/omo-logo.png" alt="" className="h-14 w-14 mx-auto mb-2" />
-            <span className="font-bold text-2xl text-slate-900 tracking-tight">Omopharmacy</span>
+            <BrandMark size={36} textClassName="text-2xl" />
             <p className="text-sm text-slate-500 mt-1">Patient portal</p>
           </div>
           <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 md:p-0 md:rounded-none md:shadow-none md:border-0">{children}</div>

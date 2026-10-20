@@ -1,4 +1,5 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { MonthlyCheckInState } from '../../weight-journey/models/weight-journey.model';
 import { CheckInOutcome, CheckInStatus, ConsultationKind, RedFlagSeverity } from '../../common/enums';
 import { QuizAnswerType } from '../../consultations/models/consultation.model';
 import { PrescriptionModel } from '../../prescriptions/models/prescription.model';
@@ -108,4 +109,22 @@ export class CheckInModel {
 
   @Field({ nullable: true, description: 'The link the patient uses to complete their check-in. Only set while a check-in is SENT and awaiting a response.' })
   checkInUrl?: string;
+}
+
+@ObjectType('PatientCheckInStatus', { description: 'Where the signed-in patient is with their monthly check-in, for any programme' })
+export class CheckInStatusModel {
+  @Field(() => MonthlyCheckInState)
+  state: MonthlyCheckInState;
+
+  @Field({ nullable: true, description: 'Opens the check-in; only while it is READY' })
+  url?: string;
+
+  @Field({ nullable: true, description: 'When the open one was due (READY), or when the next one is (UPCOMING)' })
+  nextDueAt?: Date;
+
+  @Field({ nullable: true })
+  lastCompletedAt?: Date;
+
+  @Field({ nullable: true, description: 'A sent check-in ran out before it was done; the patient should ask for a new link' })
+  linkExpired?: boolean;
 }
