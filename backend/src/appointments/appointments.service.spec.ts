@@ -29,6 +29,128 @@ function build() {
   return { service, prisma, audit, email, bookings, notifier };
 }
 
+describe('AppointmentsService paid consultations', () => {
+  function paid(fee: string | undefined, invoice?: () => Promise<any>) {
+    const b = build();
+    const billing = { createConsultInvoice: invoice ? jest.fn(invoice) : jest.fn().mockResolvedValue({ invoiceId: 'in_1', url: 'https://pay/in_1', amountCents: 3000, currency: 'eur', paid: false }), voidSupplyInvoice: jest.fn() };
+    const svc: any = b.service;
+    svc.config = { get: jest.fn((k: string) => (k === 'CONSULT_FEE_CENTS' ? fee : undefined)) };
+    svc.moduleRef = { get: jest.fn(() => billing) };
+    b.prisma.appointmentRequest.update = jest.fn(({ data }) => Promise.resolve(row({ status: 'AWAITING_PAYMENT', ...data })));
+    b.prisma.appointmentRequest.findFirst = jest.fn();
+    return { ...b, svc, billing };
+  }
+
+  it('is free when no fee is set', async () => {
+    const { svc, prisma, billing } = paid(undefined);
+    await svc.request('p-1', { reason: 'CHECK_UP' });
+    expect(prisma.appointmentRequest.create.mock.calls[0][0].data.status).toBeUndefined();
+    expect(billing.createConsultInvoice).not.toHaveBeenCalled();
+  });
+
+  it('waits for payment, with an invoice, when a routine consultation is charged', async () => {
+    const { svc, prisma, billing } = paid('3000');
+    const res = await svc.request('p-1', { reason: 'CHECK_UP' });
+    expect(prisma.appointmentRequest.create.mock.calls[0][0].data).toMatchObject({ status: 'AWAITING_PAYMENT', paymentAmountCents: 3000 });
+    expect(billing.createConsultInvoice).toHaveBeenCalled();
+    expect(res.status).toBe('AWAITING_PAYMENT');
+    expect(res.paymentUrl).toBe('https://pay/in_1');
+  });
+
+  it('never charges for a symptom, pain, urgency or a warning sign', async () => {
+    for (const input of [{ reason: 'SIDE_EFFECT' }, { reason: 'PAIN' }, { reason: 'CHECK_UP', urgent: true }, { reason: 'QUESTION', redFlags: ['chest_pain'] }]) {
+      const { svc, prisma } = paid('3000');
+      await svc.request('p-1', input);
+      expect(prisma.appointmentRequest.create.mock.calls[0][0].data.status).toBeUndefined();
+    }
+  });
+
+  it('goes to the doctors free when the invoice cannot be made', async () => {
+    const { svc, prisma } = paid('3000', () => Promise.reject(new Error('stripe down')));
+    const res = await svc.request('p-1', { reason: 'CHECK_UP' });
+    expect(prisma.appointmentRequest.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
+    expect(res.status).toBe('REQUESTED');
+  });
+
+  it('releases the request to the doctors when the invoice is paid, once', async () => {
+    const { svc, prisma } = paid('3000');
+    prisma.appointmentRequest.findFirst.mockResolvedValue(row({ status: 'AWAITING_PAYMENT' }));
+    expect(await svc.markPaid('in_1')).toBe(true);
+    expect(prisma.appointmentRequest.updateMany).toHaveBeenCalledWith({ where: { id: 'a-1', status: 'AWAITING_PAYMENT' }, data: { status: 'REQUESTED', paidAt: expect.any(Date) } });
+    prisma.appointmentRequest.findFirst.mockResolvedValue(null);
+    expect(await svc.markPaid('in_1')).toBe(false);
+  });
+
+  describe('refunds', () => {
+    const paidRow = (over: Record<string, unknown> = {}) => row({ status: 'SCHEDULED', paidAt: new Date(), paymentInvoiceId: 'in_1', scheduledFor: new Date(Date.now() + 86_400_000), refundedAt: null, refundOfferedAt: null, ...over });
+    function refundable(found: any) {
+      const b = paid('3000');
+      b.prisma.appointmentRequest.findUnique.mockResolvedValue(found);
+      b.prisma.appointmentRequest.findUniqueOrThrow.mockResolvedValue(found);
+      (b.billing as any).refundConsultInvoice = jest.fn().mockResolvedValue({ refundId: 're_1' });
+      return b;
+    }
+
+    it('refunds a patient who cancels before the consultation starts', async () => {
+      const { svc, prisma, billing } = refundable(paidRow());
+      await svc.cancelMine('p-1', 'a-1');
+      expect((billing as any).refundConsultInvoice).toHaveBeenCalledWith('in_1');
+      expect(prisma.appointmentRequest.updateMany).toHaveBeenCalledWith({ where: { id: 'a-1', paidAt: { not: null }, refundedAt: null }, data: { refundedAt: expect.any(Date) } });
+    });
+
+    it('does not refund, or cancel, once the consultation has started', async () => {
+      const { svc, billing, bookings } = refundable(paidRow({ scheduledFor: new Date(Date.now() - 60_000) }));
+      await expect(svc.cancelMine('p-1', 'a-1')).rejects.toThrow(/already started/);
+      expect((billing as any).refundConsultInvoice).not.toHaveBeenCalled();
+      expect(bookings.cancelFor).not.toHaveBeenCalled();
+    });
+
+    it('keeps the request open when the refund fails', async () => {
+      const { svc, billing, bookings, prisma } = refundable(paidRow());
+      (billing as any).refundConsultInvoice.mockRejectedValue(new Error('stripe down'));
+      await expect(svc.cancelMine('p-1', 'a-1')).rejects.toThrow(/couldn’t refund/);
+      expect(bookings.cancelFor).not.toHaveBeenCalled();
+      expect(prisma.appointmentRequest.updateMany).toHaveBeenLastCalledWith({ where: { id: 'a-1' }, data: { refundedAt: null } });
+    });
+
+    it('asks the patient to choose when the doctor cancels a booked, paid time', async () => {
+      const { svc, prisma, billing } = refundable(paidRow());
+      await svc.cancel('doc-1', 'a-1', 'Sorry, I am ill');
+      expect((billing as any).refundConsultInvoice).not.toHaveBeenCalled();
+      expect(prisma.appointmentRequest.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED', refundOfferedAt: expect.any(Date) }) }));
+    });
+
+    it('refunds at once when the doctor turns down a paid request that had no time yet', async () => {
+      const { svc, billing } = refundable(paidRow({ status: 'REQUESTED', scheduledFor: null }));
+      await svc.cancel('doc-1', 'a-1', 'Answered in messages');
+      expect((billing as any).refundConsultInvoice).toHaveBeenCalledWith('in_1');
+    });
+
+    it('lets the patient take the refund, or keep the payment for a new time', async () => {
+      const offered = paidRow({ status: 'CANCELLED', refundOfferedAt: new Date(), scheduledFor: null });
+      const a = refundable(offered);
+      await a.svc.chooseRefund('p-1', 'a-1');
+      expect((a.billing as any).refundConsultInvoice).toHaveBeenCalledWith('in_1');
+      const b = refundable(offered);
+      await b.svc.chooseReschedule('p-1', 'a-1');
+      expect(b.prisma.appointmentRequest.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED', refundOfferedAt: null }) }));
+      expect((b.billing as any).refundConsultInvoice).not.toHaveBeenCalled();
+    });
+
+    it('has nothing to choose when no refund was offered', async () => {
+      const { svc } = refundable(paidRow());
+      await expect(svc.chooseRefund('p-1', 'a-1')).rejects.toThrow(/nothing to choose/);
+    });
+  });
+
+  it('withdraws unpaid requests, with their invoices, after a week', async () => {
+    const { svc, prisma, billing } = paid('3000');
+    prisma.appointmentRequest.findMany.mockResolvedValue([row({ status: 'AWAITING_PAYMENT', paymentInvoiceId: 'in_1' })]);
+    expect(await svc.expireUnpaid()).toBe(1);
+    expect(billing.voidSupplyInvoice).toHaveBeenCalledWith('in_1');
+  });
+});
+
 describe('AppointmentsService', () => {
   describe('request', () => {
     it('saves the triaged urgency, never one the client sent, and audits it', async () => {

@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 
 const STAGES = ['Preparing', 'Shipped', 'On the way', 'Delivered'] as const;
-const STAGE_OF: Record<string, number> = { PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
+const STAGE_OF: Record<string, number> = { AWAITING_PAYMENT: 0, PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
 const WHEN: Array<keyof Order> = ['createdAt', 'dispatchedAt', 'outForDeliveryAt', 'deliveredAt'];
 
 type Order = { status: string; createdAt?: string | null; dispatchedAt?: string | null; outForDeliveryAt?: string | null; deliveredAt?: string | null };
@@ -27,6 +27,7 @@ export function OrderTracker({ order }: { order: Order }) {
 }
 
 export const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
+  AWAITING_PAYMENT: { label: 'Awaiting your payment', cls: 'bg-amber-50 text-amber-800' },
   PENDING: { label: 'Preparing', cls: 'bg-amber-50 text-amber-700' },
   DISPATCHED: { label: 'Shipped', cls: 'bg-emerald-50 text-emerald-700' },
   OUT_FOR_DELIVERY: { label: 'On the way', cls: 'bg-emerald-50 text-emerald-700' },

@@ -1,5 +1,16 @@
 export const BRAND_NAME = 'Omopharmacy';
 
+/**
+ * The logo at the top of every email. Mail apps load images from a public https address only, so the file
+ * (public/omo-logo.png in the patient app) is linked through EMAIL_LOGO_URL; without it the letter tile stays.
+ * toText() drops this cell by its width:36px.
+ */
+function logoCell(): string {
+  const url = process.env.EMAIL_LOGO_URL?.trim();
+  if (url) return `<td style="width:36px;height:36px"><img src="${escapeHtml(url)}" width="36" height="36" alt="" style="display:block;border:0"></td>`;
+  return `<td style="width:36px;height:36px;background:#1E4FD8;border-radius:10px;text-align:center;vertical-align:middle;font:800 18px/36px ${FONT};color:#FFFFFF">O</td>`;
+}
+
 /** Patient-supplied text (names) ends up in HTML emails: escape it so a name can't inject markup. */
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -109,7 +120,7 @@ export function emailLayout({ preheader, body, note, audience = 'patient' }: Lay
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:${audience === 'partner' ? 640 : 520}px">
         <tr><td style="padding:0 4px 20px">
           <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="width:36px;height:36px;background:#1E4FD8;border-radius:10px;text-align:center;vertical-align:middle;font:800 18px/36px ${FONT};color:#FFFFFF">O</td>
+            ${logoCell()}
             <td style="padding-left:10px;font:800 20px ${FONT};letter-spacing:-0.3px;color:#0E1A2B">${BRAND_NAME}</td>
           </tr></table>
         </td></tr>

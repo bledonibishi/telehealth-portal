@@ -429,6 +429,7 @@ describe('OrdersService', () => {
     it.each([
       ['cancelled', { ...ACTIVE_RX, status: 'CANCELLED' }, /cancelled and can’t be dispensed/],
       ['expired', { ...ACTIVE_RX, validUntil: new Date(Date.now() - 1000) }, /expired/],
+      ['past the pharmacy’s 15 days, though the treatment runs on', { ...ACTIVE_RX, dispenseUntil: new Date(Date.now() - 1000), validUntil: new Date(Date.now() + 10 * 86_400_000) }, /expired/],
     ])('refuses a %s prescription', async (_name, prescription, message) => {
       prisma.order.findUnique.mockResolvedValue({ id: 'o-1', status: 'PENDING', patient: PATIENT, prescription });
       await expect(service.dispatch('prov-1', 'o-1', 'PH-9')).rejects.toThrow(message);
@@ -545,7 +546,7 @@ describe('OrdersService cancelling', () => {
     const tx: any = { order: { findMany: prisma.order.findMany, updateMany: prisma.order.updateMany } };
     await service.cancelPendingFor('rx-1', 'Superseded by a new prescription', tx);
     expect(prisma.order.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['o-1', 'o-2'] }, status: 'PENDING' },
+      where: { id: { in: ['o-1', 'o-2'] }, status: { in: ['PENDING', 'AWAITING_PAYMENT'] } },
       data: expect.objectContaining({ status: 'CANCELLED', cancelReason: 'Superseded by a new prescription' }),
     });
     expect(partner.markCancelled).toHaveBeenCalledWith(['o-1', 'o-2'], tx);

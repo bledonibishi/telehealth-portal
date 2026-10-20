@@ -13,6 +13,15 @@ import { EmptyState } from '@/components/portal/EmptyState';
 import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
 import { SkeletonCard } from '@telehealth/loading';
 
+const formatMoney = (cents: number | null | undefined, currency: string | null | undefined) => {
+  if (cents == null) return 'now';
+  try {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'eur').toUpperCase() }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency ?? ''}`;
+  }
+};
+
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {
   const { data, loading } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network', pollInterval: ORDER_POLL_MS });
@@ -48,6 +57,19 @@ export default function OrdersPage() {
                 <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${ORDER_STATUS[o.status]?.cls}`}>{ORDER_STATUS[o.status]?.label ?? o.status}</span>
               </div>
               {o.status !== 'CANCELLED' && <div className="mt-5 max-w-xl"><OrderTracker order={o} /></div>}
+              {o.status === 'AWAITING_PAYMENT' && (
+                <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">Your doctor approved this supply. Pay for it and it goes to the pharmacy.</p>
+                  {o.paymentUrl ? (
+                    <a href={o.paymentUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center rounded-lg bg-ink-700 px-4 py-2 text-sm font-semibold text-white hover:bg-ink-800">
+                      Pay {formatMoney(o.paymentAmountCents, o.paymentCurrency)}
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-amber-800">We’re preparing your payment link. It shows here in a moment, and we’ll email it to you too.</p>
+                  )}
+                  <p className="mt-2 text-xs text-amber-800">Nothing is charged to your card automatically. Any account credit is taken off first.</p>
+                </div>
+              )}
               {o.status === 'PENDING' && <p className="mt-4 text-sm text-slate-600">Your pharmacy is preparing your order. We&apos;ll email you as soon as it&apos;s on its way.</p>}
               {(o.status === 'DISPATCHED' || o.status === 'OUT_FOR_DELIVERY') && expectedDelivery(o) && (
                 <p className="mt-4 text-sm text-ink-900">

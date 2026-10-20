@@ -11,6 +11,7 @@ import { SkeletonCard } from '../../components/Skeleton';
 
 const STEPS = ['Processing', 'Shipped', 'On the way', 'Delivered'] as const;
 const STATUS: Record<string, { label: string; tone: 'warn' | 'info' | 'good' | 'plain' | 'danger'; step: number }> = {
+  AWAITING_PAYMENT: { label: 'Awaiting payment', tone: 'warn', step: 0 },
   PENDING: { label: 'Processing', tone: 'warn', step: 0 },
   DISPATCHED: { label: 'Shipped', tone: 'info', step: 1 },
   OUT_FOR_DELIVERY: { label: 'On the way', tone: 'info', step: 2 },
@@ -106,6 +107,12 @@ export function OrdersScreen({ navigation }: any) {
                   <Pill label={st.label} tone={st.tone} />
                 </View>
                 {st.step >= 0 && <Tracker step={st.step} />}
+                {o.status === 'AWAITING_PAYMENT' && (
+                  <View style={{ marginTop: 10, gap: 8 }}>
+                    <Notice tone="warn">Your doctor approved this supply. Pay for it and it goes to the pharmacy. Nothing is charged to your card automatically.</Notice>
+                    {o.paymentUrl ? <Button label={`Pay ${o.paymentAmountCents != null ? `${(o.paymentAmountCents / 100).toFixed(2)} ${(o.paymentCurrency ?? '').toUpperCase()}` : 'now'}`} onPress={() => openLink(o.paymentUrl)} /> : <Text style={styles.muted}>We’re preparing your payment link. It shows here in a moment.</Text>}
+                  </View>
+                )}
                 {o.status !== 'CANCELLED' && (
                   <Text style={styles.address}>
                     {sent ? (o.status === 'PENDING' ? 'Delivering to' : 'Sent to') : 'Will be delivered to'}: <Text style={styles.bold}>{sent ? oneLine(sent) : home ? oneLine(home) : 'the address on your profile'}</Text>

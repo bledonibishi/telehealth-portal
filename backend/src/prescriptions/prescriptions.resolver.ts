@@ -248,6 +248,12 @@ export class PrescriptionsResolver {
     return this.ordersService.markDelivered(user.id, id);
   }
 
+  @Authorized(...DELIVERY_CONFIRMERS)
+  @Mutation(() => OrderModel, { description: 'The parcel on its way came back to the pharmacy: closes the order and pays out a refund that was waiting for it' })
+  markOrderReturned(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
+    return this.ordersService.markReturned(user.id, id);
+  }
+
   // Cancelling is for our team: the patient has paid, so it carries a refund decision the pharmacy doesn't make.
   @Authorized(...PRESCRIBERS)
   @Mutation(() => OrderModel, { description: 'Stop an order that has not been dispatched' })

@@ -222,6 +222,18 @@ describe('PrescribingService.issue', () => {
     expect(dosing.generateForItem).toHaveBeenCalledWith(item, 'p-1', expect.any(Date), db);
   });
 
+  it('lets a pharmacy fill it for 15 days after it was issued, while the treatment still runs for its own validity', async () => {
+    const { db, service } = setup([]);
+    await service.issue(
+      { patientId: 'p-1', prescriberId: 'd-1', kind: 'GLP1' as any, answers: [], items: [{ productId: 'sema', strengthId: 'str-2', quantity: 1, directions: 'Weekly' }] },
+      db,
+    );
+    const data = db.prescription.create.mock.calls[0][0].data;
+    const day = 86_400_000;
+    expect(Math.round((data.dispenseUntil.getTime() - data.issuedAt.getTime()) / day)).toBe(15);
+    expect(Math.round((data.validUntil.getTime() - data.issuedAt.getTime()) / day)).toBe(30); // the treatment is not shortened
+  });
+
   describe('a first prescription above the starting dose', () => {
     const order = { patientId: 'p-1', kind: 'GLP1' as any, answers: [], items: [{ productId: 'sema', strengthId: 'str-2', quantity: 1, directions: 'Weekly' }] };
     const onboarding = (assessment: object | undefined) => ({

@@ -24,6 +24,15 @@ export const ME_BASIC_INFO = gql`
   }
 `;
 
+export const ME_BILLING = gql`
+  query MeBilling {
+    me {
+      id
+      paysPerSupply
+    }
+  }
+`;
+
 export const ME_NAME = gql`
   query MeName {
     me {

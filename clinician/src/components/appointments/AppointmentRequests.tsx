@@ -76,6 +76,11 @@ function Actions({ a }: { a: any }) {
       )}
       {mode === 'cancel' && (
         <form onSubmit={decline} className="flex flex-wrap gap-2 max-w-2xl">
+          {a.paid && !a.refundedAt && (
+            <p className="basis-full text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+              {a.status === 'SCHEDULED' ? t('The patient paid for this. They will be asked to choose a refund or a new time.') : t('The patient paid for this. They will be refunded in full.')}
+            </p>
+          )}
           <input required placeholder={t('Why? The patient sees this, e.g. “Answered in messages”')} value={note} onChange={(e) => setNote(e.target.value)} className={`${input} flex-1 min-w-[16rem]`} />
           <button disabled={busy} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium disabled:opacity-50">{t('Turn down')}</button>
           <button type="button" onClick={() => setMode(null)} className="text-sm text-gray-500">{t('Cancel')}</button>

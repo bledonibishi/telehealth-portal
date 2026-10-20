@@ -132,3 +132,86 @@ describe('BillingService.refundLatestPayment', () => {
     expect(await billingWith(broken).refundLatestPayment(PATIENT)).toMatch(/Billing update failed/);
   });
 });
+
+describe('a subscription bought at the subscriber price keeps its 10% when the dose changes', () => {
+  // The patient pays 90% of 199.00 (179.10) on an inline price of product prod_1.
+  function discountedStripe(newFull: number, amountPaid = 17910) {
+    return {
+      subscriptions: {
+        retrieve: jest.fn().mockResolvedValue({
+          id: 'sub_1', status: 'active', metadata: { billing: 'SUBSCRIPTION' },
+          items: { data: [{ id: 'si_1', price: { id: 'price_anon', product: 'prod_1', unit_amount: 17910, currency: 'eur' } }] },
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      prices: { retrieve: jest.fn().mockResolvedValue({ id: 'price_new', product: 'prod_2', unit_amount: newFull, currency: 'eur', recurring: { interval: 'month' } }) },
+      invoices: { list: jest.fn().mockResolvedValue({ data: [{ id: 'in_1', amount_paid: amountPaid, currency: 'eur', payment_intent: 'pi_1' }] }) },
+      refunds: { create: jest.fn().mockResolvedValue({ id: 're_1' }) },
+    };
+  }
+
+  it('bills the cheaper dose at 90% of its price, not its full price, and refunds the difference between what is paid', async () => {
+    const stripe = discountedStripe(14900); // 90% = 134.10
+    await billingWith(stripe).moveToPrescribedPrice(PATIENT, 'price_new');
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
+      items: [{ id: 'si_1', price_data: { currency: 'eur', product: 'prod_2', unit_amount: 13410, recurring: { interval: 'month' } } }],
+      proration_behavior: 'none',
+    });
+    expect(stripe.refunds.create.mock.calls[0][0].amount).toBe(4500); // 179.10 - 134.10
+  });
+
+  it('compares the discounted amounts: a dearer dose is still left for the patient to agree to', async () => {
+    const stripe = discountedStripe(24900); // 90% = 224.10, more than 179.10
+    const note = await billingWith(stripe).moveToPrescribedPrice(PATIENT, 'price_new', 'Wegovy 2.4 mg');
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+    expect(note).toMatch(/costs more/);
+  });
+
+  it('changePrice moves a subscriber to the new dose at their price too', async () => {
+    const stripe = discountedStripe(14900);
+    await billingWith(stripe).changePrice(PATIENT, 'price_new');
+    expect(stripe.subscriptions.update.mock.calls[0][1].items[0].price_data.unit_amount).toBe(13410);
+  });
+
+  it('does nothing when the subscription already bills this dose at that price', async () => {
+    const stripe = discountedStripe(19900); // 90% = 179.10, what they pay now, on prod_2 -> differs by product
+    stripe.subscriptions.retrieve.mockResolvedValue({
+      id: 'sub_1', status: 'active', metadata: { billing: 'SUBSCRIPTION' },
+      items: { data: [{ id: 'si_1', price: { id: 'price_anon', product: 'prod_2', unit_amount: 17910, currency: 'eur' } }] },
+    });
+    const note = await billingWith(stripe).changePrice(PATIENT, 'price_new');
+    expect(note).toBe('Plan unchanged');
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('a subscription that also bills the prescription fee', () => {
+  // Two lines: the medicine at the subscriber price, and the monthly fee under its own product.
+  const feeItem = { id: 'si_fee', quantity: 1, price: { id: 'price_fee', product: { id: 'prod_fee', name: 'Prescription fee' }, unit_amount: 4000, currency: 'eur' } };
+  const medicine = { id: 'si_1', quantity: 1, price: { id: 'price_anon', product: { id: 'prod_1', name: 'Wegovy' }, unit_amount: 17910, currency: 'eur' } };
+  function stripeWithFee(newFull: number) {
+    return {
+      subscriptions: {
+        retrieve: jest.fn().mockResolvedValue({ id: 'sub_1', status: 'active', metadata: { billing: 'SUBSCRIPTION' }, items: { data: [medicine, feeItem] } }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      prices: { retrieve: jest.fn().mockResolvedValue({ id: 'price_new', product: 'prod_2', unit_amount: newFull, currency: 'eur', recurring: { interval: 'month' } }) },
+      invoices: { list: jest.fn().mockResolvedValue({ data: [{ id: 'in_1', amount_paid: 21910, currency: 'eur', payment_intent: 'pi_1', lines: { data: [{ description: 'Prescription fee', amount: 4000 }] } }] }) },
+      refunds: { create: jest.fn().mockResolvedValue({ id: 're_1' }) },
+    };
+  }
+
+  it('moves only the medicine to the new dose, and leaves the fee line as it is', async () => {
+    const stripe = stripeWithFee(14900);
+    await billingWith(stripe).changePrice(PATIENT, 'price_new');
+    const items = stripe.subscriptions.update.mock.calls[0][1].items;
+    expect(items).toEqual([{ id: 'si_1', price_data: { currency: 'eur', product: 'prod_2', unit_amount: 13410, recurring: { interval: 'month' } } }]);
+    expect(items.some((i: any) => i.id === 'si_fee')).toBe(false); // never touched, never deleted
+  });
+
+  it('shares the refund for a cheaper dose over the medicine alone, not over the fee', async () => {
+    const stripe = stripeWithFee(14900); // 179.10 -> 134.10, so 45.00 less; the fee (40.00) is not part of what was paid for the dose
+    await billingWith(stripe).moveToPrescribedPrice(PATIENT, 'price_new');
+    expect(stripe.refunds.create.mock.calls[0][0].amount).toBe(4500);
+  });
+});

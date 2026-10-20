@@ -6,7 +6,9 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CONFIG } from '@/lib/config';
 import { PROGESTERONE_NOTE, STORE_PRODUCTS, planKeyFor } from '@/lib/catalog';
-import { useTreatmentPrice } from '@/lib/dose-prices';
+import { formatFee, usePrescriptionFee, useTreatmentPrices } from '@/lib/dose-prices';
+import { BILLING_COPY, DEFAULT_BILLING, type BillingChoice as Choice } from '@/lib/billing-choice';
+import BillingChoice from '@/components/BillingChoice';
 import { loadAssessment, mergeAssessment, type Assessment } from '@/lib/storage';
 
 interface Reward { title: string; description: string; amountOffCents: number | null; percentOff: number | null; currency: string | null }
@@ -25,6 +27,7 @@ function ReviewInner() {
   const [ready, setReady] = useState(false);
   const [doseIdx, setDoseIdx] = useState(0);
   const [progesterone, setProgesterone] = useState(false);
+  const [billing, setBilling] = useState<Choice>(DEFAULT_BILLING);
   const [reward, setReward] = useState<Reward | null>(null);
   const [rewardApplied, setRewardApplied] = useState(false);
 
@@ -39,6 +42,7 @@ function ReviewInner() {
       setDoseIdx(i >= 0 ? i : 0);
       setProgesterone(!!p.progesteroneAddOn && !!s?.addProgesterone);
     }
+    setBilling(s?.billing ?? DEFAULT_BILLING);
     setReady(true);
 
     if (s?.leadId) {
@@ -57,8 +61,12 @@ function ReviewInner() {
   const dose = product?.doses[doseIdx];
   const planKey = product && dose ? planKeyFor(product, dose, progesterone) : null;
   const plan = planKey ? CONFIG.PLANS[planKey] : null;
-  const dosePrice = useTreatmentPrice(product?.brand, dose?.label, progesterone);
-  const price = dosePrice ?? plan?.price;
+  const fee = usePrescriptionFee();
+  const prices = useTreatmentPrices(product?.brand, dose?.label, progesterone);
+  const dosePrice = prices?.once ?? null;
+  // A subscription costs less; a dose without a subscription price can only be paid once.
+  const subscribing = billing === 'SUBSCRIPTION' && (!prices || prices.subscription != null);
+  const price = (subscribing ? prices?.subscription : dosePrice) ?? plan?.price;
   const available = !!plan && (!!dosePrice || (/\d/.test(plan.price) && !plan.priceId.startsWith('price_REPLACE')));
   const rewardLabel =
     reward?.amountOffCents != null ? money(reward.amountOffCents, reward.currency) : reward?.percentOff != null ? `${reward.percentOff}%` : '';
@@ -108,7 +116,7 @@ function ReviewInner() {
 
   const handleContinue = () => {
     if (!available) return;
-    mergeAssessment({ plan: planKey, applyReward: !!reward && rewardApplied });
+    mergeAssessment({ plan: planKey, applyReward: !!reward && rewardApplied, billing: subscribing ? 'SUBSCRIPTION' : 'ONE_TIME' });
     router.push('/checkout?plan=' + encodeURIComponent(planKey));
   };
 
@@ -153,15 +161,20 @@ function ReviewInner() {
               </div>
               {dose.pack && <div className="th-prod-pack">{dose.pack}</div>}
 
+              {product.progesteroneAddOn && <div className="th-prod-label th-prod-section">Add-on</div>}
               {product.progesteroneAddOn && (
-                <label className="th-prod-addon">
-                  <input type="checkbox" checked={progesterone} onChange={(e) => choose(doseIdx, e.target.checked)} />
-                  <span>
-                    <strong>Add progesterone</strong>
-                    <small>{PROGESTERONE_NOTE}</small>
-                  </span>
-                </label>
+                <>
+                  <div className="th-dose-row">
+                    <button type="button" role="checkbox" aria-checked={progesterone} className={`th-dose-chip${progesterone ? ' on' : ''}`} onClick={() => choose(doseIdx, !progesterone)}>
+                      {progesterone ? '✓ ' : '+ '}Add progesterone
+                    </button>
+                  </div>
+                  <div className="th-prod-pack">{PROGESTERONE_NOTE}</div>
+                </>
               )}
+
+              {dosePrice && <div className="th-prod-label th-prod-section th-prod-split">How would you like to pay?</div>}
+              {dosePrice && <BillingChoice value={subscribing ? 'SUBSCRIPTION' : 'ONE_TIME'} onChange={(v) => { setBilling(v); mergeAssessment({ billing: v }); }} prices={prices} name="billing" />}
 
               <p style={{ marginTop: 20 }}>
                 <Link href={`${eligUrl}?resume=1`} style={{ fontSize: 13, color: 'var(--c-brand)', fontWeight: 600 }}>
@@ -176,14 +189,22 @@ function ReviewInner() {
               <div className="th-co-section-label">Summary</div>
               <div className="th-co-row">
                 <span>
-                  {dosePrice ? `${product.brand} ${dose.label}${progesterone ? ' + progesterone' : ''}` : plan.name} · billed monthly
+                  {dosePrice ? `${product.brand} ${dose.label}${progesterone ? ' + progesterone' : ''}` : plan.name} · {subscribing ? 'billed monthly' : 'one payment'}
                 </span>
                 <span>{available ? price : 'Coming soon'}</span>
               </div>
+              {fee && available && (
+                <div className="th-co-row"><span>Prescription fee · {subscribing ? 'with each prescription' : 'with this prescription'}</span><span>{formatFee(fee)}</span></div>
+              )}
               {reward && rewardApplied && (
                 <div className="th-co-row reward"><span>Referral reward</span><span>−{rewardLabel}</span></div>
               )}
-              <p className="th-co-note">You&apos;ll see the exact total at checkout. Your doctor reviews your assessment first; if they can&apos;t prescribe, you&apos;re refunded.</p>
+              <details className="th-co-more">
+                <summary>{fee ? 'Prescription fee, renewal and refunds' : 'Renewal and refunds'}</summary>
+                {fee && <p className="th-co-note">{BILLING_COPY.feeNote}</p>}
+                <p className="th-co-note">{subscribing ? BILLING_COPY.renewalNote : BILLING_COPY.onceNote}</p>
+                <p className="th-co-note">You&apos;ll see the exact total at checkout. Your doctor reviews your assessment first; if they can&apos;t prescribe, you&apos;re refunded.</p>
+              </details>
               <button
                 type="button"
                 className="th-co-pay-btn"

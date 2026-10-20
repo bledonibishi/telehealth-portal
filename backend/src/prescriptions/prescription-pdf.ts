@@ -34,6 +34,8 @@ export interface PrescriptionPdfInput {
   id: string;
   issuedAt: Date;
   validUntil: Date | null;
+  /** The last day a pharmacy may fill it; when set, it is the date printed as "valid until". */
+  dispenseUntil?: Date | null;
   refillsAllowed: number;
   status: string;
   cancelReason?: string | null;
@@ -102,7 +104,7 @@ export function renderPrescriptionPdf(rx: PrescriptionPdfInput, clinic: { name: 
     const cols = [
       { label: 'Prescription ID', value: rx.id, w: 195, mono: true, size: 8.5 },
       { label: 'Issued', value: date(rx.issuedAt), w: 100 },
-      { label: 'Valid until', value: rx.validUntil ? date(rx.validUntil) : '—', w: 100 },
+      { label: 'Valid until', value: (rx.dispenseUntil ?? rx.validUntil) ? date((rx.dispenseUntil ?? rx.validUntil)!) : '—', w: 100 },
       { label: 'Repeats', value: String(rx.refillsAllowed), w: WIDTH - 395 - 32 },
     ];
     doc.roundedRect(MARGIN, y, WIDTH, 44, 6).fillAndStroke(COLOR.panel, COLOR.line);

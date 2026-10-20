@@ -295,6 +295,9 @@ export const MY_ORDERS = gql`
       reference
       sequence
       status
+      paymentUrl
+      paymentAmountCents
+      paymentCurrency
       createdAt
       dispatchedAt
       carrier

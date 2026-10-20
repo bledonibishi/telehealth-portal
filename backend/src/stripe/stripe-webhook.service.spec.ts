@@ -4,7 +4,7 @@ jest.mock('bcryptjs', () => ({ hash: jest.fn().mockResolvedValue('hash') }));
 
 const config = { get: jest.fn((_k: string, def?: any) => def) };
 
-function build(leadOver: Record<string, unknown> = {}) {
+function build(leadOver: Record<string, unknown> = {}, existing: Record<string, unknown> | null = null) {
   const lead = {
     id: 'lead-1',
     email: 'buyer@b.com',
@@ -17,16 +17,17 @@ function build(leadOver: Record<string, unknown> = {}) {
   const patient = { id: 'p-1', email: 'buyer@b.com', firstName: 'Ann' };
   const prisma = {
     lead: { findUnique: jest.fn().mockResolvedValue(lead), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    patient: { upsert: jest.fn().mockResolvedValue(patient), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn().mockResolvedValue({ id: 'p-1' }) },
+    patient: { findUnique: jest.fn().mockResolvedValue(existing), upsert: jest.fn().mockResolvedValue(patient), updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn().mockResolvedValue({ id: 'p-1' }) },
+    onboardingSubmission: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
   };
   (prisma as any).$transaction = jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
-  const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined), sendPaymentReceiptEmail: jest.fn().mockResolvedValue(undefined) };
+  const email = { sendActivationEmail: jest.fn().mockResolvedValue(undefined), sendWelcomeBackEmail: jest.fn().mockResolvedValue(undefined), sendPaymentReceiptEmail: jest.fn().mockResolvedValue(undefined) };
   const referrals = { handleConversion: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const submitFromLead = jest.fn().mockResolvedValue({ id: 'c-1' });
   const moduleRef = { get: jest.fn().mockReturnValue({ submitFromLead }) };
   const service = new StripeWebhookService(prisma as any, email as any, config as any, referrals as any, audit as any, moduleRef as any);
-  return { service, prisma, referrals, lead, audit, submitFromLead, email };
+  return { service, prisma, referrals, lead, audit, submitFromLead, email, moduleRef };
 }
 
 const sessionEvent = (amountDiscount: number) =>
@@ -168,5 +169,116 @@ describe('StripeWebhookService one payment, one receipt', () => {
     expect(prisma.patient.upsert).toHaveBeenCalledTimes(1);
     expect(email.sendActivationEmail).toHaveBeenCalledTimes(1);
     expect(email.sendPaymentReceiptEmail).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('StripeWebhookService payments after the first', () => {
+  const withNotifier = () => {
+    const base = build();
+    const notifier = { toPatient: jest.fn().mockResolvedValue(undefined) };
+    const markPaid = jest.fn().mockResolvedValue(true);
+    base.service['moduleRef'] = { get: jest.fn((token: any) => (token?.name === 'NotifierService' ? notifier : token?.name === 'OrdersService' ? { markPaid } : { submitFromLead: base.submitFromLead })) } as any;
+    (base.email as any).sendPaymentFailedEmail = jest.fn().mockResolvedValue(undefined);
+    return { ...base, notifier, markPaid };
+  };
+  const failed = (over: Record<string, unknown> = {}) => ({ type: 'invoice.payment_failed', data: { object: { id: 'in_f', customer: 'cus_1', subscription: 'sub_1', metadata: {}, ...over } } }) as any;
+
+  it('holds a patient’s supplies and tells them when a renewal fails', async () => {
+    const { service, prisma, notifier, email } = withNotifier();
+    prisma.patient.findFirst.mockResolvedValue({ id: 'p-1', email: 'buyer@b.com', firstName: 'Ann' });
+    await service.handle(failed());
+    expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { id: 'p-1', paymentFailedAt: null }, data: { paymentFailedAt: expect.any(Date) } });
+    expect(notifier.toPatient).toHaveBeenCalledWith('p-1', expect.objectContaining({ kind: 'PAYMENT_FAILED' }));
+    expect((email as any).sendPaymentFailedEmail).toHaveBeenCalledWith('buyer@b.com', 'Ann', expect.stringMatching(/\/settings$/));
+  });
+
+  it('tells them once, not on every retry Stripe makes', async () => {
+    const { service, prisma, notifier } = withNotifier();
+    prisma.patient.updateMany.mockResolvedValue({ count: 0 }); // already held
+    await service.handle(failed());
+    expect(notifier.toPatient).not.toHaveBeenCalled();
+  });
+
+  it('ignores a supply invoice a patient chose to pay for, and a payment with no subscription', async () => {
+    const { service, prisma } = withNotifier();
+    await service.handle(failed({ metadata: { kind: 'SUPPLY' } }));
+    await service.handle(failed({ subscription: null }));
+    expect(prisma.patient.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('ignores a payment that failed before the person was a patient', async () => {
+    const { service, prisma, notifier } = withNotifier();
+    prisma.patient.findFirst.mockResolvedValue(null);
+    await service.handle(failed());
+    expect(notifier.toPatient).not.toHaveBeenCalled();
+  });
+
+  it('lifts the hold when a payment then goes through', async () => {
+    const { service, prisma } = withNotifier();
+    await service.handle(invoiceEvent([]));
+    expect(prisma.patient.updateMany).toHaveBeenCalledWith({ where: { stripeCustomerId: 'cus_1', paymentFailedAt: { not: null } }, data: { paymentFailedAt: null } });
+  });
+
+  it('releases a supply that was paid for, and does not treat it as a new patient', async () => {
+    const { service, prisma, markPaid } = withNotifier();
+    await service.handle({ type: 'invoice.payment_succeeded', data: { object: { id: 'in_s', customer: 'cus_1', metadata: { kind: 'SUPPLY', orderId: 'o-1' } } } } as any);
+    expect(markPaid).toHaveBeenCalledWith('in_s');
+    expect(prisma.lead.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('marks a patient who paid once as paying per supply', async () => {
+    const { service, prisma } = withNotifier();
+    await service.handle({ type: 'invoice.payment_succeeded', data: { object: { id: 'in_o', customer_email: 'buyer@b.com', customer: 'cus_1', subscription: null, metadata: { billing: 'ONE_TIME' }, total_discount_amounts: [] } } } as any);
+    expect(prisma.patient.upsert.mock.calls[0][0].create).toMatchObject({ paysPerSupply: true });
+  });
+});
+
+describe('StripeWebhookService a patient who comes back', () => {
+  const returning = { id: 'p-1', activatedAt: new Date('2026-01-01') };
+
+  it('keeps their account and password: a welcome back, no activation link', async () => {
+    const { service, prisma, email } = build({}, returning);
+    await service.handle(sessionEvent(0));
+    const update = prisma.patient.upsert.mock.calls[0][0].update;
+    expect(update).not.toHaveProperty('activationToken');
+    expect(update).toMatchObject({ accessClosedAt: null, subscriptionEndedAt: null });
+    expect(email.sendWelcomeBackEmail).toHaveBeenCalledWith('buyer@b.com', 'Ann', expect.objectContaining({ idCheckNeeded: false }));
+    expect(email.sendActivationEmail).not.toHaveBeenCalled();
+  });
+
+  it('puts the new delivery address on the account', async () => {
+    const { service, prisma } = build({}, returning);
+    await service.handle(sessionEvent(0));
+    expect(prisma.patient.upsert.mock.calls[0][0].update).toMatchObject({ addressLine1: '1 Main St', city: 'Pristina', postcode: '10000', country: 'XK' });
+  });
+
+  it('asks for the ID again when the check is more than a year old, and says so', async () => {
+    const { service, prisma, email } = build({}, returning);
+    prisma.onboardingSubmission.updateMany.mockResolvedValue({ count: 1 });
+    await service.handle(sessionEvent(0));
+    expect(prisma.onboardingSubmission.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'IN_PROGRESS', idDocumentFileId: null, selfieFileId: null }) }));
+    expect(email.sendWelcomeBackEmail).toHaveBeenCalledWith('buyer@b.com', 'Ann', expect.objectContaining({ idCheckNeeded: true }));
+  });
+
+  it('still activates a new patient the usual way', async () => {
+    const { service, email } = build();
+    await service.handle(sessionEvent(0));
+    expect(email.sendActivationEmail).toHaveBeenCalledTimes(1);
+    expect(email.sendWelcomeBackEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('StripeWebhookService a returning patient\'s subscription', () => {
+  it('releases the order they were waiting on, and is not an activation', async () => {
+    const { service, prisma, email, moduleRef } = build();
+    const markReturnSubscribed = jest.fn().mockResolvedValue(true);
+    moduleRef.get.mockReturnValue({ markReturnSubscribed });
+    await service.handle({
+      type: 'invoice.payment_succeeded',
+      data: { object: { id: 'in_9', customer_email: 'buyer@b.com', customer: 'cus_1', subscription: 'sub_9', subscription_details: { metadata: { kind: 'RETURN_SUBSCRIPTION', returnOrderId: 'o-7' } } } },
+    } as any);
+    expect(markReturnSubscribed).toHaveBeenCalledWith('o-7', 'sub_9', 'cus_1');
+    expect(prisma.patient.upsert).not.toHaveBeenCalled();
+    expect(email.sendActivationEmail).not.toHaveBeenCalled();
   });
 });

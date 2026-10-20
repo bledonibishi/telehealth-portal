@@ -367,7 +367,10 @@ describe('PartnerOrdersService', () => {
       const query = prisma.order.findMany.mock.calls[0][0];
       expect(query.take).toBe(20);
       expect(query.where.status).toBe('PENDING');
-      expect(query.where.prescription).toMatchObject({ status: 'ACTIVE', OR: [{ validUntil: null }, { validUntil: { gt: expect.any(Date) } }] });
+      expect(query.where.prescription).toMatchObject({
+        status: 'ACTIVE',
+        OR: [{ dispenseUntil: { gt: expect.any(Date) } }, { dispenseUntil: null, validUntil: null }, { dispenseUntil: null, validUntil: { gt: expect.any(Date) } }],
+      });
       expect(query.where.patient).toMatchObject({
         addressLine1: { not: null }, city: { not: null }, postcode: { not: null }, country: { not: null },
         NOT: [{ addressLine1: '' }, { city: '' }, { postcode: '' }, { country: '' }],

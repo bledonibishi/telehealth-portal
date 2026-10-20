@@ -3,6 +3,7 @@ import { CURRENT_CONSENTS } from '../consents/consent-texts';
 import { ConsentType } from '../common/enums';
 import { findQuestionnaire } from '../questionnaires/definitions';
 import { LeadsService } from './leads.service';
+import { OrdersService } from '../prescriptions/orders.service';
 
 function build(over: { patient?: any; lead?: any } = {}) {
   const prisma = {
@@ -40,6 +41,57 @@ describe('LeadsService.upsert', () => {
     const { svc, prisma } = build({ lead: { id: 'l-1', convertedAt: null } });
     await svc.upsert(input);
     expect(prisma.lead.upsert).toHaveBeenCalled();
+  });
+});
+
+describe('LeadsService.upsert for a patient refunded on their first order', () => {
+  const closed = { id: 'p-1', accessClosedAt: new Date(), accessClosedReason: 'REFUNDED_FIRST_ORDER' };
+  const withOrders = (svc: any, offerReturn: jest.Mock) => { svc.moduleRef = { get: jest.fn((t) => (t === OrdersService ? { offerReturn } : null)) }; };
+
+  it('tells them their prescription is still valid and the fee is not charged again', async () => {
+    const { svc, prisma } = build({ patient: closed });
+    const offerReturn = jest.fn().mockResolvedValue({ orderId: 'o-1', until: new Date('2030-01-10') });
+    withOrders(svc, offerReturn);
+    await expect(svc.upsert(input)).rejects.toThrow(/won’t pay the prescription fee again/);
+    expect(offerReturn).toHaveBeenCalledWith('p-1');
+    expect(prisma.lead.upsert).not.toHaveBeenCalled();
+  });
+
+  it('lets them start over once the prescription has run out', async () => {
+    const { svc, prisma } = build({ patient: closed });
+    withOrders(svc, jest.fn().mockResolvedValue(null));
+    await svc.upsert(input);
+    expect(prisma.lead.upsert).toHaveBeenCalled();
+  });
+
+  it('reopens the old paid lead so they can pay again, when there is no prescription to go back to', async () => {
+    const { svc, prisma } = build({ patient: closed, lead: { id: 'l-1', convertedAt: new Date(), productKind: 'GLP1' } });
+    withOrders(svc, jest.fn().mockResolvedValue(null));
+    await svc.upsert(input);
+    expect(prisma.lead.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: expect.objectContaining({ convertedAt: null }) }));
+  });
+
+  it('hands a refunded patient with a valid prescription their payment link, once the inbox is proved', async () => {
+    const { svc, prisma } = build({ patient: closed });
+    (prisma as any).voucher = { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 1000 } }) };
+    (prisma as any).order = { findUnique: jest.fn().mockResolvedValue({ prescription: { items: [{ product: { name: 'Estradiol gel', brandName: 'Oestrogel' }, strength: { label: '0.75 mg per pump' } }] } }) };
+    const offer = { orderId: 'o-1', until: new Date('2030-01-10'), payUrl: 'https://pay/in_1', amountCents: 2500, currency: 'eur' };
+    withOrders(svc, jest.fn().mockResolvedValue(offer));
+    expect(await svc.returnOffer({ email: 'a@b.com', emailVerificationToken: 't' } as any)).toEqual({ ...offer, treatment: 'Oestrogel 0.75 mg per pump', clientSecret: null, totalCents: null, unusedVoucherCents: 1000 });
+  });
+
+  it('has no offer for someone whose account is open, or was closed for another reason', async () => {
+    const a = build({ patient: { id: 'p-2', accessClosedAt: null, accessClosedReason: null } });
+    withOrders(a.svc, jest.fn());
+    expect(await a.svc.returnOffer({ email: 'a@b.com', emailVerificationToken: 't' } as any)).toBeNull();
+    const b = build({ patient: { id: 'p-3', accessClosedAt: new Date(), accessClosedReason: 'LAPSED' } });
+    withOrders(b.svc, jest.fn());
+    expect(await b.svc.returnOffer({ email: 'a@b.com', emailVerificationToken: 't' } as any)).toBeNull();
+  });
+
+  it('still sends any other account to sign in', async () => {
+    const { svc } = build({ patient: { id: 'p-2', accessClosedAt: null, accessClosedReason: null } });
+    await expect(svc.upsert(input)).rejects.toThrow(/already exists/);
   });
 });
 

@@ -110,7 +110,8 @@ export function buildPartnerPayload(order: PartnerOrderSource, liveOrderCount: n
     prescription: {
       id: rx.id,
       issuedAt: rx.issuedAt.toISOString(),
-      validUntil: rx.validUntil?.toISOString() ?? null,
+      // The pharmacy's deadline to fill it, which is what it needs to know.
+      validUntil: (rx.dispenseUntil ?? rx.validUntil)?.toISOString() ?? null,
       repeatsAllowed: rx.refillsAllowed,
       repeatsRemaining: Math.max(rx.refillsAllowed - repeatsUsed, 0),
       contentHash: rx.contentHash,

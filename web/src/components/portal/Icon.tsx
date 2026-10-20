@@ -56,14 +56,10 @@ export function Icon({ name, className = 'w-5 h-5' }: { name: IconName; classNam
   );
 }
 
-/** The portal's mark: a heart inside a circle. */
+/** The Omopharmacy mark (public/omo-logo.png, the same file as the website's). */
 export function Logo({ className = 'w-9 h-9' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden>
-      <circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M20 29s-8-4.8-8-10.4A4.6 4.6 0 0 1 20 16a4.6 4.6 0 0 1 8 2.6C28 24.2 20 29 20 29z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src="/omo-logo.png" alt="" className={className} aria-hidden />;
 }
 
 /** Initials in a circle, until patients can upload a profile picture. */

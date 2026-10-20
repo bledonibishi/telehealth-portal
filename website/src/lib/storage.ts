@@ -17,6 +17,8 @@ export interface Assessment {
   productName?: string | null;
   dose?: string | null;
   addProgesterone?: boolean;
+  // How the buyer pays: once for one supply, or on a subscription that renews and costs less.
+  billing?: 'ONE_TIME' | 'SUBSCRIPTION';
   // Whether the buyer chose to use their referral reward (set on the review step); unset means not chosen yet.
   applyReward?: boolean;
   // Whether the quiz's health answers were saved with this lead (they go with the quiz now; older sessions lack them).

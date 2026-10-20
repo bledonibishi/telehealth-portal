@@ -1,4 +1,4 @@
-import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 import { ConsultationKind, RiskTag } from '../../common/enums';
 import { QuizAnswerType } from '../../consultations/models/consultation.model';
 
@@ -87,4 +87,46 @@ export class PreviousAssessmentModel {
 
   @Field({ nullable: true, description: 'Why not, when they may not' })
   keepBlockedReason?: string;
+}
+
+@ObjectType('ReturnOffer', { description: 'A refunded patient whose prescription is still valid: what they can order without a second prescription fee' })
+export class ReturnOfferModel {
+  @Field({ description: 'The last day the prescription can be dispensed' })
+  until: Date;
+
+  @Field({ nullable: true, description: 'What the prescription is for, e.g. "Oestrogel 0.75 mg per pump"' })
+  treatment?: string | null;
+
+  @Field(() => Int, { nullable: true, description: 'The invoice total before any account credit; the amount due is lower when a voucher was already applied' })
+  totalCents?: number | null;
+
+  @Field(() => Int, { description: 'Vouchers they have not applied yet' })
+  unusedVoucherCents: number;
+
+  @Field({ nullable: true, description: 'To pay inside our own page with Stripe\'s payment form; null when only the hosted link is available' })
+  clientSecret?: string | null;
+
+  @Field({ nullable: true, description: 'Where to pay; null when it could not be made (it is emailed instead)' })
+  payUrl?: string | null;
+
+  @Field(() => Int, { nullable: true })
+  amountCents?: number | null;
+
+  @Field({ nullable: true })
+  currency?: string | null;
+}
+
+@ObjectType('ReturnSubscription', { description: 'The subscription payment for a refunded patient coming back to their prescription' })
+export class ReturnSubscriptionModel {
+  @Field({ description: 'To take the first month inside our own page with Stripe\'s payment form' })
+  clientSecret: string;
+
+  @Field(() => Int, { description: 'Due today, after any account credit' })
+  amountDueCents: number;
+
+  @Field(() => Int, { description: 'The first month before any account credit' })
+  totalCents: number;
+
+  @Field()
+  currency: string;
 }

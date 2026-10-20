@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrandAnimation } from '../../components/BrandAnimation';
 import { PasswordField } from '../../components/PasswordField';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform,
+  View, Text, Image, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useMutation } from '@apollo/client';
 import { LOGIN_PATIENT } from '../../graphql/operations';
@@ -34,6 +34,7 @@ export function LoginScreen({ navigation }: any) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.brand}>
+        <Image source={require('../../../assets/omo-logo.png')} style={styles.logo} accessibilityIgnoresInvertColors />
         <Text style={styles.wordmark}>Omopharmacy</Text>
         <BrandAnimation />
       </View>
@@ -76,6 +77,7 @@ export function LoginScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb', justifyContent: 'center', padding: 24, width: '100%', alignSelf: 'center', maxWidth: 480 },
   brand: { alignItems: 'center', marginBottom: 20 },
+  logo: { width: 72, height: 72, marginBottom: 8 },
   wordmark: { fontSize: 26, fontWeight: '800', color: '#0f2352', letterSpacing: -0.3, marginBottom: 8 },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 24, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   title: { fontSize: 22, fontWeight: '600', color: '#111827', marginBottom: 20 },

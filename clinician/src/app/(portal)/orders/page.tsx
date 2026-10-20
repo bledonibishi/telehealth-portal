@@ -23,6 +23,7 @@ const FILTERS = [
   // An order the pharmacy has said it can't supply is no longer theirs to pack: it waits under Problems for our team.
   { key: 'to_pack', label: 'To pack', match: (o: Order) => o.status === 'PENDING' && !o.readyForPickupAt && openProblem(o.trackingEvents)?.status !== 'CANNOT_FULFIL' },
   { key: 'ready', label: 'Ready for pickup', match: (o: Order) => o.status === 'PENDING' && !!o.readyForPickupAt },
+  { key: 'awaiting_payment', label: 'Awaiting payment', match: (o: Order) => o.status === 'AWAITING_PAYMENT' },
   { key: 'with_courier', label: 'With the courier', match: (o: Order) => o.status === 'DISPATCHED' || o.status === 'OUT_FOR_DELIVERY' },
   { key: 'problems', label: 'Problems', match: (o: Order) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && (!!openProblem(o.trackingEvents) || !!overdueSince(o)) },
   { key: 'delivered', label: 'Delivered', match: (o: Order) => o.status === 'DELIVERED' },
@@ -51,6 +52,7 @@ type FilterKey = (typeof FILTERS)[number]['key'];
 const EMPTY: Record<FilterKey, string> = {
   to_pack: 'Nothing to pack right now. New orders appear here as soon as a doctor approves a prescription.',
   ready: 'No parcels waiting for the courier.',
+  awaiting_payment: 'No supplies waiting for a payment. A repeat for a patient who pays for each supply waits here until they have paid.',
   with_courier: 'No parcels with the courier.',
   problems: 'No delivery problems. A parcel the courier reports as a problem, or one past its expected date, shows here.',
   delivered: 'No delivered orders yet.',

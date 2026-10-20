@@ -176,7 +176,9 @@ export function renderKosovoPrescriptionPdf(rx: PrescriptionPdfInput, clinic: { 
   const sigH = 78;
   const third = (WIDTH - gap * 2) / 3;
   field('Data', 'Date issued', date(rx.issuedAt), MARGIN, y, third * 0.8, 38);
-  field('E vlefshme deri', 'Valid until', rx.validUntil ? date(rx.validUntil) : '—', MARGIN, y + 38, third * 0.8, 38);
+  // The last day the pharmacy may fill it (15 days after issue); older prescriptions show the end of their treatment.
+  const lastDay = rx.dispenseUntil ?? rx.validUntil;
+  field('E vlefshme deri', 'Valid until', lastDay ? date(lastDay) : '—', MARGIN, y + 38, third * 0.8, 38);
   const sx = MARGIN + third * 0.8 + gap;
   const sw = WIDTH - third * 0.8 - gap;
   doc.rect(sx, y, sw, sigH).lineWidth(0.8).strokeColor(LINE).stroke();

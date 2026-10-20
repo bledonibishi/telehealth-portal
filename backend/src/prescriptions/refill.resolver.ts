@@ -28,6 +28,12 @@ export class RefillResolver {
   }
 
   @Authorized('PATIENT')
+  @Mutation(() => SupplyStatusModel, { description: 'Carry on after the subscription ended: pay per supply from now on, and the doctors are asked for a check-in and a new prescription.' })
+  restartTreatment(@CurrentUser() user: AuthUser) {
+    return this.refill.restart(user.id);
+  }
+
+  @Authorized('PATIENT')
   @Mutation(() => SupplyStatusModel, { description: 'Ask for the next supply. Tells the doctor; the order is still placed by a prescriber.' })
   requestRefill(@CurrentUser() user: AuthUser) {
     return this.refill.request(user.id);

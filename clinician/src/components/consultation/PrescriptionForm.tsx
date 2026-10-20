@@ -283,14 +283,18 @@ export function PrescriptionForm({
 
       <div className="border-t border-gray-100 pt-4 space-y-3">
         <div className="block">
-          <span className={labelCls}>{t('Valid for')}</span>
+          <span className={labelCls}>{t('Treatment length')}</span>
           <Select
-            ariaLabel={t('Valid for')}
+            ariaLabel={t('Treatment length')}
             value={String(validityDays)}
             onChange={(v) => setValidityDays(Number(v))}
             options={VALIDITY_OPTIONS.map((d) => ({ value: String(d), label: t('{n} days', { n: d }) }))}
           />
-          <span className="block text-xs text-gray-400 mt-1">{t('How long it can be dispensed')}</span>
+          <span className="block text-xs text-gray-400 mt-1">{t('How long the treatment lasts. The pharmacy can only dispense it within 15 days of today.')}</span>
+          {/* DISPENSE_WINDOW_DAYS in backend/src/prescriptions/prescribing.service.ts: the backend sets it, this only shows it. */}
+          <span className="block text-sm font-medium text-gray-700 mt-2">
+            {t('Can be dispensed until {date}', { date: new Date(Date.now() + 15 * 86_400_000).toLocaleDateString('en-GB') })}
+          </span>
         </div>
 
         <label className="block">

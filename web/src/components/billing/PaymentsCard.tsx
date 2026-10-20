@@ -4,7 +4,6 @@ import { useQuery } from '@apollo/client';
 import { format } from 'date-fns';
 import { MY_INVOICES } from '@/graphql/billing';
 import { Card, CardHeader } from '@/components/portal/Card';
-import { ManageSubscriptionButton } from './ManageSubscriptionCard';
 import { InlineError } from '@/components/common/Alert';
 import { LoadingState } from '@telehealth/loading';
 
@@ -26,9 +25,7 @@ export function PaymentsCard() {
 
   return (
     <Card labelledBy="payments-title" className="mt-5">
-      <CardHeader id="payments-title" title="Payments & invoices" subtitle="What you’ve paid for your treatment.">
-        <ManageSubscriptionButton />
-      </CardHeader>
+      <CardHeader id="payments-title" title="Payments & invoices" subtitle="What you’ve paid for your treatment." />
 
       {loading && !data && <LoadingState variant="inline" label="Loading…" />}
       {!data && <InlineError error={error} />}

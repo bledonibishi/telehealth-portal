@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation } from '@apollo/client';
 import type { DocumentNode } from 'graphql';
-import { CANCEL_ORDER, DISPATCH_ORDER, MARK_ORDER_DELIVERED, MARK_ORDER_HANDED_OVER, MARK_ORDER_OUT_FOR_DELIVERY, MARK_ORDER_READY_FOR_PICKUP, REPORT_ORDER_CANNOT_FULFIL, UPDATE_ORDER_SHIPPING } from '@/graphql/orders';
+import { CANCEL_ORDER, DISPATCH_ORDER, MARK_ORDER_DELIVERED, MARK_ORDER_RETURNED, MARK_ORDER_HANDED_OVER, MARK_ORDER_OUT_FOR_DELIVERY, MARK_ORDER_READY_FOR_PICKUP, REPORT_ORDER_CANNOT_FULFIL, UPDATE_ORDER_SHIPPING } from '@/graphql/orders';
 import { openAuthedDocument } from '@/lib/documents';
 import { hasAccess } from '@/lib/role';
 import { useI18n } from '@/lib/i18n/I18nProvider';
@@ -18,7 +18,7 @@ const KIND_BADGE: Record<string, string> = {
 };
 
 const STAGES = ['Preparing', 'Shipped', 'Out for delivery', 'Delivered'] as const;
-const STAGE_OF: Record<string, number> = { PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
+const STAGE_OF: Record<string, number> = { AWAITING_PAYMENT: 0, PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
 
 const inputCls = 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 const actionCls = 'px-3 py-1.5 border border-gray-200 text-sm text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-40';
@@ -115,6 +115,7 @@ export function OrderCard({
   const [handOver, { loading: handingOver }] = useMutation(MARK_ORDER_HANDED_OVER, opts);
   const [updateShipping, { loading: updatingShipping }] = useMutation(UPDATE_ORDER_SHIPPING, opts);
   const [deliver, { loading: delivering }] = useMutation(MARK_ORDER_DELIVERED, opts);
+  const [markReturned, { loading: returning }] = useMutation(MARK_ORDER_RETURNED, opts);
   const [cancel, { loading: cancelling }] = useMutation(CANCEL_ORDER, opts);
   const [reportIssue, { loading: reporting }] = useMutation(REPORT_ORDER_CANNOT_FULFIL, { ...opts, onCompleted: () => { setMode(null); setIssueReason(''); } });
 
@@ -133,7 +134,7 @@ export function OrderCard({
   const address = formatAddress(order.shippingAddress ?? order.patient);
   // The pharmacy is not told where the parcel goes (the courier is ours), so a missing address only blocks our own team.
   const addressMissing = !address && canConfirmDelivery;
-  const rxBlocked = rx.status !== 'ACTIVE' || (rx.validUntil && new Date(rx.validUntil) < new Date());
+  const rxBlocked = rx.status !== 'ACTIVE' || ((rx.dispenseUntil ?? rx.validUntil) && new Date(rx.dispenseUntil ?? rx.validUntil) < new Date());
 
   const run = (fn: () => void) => { setError(null); fn(); };
   const problem = openProblem(order.trackingEvents);
@@ -179,6 +180,8 @@ export function OrderCard({
     ? { label: 'Out for delivery', cls: 'bg-blue-50 text-blue-700' }
     : order.status === 'DISPATCHED'
     ? { label: 'Shipped', cls: 'bg-blue-50 text-blue-700' }
+    : order.status === 'AWAITING_PAYMENT'
+    ? { label: 'Awaiting payment', cls: 'bg-amber-50 text-amber-700' }
     : order.readyForPickupAt
     ? { label: 'Ready for pickup', cls: 'bg-brand-50 text-brand-900' }
     : { label: 'Preparing', cls: 'bg-amber-50 text-amber-700' };
@@ -292,7 +295,7 @@ export function OrderCard({
                       <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 2.5h6.5L15 6v11.5H5z" strokeLinejoin="round" /><path d="M11 2.5V6h4M7.5 10h5M7.5 13h5" strokeLinecap="round" /></svg>
                       {t('Open prescription')}
                     </button>
-                    {rx.validUntil && <span className="text-xs text-gray-400">{t('Valid until {date}', { date: fmt(rx.validUntil, 'dd MMM yyyy') })}</span>}
+                    {(rx.dispenseUntil ?? rx.validUntil) && <span className="text-xs text-gray-400">{t('Valid until {date}', { date: fmt(rx.dispenseUntil ?? rx.validUntil, 'dd MMM yyyy') })}</span>}
                   </div>
                 </Fact>
                 <Fact label={t('Deliver to')}>
@@ -519,6 +522,11 @@ export function OrderCard({
             )}
             {canConfirmDelivery && (order.status === 'DISPATCHED' || order.status === 'OUT_FOR_DELIVERY') && (
               <button onClick={() => openShippingForm('edit')} className="text-xs text-gray-400 hover:text-brand-500">{t('Edit courier and tracking')}</button>
+            )}
+            {canConfirmDelivery && (order.status === 'DISPATCHED' || order.status === 'OUT_FOR_DELIVERY') && (
+              <button onClick={() => { if (window.confirm(t('Mark this parcel as returned to the pharmacy? The order is closed, and a refund that was waiting for it is made.'))) run(() => markReturned({ variables: { id: order.id } })); }} disabled={returning} className="text-xs text-gray-400 hover:text-brand-500">
+                {returning ? '…' : t('Parcel came back')}
+              </button>
             )}
             {canConfirmDelivery && order.status === 'OUT_FOR_DELIVERY' && (
               <button onClick={() => run(() => deliver({ variables: { id: order.id } }))} disabled={delivering} className={actionCls}>

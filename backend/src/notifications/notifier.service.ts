@@ -44,6 +44,7 @@ const LEGACY_PUSH_TYPE: Partial<Record<NotificationKind, string>> = {
   [NotificationKind.ORDER_OUT_FOR_DELIVERY]: 'order',
   [NotificationKind.ORDER_DELIVERED]: 'order',
   [NotificationKind.ORDER_DELIVERY_FAILED]: 'order',
+  [NotificationKind.ORDER_PAYMENT_DUE]: 'order',
   [NotificationKind.REFUND_APPROVED]: 'refund',
   [NotificationKind.REFUND_DECLINED]: 'refund',
 };

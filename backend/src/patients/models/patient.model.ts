@@ -16,6 +16,9 @@ export class PatientModel {
   @Field()
   lastName: string;
 
+  @Field({ description: 'Paid once rather than on a subscription: each supply is paid for before it is sent' })
+  paysPerSupply: boolean;
+
   @Field()
   dateOfBirth: Date;
 

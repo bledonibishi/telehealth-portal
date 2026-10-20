@@ -74,3 +74,32 @@ describe('RefillService', () => {
     });
   });
 });
+
+describe('RefillService.restart', () => {
+  function restartable(count: number) {
+    const b = build(alert());
+    b.prisma.patient.updateMany = jest.fn().mockResolvedValue({ count });
+    b.prisma.patient.findUnique = jest.fn().mockResolvedValue({ firstName: 'Sofia', lastName: 'Meyer' });
+    const notifier = { toStaff: jest.fn().mockResolvedValue(undefined) };
+    (b.service as any).notifier = notifier;
+    return { ...b, notifier };
+  }
+
+  it('puts a lapsed patient back on pay-per-supply, stops the emails and tells the doctors', async () => {
+    const { service, prisma, notifier, audit } = restartable(1);
+    await service.restart('p-1');
+    expect(prisma.patient.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p-1', activatedAt: { not: null }, accessClosedAt: null, subscriptionEndedAt: { not: null } },
+      data: { subscriptionEndedAt: null, paysPerSupply: true, lapsedEmailsSent: 0, lapsedEmailAt: null },
+    });
+    expect(notifier.toStaff).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'TREATMENT_RESTART_REQUESTED' }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'TREATMENT_RESTARTED' }));
+  });
+
+  it('does nothing the second time, or for a patient whose subscription is running or whose account is closed', async () => {
+    const { service, notifier, audit } = restartable(0);
+    await service.restart('p-1');
+    expect(notifier.toStaff).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+});
