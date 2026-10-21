@@ -5,12 +5,14 @@
  * go straight into the portal.
  *
  *   cd backend
- *   pnpm complete-onboarding patient@example.com
+ *   pnpm complete-onboarding patient@example.com --confirm-db <database name>
+ *
+ * Without --confirm-db it prints the database it would write to and stops: a local address can be a tunnel to a remote one.
  *
  * Uses DATABASE_URL (and UPLOAD_DIR) from the environment, or else from backend/.env. Refuses to run against a database that
  * isn't on this machine, and in production.
  */
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname, join, resolve } from 'path';
 import { PrismaClient } from '@prisma/client';
@@ -20,23 +22,40 @@ const PLACEHOLDER = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 
 type Kind = 'ID_DOCUMENT' | 'SELFIE' | 'BODY_PHOTO_FRONT' | 'BODY_PHOTO_SIDE';
 
+/** Reads KEY=value lines into the environment without overwriting what is set. (process.loadEnvFile needs Node 20.12+.) */
+function loadEnv(file: string) {
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m || line.trim().startsWith('#')) continue;
+    const value = m[2].replace(/^(['"])(.*)\1$/, '$2');
+    if (process.env[m[1]] === undefined) process.env[m[1]] = value;
+  }
+}
+
 async function main() {
   const envFile = resolve(__dirname, '../.env');
-  if (!process.env.DATABASE_URL && existsSync(envFile)) {
-    (process as unknown as { loadEnvFile(path: string): void }).loadEnvFile(envFile);
-  }
-  const email = process.argv[2]?.trim();
+  if (!process.env.DATABASE_URL && existsSync(envFile)) loadEnv(envFile);
+  const args = process.argv.slice(2);
+  const email = args.find((a) => !a.startsWith('--'))?.trim();
+  const flag = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
   if (!email) {
-    console.error('Usage: pnpm complete-onboarding <patient email>');
+    console.error('Usage: pnpm complete-onboarding <patient email> --confirm-db <database name>');
     process.exit(1);
   }
   if (process.env.NODE_ENV === 'production') {
     console.error('Not available in production.');
     process.exit(1);
   }
-  const host = new URL(process.env.DATABASE_URL ?? 'postgresql://unset').hostname;
+  const dbUrl = new URL(process.env.DATABASE_URL ?? 'postgresql://unset');
+  const host = dbUrl.hostname;
   if (!['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(host)) {
     console.error(`DATABASE_URL points at "${host}", not this machine. Refusing to write placeholder files and approve onboarding there.`);
+    process.exit(1);
+  }
+  // A local address can still be a tunnel to a remote database, so the operator names the database being written to.
+  const dbName = decodeURIComponent(dbUrl.pathname.replace(/^\//, ''));
+  if (flag('confirm-db') !== dbName) {
+    console.error(`This will write to the database "${dbName}" on ${host}:${dbUrl.port || '5432'}. If that is the database you mean, run it again with: --confirm-db ${dbName}`);
     process.exit(1);
   }
 
