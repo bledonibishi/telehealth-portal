@@ -8,6 +8,7 @@ import { CONTACT, EMERGENCY_NUMBER, telHref } from '@/lib/contact';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
 import { Icon, type IconName } from '@/components/portal/Icon';
+import { ConsultPayment } from '@/components/appointments/ConsultPayment';
 import { BookingCard } from '@/components/booking/BookingCard';
 import { BookedAppointments } from '@/components/booking/BookedAppointments';
 import { PastAppointments } from '@/components/booking/PastAppointments';
@@ -214,7 +215,7 @@ export default function AppointmentsPage() {
                   {a.status === 'AWAITING_PAYMENT' && (
                     <div className="mt-3 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
                       <p>Pay {a.paymentAmountCents != null ? money(a.paymentAmountCents, a.paymentCurrency ?? 'eur') : 'the consultation fee'} to send this to your doctor. Unpaid requests are withdrawn after 7 days.</p>
-                      {a.paymentUrl && <a href={a.paymentUrl} target="_blank" rel="noreferrer" className={`${btnPrimary} !py-1.5 !text-xs mt-2 inline-flex`}>Pay now</a>}
+                      <ConsultPayment clientSecret={a.paymentClientSecret} amountLabel={a.paymentAmountCents != null ? money(a.paymentAmountCents, a.paymentCurrency ?? 'eur') : ''} fallbackUrl={a.paymentUrl} />
                     </div>
                   )}
                   {a.refundOffered && (

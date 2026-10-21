@@ -72,6 +72,16 @@ describe('AppointmentsService paid consultations', () => {
     expect(res.status).toBe('REQUESTED');
   });
 
+  it('gives the patient the payment secret of a consultation waiting for payment, so it is paid in the portal', async () => {
+    const { svc, prisma, billing } = paid('3000');
+    (billing as any).invoicePaymentDetails = jest.fn().mockResolvedValue({ clientSecret: 'pi_secret', totalCents: 3000 });
+    prisma.appointmentRequest.findMany.mockResolvedValue([row({ status: 'AWAITING_PAYMENT', paymentInvoiceId: 'in_1', paymentUrl: 'https://pay/in_1' }), row({ id: 'a-2', status: 'REQUESTED' })]);
+    const list = await svc.mine('p-1');
+    expect(list[0].paymentClientSecret).toBe('pi_secret');
+    expect(list[1].paymentClientSecret).toBeNull();
+    expect((billing as any).invoicePaymentDetails).toHaveBeenCalledTimes(1);
+  });
+
   it('releases the request to the doctors when the invoice is paid, once', async () => {
     const { svc, prisma } = paid('3000');
     prisma.appointmentRequest.findFirst.mockResolvedValue(row({ status: 'AWAITING_PAYMENT' }));

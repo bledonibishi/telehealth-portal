@@ -93,6 +93,7 @@ const APPOINTMENT_FIELDS = gql`
     paymentUrl
     paymentAmountCents
     paymentCurrency
+    paymentClientSecret
     paid
     refundedAt
     canRefund

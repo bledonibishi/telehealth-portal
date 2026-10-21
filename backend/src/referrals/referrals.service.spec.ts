@@ -113,7 +113,7 @@ describe('ReferralsService.handleConversion', () => {
     const voucherFindUniqueOrThrow = jest.fn().mockResolvedValue({ id: 'voucher-referrer', patientId: 'referrer-1', status: 'ISSUED', amountCents: 2000, currency: 'gbp' });
     const prisma = {
       referral: { findUnique: jest.fn().mockResolvedValue({ id: 'r-1', status: 'PENDING', referrerId: 'referrer-1' }), update: jest.fn().mockResolvedValue({}) },
-      voucher: { create: voucherCreate, findUniqueOrThrow: voucherFindUniqueOrThrow, update: jest.fn().mockResolvedValue({}) },
+      voucher: { create: voucherCreate, findUniqueOrThrow: voucherFindUniqueOrThrow, update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       patient: { findUniqueOrThrow: jest.fn().mockResolvedValue(referrer) },
     };
     const service = newService(prisma);
@@ -123,11 +123,11 @@ describe('ReferralsService.handleConversion', () => {
       where: { id: 'r-1' },
       data: { status: 'CONVERTED', convertedAt: expect.any(Date), referredPatientId: 'patient-1' },
     });
-    expect((service as any).stripe.customers.createBalanceTransaction).toHaveBeenCalledWith('cus_1', {
-      amount: -2000,
-      currency: 'gbp',
-      description: expect.stringContaining('voucher-referrer'),
-    });
+    expect((service as any).stripe.customers.createBalanceTransaction).toHaveBeenCalledWith(
+      'cus_1',
+      { amount: -2000, currency: 'gbp', description: expect.stringContaining('voucher-referrer') },
+      { idempotencyKey: 'voucher-credit-voucher-referrer' },
+    );
     expect(email.sendReferralRewardEmail).toHaveBeenCalledWith('advocate@x.com', 'Advocate', '£20.00', true, expect.stringMatching(/\/rewards$/));
   });
 
@@ -163,25 +163,39 @@ describe('ReferralsService.applyVoucher', () => {
     expect((service as any).stripe.customers.createBalanceTransaction).not.toHaveBeenCalled();
   });
 
-  it('credits the Stripe balance and marks the voucher applied', async () => {
-    const prisma = {
-      voucher: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'v-1', patientId: 'patient-1', status: 'ISSUED', amountCents: 2000, currency: 'gbp' }),
-        update: jest.fn().mockResolvedValue({ id: 'v-1', status: 'APPLIED' }),
-      },
-      patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'patient-1', stripeCustomerId: 'cus_1' }) },
-    };
+  const issued = { id: 'v-1', patientId: 'patient-1', status: 'ISSUED', amountCents: 2000, currency: 'gbp' };
+  const prismaFor = (claimed = 1) => ({
+    voucher: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue(issued),
+      updateMany: jest.fn().mockResolvedValue({ count: claimed }),
+    },
+    patient: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'patient-1', stripeCustomerId: 'cus_1' }) },
+  });
+
+  it('claims the voucher, credits the Stripe balance once under a key of its own, and marks it applied', async () => {
+    const prisma = prismaFor();
     const service = newService(prisma);
     await service.applyVoucher('v-1', 'patient-1');
 
-    expect((service as any).stripe.customers.createBalanceTransaction).toHaveBeenCalledWith('cus_1', {
-      amount: -2000,
-      currency: 'gbp',
-      description: expect.stringContaining('v-1'),
-    });
-    expect(prisma.voucher.update).toHaveBeenCalledWith({
-      where: { id: 'v-1' },
-      data: { status: 'APPLIED', appliedAt: expect.any(Date), note: 'Credited to your account balance' },
-    });
+    expect(prisma.voucher.updateMany).toHaveBeenCalledWith({ where: { id: 'v-1', status: 'ISSUED' }, data: { status: 'APPLIED', appliedAt: expect.any(Date), note: 'Credited to your account balance' } });
+    expect((service as any).stripe.customers.createBalanceTransaction).toHaveBeenCalledWith(
+      'cus_1',
+      { amount: -2000, currency: 'gbp', description: expect.stringContaining('v-1') },
+      { idempotencyKey: 'voucher-credit-v-1' },
+    );
+  });
+
+  it('credits nothing when another call claimed the voucher first', async () => {
+    const service = newService(prismaFor(0));
+    await service.applyVoucher('v-1', 'patient-1');
+    expect((service as any).stripe.customers.createBalanceTransaction).not.toHaveBeenCalled();
+  });
+
+  it('hands the claim back when Stripe refuses the credit', async () => {
+    const prisma = prismaFor();
+    const service = newService(prisma);
+    (service as any).stripe.customers.createBalanceTransaction.mockRejectedValue(new Error('stripe down'));
+    await expect(service.applyVoucher('v-1', 'patient-1')).rejects.toThrow('stripe down');
+    expect(prisma.voucher.updateMany).toHaveBeenLastCalledWith({ where: { id: 'v-1', status: 'APPLIED' }, data: { status: 'ISSUED', appliedAt: null, note: null } });
   });
 });

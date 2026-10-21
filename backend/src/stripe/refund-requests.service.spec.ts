@@ -25,8 +25,10 @@ function setup(over: { claimed?: number; refund?: () => Promise<{ ok: boolean; n
   prisma.refundRequest.findUniqueOrThrow = jest.fn().mockResolvedValue({ id: 'r-1', status: 'AWAITING_RETURN' });
   const email = { sendRefundAwaitingReturnEmail: jest.fn().mockResolvedValue(undefined) };
   const orders = { cancelUnshippedFor: jest.fn().mockResolvedValue(over.stopped ?? 1) , offerReturn: jest.fn().mockResolvedValue(null) };
-  const moduleRef = { get: jest.fn().mockReturnValue(orders) };
-  return { service: new RefundRequestsService(prisma, audit as any, billing as any, notifier as any, moduleRef as any, email as any), prisma, audit, billing, notifier, orders, email };
+  const referrals = { applyAllFor: jest.fn().mockResolvedValue(0) };
+  const moduleRef = { get: jest.fn((token: { name?: string }) => (token?.name === 'ReferralsService' ? referrals : orders)) };
+  prisma.consultation = { updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
+  return { service: new RefundRequestsService(prisma, audit as any, billing as any, notifier as any, moduleRef as any, email as any), prisma, audit, billing, notifier, orders, email, referrals };
 }
 
 describe('RefundRequestsService', () => {
@@ -115,6 +117,31 @@ describe('RefundRequestsService', () => {
     expect(prisma.patient.update).toHaveBeenCalledWith({ where: { id: 'p-1' }, data: expect.objectContaining({ accessClosedReason: 'REFUNDED_FIRST_ORDER', tokenVersion: { increment: 1 } }) });
     expect(orders.offerReturn).toHaveBeenCalledWith('p-1');
     expect(done.outcome).toContain('Access closed');
+  });
+
+  it('applies their vouchers and closes what was waiting for a doctor, before offering the prescription again', async () => {
+    const { service, prisma, referrals, orders } = setup({ received: 0 });
+    orders.offerReturn.mockResolvedValue({ orderId: 'o-2', until: new Date('2030-01-01') });
+    await service.decide('admin', 'r-1', true, true);
+    expect(referrals.applyAllFor).toHaveBeenCalledWith('p-1');
+    expect(prisma.consultation.updateMany).toHaveBeenCalledWith({ where: { patientId: 'p-1', status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } }, data: expect.objectContaining({ status: 'DECLINED', refundStatus: 'REFUNDED' }) });
+    expect(referrals.applyAllFor.mock.invocationCallOrder[0]).toBeLessThan(orders.offerReturn.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the refund when closing the account fails, and says so in the outcome', async () => {
+    const { service, prisma } = setup({ received: 0 });
+    prisma.consultation.updateMany.mockRejectedValue(new Error('database busy'));
+    const done = await service.decide('admin', 'r-1', true, true);
+    expect(done.outcome).toContain('could NOT be closed');
+    // The request is not put back to "requested": the money has already gone.
+    expect(prisma.refundRequest.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
+  });
+
+  it('leaves vouchers and consultations alone when a supply was received', async () => {
+    const { service, prisma, referrals } = setup({ received: 1 });
+    await service.decide('admin', 'r-1', true, true);
+    expect(referrals.applyAllFor).not.toHaveBeenCalled();
+    expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
   });
 
   it('keeps access when a supply was received', async () => {
