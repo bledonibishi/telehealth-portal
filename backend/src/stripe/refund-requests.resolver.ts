@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args, ID, ObjectType, Field } from '@nestjs/graphql';
+import { Resolver, Query, Mutation, Args, ID, Int, ObjectType, Field } from '@nestjs/graphql';
 import { Authorized } from '../auth/decorators/authorized.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthUser } from '../auth/access-roles';
@@ -106,5 +106,11 @@ export class RefundRequestsResolver {
     @Args('endSubscription', { defaultValue: false }) endSubscription: boolean,
   ) {
     return this.requests.decide(user.id, id, approve, endSubscription);
+  }
+
+  @Authorized(ClinicianRole.ADMIN)
+  @Mutation(() => Int, { description: 'Retry closing consultations after a successful first-order refund; returns the number closed' })
+  retryRefundConsultationClosure(@CurrentUser() user: AuthUser, @Args('id', { type: () => ID }) id: string) {
+    return this.requests.retryConsultationClosure(user.id, id);
   }
 }

@@ -84,8 +84,30 @@ describe('RefundRequestsService', () => {
   it('says so when the refund went through but the subscription could not be stopped', async () => {
     const { service, prisma } = setup({ stop: { ok: false, note: 'Billing update failed' } });
     await service.decide('admin', 'r-1', true, true);
-    const outcome = prisma.refundRequest.update.mock.calls.find((c: any) => c[0].data.outcome)[0].data.outcome;
+    const calls = prisma.refundRequest.update.mock.calls;
+    const outcome = calls[calls.length - 1][0].data.outcome;
     expect(outcome).toMatch(/NOT stopped/);
+  });
+
+  it('records the successful refund before follow-up work and never reopens it if that work throws', async () => {
+    const { service, prisma, billing } = setup();
+    billing.cancelNowResult.mockRejectedValue(new Error('connection lost'));
+    await expect(service.decide('admin', 'r-1', true, true)).rejects.toThrow('connection lost');
+    expect(prisma.refundRequest.update).toHaveBeenCalledWith({ where: { id: 'r-1' }, data: { outcome: 'Refunded the latest payment (re_1)' } });
+    expect(prisma.refundRequest.update.mock.invocationCallOrder[0]).toBeLessThan(billing.cancelNowResult.mock.invocationCallOrder[0]);
+    expect(prisma.refundRequest.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
+    prisma.refundRequest.findUnique.mockResolvedValue({ id: 'r-1', status: 'APPROVED', outcome: 'Refunded the latest payment (re_1)' });
+    await expect(service.decide('admin', 'r-1', true, true)).rejects.toThrow('already been decided');
+    expect(billing.refundLatestPaymentResult).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reopen a paid request if saving the refund outcome fails', async () => {
+    const { service, prisma, billing } = setup();
+    prisma.refundRequest.update.mockRejectedValue(new Error('database busy'));
+    await expect(service.decide('admin', 'r-1', true, true)).rejects.toThrow('database busy');
+    expect(billing.refundLatestPaymentResult).toHaveBeenCalledTimes(1);
+    expect(prisma.refundRequest.update).toHaveBeenCalledTimes(1);
+    expect(prisma.refundRequest.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
   });
 
   it('returns the open request when a second tap hits the one-open-request rule', async () => {
@@ -135,6 +157,51 @@ describe('RefundRequestsService', () => {
     expect(done.outcome).toContain('could NOT be closed');
     // The request is not put back to "requested": the money has already gone.
     expect(prisma.refundRequest.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
+  });
+
+  it('repairs a failed consultation closure repeatedly without another refund or closing a later application', async () => {
+    const { service, prisma, billing } = setup({ received: 0 });
+    prisma.consultation.updateMany.mockRejectedValueOnce(new Error('database busy'));
+    const done = await service.decide('admin', 'r-1', true, true);
+    const decidedAt = new Date('2026-10-21T12:00:00Z');
+    prisma.refundRequest.findUnique.mockResolvedValue({ ...done, status: 'APPROVED', decidedAt });
+    prisma.patient.findUniqueOrThrow.mockResolvedValue({ accessClosedAt: decidedAt, accessClosedReason: 'REFUNDED_FIRST_ORDER' });
+    const consultations = [
+      { patientId: 'p-1', submittedAt: new Date('2026-10-20T12:00:00Z'), status: 'SUBMITTED' },
+      { patientId: 'p-1', submittedAt: new Date('2026-10-22T12:00:00Z'), status: 'SUBMITTED' },
+      { patientId: 'p-1', submittedAt: new Date('2026-10-20T12:00:00Z'), status: 'APPROVED' },
+      { patientId: 'p-other', submittedAt: new Date('2026-10-20T12:00:00Z'), status: 'IN_REVIEW' },
+    ];
+    prisma.consultation.updateMany.mockImplementation(async ({ where, data }) => {
+      const matching = consultations.filter((c) => c.patientId === where.patientId && c.submittedAt <= where.submittedAt.lte && where.status.in.includes(c.status));
+      matching.forEach((c) => Object.assign(c, data));
+      return { count: matching.length };
+    });
+    expect(await service.retryConsultationClosure('admin', 'r-1')).toBe(1);
+    expect(await service.retryConsultationClosure('admin', 'r-1')).toBe(0);
+    expect(consultations[0]).toMatchObject({ status: 'DECLINED', refundStatus: 'REFUNDED' });
+    expect(consultations.slice(1).map((c) => c.status)).toEqual(['SUBMITTED', 'APPROVED', 'IN_REVIEW']);
+    expect(billing.refundLatestPaymentResult).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { status: 'REQUESTED', outcome: null },
+    { status: 'AWAITING_RETURN', outcome: 'The parcel was returned' },
+    { status: 'DECLINED', outcome: 'Declined' },
+    { status: 'APPROVED', outcome: null },
+  ])('rejects repair without a recorded successful refund: %j', async (request) => {
+    const { service, prisma, billing } = setup();
+    prisma.refundRequest.findUnique.mockResolvedValue({ id: 'r-1', patientId: 'p-1', decidedAt: new Date(), ...request });
+    await expect(service.retryConsultationClosure('admin', 'r-1')).rejects.toThrow('no recorded successful refund');
+    expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
+    expect(billing.refundLatestPaymentResult).not.toHaveBeenCalled();
+  });
+
+  it('does not repair consultations when the patient account is active again', async () => {
+    const { service, prisma } = setup();
+    prisma.refundRequest.findUnique.mockResolvedValue({ id: 'r-1', patientId: 'p-1', status: 'APPROVED', outcome: 'Refunded', decidedAt: new Date() });
+    await expect(service.retryConsultationClosure('admin', 'r-1')).rejects.toThrow('not closed');
+    expect(prisma.consultation.updateMany).not.toHaveBeenCalled();
   });
 
   it('leaves vouchers and consultations alone when a supply was received', async () => {

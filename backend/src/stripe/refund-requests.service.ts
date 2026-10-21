@@ -77,6 +77,27 @@ export class RefundRequestsService {
     return offer ? `. Access closed (no supply was received); they were offered the prescription again until ${offer.until.toLocaleDateString('en-GB')}` : '. Access closed (no supply was received)';
   }
 
+  /** Repairs a failed consultation closure after a recorded refund, without moving money again. */
+  async retryConsultationClosure(adminId: string, id: string): Promise<number> {
+    const request = await this.prisma.refundRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException('Refund request not found');
+    // APPROVED alone is a claim; the outcome is saved only once the refund succeeds.
+    if (request.status !== 'APPROVED' || !request.outcome || !request.decidedAt) {
+      throw new BadRequestException('This request has no recorded successful refund');
+    }
+    const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: request.patientId }, select: { accessClosedAt: true, accessClosedReason: true } });
+    if (!patient.accessClosedAt || patient.accessClosedReason !== 'REFUNDED_FIRST_ORDER') {
+      throw new BadRequestException('This account is not closed after a first-order refund');
+    }
+    const closed = await this.prisma.consultation.updateMany({
+      // A later consultation belongs to a new application and must keep waiting for review.
+      where: { patientId: request.patientId, submittedAt: { lte: request.decidedAt }, status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } },
+      data: { status: 'DECLINED', declineReason: 'The patient asked for a refund before it was reviewed', refundStatus: 'REFUNDED' },
+    });
+    await this.audit.log({ actorId: adminId, actorRole: UserRole.CLINICIAN, action: 'REFUND_CONSULTATIONS_CLOSED', resourceType: 'RefundRequest', resourceId: id, patientId: request.patientId, metadata: { count: closed.count } });
+    return closed.count;
+  }
+
   /** The patient's most recent request that has been answered, so they can see what became of it. */
   latestDecided(patientId: string) {
     return this.prisma.refundRequest.findFirst({ where: { patientId, status: { in: ['APPROVED', 'DECLINED'] } }, orderBy: { decidedAt: 'desc' } });
@@ -220,11 +241,12 @@ export class RefundRequestsService {
     // Claim it first, so two admins pressing at once cannot refund twice.
     const claimed = await this.prisma.refundRequest.updateMany({
       where: { id, status: was },
-      data: { status: approve ? 'APPROVED' : 'DECLINED', decidedAt: new Date(), decidedById: adminId },
+      data: { status: approve ? 'APPROVED' : 'DECLINED', decidedAt: new Date(), decidedById: adminId, outcome: null },
     });
     if (claimed.count === 0) throw new BadRequestException('This request has already been decided');
 
     let outcome = 'Declined';
+    let refundSucceeded = false;
     if (approve) {
       try {
         const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: request.patientId }, select: BILLING_PATIENT });
@@ -233,7 +255,10 @@ export class RefundRequestsService {
         const refunded = await this.billing.refundLatestPaymentResult(patient, { prescriptionIssuedAt: written?.issuedAt ?? null });
         // Nothing was refunded (Stripe said no, no subscription, nothing paid, already refunded): not an approval.
         if (!refunded.ok) throw new BadRequestException(`Nothing was refunded: ${refunded.note}. The request is still open; decline it if it should not be refunded.`);
+        refundSucceeded = true;
         outcome = refunded.note;
+        // Save the money's outcome before subscription/account/consultation updates can fail.
+        await this.prisma.refundRequest.update({ where: { id }, data: { outcome } });
         if (endSubscription) {
           // Refunded, so nothing more is taken and nothing more is sent: the subscription ends now, not at the end of the period.
           const stopped = await this.billing.cancelNowResult(patient);
@@ -247,8 +272,12 @@ export class RefundRequestsService {
           }
         }
       } catch (err) {
-        // Stripe said no: put the request back so it can be tried again, instead of leaving it "approved" with no refund.
-        await this.prisma.refundRequest.update({ where: { id }, data: { status: was, decidedAt: null, decidedById: null } });
+        if (!refundSucceeded) {
+          // No money moved: the request can be tried again.
+          await this.prisma.refundRequest.update({ where: { id }, data: { status: was, decidedAt: null, decidedById: null, outcome: request.outcome } });
+        } else {
+          this.logger.error(`Refund request ${id} was paid but follow-up failed; keep it approved and repair the remaining steps`);
+        }
         throw err;
       }
     }
