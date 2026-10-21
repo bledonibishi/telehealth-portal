@@ -1,3 +1,5 @@
+import { DICT, type Lang } from './i18n';
+
 const ICON = {
   width: 18,
   height: 18,
@@ -10,15 +12,11 @@ const ICON = {
   'aria-hidden': true,
 } as const;
 
-/** The three programmes, as the header and the home page offer them. */
-export const TREATMENTS = [
+const BASE = [
   {
     key: 'hrt',
     href: '/hrt-eligibility',
-    name: 'Women’s hormones',
     abbr: 'HRT',
-    full: 'Hormone replacement therapy',
-    short: 'Women',
     icon: (
       <svg {...ICON}>
         <circle cx="12" cy="9" r="5" />
@@ -29,10 +27,7 @@ export const TREATMENTS = [
   {
     key: 'trt',
     href: '/trt-eligibility',
-    name: 'Men’s hormones',
     abbr: 'TRT',
-    full: 'Testosterone replacement therapy',
-    short: 'Men',
     icon: (
       <svg {...ICON}>
         <circle cx="10" cy="14" r="5" />
@@ -43,10 +38,7 @@ export const TREATMENTS = [
   {
     key: 'glp',
     href: '/glp1-eligibility',
-    name: 'Weight loss',
     abbr: 'GLP-1',
-    full: 'Medical weight management',
-    short: 'Weight',
     icon: (
       <svg {...ICON} stroke="url(#pv-glp-grad)" strokeWidth={2.4}>
         <defs>
@@ -62,3 +54,13 @@ export const TREATMENTS = [
     ),
   },
 ];
+
+type Key = 'hrt' | 'trt' | 'glp';
+
+/** The three programmes, as the header and the home page offer them, named in the given language. */
+export function treatmentsFor(lang: Lang = 'en') {
+  return BASE.map((b) => ({ ...b, ...DICT[lang].treatments[b.key as Key] }));
+}
+
+/** The three programmes in English (the default for pages that are English only). */
+export const TREATMENTS = treatmentsFor('en');
