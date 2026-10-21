@@ -48,6 +48,16 @@ export class RefundRequestsService {
    * told their account is closed. Someone who has had a supply keeps their access. Returns a line for the record.
    */
   private async closeAccessIfFirstOrder(patientId: string, patient: { email: string; firstName?: string | null }, orders: OrdersService | undefined): Promise<string> {
+    // The refund has been made by now: nothing here may undo it. A step that fails is said in the outcome, for an admin to finish.
+    try {
+      return await this.closeAccess(patientId, patient, orders);
+    } catch (err: any) {
+      this.logger.error(`Closing access for ${patientId} after a refund failed: ${err?.message}`);
+      return '. The account could NOT be closed and the waiting consultation was not closed (' + (err?.message ?? 'unknown error') + '); do both by hand';
+    }
+  }
+
+  private async closeAccess(patientId: string, patient: { email: string; firstName?: string | null }, orders: OrdersService | undefined): Promise<string> {
     const received = await this.prisma.order.count({ where: { patientId, deliveredAt: { not: null } } });
     if (received > 0) return '';
     await this.prisma.patient.update({ where: { id: patientId }, data: { accessClosedAt: new Date(), accessClosedReason: 'REFUNDED_FIRST_ORDER', tokenVersion: { increment: 1 } } });

@@ -189,20 +189,25 @@ export class ReferralsService {
     if (voucher.status === VoucherStatus.APPLIED) return voucher;
 
     const patient = await this.prisma.patient.findUniqueOrThrow({ where: { id: patientId } });
-    if (patient.stripeCustomerId) {
-      await this.stripe.customers.createBalanceTransaction(patient.stripeCustomerId, {
-        amount: -voucher.amountCents,
-        currency: voucher.currency,
-        description: `Referral reward voucher ${voucher.id}`,
-      });
-    } else {
-      this.logger.warn(`Patient ${patientId} has no Stripe customer — voucher ${voucherId} marked applied without a real credit`);
+    // Claimed first, so two calls at once (an automatic one and a tap, or two sweeps) credit it once; the Stripe request carries a
+    // key of its own for the same reason. If the credit fails the claim is handed back.
+    const claimed = await this.prisma.voucher.updateMany({ where: { id: voucherId, status: VoucherStatus.ISSUED }, data: { status: VoucherStatus.APPLIED, appliedAt: new Date(), note: 'Credited to your account balance' } });
+    if (claimed.count === 0) return this.prisma.voucher.findUniqueOrThrow({ where: { id: voucherId } });
+    try {
+      if (patient.stripeCustomerId) {
+        await this.stripe.customers.createBalanceTransaction(
+          patient.stripeCustomerId,
+          { amount: -voucher.amountCents, currency: voucher.currency, description: `Referral reward voucher ${voucher.id}` },
+          { idempotencyKey: `voucher-credit-${voucher.id}` },
+        );
+      } else {
+        this.logger.warn(`Patient ${patientId} has no Stripe customer — voucher ${voucherId} marked applied without a real credit`);
+      }
+    } catch (err) {
+      await this.prisma.voucher.updateMany({ where: { id: voucherId, status: VoucherStatus.APPLIED }, data: { status: VoucherStatus.ISSUED, appliedAt: null, note: null } });
+      throw err;
     }
-
-    const applied = await this.prisma.voucher.update({
-      where: { id: voucherId },
-      data: { status: VoucherStatus.APPLIED, appliedAt: new Date(), note: 'Credited to your account balance' },
-    });
+    const applied = await this.prisma.voucher.findUniqueOrThrow({ where: { id: voucherId } });
 
     this.posthogLogger.info('referral voucher applied', {
       operation: 'apply_voucher',

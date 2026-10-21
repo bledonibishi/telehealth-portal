@@ -128,6 +128,15 @@ describe('RefundRequestsService', () => {
     expect(referrals.applyAllFor.mock.invocationCallOrder[0]).toBeLessThan(orders.offerReturn.mock.invocationCallOrder[0]);
   });
 
+  it('keeps the refund when closing the account fails, and says so in the outcome', async () => {
+    const { service, prisma } = setup({ received: 0 });
+    prisma.consultation.updateMany.mockRejectedValue(new Error('database busy'));
+    const done = await service.decide('admin', 'r-1', true, true);
+    expect(done.outcome).toContain('could NOT be closed');
+    // The request is not put back to "requested": the money has already gone.
+    expect(prisma.refundRequest.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'REQUESTED' }) }));
+  });
+
   it('leaves vouchers and consultations alone when a supply was received', async () => {
     const { service, prisma, referrals } = setup({ received: 1 });
     await service.decide('admin', 'r-1', true, true);
