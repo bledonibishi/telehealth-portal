@@ -2,23 +2,17 @@
 
 import { useEffect, useRef } from 'react';
 import { saveBmiCarry } from '@/lib/bmi-carry';
+import { DICT, type Lang } from '@/lib/i18n';
 
-export default function BmiWidget() {
+export default function BmiWidget({ lang = 'en' }: { lang?: Lang }) {
   const ref = useRef<HTMLDivElement>(null);
+  const t = DICT[lang].bmi;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    el.innerHTML =
-      '<div class="pvb-field"><div class="pvb-row"><span>Height</span><strong data-v="h"></strong></div><input class="pvb-range" type="range" min="140" max="210" value="170" data-r="h" aria-label="Height"></div>' +
-      '<div class="pvb-field"><div class="pvb-row"><span>Weight</span><strong data-v="w"></strong></div><input class="pvb-range" type="range" min="45" max="200" value="92" data-r="w" aria-label="Weight"></div>' +
-      '<div class="pvb-result" data-tone="good"><div><div class="pvb-label">Your BMI</div><div class="pvb-num" data-v="bmi"></div></div><div class="pvb-status" data-v="status"></div></div>' +
-      '<div class="pvb-scale"><div class="pvb-track"></div><div class="pvb-marker" data-v="marker"></div></div>' +
-      '<div class="pvb-ticks"><span style="left:14%">18.5</span><span style="left:40%">25</span><span style="left:60%">30</span><span style="left:80%">35</span></div>' +
-      '<p class="pvb-note" data-v="note"></p>' +
-      '<a class="pvb-cta" href="/glp1-eligibility">Check my eligibility →</a>' +
-      '<div class="pvb-small">Takes about 5 minutes · Reviewed by a licensed doctor</div>';
+    el.innerHTML = `<div class="pvb-field"><div class="pvb-row"><span>${t.height}</span><strong data-v="h"></strong></div><input class="pvb-range" type="range" min="140" max="210" value="170" data-r="h" aria-label="${t.height}"></div><div class="pvb-field"><div class="pvb-row"><span>${t.weight}</span><strong data-v="w"></strong></div><input class="pvb-range" type="range" min="45" max="200" value="92" data-r="w" aria-label="${t.weight}"></div><div class="pvb-result" data-tone="good"><div><div class="pvb-label">${t.yourBmi}</div><div class="pvb-num" data-v="bmi"></div></div><div class="pvb-status" data-v="status"></div></div><div class="pvb-scale"><div class="pvb-track"></div><div class="pvb-marker" data-v="marker"></div></div><div class="pvb-ticks"><span style="left:14%">18.5</span><span style="left:40%">25</span><span style="left:60%">30</span><span style="left:80%">35</span></div><p class="pvb-note" data-v="note"></p><a class="pvb-cta" href="/glp1-eligibility">${t.cta}</a><div class="pvb-small">${t.small}</div>`;
 
     const q = (s: string) => el.querySelector<HTMLElement>(s)!;
     const hR = el.querySelector<HTMLInputElement>('[data-r=h]')!;
@@ -39,14 +33,14 @@ export default function BmiWidget() {
 
       let tone: string, status: string, note: string;
       if (bmi >= 30) {
-        tone = 'good'; status = 'In the treatment range';
-        note = 'A BMI of 30 or above is where GLP-1 treatment is usually considered. Your doctor will also review your age, medical history and current medication.';
+        tone = 'good'; status = t.good;
+        note = t.noteGood;
       } else if (bmi >= 27) {
-        tone = 'maybe'; status = 'May qualify';
-        note = 'Between 27 and 29.9, treatment may be considered if you also have a condition like type 2 diabetes or high blood pressure.';
+        tone = 'maybe'; status = t.maybe;
+        note = t.noteMaybe;
       } else {
-        tone = 'low'; status = 'Below the range';
-        note = 'GLP-1 treatment is generally only prescribed for a BMI of 27 or above.';
+        tone = 'low'; status = t.low;
+        note = t.noteLow;
       }
 
       q('.pvb-result').setAttribute('data-tone', tone);
@@ -62,7 +56,7 @@ export default function BmiWidget() {
     hR.addEventListener('input', upd);
     wR.addEventListener('input', upd);
     upd();
-  }, []);
+  }, [lang]);
 
   return <div ref={ref} />;
 }
