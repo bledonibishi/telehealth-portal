@@ -1,3 +1,4 @@
+import { ReferralsService } from '../referrals/referrals.service';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
@@ -51,6 +52,13 @@ export class RefundRequestsService {
     if (received > 0) return '';
     await this.prisma.patient.update({ where: { id: patientId }, data: { accessClosedAt: new Date(), accessClosedReason: 'REFUNDED_FIRST_ORDER', tokenVersion: { increment: 1 } } });
     await this.audit.log({ actorId: 'system:refund', actorRole: UserRole.ADMIN, action: 'ACCESS_CLOSED', resourceType: 'Patient', resourceId: patientId, patientId, metadata: { reason: 'REFUNDED_FIRST_ORDER' } });
+    // They can't sign in to apply a voucher by hand, and they are about to be asked for money: it comes off this payment.
+    await this.moduleRef?.get(ReferralsService, { strict: false }).applyAllFor(patientId).catch((err: any) => this.logger.error(`Applying vouchers for ${patientId} failed: ${err?.message}`));
+    // Whatever was waiting for a doctor is closed: they were refunded, so nobody should review it. A new quiz brings a new one.
+    await this.prisma.consultation.updateMany({
+      where: { patientId, status: { in: ['SUBMITTED', 'IN_REVIEW', 'MORE_INFO_REQUESTED'] } },
+      data: { status: 'DECLINED', declineReason: 'The patient asked for a refund before it was reviewed', refundStatus: 'REFUNDED' },
+    });
     const offer = await orders?.offerReturn(patientId).catch((err: any) => {
       this.logger.error(`Offering ${patientId} their prescription again failed: ${err?.message}`);
       return null;

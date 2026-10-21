@@ -95,6 +95,9 @@ export class AppointmentRequestModel {
   @Field({ nullable: true })
   paymentCurrency?: string | null;
 
+  @Field({ nullable: true, description: 'To pay inside the portal with Stripe\'s payment form; null when only the hosted link is available' })
+  paymentClientSecret?: string | null;
+
   @Field({ description: 'The extra consultation has been paid for' })
   paid: boolean;
 

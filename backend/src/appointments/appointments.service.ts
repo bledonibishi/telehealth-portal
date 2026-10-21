@@ -205,7 +205,15 @@ export class AppointmentsService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       take: 30,
     });
-    return rows.map((r) => this.toModel(r));
+    // A consultation waiting for payment can be paid inside the portal: the secret is the patient's own, and only they get it.
+    const secrets = new Map<string, string>();
+    await Promise.all(
+      rows.filter((r) => r.status === 'AWAITING_PAYMENT' && r.paymentInvoiceId).map(async (r) => {
+        const details = await this.billing?.invoicePaymentDetails(r.paymentInvoiceId!);
+        if (details) secrets.set(r.id, details.clientSecret);
+      }),
+    );
+    return rows.map((r) => ({ ...this.toModel(r), paymentClientSecret: secrets.get(r.id) ?? null }));
   }
 
   async cancelMine(patientId: string, id: string) {

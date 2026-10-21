@@ -158,6 +158,24 @@ export class ReferralsService {
   }
 
   /**
+   * Applies every voucher a patient has not used yet, for when they cannot choose (a closed account coming back to pay now).
+   * Each one failing is logged and left for them to apply later. Returns how many were applied.
+   */
+  async applyAllFor(patientId: string): Promise<number> {
+    const waiting = await this.prisma.voucher.findMany({ where: { patientId, status: VoucherStatus.ISSUED }, select: { id: true } });
+    let applied = 0;
+    for (const v of waiting) {
+      try {
+        await this.applyVoucher(v.id, patientId);
+        applied++;
+      } catch (err: any) {
+        this.logger.error(`Applying voucher ${v.id} for ${patientId} failed: ${err?.message}`);
+      }
+    }
+    return applied;
+  }
+
+  /**
    * The single redemption path for a voucher. Today that means crediting the
    * patient's Stripe customer balance, since every patient is on a
    * subscription — Stripe deducts it from whatever invoice comes next on its

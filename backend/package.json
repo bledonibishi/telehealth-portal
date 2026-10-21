@@ -18,6 +18,7 @@
     "sync-dose-prices": "ts-node scripts/sync-dose-prices.ts",
     "mark-body-photos-done": "ts-node scripts/mark-body-photos-done.ts",
     "complete-onboarding": "ts-node scripts/complete-onboarding.ts",
+    "approve-consultation": "ts-node scripts/approve-consultation.ts",
     "make-proof-test-set": "ts-node -T -P tsconfig.json eval/proof-reader/make-test-set.ts",
     "seed-test-orders": "ts-node scripts/seed-test-orders.ts",
     "seed-examples": "ts-node scripts/seed-examples.ts",
