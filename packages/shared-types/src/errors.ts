@@ -38,6 +38,12 @@ export enum ErrorCode {
   LINK_INVALID_OR_EXPIRED = 'LINK_INVALID_OR_EXPIRED',
   /** The session cannot continue; `reason` (an AuthFailureReason) says why. Apps sign out, or refresh when expired. */
   SESSION_ENDED = 'SESSION_ENDED',
+
+  // The shop (products sold without a prescription) and its payments.
+  SHOP_OUT_OF_STOCK = 'SHOP_OUT_OF_STOCK',
+  SHOP_PRICE_CHANGED = 'SHOP_PRICE_CHANGED',
+  SHOP_ORDER_CLOSED = 'SHOP_ORDER_CLOSED',
+  PAYMENT_PROVIDER_UNAVAILABLE = 'PAYMENT_PROVIDER_UNAVAILABLE',
 }
 
 /**
@@ -76,6 +82,10 @@ export const ERRORS: Record<ErrorCode, ErrorDefinition> = {
   [ErrorCode.ACCOUNT_ALREADY_ACTIVATED]: { status: 409, severity: 'warning', retryable: false, message: 'A password is already set for this account. Sign in, or reset your password if you have forgotten it.' },
   [ErrorCode.LINK_INVALID_OR_EXPIRED]: { status: 401, severity: 'warning', retryable: false, message: 'This link is invalid or has expired. Request a new one.' },
   [ErrorCode.SESSION_ENDED]: { status: 401, severity: 'warning', retryable: false, message: 'Your session has ended. Please sign in again.' },
+  [ErrorCode.SHOP_OUT_OF_STOCK]: { status: 409, severity: 'warning', retryable: false, message: 'Some of these products are no longer in stock. Please update your basket.' },
+  [ErrorCode.SHOP_PRICE_CHANGED]: { status: 409, severity: 'warning', retryable: false, message: 'A price changed since you added it to your basket. Please check the new total.' },
+  [ErrorCode.SHOP_ORDER_CLOSED]: { status: 409, severity: 'warning', retryable: false, message: 'This order can no longer be paid. Please place a new order.' },
+  [ErrorCode.PAYMENT_PROVIDER_UNAVAILABLE]: { status: 503, severity: 'warning', retryable: true, message: 'We couldn’t reach the payment provider. Please try again in a moment, or choose another way to pay.' },
 };
 
 export // Codes whose own message is for the logs (a crash, or "Access token expired"): people get the catalog's.
