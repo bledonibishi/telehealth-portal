@@ -132,7 +132,7 @@ export function CustomizeSlot({
         <span className="flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing text-sm font-medium text-slate-700" title="Drag to move">
           <span aria-hidden className="text-slate-400">⠿</span>
           <span className="truncate">{title}</span>
-          {required && <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-normal text-slate-500" title="This card always stays: it holds something you should always be able to see"><Icon name="lock" className="w-3.5 h-3.5" /> Always shown</span>}
+          {required && <span className="shrink-0 inline-flex items-center gap-1 text-xs font-normal text-slate-500" title="This card always stays: it holds something you should always be able to see"><Icon name="lock" className="w-3.5 h-3.5" /> Always shown</span>}
         </span>
         <span className="flex items-center gap-0.5 shrink-0" role="toolbar" aria-label={`Arrange ${title}`}>
           <button type="button" className={btn} onClick={() => onMove(-1)} disabled={first} aria-label={`Move ${title} earlier`} title="Move earlier">↑</button>
@@ -168,7 +168,7 @@ export function CustomizeSlot({
           className={`hidden md:flex absolute -top-3 -right-3 z-10 w-7 h-7 items-center justify-center rounded-full border bg-white shadow-sm text-slate-500 cursor-ew-resize hover:text-slate-900 hover:border-slate-400 focus-visible:ring-2 focus-visible:ring-brand-600 ${resizing ? 'border-brand-600 text-brand-700' : 'border-slate-300'}`}
         >
           <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M7 8l-4 4 4 4M17 8l4 4-4 4M3 12h18" /></svg>
-          {resizing && <span className="absolute top-8 right-0 whitespace-nowrap rounded-md bg-slate-900 text-white text-[11px] font-medium px-2 py-1 shadow">{SIZE_LABEL[(target ?? size)!]}</span>}
+          {resizing && <span className="absolute top-8 right-0 whitespace-nowrap rounded-md bg-slate-900 text-white text-xs font-medium px-2 py-1 shadow">{SIZE_LABEL[(target ?? size)!]}</span>}
         </button>
       )}
       {/* The card itself is not clickable while arranging: a stray tap must not leave the page. */}

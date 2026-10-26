@@ -1,6 +1,8 @@
 import { format } from 'date-fns';
 
 const STAGES = ['Preparing', 'Shipped', 'On the way', 'Delivered'] as const;
+// Until it is paid for, nothing is being prepared yet: the first step says what the patient is waiting on.
+const STAGES_UNPAID = ['Awaiting payment', 'Shipped', 'On the way', 'Delivered'] as const;
 const STAGE_OF: Record<string, number> = { AWAITING_PAYMENT: 0, PENDING: 0, DISPATCHED: 1, OUT_FOR_DELIVERY: 2, DELIVERED: 3 };
 const WHEN: Array<keyof Order> = ['createdAt', 'dispatchedAt', 'outForDeliveryAt', 'deliveredAt'];
 
@@ -9,16 +11,17 @@ type Order = { status: string; createdAt?: string | null; dispatchedAt?: string 
 /** Where one order is: a line of dots from processing to delivered, with the date each step happened. */
 export function OrderTracker({ order }: { order: Order }) {
   const current = STAGE_OF[order.status] ?? 0;
+  const labels = order.status === 'AWAITING_PAYMENT' ? STAGES_UNPAID : STAGES;
   return (
     <ol className="grid grid-cols-4" aria-label="Order progress">
-      {STAGES.map((stage, i) => {
+      {labels.map((stage, i) => {
         const at = order[WHEN[i]] as string | null | undefined;
         return (
           <li key={stage} className="relative flex flex-col items-center text-center" aria-current={i === current ? 'step' : undefined}>
-            {i < STAGES.length - 1 && <span className={`absolute top-[6px] left-1/2 w-full h-0.5 ${i < current ? 'bg-ink-700' : 'bg-slate-200'}`} aria-hidden />}
+            {i < labels.length - 1 && <span className={`absolute top-[6px] left-1/2 w-full h-0.5 ${i < current ? 'bg-ink-700' : 'bg-slate-200'}`} aria-hidden />}
             <span className={`relative w-3.5 h-3.5 rounded-full border-2 ${i <= current ? 'bg-ink-700 border-ink-700' : 'bg-white border-slate-300'} ${i === current ? 'ring-4 ring-ink-100' : ''}`} />
-            <span className={`text-[10px] sm:text-[11px] mt-1.5 px-0.5 leading-tight ${i <= current ? 'text-ink-900 font-medium' : 'text-slate-400'}`}>{stage}</span>
-            {at && i <= current && <span className="text-[10px] text-slate-400">{format(new Date(at), 'd MMM')}</span>}
+            <span className={`text-xs  mt-1.5 px-0.5 leading-tight ${i <= current ? 'text-ink-900 font-medium' : 'text-slate-500'}`}>{stage}</span>
+            {at && i <= current && <span className="text-xs text-slate-500">{format(new Date(at), 'd MMM')}</span>}
           </li>
         );
       })}

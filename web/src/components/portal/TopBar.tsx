@@ -109,6 +109,8 @@ function Bell() {
   const router = useRouter();
   const client = useApolloClient();
   const reminders = useReminders();
+  const { data: planData } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-first' });
+  const doseIcon = doseWords(planData?.myTreatmentPlan?.form).icon;
   const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { pollInterval: 60_000 });
   const [load, { data, loading, error, refetch, fetchMore }] = useLazyQuery(MY_NOTIFICATIONS, { fetchPolicy: 'network-only' });
   const [markRead] = useMutation(MARK_NOTIFICATIONS_READ);
@@ -216,12 +218,12 @@ function Bell() {
                     <li key={n.id}>
                       <button type="button" onClick={() => openNotice(n)} className={`relative w-full flex items-start gap-3 text-left rounded-md px-3 py-2.5 hover:bg-slate-50 ${n.readAt ? '' : 'bg-slate-50'}`}>
                         <span className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center ${n.readAt ? 'bg-slate-100 text-slate-400' : TONE_TILE[text.tone]}`}>
-                          <Icon name={KIND_ICON[n.kind] ?? 'bell'} className="w-[18px] h-[18px]" />
+                          <Icon name={n.kind === 'DOSE_DUE' ? doseIcon : KIND_ICON[n.kind] ?? 'bell'} className="w-[18px] h-[18px]" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className={`block text-sm ${n.readAt ? 'text-slate-600' : 'font-semibold text-ink-900'}`}>{text.title}</span>
                           <span className="block text-xs text-slate-500">{text.body}</span>
-                          <span className="block mt-0.5 text-[11px] text-slate-400">{formatDistanceToNowStrict(new Date(n.updatedAt), { addSuffix: true })}</span>
+                          <span className="block mt-0.5 text-xs text-slate-500">{formatDistanceToNowStrict(new Date(n.updatedAt), { addSuffix: true })}</span>
                         </span>
                         {!n.readAt && <span className="mt-2 w-2 h-2 shrink-0 rounded-full bg-red-500"><span className="sr-only">Unread</span></span>}
                       </button>

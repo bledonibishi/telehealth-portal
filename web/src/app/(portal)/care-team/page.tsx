@@ -76,7 +76,7 @@ export default function CareTeamPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ink-900">{m.name}</p>
                   <p className="text-xs text-slate-500">{m.specialty ?? m.role} · {m.involvement}</p>
-                  {m.languages.length > 0 && <p className="text-xs text-slate-400">Speaks {m.languages.join(', ')}</p>}
+                  {m.languages.length > 0 && <p className="text-xs text-slate-500">Speaks {m.languages.join(', ')}</p>}
                 </div>
               </li>
             ))}

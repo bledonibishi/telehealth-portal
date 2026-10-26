@@ -91,7 +91,7 @@ export function ContactCard() {
       <ContactRow icon="chat" label="Messages"><Link href="/messages" className="hover:underline">Message your care team</Link></ContactRow>
       <div className="mt-3 rounded-md bg-amber-50 border border-amber-100 p-3 flex gap-2.5">
         <Icon name="alert" className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-        <p className="text-[11px] text-amber-900"><b>Important</b><br />This platform is for medical support and treatment management only. It does not replace emergency services.</p>
+        <p className="text-xs text-amber-900"><b>Important</b><br />This platform is for medical support and treatment management only. It does not replace emergency services.</p>
       </div>
     </Card>
   );

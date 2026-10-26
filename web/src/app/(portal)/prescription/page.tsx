@@ -9,6 +9,9 @@ import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { BloodTestsCard } from '@/components/labs/BloodTestsCard';
 import { LoadingState } from '@telehealth/loading';
 
+// The programme a prescription belongs to, as the patient knows it (the stored value is a code).
+const KIND_LABEL: Record<string, string> = { GLP1: 'Weight management', HRT: 'Hormone therapy', TRT: 'Testosterone therapy' };
+
 export default function PrescriptionPage() {
   const { data, loading } = useQuery(MY_CONSULTATIONS);
   const withPrescription = (data?.myConsultations ?? []).filter((c: any) => c.prescription);
@@ -32,9 +35,9 @@ export default function PrescriptionPage() {
             <div key={c.id} className="bg-white rounded-lg border border-slate-100 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <span className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{c.kind}</span>
+                  <span className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{KIND_LABEL[c.kind] ?? 'Treatment'}</span>
                   <h3 className="text-lg font-semibold text-slate-900 mt-1">{rx.medication}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{rx.dosage}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{rx.dosage}</p>
                 </div>
               </div>
 

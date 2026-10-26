@@ -110,7 +110,7 @@ export default function DocumentsPage() {
                   <p className="text-sm font-semibold text-ink-900">{l.analyteName ?? l.kind.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c: string) => c.toUpperCase())}</p>
                   <p className="text-xs text-slate-500">Taken {format(new Date(l.collectedAt), 'd MMM yyyy')}{l.referenceRangeLow != null && l.referenceRangeHigh != null ? ` · usual range ${l.referenceRangeLow}–${l.referenceRangeHigh} ${l.unit}` : ''}</p>
                 </div>
-                <p className={`text-sm font-bold ${l.flagged ? 'text-amber-700' : 'text-ink-900'}`}>{l.value} {l.unit}{l.flagged && <span className="ml-2 text-[11px] font-semibold rounded-full bg-amber-50 px-2 py-0.5">Your doctor is reviewing</span>}</p>
+                <p className={`text-sm font-bold ${l.flagged ? 'text-amber-700' : 'text-ink-900'}`}>{l.value} {l.unit}{l.flagged && <span className="ml-2 text-xs font-semibold rounded-full bg-amber-50 px-2 py-0.5">Your doctor is reviewing</span>}</p>
               </li>
             ))}
           </ul>

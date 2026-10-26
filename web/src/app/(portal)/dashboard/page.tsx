@@ -19,6 +19,7 @@ import { RecentUpdates } from '@/components/home/RecentUpdates';
 import { RecentOrders } from '@/components/home/RecentOrders';
 import { QuickLinks } from '@/components/home/QuickLinks';
 import { TodayCard } from '@/components/home/TodayCard';
+import { AttentionNotices, Notice } from '@/components/home/AttentionNotices';
 import { Card, btnPrimary } from '@/components/portal/Card';
 import { useCareStage } from '@/lib/useCareStage';
 import { Icon } from '@/components/portal/Icon';
@@ -28,23 +29,14 @@ import { CustomizeSlot } from '@/components/dashboard/CustomizeSlot';
 import { InlineError } from '@/components/common/Alert';
 import { SkeletonCard, SkeletonTile } from '@telehealth/loading';
 
-/** One line that needs the patient's attention, with the action beside it. */
-function Notice({ tone, title, text, href, action }: { tone: 'warn' | 'info'; title: string; text: string; href: string; action: string }) {
-  return (
-    <div className={`rounded-md border px-4 py-2.5 flex items-center justify-between gap-3 ${tone === 'warn' ? 'bg-orange-50 border-orange-100' : 'bg-white border-slate-200/70'}`}>
-      <p className="text-sm min-w-0"><b className="text-ink-900">{title}</b> <span className="text-slate-500">{text}</span></p>
-      <Link href={href} className="flex-shrink-0 text-sm font-medium text-ink-600 hover:text-ink-800">{action}</Link>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
   const [reporting, setReporting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const dash = useDashboardLayout();
   const { data: nameData } = useQuery(ME_NAME);
-  const { data: consultData, loading } = useQuery(MY_CONSULTATIONS);
+  // Refetched on every visit: the doctor's decision is what the patient is waiting for.
+  const { data: consultData, loading } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'cache-and-network' });
   // Refetched on every visit, so a check-in or weigh-in just done shows up straight away.
   const { data: journeyData } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
   const { data: planData, loading: planLoading } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'cache-and-network' });
@@ -60,19 +52,18 @@ export default function DashboardPage() {
   // have no plan to show before one exists).
   // How many updates the card lists at each size.
   const UPDATES_SHOWN = { small: 3, medium: 4, large: 8 } as const;
-  // A card in the narrow column, or at its smallest, is laid out in one column; at medium width, in fewer.
+  // A card in the narrow column, or at its smallest, is laid out in one column.
   const placeOfCard = (id: string) => (['top', 'main', 'side'] as const).find((z) => dash.layout[z].includes(id));
   const isNarrow = (id: string) => placeOfCard(id) === 'side' || (placeOfCard(id) === 'main' && sizeOf(dash.layout, id) === 'small');
-  const isCompact = (id: string) => placeOfCard(id) === 'main' && sizeOf(dash.layout, id) === 'medium';
   const cards: Record<string, { node: React.ReactNode; span?: string }> = {
     today: { node: <TodayCard /> },
     progress: {
       node: planLoading && !plan ? (
-        <section aria-label="Your treatment progress" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6 gap-3">
-          {[1, 2, 3, 4, 5].map((k) => <SkeletonTile key={k} className="bg-white" label="Loading…" />)}
+        <section aria-label="Your treatment progress" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((k) => <SkeletonTile key={k} className="bg-white" label="Loading…" />)}
         </section>
       ) : (
-        <ProgressOverview journey={journey} plan={plan} compact={isCompact('progress')} narrow={isNarrow('progress')} />
+        <ProgressOverview journey={journey} plan={plan} />
       ),
     },
     plan: {
@@ -91,9 +82,9 @@ export default function DashboardPage() {
       ),
     },
     treatment: { span: 'md:col-span-6', node: plan ? <TreatmentPlanCard plan={plan} /> : null },
-    updates: { node: <RecentUpdates limit={UPDATES_SHOWN[sizeOf(dash.layout, 'updates') ?? 'small']} /> },
+    updates: { node: <RecentUpdates limit={UPDATES_SHOWN[sizeOf(dash.layout, 'updates') ?? 'small']} hasJourney={!!journey} /> },
     orders: { node: <RecentOrders /> },
-    quickLinks: { node: <QuickLinks columns={sizeOf(dash.layout, 'quickLinks') === 'large' ? 2 : 1} /> },
+    quickLinks: { node: <QuickLinks columns={sizeOf(dash.layout, 'quickLinks') === 'large' ? 2 : 1} hasJourney={!!journey} /> },
     profile: { node: <ProfileSummaryCard journey={journey} /> },
     chat: { node: <ChatCard /> },
     appointment: { node: <AppointmentCard /> },
@@ -159,7 +150,7 @@ export default function DashboardPage() {
       >
         {renderZone(zone)}
         {editing && dash.layout[zone].length === 0 && (
-          <div className="md:col-span-6 xl:col-span-1 rounded-lg border-2 border-dashed border-slate-300 py-10 text-center text-sm text-slate-400">{empty}</div>
+          <div className="md:col-span-6 xl:col-span-1 rounded-lg border-2 border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">{empty}</div>
         )}
       </div>
     );
@@ -173,17 +164,22 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-500 mt-0.5 mb-2">Here’s your health journey at a glance.</p>
           <SubscriptionStatus />
         </div>
-        <div className="flex items-start gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setReporting(true)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg px-3.5 py-2"
+          >
+            <Icon name="alert" className="w-4 h-4 text-amber-600" /> Report a side effect
+          </button>
           <button
             type="button"
             onClick={() => setEditing((e) => !e)}
+            disabled={dash.loading}
             aria-pressed={editing}
-            className={`text-xs font-medium rounded-lg px-3 py-1.5 border ${editing ? 'bg-ink-800 text-white border-ink-800' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}
+            className={`text-xs font-medium rounded-lg px-3 py-2 border disabled:opacity-50 ${editing ? 'bg-ink-800 text-white border-ink-800' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}
           >
             {editing ? 'Done' : 'Customize'}
-          </button>
-          <button type="button" onClick={() => setReporting(true)} className="text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg px-3 py-1.5">
-            Report a side effect
           </button>
         </div>
       </div>
@@ -192,6 +188,7 @@ export default function DashboardPage() {
         {!loading && needsInfo && (
           <Notice tone="warn" title="Your clinician needs more information." text="Check your messages, then update your answers." href="/onboarding/medical-questionnaire?from=dashboard" action="Update answers →" />
         )}
+        <AttentionNotices />
         {journey && <WeightTrendNotice />}
       </div>
 
@@ -214,7 +211,7 @@ export default function DashboardPage() {
           <div className="mt-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Cards you can add</p>
             {dash.layout.hidden.length === 0 ? (
-              <p className="text-sm text-slate-400">Every card is showing.</p>
+              <p className="text-sm text-slate-500">Every card is showing.</p>
             ) : (
               <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {dash.layout.hidden.map((id) => {
@@ -235,12 +232,22 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {renderZone('top')}
+      {dash.loading ? (
+        // The saved arrangement is on its way: showing the standard one first would make the cards jump.
+        <div className="space-y-5" aria-busy="true">
+          <SkeletonCard lines={3} className="bg-white" label="Loading your home screen…" />
+          <SkeletonCard lines={5} className="bg-white min-h-[14rem]" label="Loading your home screen…" />
+        </div>
+      ) : (
+      <>
+      <div className="space-y-5 mb-5 empty:hidden">{renderZone('top')}</div>
 
       <div className={`grid grid-cols-1 gap-5 items-start ${editing || dash.layout.side.length > 0 ? 'xl:grid-cols-[minmax(0,1fr)_18.5rem]' : ''}`}>
         {dropColumn('main', 'grid grid-cols-1 md:grid-cols-6 gap-5 min-w-0 [&>*]:min-w-0', 'Drop a card here')}
         {(editing || dash.layout.side.length > 0) && dropColumn('side', 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 min-w-0 [&>*]:min-w-0', 'Drop a card here')}
       </div>
+      </>
+      )}
 
       <footer className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
         <p className="flex items-center gap-2"><Icon name="help" className="w-4 h-4" /> Your health is our priority. We’re here to support you every step of the way.</p>
