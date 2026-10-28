@@ -14,6 +14,8 @@ export interface ShopOrderEmail {
   carrier?: string | null;
   trackingNumber?: string | null;
   refundedCents?: number;
+  /** Paid on delivery or by bank transfer: a refund is given back by hand, not to a card. */
+  offline?: boolean;
   /** For TRANSFER_DETAILS: where to send the money, and by when the order is held. */
   transfer?: { iban: string; accountName: string; bankName: string | null; payBy: Date };
 }
@@ -70,6 +72,23 @@ export function shopOrderEmail(a: ShopOrderEmail & { firstName: string }): Email
     };
   }
 
+  if (a.kind === 'TRANSFER_DETAILS') {
+    // No account details to send: never fall through to "we've received your payment".
+    return {
+      subject: `Order ${a.reference} is reserved`,
+      html: emailLayout({
+        audience: 'shop',
+        preheader: `We’re holding order ${a.reference} for you.`,
+        body: [
+          heading('Your order is reserved'),
+          paragraph(`${hi} we’re holding order <strong>${escapeHtml(a.reference)}</strong> for you. The bank details for your transfer are on your order page.`),
+          detailRows(rows),
+          button('See your order', a.orderUrl),
+        ].join(''),
+      }),
+    };
+  }
+
   if (a.kind === 'DISPATCHED') {
     const tracking = [a.carrier, a.trackingNumber].filter(Boolean).map((v) => escapeHtml(String(v))).join(' · ');
     return {
@@ -96,8 +115,8 @@ export function shopOrderEmail(a: ShopOrderEmail & { firstName: string }): Email
         preheader: `We’ve refunded ${amount}.`,
         body: [
           heading('Refund on its way'),
-          paragraph(`${hi} we’ve refunded <strong>${amount}</strong> for order <strong>${escapeHtml(a.reference)}</strong> to the card you paid with.`),
-          smallPrint('It usually shows on your statement within 5 to 10 working days, depending on your bank.'),
+          paragraph(`${hi} we’ve refunded <strong>${amount}</strong> for order <strong>${escapeHtml(a.reference)}</strong>${a.offline ? '.' : ' to the card you paid with.'}`),
+          ...(a.offline ? [] : [smallPrint('It usually shows on your statement within 5 to 10 working days, depending on your bank.')]),
         ].join(''),
       }),
     };

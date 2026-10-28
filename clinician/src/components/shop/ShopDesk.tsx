@@ -16,6 +16,7 @@ import {
 } from '@/graphql/shop';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ErrorAlert, InlineError } from '@/components/ui/Alert';
+import { getCurrentRole } from '@/lib/role';
 
 const money = (cents: number | null | undefined, currency = 'eur') => {
   if (cents == null) return '—';
@@ -39,18 +40,20 @@ type TabKey = 'orders' | 'products' | 'receipts';
 export default function ShopDesk() {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabKey>('orders');
+  // Support (CX_TEAM) sees orders and records payments and receipts; products, sending and refunds are for admins.
+  const isAdmin = getCurrentRole() === 'ADMIN';
   const { data: receiptData } = useQuery(PENDING_FISCAL_RECEIPTS, { pollInterval: 60_000, fetchPolicy: 'cache-and-network' });
   const owed = receiptData?.pendingFiscalReceipts?.length ?? 0;
 
   const TABS: Array<{ key: TabKey; label: string; hint: string }> = [
     { key: 'orders', label: 'Orders', hint: 'Paid orders to send, refunds and cancellations' },
-    { key: 'products', label: 'Products', hint: 'What is on sale, prices and stock' },
+    ...(isAdmin ? [{ key: 'products' as const, label: 'Products', hint: 'What is on sale, prices and stock' }] : []),
     { key: 'receipts', label: `Fiscal receipts${owed ? ` (${owed})` : ''}`, hint: 'Sales and refunds still waiting for their fiscal receipt' },
   ];
 
   return (
     <div>
-      <div className="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className={`px-4 sm:px-6 pt-4 grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
         {TABS.map((x) => (
           <button key={x.key} type="button" onClick={() => setTab(x.key)}
             className={`text-left rounded-lg border px-4 py-3 ${tab === x.key ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
@@ -60,8 +63,8 @@ export default function ShopDesk() {
         ))}
       </div>
       <div className="px-4 sm:px-6 py-4">
-        {tab === 'orders' && <Orders />}
-        {tab === 'products' && <Products />}
+        {tab === 'orders' && <Orders isAdmin={isAdmin} />}
+        {tab === 'products' && isAdmin && <Products />}
         {tab === 'receipts' && <Receipts />}
       </div>
     </div>
@@ -82,7 +85,7 @@ const FILTERS: Array<{ key: string | null; label: string }> = [
   { key: null, label: 'All' },
 ];
 
-function Orders() {
+function Orders({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useI18n();
   const [status, setStatus] = useState<string | null>('PAID');
   const [search, setSearch] = useState('');
@@ -106,14 +109,14 @@ function Orders() {
       {!loading && !error && orders.length === 0 && <Empty>{t('No orders here.')}</Empty>}
       <ul className="space-y-3">
         {orders.map((o) => (
-          <OrderRow key={o.id} order={o} open={openId === o.id} onToggle={() => setOpenId(openId === o.id ? null : o.id)} />
+          <OrderRow key={o.id} order={o} isAdmin={isAdmin} open={openId === o.id} onToggle={() => setOpenId(openId === o.id ? null : o.id)} />
         ))}
       </ul>
     </div>
   );
 }
 
-function OrderRow({ order: o, open, onToggle }: { order: any; open: boolean; onToggle: () => void }) {
+function OrderRow({ order: o, isAdmin, open, onToggle }: { order: any; isAdmin: boolean; open: boolean; onToggle: () => void }) {
   const { t, timeAgo } = useI18n();
   const [error, setError] = useState<unknown>(null);
   const [carrier, setCarrier] = useState('');
@@ -133,7 +136,7 @@ function OrderRow({ order: o, open, onToggle }: { order: any; open: boolean; onT
 
   const refundable = o.payments.filter((p: any) => p.status === 'SUCCEEDED').reduce((s: number, p: any) => s + p.amountCents, 0) - o.refundedCents;
   const refundCents = refundAmount.trim() ? Math.round(Number(refundAmount.replace(',', '.')) * 100) : refundable;
-  const canRefund = ['PAID', 'DISPATCHED', 'DELIVERED'].includes(o.status) && refundable > 0;
+  const canRefund = isAdmin && ['PAID', 'DISPATCHED', 'DELIVERED'].includes(o.status) && refundable > 0;
   const offline = OFFLINE.includes(o.provider);
   // Money still to come by hand: a pay-on-delivery parcel, or a bank transfer.
   const awaitingHandPayment = offline && !o.paidAt && ['AWAITING_PAYMENT', 'CONFIRMED', 'DISPATCHED', 'DELIVERED'].includes(o.status);
@@ -199,7 +202,7 @@ function OrderRow({ order: o, open, onToggle }: { order: any; open: boolean; onT
               </button>
             </div>
           )}
-          {(o.status === 'PAID' || o.status === 'CONFIRMED') && (
+          {isAdmin && (o.status === 'PAID' || o.status === 'CONFIRMED') && (
             <div className="flex flex-wrap items-end gap-2">
               <label className="text-xs text-gray-600">{t('Courier')}<input value={carrier} onChange={(e) => setCarrier(e.target.value)} className="mt-0.5 block rounded-md border border-gray-300 px-2 py-1.5 text-sm" /></label>
               <label className="text-xs text-gray-600">{t('Tracking number')}<input value={tracking} onChange={(e) => setTracking(e.target.value)} className="mt-0.5 block rounded-md border border-gray-300 px-2 py-1.5 text-sm" /></label>
@@ -209,13 +212,13 @@ function OrderRow({ order: o, open, onToggle }: { order: any; open: boolean; onT
               </button>
             </div>
           )}
-          {o.status === 'DISPATCHED' && (
+          {isAdmin && o.status === 'DISPATCHED' && (
             <button type="button" disabled={delivering} onClick={() => deliver({ variables: { orderId: o.id } })}
               className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
               {delivering ? t('Saving…') : t('Mark as delivered')}
             </button>
           )}
-          {(o.status === 'AWAITING_PAYMENT' || (awaitingHandPayment && ['CONFIRMED', 'DISPATCHED'].includes(o.status))) && (
+          {isAdmin && (o.status === 'AWAITING_PAYMENT' || (awaitingHandPayment && ['CONFIRMED', 'DISPATCHED'].includes(o.status))) && (
             <div className="flex flex-wrap items-end gap-2">
               <label className="text-xs text-gray-600">{t('Reason')}<input value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="mt-0.5 block w-64 rounded-md border border-gray-300 px-2 py-1.5 text-sm" /></label>
               <button type="button" disabled={cancelling} onClick={() => cancel({ variables: { orderId: o.id, reason: cancelReason || 'Cancelled by staff' } })}

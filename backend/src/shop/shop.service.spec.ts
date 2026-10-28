@@ -77,13 +77,25 @@ describe('ShopService payments', () => {
   });
 
   it('never marks paid when the provider reports another amount, currency or reference', async () => {
-    for (const wrong of [{ amountCents: 100 }, { currency: 'usd' }, { merchantReference: 'OMO-OTHER-1' }, { transactionId: undefined }]) {
+    for (const wrong of [{ amountCents: 100 }, { currency: 'usd' }, { merchantReference: 'OMO-OTHER-1' }]) {
       const { service, prisma, email } = setup();
       await service.apply({ ...PAYMENT } as any, { ...PAID, ...wrong });
       expect(prisma.shopPayment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', failureCode: 'MISMATCH' }) }));
       expect(prisma.shopOrder.update).not.toHaveBeenCalled();
       expect(email.sendShopOrderEmail).not.toHaveBeenCalled();
     }
+  });
+
+  it('keeps a try open, not failed, when it is reported paid before its transaction can be read', async () => {
+    const { service, prisma, email } = setup();
+    await service.apply({ ...PAYMENT } as any, { ...PAID, transactionId: undefined });
+    expect(prisma.shopPayment.updateMany).toHaveBeenCalledWith({
+      where: { id: 'pay1', status: 'PENDING' },
+      data: expect.objectContaining({ failureCode: 'PAID_UNCONFIRMED' }),
+    });
+    expect(prisma.shopPayment.updateMany.mock.calls[0][0].data.status).toBeUndefined();
+    expect(prisma.shopOrder.update).not.toHaveBeenCalled();
+    expect(email.sendShopOrderEmail).not.toHaveBeenCalled();
   });
 
   it('records a payment once, however many times it is reported', async () => {
@@ -137,6 +149,14 @@ describe('ShopService sweep', () => {
     expect(prisma.shopProduct.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { stock: { increment: 1 } } });
     // The open try stays open, so a buyer who finishes paying late is still recorded.
     expect(prisma.shopPayment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps holding the stock of a lapsed order the provider reports paid but can’t confirm yet', async () => {
+    const { service, adapters, prisma } = setup();
+    adapters[0].status.mockResolvedValue({ ...PAID, transactionId: undefined });
+    const result = await service.sweep();
+    expect(result.released).toBe(0);
+    expect(prisma.shopOrder.updateMany).not.toHaveBeenCalled();
   });
 
   it('keeps holding the stock when the provider can’t be asked', async () => {

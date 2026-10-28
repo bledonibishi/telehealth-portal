@@ -172,12 +172,13 @@ export class ShopService {
   }
 
   /** Asks the provider where a try stands and records it. Safe to call any number of times. */
-  async refresh(payment: ShopPayment) {
-    if (payment.status !== ShopPaymentStatus.PENDING || !payment.providerOrderId) return;
+  async refresh(payment: ShopPayment): Promise<PaymentState | null> {
+    if (payment.status !== ShopPaymentStatus.PENDING || !payment.providerOrderId) return null;
     const adapter = this.adapters.find((a) => a.key === payment.provider);
-    if (!adapter) return;
+    if (!adapter) return null;
     const state = await adapter.status(payment.providerOrderId);
     await this.apply(payment, state);
+    return state;
   }
 
   /** Records what the provider said about a try. Exported for the local test payment page. */
@@ -197,6 +198,16 @@ export class ShopService {
       return;
     }
 
+    // Paid, but the purchase itself can't be read yet (the provider's transaction list can lag). Nothing failed: the
+    // try stays open and is read again on the next notification or sweep, and staff see why it's waiting.
+    if (!state.transactionId) {
+      this.logger.warn(`Shop payment ${payment.id} (${payment.provider} ${payment.providerOrderId}) reported paid without a transaction id; asking again later`);
+      await this.prisma.shopPayment.updateMany({
+        where: { id: payment.id, status: ShopPaymentStatus.PENDING },
+        data: { failureCode: 'PAID_UNCONFIRMED', failureMessage: 'The provider reports this paid, but its transaction isn’t readable yet. Checked again automatically.' },
+      });
+      return;
+    }
     const { reference } = await this.prisma.shopOrder.findUniqueOrThrow({ where: { id: payment.orderId }, select: { reference: true } });
     const problem = mismatch({ amountCents: payment.amountCents, currency: payment.currency, merchantReference: `${reference}-${payment.attempt}` }, state);
     if (problem) {
@@ -276,9 +287,15 @@ export class ShopService {
     for (const order of lapsed) {
       try {
         // A buyer may have paid with the notification lost: ask before letting go of the stock.
-        for (const payment of order.payments) if (payment.status === ShopPaymentStatus.PENDING) await this.refresh(payment);
+        let reportedPaid = false;
+        for (const payment of order.payments) {
+          if (payment.status !== ShopPaymentStatus.PENDING) continue;
+          if ((await this.refresh(payment))?.status === 'SUCCEEDED') reportedPaid = true;
+        }
         const current = await this.loadOrder(order.id);
         if (current.status === ShopOrderStatus.PAID) paid++;
+        // The provider says paid but it couldn't be recorded yet: keep the stock and ask again next time.
+        else if (reportedPaid) this.logger.warn(`Shop order ${order.reference} is reported paid but not confirmed yet; keeping it`);
         else if (await this.cancelUnpaid(order.id, 'Not paid in time')) released++;
       } catch (err: any) {
         // The provider couldn't be reached: keep holding the stock and ask again next time.
@@ -445,7 +462,7 @@ export class ShopService {
     });
     const updated = await this.loadOrder(orderId);
     await this.email
-      .sendShopOrderEmail(updated.email, updated.firstName, { kind: 'REFUNDED', ...emailOrder(updated, this.orderUrl(updated.reference)), refundedCents: amount })
+      .sendShopOrderEmail(updated.email, updated.firstName, { kind: 'REFUNDED', ...emailOrder(updated, this.orderUrl(updated.reference)), refundedCents: amount, offline: adapter.kind === 'OFFLINE' })
       .catch((err: any) => this.logger.error(`Shop refund email for ${updated.reference} failed: ${err?.message}`));
     return updated;
   }
@@ -664,8 +681,6 @@ export function mismatch(expected: { amountCents: number; currency: string; merc
   if (!state.currency || state.currency.toLowerCase() !== expected.currency.toLowerCase()) return `currency ${state.currency ?? 'unknown'} instead of ${expected.currency}`;
   // Providers that keep our reference must give back the one for this try.
   if (state.merchantReference !== undefined && state.merchantReference !== expected.merchantReference) return `reference ${state.merchantReference} instead of ${expected.merchantReference}`;
-  // Without the purchase's id it could never be refunded.
-  if (!state.transactionId) return 'no transaction id';
   return null;
 }
 
