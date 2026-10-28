@@ -26,6 +26,8 @@ import {
   refundAwaitingReturnEmail,
   refundEmail,
   staffAlertEmail,
+  shopOrderEmail,
+  type ShopOrderEmail,
   supplyPaymentEmail,
   verificationCodeEmail,
 } from './templates';
@@ -133,6 +135,15 @@ export class EmailService {
       // Thrown, unlike the other emails: the visitor must not be told a code was sent when none was.
       throw new Error(failure);
     }
+  }
+
+  /** The shop's emails to a buyer: paid, sent, refunded. */
+  async sendShopOrderEmail(to: string, firstName: string, order: ShopOrderEmail) {
+    if (!this.resend) {
+      this.logger.log(`[DEV] Shop order email (${order.kind}) to ${to}: ${order.reference}`);
+      return;
+    }
+    await this.deliver({ to, kind: `shop-order-${order.kind.toLowerCase()}`, ...shopOrderEmail({ firstName, ...order }) });
   }
 
   async sendPaymentReceiptEmail(to: string, firstName: string, payment: { amount: number; currency: string; paidAt: Date; reference?: string | null }) {

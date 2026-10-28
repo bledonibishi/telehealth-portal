@@ -282,3 +282,19 @@ describe('StripeWebhookService a returning patient\'s subscription', () => {
     expect(email.sendActivationEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('StripeWebhookService shop purchases', () => {
+  it('hands a shop checkout to the shop and never activates a patient for it', async () => {
+    const { service, prisma, moduleRef, email } = build();
+    const onProviderNotice = jest.fn().mockResolvedValue({ handled: true });
+    moduleRef.get.mockReturnValue({ onProviderNotice });
+    await service.handle({
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_shop', metadata: { kind: 'shop' }, customer_details: { email: 'buyer@b.com' }, amount_total: 2990, currency: 'eur' } },
+    } as any);
+    expect(onProviderNotice).toHaveBeenCalledWith('STRIPE', 'cs_shop');
+    expect(prisma.lead.findUnique).not.toHaveBeenCalled();
+    expect(prisma.patient.upsert).not.toHaveBeenCalled();
+    expect(email.sendPaymentReceiptEmail).not.toHaveBeenCalled();
+  });
+});

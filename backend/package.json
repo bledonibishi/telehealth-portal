@@ -23,6 +23,7 @@
     "seed-test-orders": "ts-node scripts/seed-test-orders.ts",
     "seed-examples": "ts-node scripts/seed-examples.ts",
     "seed-tickets": "ts-node scripts/seed-tickets.ts",
+    "seed-shop-products": "ts-node scripts/seed-shop-products.ts",
     "seed-showcase": "ts-node scripts/seed-showcase.ts",
     "support-bot-eval": "ts-node -T -P tsconfig.json scripts/support-bot-eval.ts",
     "seed-labs": "ts-node scripts/seed-labs-for.ts",

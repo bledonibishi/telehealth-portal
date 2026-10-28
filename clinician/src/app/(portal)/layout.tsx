@@ -46,6 +46,7 @@ const NAV: NavItem[] = [
   { href: '/orders',   label: 'Orders',         icon: 'cart',     group: 'Fulfilment', roles: ['ADMIN', 'PROVIDER'],                            badgeKey: 'pendingOrders' },
   { href: '/shipments', label: 'Next shipments', icon: 'truck',    group: 'Fulfilment', roles: ['ADMIN', 'DOCTOR'],                              badgeKey: 'shipmentsDue' },
   { href: '/billing',  label: 'Billing',        icon: 'cart',     group: 'Admin', roles: ['ADMIN'] },
+  { href: '/shop',     label: 'Shop',           icon: 'cart',     group: 'Admin', roles: ['ADMIN', 'CX_TEAM'] },
   { href: '/team',     label: 'Team & Roles',   icon: 'shield',   group: 'Admin', roles: ['ADMIN'] },
   { href: '/reports',  label: 'Monthly report', icon: 'chart',    group: 'Admin', roles: ['ADMIN'] },
   { href: '/audit',    label: 'Audit log',      icon: 'search',   group: 'Admin', roles: ['ADMIN'] },

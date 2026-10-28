@@ -17,6 +17,9 @@ import { OrdersService } from '../prescriptions/orders.service';
 import { NotifierService } from '../notifications/notifier.service';
 import { NotificationKind } from '@telehealth/shared-types';
 import { feeInInvoice } from './prescription-fee';
+import { ShopPaymentProvider } from '@prisma/client';
+import { ShopService } from '../shop/shop.service';
+import { SHOP_SESSION_KIND } from '../shop/stripe-shop.adapter';
 
 /** An approved ID check older than this is asked for again when the patient comes back. */
 export const ID_CHECK_MAX_AGE_DAYS = 365;
@@ -42,6 +45,11 @@ export class StripeWebhookService {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+        // A shop purchase (no prescription, no patient account): the shop checks it with Stripe and records it.
+        if (session.metadata?.kind === SHOP_SESSION_KIND) {
+          await this.moduleRef.get(ShopService, { strict: false }).onProviderNotice(ShopPaymentProvider.STRIPE, session.id);
+          break;
+        }
         const email = session.customer_details?.email ?? (session.metadata?.email as string);
         await this.activatePatient(
           email,

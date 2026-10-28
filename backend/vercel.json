@@ -13,6 +13,7 @@
     { "path": "/internal/cron/urgency-sweep", "schedule": "*/10 * * * *" },
     { "path": "/internal/cron/lapsed-patients", "schedule": "0 9 * * *" },
     { "path": "/internal/cron/consultation-payments", "schedule": "20 * * * *" },
-    { "path": "/internal/cron/support-bot", "schedule": "* * * * *" }
+    { "path": "/internal/cron/support-bot", "schedule": "* * * * *" },
+    { "path": "/internal/cron/shop-orders", "schedule": "*/10 * * * *" }
   ]
 }

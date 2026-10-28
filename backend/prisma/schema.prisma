@@ -1665,3 +1665,205 @@ model SavedReply {
 
   @@map("saved_replies")
 }
+
+// ── Shop: products sold without a prescription (protein, supplements and the like) ──────────────────────────
+// Kept apart from the prescription catalogue (Product) and its orders: nothing here needs a doctor, a
+// consultation or the partner pharmacy. Anyone can buy, with or without a patient account.
+
+enum ShopOrderStatus {
+  // Created and its stock held, waiting for the buyer to pay. Released when ShopOrder.expiresAt passes unpaid.
+  AWAITING_PAYMENT
+  // Accepted to be paid on delivery: it is packed and sent unpaid, and does not lapse.
+  CONFIRMED
+  PAID
+  DISPATCHED
+  DELIVERED
+  // Never paid, or stopped by staff before it shipped.
+  CANCELLED
+  // Everything paid was given back.
+  REFUNDED
+}
+
+enum ShopPaymentProvider {
+  RAIACCEPT
+  STRIPE
+  // Paid to the courier, in cash or by card, when the parcel arrives. Recorded by staff.
+  COD
+  // Paid into our bank account. Recorded by staff when the money arrives.
+  BANK_TRANSFER
+  // A pretend payment for local testing; refused in production.
+  DEV
+}
+
+enum ShopPaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum FiscalReceiptStatus {
+  // The sale (or refund) still needs its Kosovo fiscal receipt.
+  PENDING
+  ISSUED
+}
+
+model ShopProduct {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  brand       String?
+  // Shown on the product page. Plain text; no health claims.
+  description String   @default("")
+  imageUrl    String?  @map("image_url")
+  category    String?
+  // The price the buyer pays, VAT included, in cents.
+  priceCents  Int      @map("price_cents")
+  currency    String   @default("eur")
+  // The VAT rate in the price, in percent (for the fiscal receipt).
+  vatRate     Decimal  @default(18) @map("vat_rate") @db.Decimal(5, 2)
+  // Units we can still sell. Lowered when an order is created and given back when it lapses unpaid or is cancelled.
+  stock       Int      @default(0)
+  maxPerOrder Int      @default(10) @map("max_per_order")
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items ShopOrderItem[]
+
+  @@index([active, sortOrder])
+  @@map("shop_products")
+}
+
+model ShopOrder {
+  id              String              @id @default(cuid())
+  // What the buyer and staff see, e.g. OMO-7K3P9Q.
+  reference       String              @unique
+  // A secret in the link to the order page, so only the buyer can read it without signing in.
+  accessToken     String              @map("access_token")
+  email           String
+  firstName       String              @map("first_name")
+  lastName        String              @map("last_name")
+  phone           String?
+  // { line1, city, postalCode, country } as the buyer gave it.
+  shippingAddress Json                @map("shipping_address")
+  status          ShopOrderStatus     @default(AWAITING_PAYMENT)
+  // How the buyer chose to pay; a retry can choose again.
+  provider        ShopPaymentProvider
+  subtotalCents   Int                 @map("subtotal_cents")
+  shippingCents   Int                 @default(0) @map("shipping_cents")
+  totalCents      Int                 @map("total_cents")
+  currency        String              @default("eur")
+  refundedCents   Int                 @default(0) @map("refunded_cents")
+  // Until when the stock is held for an unpaid order.
+  expiresAt       DateTime            @map("expires_at")
+  paidAt          DateTime?           @map("paid_at")
+  dispatchedAt    DateTime?           @map("dispatched_at")
+  deliveredAt     DateTime?           @map("delivered_at")
+  cancelledAt     DateTime?           @map("cancelled_at")
+  cancelReason    String?             @map("cancel_reason")
+  carrier         String?
+  trackingNumber  String?             @map("tracking_number")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  items          ShopOrderItem[]
+  payments       ShopPayment[]
+  refunds        ShopRefund[]
+  fiscalReceipts FiscalReceipt[]
+
+  @@index([status, expiresAt])
+  @@index([email])
+  @@index([createdAt])
+  @@map("shop_orders")
+}
+
+model ShopOrderItem {
+  id             String  @id @default(cuid())
+  orderId        String  @map("order_id")
+  productId      String  @map("product_id")
+  // Copied from the product when ordered, so a later change of name or price never rewrites an order.
+  name           String
+  unitPriceCents Int     @map("unit_price_cents")
+  vatRate        Decimal @map("vat_rate") @db.Decimal(5, 2)
+  quantity       Int
+
+  order   ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product ShopProduct @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@map("shop_order_items")
+}
+
+// One try at paying for an order. A declined card and a second try are two rows.
+model ShopPayment {
+  id                    String              @id @default(cuid())
+  orderId               String              @map("order_id")
+  provider              ShopPaymentProvider
+  // 1 for the first try. The provider is sent "<reference>-<attempt>", because each try needs its own number.
+  attempt               Int
+  status                ShopPaymentStatus   @default(PENDING)
+  // The provider's id for this try: the RaiAccept order id, or the Stripe Checkout Session id.
+  providerOrderId       String?             @map("provider_order_id")
+  // The purchase itself: the RaiAccept transaction id, or the Stripe PaymentIntent id. Refunds need it.
+  providerTransactionId String?             @map("provider_transaction_id")
+  redirectUrl           String?             @map("redirect_url")
+  amountCents           Int                 @map("amount_cents")
+  currency              String
+  failureCode           String?             @map("failure_code")
+  failureMessage        String?             @map("failure_message")
+  // e.g. "VISA ···· 0011", for staff answering a buyer.
+  cardSummary           String?             @map("card_summary")
+  completedAt           DateTime?           @map("completed_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  order   ShopOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds ShopRefund[]
+
+  @@unique([orderId, attempt])
+  @@unique([provider, providerOrderId])
+  @@map("shop_payments")
+}
+
+model ShopRefund {
+  id               String   @id @default(cuid())
+  orderId          String   @map("order_id")
+  paymentId        String   @map("payment_id")
+  amountCents      Int      @map("amount_cents")
+  // The provider's id for the refund transaction.
+  providerRefundId String?  @map("provider_refund_id")
+  reason           String?
+  createdById      String?  @map("created_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  order   ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  payment ShopPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([orderId])
+  @@map("shop_refunds")
+}
+
+// A Kosovo fiscal receipt owed for a shop sale or refund. Recorded when the money moves; staff mark it issued from
+// the fiscal device or software until that is connected (see shop/fiscal.ts).
+model FiscalReceipt {
+  id            String              @id @default(cuid())
+  orderId       String              @map("order_id")
+  // SALE, or REFUND for a correcting receipt.
+  kind          String
+  amountCents   Int                 @map("amount_cents")
+  currency      String
+  status        FiscalReceiptStatus @default(PENDING)
+  receiptNumber String?             @map("receipt_number")
+  refundId      String?             @unique @map("refund_id")
+  issuedAt      DateTime?           @map("issued_at")
+  issuedById    String?             @map("issued_by_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  order ShopOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@map("fiscal_receipts")
+}

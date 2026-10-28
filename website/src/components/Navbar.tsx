@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { TREATMENTS } from '@/lib/treatments';
+import PortalLink from '@/components/PortalLink';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -10,10 +11,20 @@ export default function Navbar() {
   return (
     <nav className="pv-nav">
       <div className="pv-nav-inner">
-        <Link href="/" className="pv-logo">
-          <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
-          <span className="pv-logo-text">Omo Pharmacy</span>
-        </Link>
+        <div className="pv-nav-brand">
+          <Link href="/" className="pv-logo">
+            <img src="/omo-logo.png?v=3" alt="" width={42} height={42} />
+            <span className="pv-logo-text">Omo Pharmacy</span>
+          </Link>
+          {/* The shop is its own place: entering it plays the portal transition (components/PortalTransition). */}
+          <PortalLink href="/shop" theme="shop" className="pv-shop-btn" aria-label="Omo Shop: everyday health products, no prescription needed">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 7h12l-1 13H7L6 7Z" />
+              <path d="M9 7a3 3 0 0 1 6 0" />
+            </svg>
+            <span>Shop</span>
+          </PortalLink>
+        </div>
 
         <div className="pv-nav-links">
           <Link href="/#treatments">Treatments</Link>
