@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit reviews only PRs into the default branch (main) unless told otherwise. Our PRs go into dev.
+reviews:
+  auto_review:
+    enabled: true
+    # Branches reviewed besides the default one.
+    base_branches:
+      - dev
+    # Review each new push to an open PR too.
+    auto_incremental_review: true
