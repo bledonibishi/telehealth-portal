@@ -123,6 +123,7 @@ function OrderRow({ order: o, isAdmin, open, onToggle }: { order: any; isAdmin: 
   const [tracking, setTracking] = useState('');
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
+  const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
   const [refundReason, setRefundReason] = useState('');
   const [restock, setRestock] = useState(true);
   const [confirmRefund, setConfirmRefund] = useState(false);
@@ -134,7 +135,13 @@ function OrderRow({ order: o, isAdmin, open, onToggle }: { order: any; isAdmin: 
   const [received, { loading: recording }] = useMutation(MARK_SHOP_PAYMENT_RECEIVED, opts);
   const [refund, { loading: refunding }] = useMutation(REFUND_SHOP_ORDER, { ...opts, onCompleted: () => { setError(null); setRefundOpen(false); setConfirmRefund(false); } });
 
-  const refundable = o.payments.filter((p: any) => p.status === 'SUCCEEDED').reduce((s: number, p: any) => s + p.amountCents, 0) - o.refundedCents;
+  // Refunds go back one payment at a time (an order paid twice has two), so the amounts here are per payment.
+  const refundablePayments = o.payments
+    .filter((p: any) => p.status === 'SUCCEEDED')
+    .map((p: any) => ({ ...p, left: p.amountCents - o.refunds.filter((r: any) => r.paymentId === p.id).reduce((s: number, r: any) => s + r.amountCents, 0) }))
+    .filter((p: any) => p.left > 0);
+  const refundPayment = refundablePayments.find((p: any) => p.id === refundPaymentId) ?? refundablePayments[0];
+  const refundable = refundPayment?.left ?? 0;
   const refundCents = refundAmount.trim() ? Math.round(Number(refundAmount.replace(',', '.')) * 100) : refundable;
   const canRefund = isAdmin && ['PAID', 'DISPATCHED', 'DELIVERED'].includes(o.status) && refundable > 0;
   const offline = OFFLINE.includes(o.provider);
@@ -233,6 +240,17 @@ function OrderRow({ order: o, isAdmin, open, onToggle }: { order: any; isAdmin: 
           )}
           {canRefund && refundOpen && (
             <div className="rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 space-y-2">
+              {refundablePayments.length > 1 && (
+                <fieldset className="space-y-1">
+                  <legend className="text-xs text-gray-700">{t('Refund which payment?')}</legend>
+                  {refundablePayments.map((p: any) => (
+                    <label key={p.id} className="flex items-center gap-2 text-sm text-gray-800">
+                      <input type="radio" name={`refund-payment-${o.id}`} checked={refundPayment?.id === p.id} onChange={() => { setRefundPaymentId(p.id); setConfirmRefund(false); }} />
+                      #{p.attempt} · {PROVIDER_LABEL[p.provider] ?? p.provider}{p.cardSummary ? ` · ${p.cardSummary}` : ''} · {t('{amount} left', { amount: money(p.left, o.currency) })}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
               <div className="flex flex-wrap items-end gap-2">
                 <label className="text-xs text-gray-700">{t('Amount (€), empty for everything left')}
                   <input value={refundAmount} onChange={(e) => { setRefundAmount(e.target.value); setConfirmRefund(false); }} placeholder={(refundable / 100).toFixed(2)} inputMode="decimal" className="mt-0.5 block w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -260,7 +278,7 @@ function OrderRow({ order: o, isAdmin, open, onToggle }: { order: any; isAdmin: 
                       : t('This sends {amount} back to the buyer’s card. It can’t be undone.', { amount: money(refundCents, o.currency) })}
                   </span>
                   <button type="button" disabled={refunding}
-                    onClick={() => refund({ variables: { input: { orderId: o.id, amountCents: refundAmount.trim() ? refundCents : null, reason: refundReason || null, restock: o.status === 'PAID' && restock } } })}
+                    onClick={() => refund({ variables: { input: { orderId: o.id, paymentId: refundPayment?.id ?? null, amountCents: refundAmount.trim() ? refundCents : null, reason: refundReason || null, restock: o.status === 'PAID' && restock } } })}
                     className="rounded-md bg-purple-700 px-3 py-2 text-sm font-medium text-white hover:bg-purple-800 disabled:opacity-50">
                     {refunding ? t('Refunding…') : t('Yes, refund')}
                   </button>

@@ -240,6 +240,32 @@ describe('ShopService refunds', () => {
     expect(prisma.shopProduct.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { stock: { increment: 1 } } });
   });
 
+  it('refunds one of two payments on an order paid twice, and leaves it paid', async () => {
+    const { service, prisma, adapters } = setup();
+    const second = { ...PAYMENT, id: 'pay2', attempt: 2, providerOrderId: 'R-2', status: 'SUCCEEDED', providerTransactionId: 'TX-2' };
+    prisma.shopOrder.findUnique.mockResolvedValue({
+      ...ORDER, status: 'PAID', refundedCents: 2990,
+      refunds: [{ paymentId: 'pay1', amountCents: 2990 }],
+      payments: [{ ...PAYMENT, status: 'SUCCEEDED', providerTransactionId: 'TX-1' }, second],
+    });
+    prisma.shopRefund = { create: jest.fn().mockResolvedValue({ id: 'rf2' }) };
+    // The first payment is already given back: the refund goes to the one with money left.
+    await service.refund('o1', {}, 'staff-1');
+    expect(adapters[0].refund).toHaveBeenCalledWith({ providerOrderId: 'R-2', providerTransactionId: 'TX-2', currency: 'eur' }, 2990);
+    // Everything taken (2 × 29.90) is now back, so the order counts as refunded.
+    expect(prisma.shopOrder.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { refundedCents: { increment: 2990 }, status: 'REFUNDED' } });
+  });
+
+  it('keeps an order paid twice as paid, without restocking, when one duplicate is refunded', async () => {
+    const { service, prisma } = setup();
+    const second = { ...PAYMENT, id: 'pay2', attempt: 2, providerOrderId: 'R-2', status: 'SUCCEEDED', providerTransactionId: 'TX-2' };
+    prisma.shopOrder.findUnique.mockResolvedValue({ ...ORDER, status: 'PAID', refunds: [], payments: [{ ...PAYMENT, status: 'SUCCEEDED', providerTransactionId: 'TX-1' }, second] });
+    prisma.shopRefund = { create: jest.fn().mockResolvedValue({ id: 'rf1' }) };
+    await service.refund('o1', { paymentId: 'pay2', restock: true }, 'staff-1');
+    expect(prisma.shopOrder.update).toHaveBeenCalledWith({ where: { id: 'o1' }, data: { refundedCents: { increment: 2990 } } });
+    expect(prisma.shopProduct.update).not.toHaveBeenCalled();
+  });
+
   it('refuses to give back more than was paid', async () => {
     const { service, prisma, adapters } = setup();
     prisma.shopOrder.findUnique.mockResolvedValue({ ...ORDER, status: 'PAID', refunds: [{ paymentId: 'pay1', amountCents: 2000 }], payments: [{ ...PAYMENT, status: 'SUCCEEDED', providerTransactionId: 'TX-1' }] });

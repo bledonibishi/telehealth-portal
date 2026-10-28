@@ -49,6 +49,7 @@ export class ShopPaymentModel {
 @ObjectType('ShopRefund')
 export class ShopRefundModel {
   @Field(() => ID) id: string;
+  @Field(() => ID, { description: 'The payment it gave money back from' }) paymentId: string;
   @Field(() => Int) amountCents: number;
   @Field({ nullable: true }) reason?: string;
   @Field() createdAt: Date;
@@ -119,7 +120,8 @@ export class ShopProductInput {
 @InputType()
 export class ShopRefundInput {
   @Field(() => ID) orderId: string;
-  @Field(() => Int, { nullable: true, description: 'In cents; leave out to refund everything not yet refunded' }) amountCents?: number;
+  @Field(() => ID, { nullable: true, description: 'Which payment to refund (an order paid twice has two); leave out for the first with money left' }) paymentId?: string;
+  @Field(() => Int, { nullable: true, description: 'In cents; leave out to refund everything left on that payment' }) amountCents?: number;
   @Field({ nullable: true }) reason?: string;
   @Field({ nullable: true, description: 'Put the items back on sale (full refund of an order that hasn’t shipped)' }) restock?: boolean;
 }

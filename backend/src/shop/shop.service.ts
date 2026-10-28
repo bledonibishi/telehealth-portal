@@ -424,17 +424,21 @@ export class ShopService {
   }
 
   /**
-   * Gives money back through the provider that took it. Without an amount, everything not yet refunded. `restock`
-   * puts the items back on sale (only for a full refund of an order that never left).
+   * Gives money back through the provider that took it, from one payment at a time: `paymentId`, or else the first
+   * payment with money left to give back (an order paid twice has two). Without an amount, everything left on that
+   * payment. `restock` puts the items back on sale (only once all money taken is refunded, for an order that never left).
    */
-  async refund(orderId: string, input: { amountCents?: number | null; reason?: string | null; restock?: boolean | null }, staffId: string) {
+  async refund(orderId: string, input: { paymentId?: string | null; amountCents?: number | null; reason?: string | null; restock?: boolean | null }, staffId: string) {
     const order = await this.prisma.shopOrder.findUnique({ where: { id: orderId }, include: { ...ORDER_DETAILS, refunds: true } });
     if (!order) throw new NotFoundException('Order not found');
-    const payment = order.payments.find((p) => p.status === ShopPaymentStatus.SUCCEEDED && p.providerTransactionId && p.providerOrderId);
-    if (!payment) throw warning('This order has no completed payment to refund.', ErrorCode.CONFLICT);
+    const refundedFrom = (paymentId: string) => order.refunds.filter((r) => r.paymentId === paymentId).reduce((sum, r) => sum + r.amountCents, 0);
+    const succeeded = order.payments.filter((p) => p.status === ShopPaymentStatus.SUCCEEDED && p.providerTransactionId && p.providerOrderId);
+    const payment = input.paymentId
+      ? succeeded.find((p) => p.id === input.paymentId)
+      : succeeded.find((p) => p.amountCents - refundedFrom(p.id) > 0);
+    if (!payment) throw warning(input.paymentId ? 'That payment can’t be refunded.' : 'This order has no completed payment left to refund.', ErrorCode.CONFLICT);
 
-    const alreadyFromPayment = order.refunds.filter((r) => r.paymentId === payment.id).reduce((sum, r) => sum + r.amountCents, 0);
-    const refundable = payment.amountCents - alreadyFromPayment;
+    const refundable = payment.amountCents - refundedFrom(payment.id);
     const amount = input.amountCents ?? refundable;
     if (!Number.isInteger(amount) || amount < 1) throw appError(ErrorCode.VALIDATION_FAILED, undefined, { fields: { amountCents: 'Enter an amount above zero' } });
     if (amount > refundable) throw appError(ErrorCode.VALIDATION_FAILED, undefined, { fields: { amountCents: `At most ${(refundable / 100).toFixed(2)} can still be refunded` } });
@@ -449,9 +453,10 @@ export class ShopService {
       throw appError(ErrorCode.PAYMENT_PROVIDER_UNAVAILABLE, 'The refund didn’t go through. Nothing was given back. Try again, or refund it in the provider’s portal.');
     }
 
-    // The money has moved: from here, record it whatever else fails.
-    const refundedCents = order.refundedCents + amount;
-    const full = refundedCents >= order.totalCents;
+    // The money has moved: from here, record it whatever else fails. Fully refunded only once everything taken (all
+    // payments, if it was paid twice) has gone back; refunding one duplicate leaves the order paid once.
+    const takenCents = succeeded.reduce((sum, p) => sum + p.amountCents, 0);
+    const full = order.refundedCents + amount >= takenCents;
     const restock = Boolean(input.restock) && full && order.status === ShopOrderStatus.PAID;
     await this.prisma.$transaction(async (tx) => {
       const refund = await tx.shopRefund.create({ data: { orderId, paymentId: payment.id, amountCents: amount, providerRefundId, reason: input.reason?.trim() || null, createdById: staffId } });

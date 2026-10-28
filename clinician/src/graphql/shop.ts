@@ -43,6 +43,7 @@ const ORDER_FIELDS = gql`
     }
     refunds {
       id
+      paymentId
       amountCents
       reason
       createdAt
