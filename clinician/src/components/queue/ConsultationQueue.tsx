@@ -21,7 +21,7 @@ export function ConsultationQueue() {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200">
+      <div data-guide="page-header" className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200">
         <h2 className="text-[15px] font-semibold text-gray-900">
           {t('Review Queue')}
           {!loading && !error && (
@@ -40,7 +40,7 @@ export function ConsultationQueue() {
         ) : consultations.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-200 bg-white py-16 text-center text-sm text-gray-500">{t('Queue is empty')}</div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <div data-guide="queue:list" className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-left">

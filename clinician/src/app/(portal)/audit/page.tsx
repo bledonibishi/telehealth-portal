@@ -86,7 +86,7 @@ function AuditLog() {
 
   return (
     <div className="p-5 md:p-8 space-y-4 text-[color:var(--t-body)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-guide="page-header" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-wide text-[color:var(--t-strong)] uppercase">{t('Audit log')}</h1>
           <p className="text-xs text-[color:var(--t-dim)] mt-0.5">{t('Who opened or changed what, and when. Entries can never be edited or deleted.')}</p>
@@ -97,7 +97,7 @@ function AuditLog() {
         </div>
       </div>
 
-      <form
+      <form data-guide="audit:filters"
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => { e.preventDefault(); setApplied(draft); }}
       >

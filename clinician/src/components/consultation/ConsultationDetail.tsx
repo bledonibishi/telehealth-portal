@@ -95,7 +95,7 @@ export function ConsultationDetail({ id }: { id: string }) {
     <div className="h-full flex">
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Identity + decision stay in view while the questionnaire scrolls. */}
-        <header className="shrink-0 bg-white border-b border-gray-200">
+        <header data-guide="consultation:header" className="shrink-0 bg-white border-b border-gray-200">
           <div className="px-4 sm:px-6 pt-3 pb-3">
             <Link href="/queue" className="text-xs text-gray-400 hover:text-gray-600">
               {t('← Review queue')}
@@ -133,7 +133,7 @@ export function ConsultationDetail({ id }: { id: string }) {
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 sm:p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
-            <div className="space-y-5 min-w-0">
+            <div data-guide="consultation:answers" className="space-y-5 min-w-0">
               <RedFlagBanner redFlags={c.redFlags} />
 
               {onboarding && onboarding.status !== 'IN_PROGRESS' && (
@@ -158,7 +158,7 @@ export function ConsultationDetail({ id }: { id: string }) {
               ))}
             </div>
 
-            <aside className="space-y-4 min-w-0">
+            <aside data-guide="consultation:sidebar" className="space-y-4 min-w-0">
               <div className="bg-white rounded-md border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Patient')}</h3>
                 <dl className="space-y-2.5 text-sm">

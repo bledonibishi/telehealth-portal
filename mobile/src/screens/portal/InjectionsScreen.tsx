@@ -13,8 +13,11 @@ import { lastSiteOf, SITE_LABEL, suggestNextSite } from '../../lib/injectionSite
 import { isScoreCheckDue } from '../../lib/sideEffectScores';
 import { colors } from '../../theme';
 import { SkeletonCard } from '../../components/Skeleton';
+import { useScreenGuide } from '../../components/guide/GuideProvider';
+import { DOSES_TOUR } from '../../lib/guideTours';
 
 export function InjectionsScreen({ navigation }: any) {
+  useScreenGuide(DOSES_TOUR);
   const { data, loading, error, refetch } = useQuery(MY_DOSE_CALENDAR, { variables: { fromDays: 60, toDays: 90 }, fetchPolicy: 'cache-and-network' });
   const { data: kindData } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-first' });
   const { data: missedData } = useQuery(MY_MISSED_DOSE_STATUS, { fetchPolicy: 'cache-and-network' });

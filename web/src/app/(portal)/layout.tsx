@@ -16,6 +16,8 @@ import { UNREAD_NOTIFICATION_COUNT } from '@/graphql/notifications';
 import { doseWords } from '@/lib/dose-words';
 import { ErrorAlert } from '@/components/common/Alert';
 import { LoadingState } from '@telehealth/loading';
+import { GuideProvider } from '@telehealth/guide/web';
+import { WELCOME_TOUR, pageTourFor } from '@/lib/guide-tours';
 
 const NAV: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: 'home' },
@@ -126,6 +128,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }
 
   return (
+    // On phones the Guide button sits above the bottom menu.
+    <GuideProvider welcome={WELCOME_TOUR} pageTour={authChecked ? pageTourFor(pathname) : null} pageKey={pathname} launcherBottom={88}>
     <div className="flex h-dvh bg-surface">
       <aside className="hidden lg:block w-60 flex-shrink-0">
         <Sidebar items={navItems} />
@@ -153,5 +157,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <BottomNav dosesLabel={calendarLabel} dosesIcon={calendarLabel === 'Injections' ? 'syringe' : 'calendar'} onMore={() => setMenuOpen(true)} />
       </div>
     </div>
+    </GuideProvider>
   );
 }

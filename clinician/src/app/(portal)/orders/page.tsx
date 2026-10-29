@@ -129,7 +129,7 @@ export default function OrdersPage() {
     <div>
       {isAdmin && <RefundRequests />}
       <div className="px-4 sm:px-6 pt-5 pb-4 border-b border-gray-200 bg-white">
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div data-guide="page-header" className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div>
             <h1 className="text-lg font-semibold text-gray-900">{t('Orders')}</h1>
             <p className="text-xs text-gray-500 mt-0.5">{t('Pack, hand over to the courier, and follow each parcel until it arrives')}</p>
@@ -151,7 +151,7 @@ export default function OrdersPage() {
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div data-guide="orders:tiles" className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
           {TILES.map((tile) => {
             const n = count(tile.key);
             const on = filter === tile.key;
@@ -175,7 +175,7 @@ export default function OrdersPage() {
         </div>
 
         {isPharmacy && (
-          <details open={count('to_pack') > 0 || undefined} className="mt-4 rounded-md bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+          <details data-guide="orders:how" open={count('to_pack') > 0 || undefined} className="mt-4 rounded-md bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
             <summary className="cursor-pointer font-medium text-gray-800">{t('How it works')}</summary>
             <ol className="mt-2 space-y-1.5 list-decimal list-inside">
               <li>{t('Pack the order shown under “To pack” and print its packing slip. Put the parcel code on the parcel.')}</li>
@@ -187,7 +187,7 @@ export default function OrdersPage() {
         )}
       </div>
 
-      <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white">
+      <div data-guide="orders:search" className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-white">
         <SearchInput className="max-w-xl" value={query} onChange={setQuery} placeholder={t('Search by name, parcel code or tracking number')} ariaLabel={t('Search orders')} clearLabel={t('Clear search')} />
         {searching && (
           <p className="mt-2 text-xs text-gray-500">

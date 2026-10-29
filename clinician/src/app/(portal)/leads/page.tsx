@@ -99,7 +99,7 @@ export default function LeadsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
+      <div data-guide="page-header" className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{t('Leads')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('Users who completed the eligibility quiz')}</p>
@@ -109,7 +109,7 @@ export default function LeadsPage() {
 
       <div className="px-4 sm:px-6 py-5 space-y-4">
         {/* Summary */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div data-guide="leads:stats" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label={t('Total')} value={total} hint={t('Completed the quiz')} tone="text-gray-900" active={filter === 'ALL'} onClick={() => setFilter('ALL')} />
           <StatCard label={t('Not converted')} value={pending} hint={t('Haven’t paid yet')} tone="text-amber-600" active={filter === 'PENDING'} onClick={() => toggle('PENDING')} />
           <StatCard label={t('Converted')} value={converted} hint={t('Became patients')} tone="text-green-600" active={filter === 'CONVERTED'} onClick={() => toggle('CONVERTED')} />
@@ -117,7 +117,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-guide="leads:filters" className="flex flex-wrap items-center gap-2">
           <SearchInput className="w-full sm:w-72" value={search} onChange={setSearch} placeholder={t('Search by name or email…')} ariaLabel={t('Search by name or email…')} clearLabel={t('Clear search')} />
           <div className="flex flex-wrap items-center gap-1.5 sm:ml-2">
             <button type="button" onClick={() => setProgramme('ALL')} className={chip(programme === 'ALL')}>{t('All programmes')}</button>
@@ -130,7 +130,7 @@ export default function LeadsPage() {
         <InlineError error={error} />
 
         {/* Table */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div data-guide="leads:list" className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[720px]">
               <thead>

@@ -14,6 +14,8 @@ import { fmtDate, kg } from '../../lib/format';
 import { openLink } from '../../lib/config';
 import { colors } from '../../theme';
 import { SkeletonCard } from '../../components/Skeleton';
+import { useScreenGuide } from '../../components/guide/GuideProvider';
+import { WEIGHT_TOUR } from '../../lib/guideTours';
 
 const DAY = 86_400_000;
 const SPARK_POINTS = 24;
@@ -40,6 +42,7 @@ function Sparkline({ points }: { points: { weightKg: number; measuredAt: string 
 }
 
 export function WeightScreen({ navigation }: any) {
+  useScreenGuide(WEIGHT_TOUR);
   const { data, loading, error, refetch } = useQuery(MY_WEIGHT_JOURNEY, { fetchPolicy: 'cache-and-network' });
   // The window follows the calendar: fixed within a day (so the query is not re-sent on every render) and moved on the next, so a weight logged days after the app opened is still inside it.
   const today = new Date().toDateString();

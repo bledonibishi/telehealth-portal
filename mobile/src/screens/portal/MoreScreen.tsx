@@ -4,14 +4,19 @@ import { MY_PRODUCT_KIND } from '../../graphql/portal';
 import { UNREAD_NOTIFICATION_COUNT } from '../../graphql/operations';
 import { Card, Columns, Screen } from '../../components/ui';
 import { MenuRow } from '../../components/MenuRow';
+import { ToggleRow } from '../../components/ToggleRow';
 import { signOut } from '../../lib/session';
+import { GuideTarget, useGuide, useScreenGuide } from '../../components/guide/GuideProvider';
+import { MORE_TOUR } from '../../lib/guideTours';
 
 /** Everything that isn't a tab: notifications, the doctor, orders and payments, side effects, reports, a new consultation. */
 export function MoreScreen({ navigation }: any) {
+  useScreenGuide(MORE_TOUR);
   const { data } = useQuery(MY_PRODUCT_KIND, { fetchPolicy: 'cache-first' });
   const glp1 = data?.myProductKind === 'GLP1';
   const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { fetchPolicy: 'cache-and-network' });
   const unread: number = unreadData?.unreadNotificationCount ?? 0;
+  const guide = useGuide();
   return (
     <Screen title="More" subtitle="Your treatment, orders and account.">
       <Columns>
@@ -25,6 +30,15 @@ export function MoreScreen({ navigation }: any) {
         </Card>
         <Card style={{ padding: 6 }}>
           <MenuRow icon="📝" label="New consultation" hint="Start a medical questionnaire" onPress={() => navigation.navigate('NewConsultation')} />
+          <GuideTarget id="more:guide">
+            <ToggleRow
+              label="Show me around"
+              hint={guide.enabled ? 'Each screen explains itself the first time you open it' : 'A step-by-step tour of the app'}
+              value={guide.enabled}
+              onValueChange={guide.setEnabled}
+              disabled={!guide.ready}
+            />
+          </GuideTarget>
           {__DEV__ && <MenuRow icon="🧩" label="Component library" hint="Developers only: Storybook" onPress={() => navigation.navigate('Storybook')} />}
           <MenuRow icon="🚪" label="Sign out" hint="You’ll need to sign in again" onPress={signOut} />
         </Card>

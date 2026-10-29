@@ -176,7 +176,7 @@ export default function AppointmentsPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
       <PageHeader title="Appointments" subtitle="See a doctor about a check-up, a side effect or anything worrying you.">
-        {!formOpen && <button type="button" onClick={() => { setFormOpen(true); setSent(null); }} className={btnPrimary}><Icon name="plus" className="w-4 h-4" /> Book appointment</button>}
+        {!formOpen && <button type="button" data-guide="appointments:book" onClick={() => { setFormOpen(true); setSent(null); }} className={btnPrimary}><Icon name="plus" className="w-4 h-4" /> Book appointment</button>}
       </PageHeader>
 
       <div className="grid lg:grid-cols-[minmax(0,1fr)_18rem] gap-5 items-start">
@@ -196,7 +196,7 @@ export default function AppointmentsPage() {
             </Card>
           )}
 
-          <Card>
+          <Card guide="appointments:requests">
             <CardHeader title="Your requests" subtitle="What you’ve asked to see a doctor about." />
             {loading && !list.length && <SkeletonText lines={4} label="Loading your requests…" />}
             {!loading && !list.length && <p className="text-sm text-slate-500">No appointments yet.</p>}

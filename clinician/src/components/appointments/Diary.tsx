@@ -13,7 +13,7 @@ export default function Diary() {
   if (error || !list.length) return null; // nothing booked, or scheduling isn't in use: the requests below are the whole picture
 
   return (
-    <section className="border-b border-gray-200 bg-white">
+    <section data-guide="appointments:diary" className="border-b border-gray-200 bg-white">
       <h2 className="px-6 pt-4 text-sm font-semibold text-gray-900">{t('Diary — next 14 days')}</h2>
       <ul className="px-6 py-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {list.map((b) => (

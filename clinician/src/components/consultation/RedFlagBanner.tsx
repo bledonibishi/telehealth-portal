@@ -15,7 +15,7 @@ export function RedFlagBanner({ redFlags }: { redFlags: Array<{ id: string; desc
   const warnings = redFlags.filter((f) => f.severity === 'WARNING');
 
   return (
-    <section aria-label={t('Clinical flags')} className="space-y-2">
+    <section data-guide="consultation:flags" aria-label={t('Clinical flags')} className="space-y-2">
       <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
         {t('Clinical flags')} · {redFlags.length}
       </h2>
