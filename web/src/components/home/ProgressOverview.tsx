@@ -32,8 +32,7 @@ const dayOf = (d: Date) => (isToday(d) ? 'Today' : isTomorrow(d) ? 'Tomorrow' : 
  * appointment, unread messages and the next order. Each tile opens the page behind it. A tile only shows
  * when there is something real to put in it.
  */
-/** `compact`: the tiles in two columns at most, for a card that is not the full width of the row; `narrow`: one column. */
-export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan | null; compact?: boolean; narrow?: boolean }) {
+export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan | null }) {
   // As many tiles per row as the card's own width has room for.
   const [ref, width] = useElementWidth<HTMLElement>();
   // Two a row even on a phone: the tiles are short, and a column of them pushed everything else off the screen.
@@ -50,7 +49,7 @@ export function ProgressOverview({ journey, plan }: { journey?: any; plan?: Plan
   const columns = Math.max(1, Math.min(fits, count));
 
   return (
-    <section ref={ref} aria-label="Your treatment progress" className="grid gap-3 mb-5 [&>*]:min-w-0" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+    <section ref={ref} aria-label="Your treatment progress" className="grid gap-3 [&>*]:min-w-0" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
       {journey?.progressPercentage != null && (
         <Tile small={small} href="/weight-journey" icon="flag" tone="green" label="Progress to goal" value={`${Math.round(journey.progressPercentage)}%`}
           hint={journey.targetWeightKg ? `${kg(journey.remainingKg)} to go · goal ${kg(journey.targetWeightKg)}` : undefined} />

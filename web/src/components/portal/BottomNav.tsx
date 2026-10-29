@@ -20,7 +20,7 @@ export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: strin
     { href: '/doses', label: dosesLabel === 'Injections' ? 'Injections' : 'Doses', icon: dosesIcon },
     { href: '/messages', label: 'Messages', icon: 'chat', badge: true },
   ];
-  const cell = 'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-medium transition-colors';
+  const cell = 'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-medium transition-colors';
   return (
     <nav aria-label="Main" className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
       <div className="flex">

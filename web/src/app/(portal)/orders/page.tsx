@@ -4,6 +4,7 @@ import { useQuery } from '@apollo/client';
 import { format } from 'date-fns';
 import { MY_ORDERS } from '@/graphql/orders';
 import { ORDER_POLL_MS, TRACKING_LABEL, TRACKING_PROBLEMS, expectedDelivery } from '@/lib/delivery';
+import { formatMoney } from '@/lib/money';
 import { OrderTracker, ORDER_STATUS } from '@/components/home/OrderTracker';
 import { OrderEarlyButton } from '@/components/home/OrderEarlyButton';
 import { Card } from '@/components/portal/Card';
@@ -12,15 +13,6 @@ import { Icon } from '@/components/portal/Icon';
 import { EmptyState } from '@/components/portal/EmptyState';
 import { DeliveryAddress } from '@/components/orders/DeliveryAddress';
 import { SkeletonCard } from '@telehealth/loading';
-
-const formatMoney = (cents: number | null | undefined, currency: string | null | undefined) => {
-  if (cents == null) return 'now';
-  try {
-    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: (currency ?? 'eur').toUpperCase() }).format(cents / 100);
-  } catch {
-    return `${(cents / 100).toFixed(2)} ${currency ?? ''}`;
-  }
-};
 
 /** Every supply the patient has had, newest first, each with where it is. */
 export default function OrdersPage() {

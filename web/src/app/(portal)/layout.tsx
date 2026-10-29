@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useApolloClient, useQuery } from '@apollo/client';
 import { Sidebar, type NavItem } from '@/components/portal/Sidebar';
@@ -12,7 +12,9 @@ import { MY_ONBOARDING } from '@/graphql/onboarding';
 import { MY_WEIGHT_JOURNEY } from '@/graphql/weight';
 import { MY_SYMPTOM_SCALE } from '@/graphql/symptoms';
 import { MY_TREATMENT_PLAN } from '@/graphql/portal';
+import { UNREAD_NOTIFICATION_COUNT } from '@/graphql/notifications';
 import { doseWords } from '@/lib/dose-words';
+import { ErrorAlert } from '@/components/common/Alert';
 import { LoadingState } from '@telehealth/loading';
 
 const NAV: NavItem[] = [
@@ -45,7 +47,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     setAuthChecked(true);
   }, [router]);
 
-  const { data: onboardingData, error: onboardingError } = useQuery(MY_ONBOARDING, {
+  const { data: onboardingData, error: onboardingError, refetch: retryOnboarding } = useQuery(MY_ONBOARDING, {
     skip: !isAuthenticated(),
     fetchPolicy: 'cache-and-network',
   });
@@ -79,12 +81,16 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     router.replace('/login');
   };
 
+  // News from the care team (a decision, a reply, an order on its way) makes the open screens fetch again, so what the
+  // patient is waiting for shows up without a reload. The bell polls the count; this only reacts when it goes up.
+  const { data: unreadData } = useQuery(UNREAD_NOTIFICATION_COUNT, { skip: !isAuthenticated() || onboardingStatus !== 'APPROVED' });
+  const unreadNews: number | undefined = unreadData?.unreadNotificationCount;
+  const lastUnreadNews = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!onboardingError) return;
-    // Most likely an expired/invalid token — send them back to log in rather
-    // than getting stuck on a blank gated screen forever.
-    handleLogout();
-  }, [onboardingError]);
+    const before = lastUnreadNews.current;
+    lastUnreadNews.current = unreadNews;
+    if (before !== undefined && unreadNews !== undefined && unreadNews > before) apollo.refetchQueries({ include: 'active' }).catch(() => undefined);
+  }, [unreadNews, apollo]);
 
   useEffect(() => {
     if (!onboardingStatus) return;
@@ -100,7 +106,18 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         {onboardingError ? (
-          <p className="text-sm text-slate-400">Signing you out…</p>
+          // A session that really ended is handled where the request is made (apollo.ts). Anything else, such as a
+          // dropped connection, is not a reason to sign the patient out: say so and let them try again.
+          <ErrorAlert
+            error={onboardingError}
+            className="max-w-md mx-4"
+            action={
+              <span className="flex gap-4 text-sm font-semibold underline underline-offset-2">
+                <button type="button" onClick={() => { retryOnboarding().catch(() => undefined); }}>Try again</button>
+                <button type="button" onClick={handleLogout}>Sign out</button>
+              </span>
+            }
+          />
         ) : (
           <LoadingState variant="inline" label="Loading…" />
         )}
@@ -109,7 +126,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="flex h-screen bg-surface">
+    <div className="flex h-dvh bg-surface">
       <aside className="hidden lg:block w-60 flex-shrink-0">
         <Sidebar items={navItems} />
       </aside>

@@ -114,7 +114,7 @@ export default function MessagesPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-400 mt-5">You can also attach a photo or screenshot with the paperclip.</p>
+              <p className="text-xs text-slate-500 mt-5">You can also attach a photo or screenshot with the paperclip.</p>
             </div>
           )}
           {chat.messages.map((m) => {
@@ -124,13 +124,13 @@ export default function MessagesPage() {
             lastDay = day;
             return (
               <div key={m.id}>
-                {divider && <p className="text-center text-[11px] text-slate-400 my-3">{day}</p>}
+                {divider && <p className="text-center text-xs text-slate-500 my-3">{day}</p>}
                 <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm ${mine ? 'bg-ink-700 text-white rounded-br-md' : 'bg-slate-100 text-slate-800 rounded-bl-md'}`}>
-                    {!mine && <p className="text-[11px] font-semibold text-ink-700 mb-0.5">{m.isAi ? 'Automated assistant' : 'Your care team'}</p>}
+                    {!mine && <p className="text-xs font-semibold text-ink-700 mb-0.5">{m.isAi ? 'Automated assistant' : 'Your care team'}</p>}
                     {!!m.content && <p className="whitespace-pre-wrap break-words">{m.content}</p>}
                     <MessageAttachments attachments={m.attachments} onDark={mine} />
-                    <p className={`text-[10px] mt-1 flex items-center gap-1.5 ${mine ? 'justify-end text-white/60' : 'text-slate-400'}`}>
+                    <p className={`text-xs mt-1 flex items-center gap-1.5 ${mine ? 'justify-end text-white/80' : 'text-slate-500'}`}>
                       {format(new Date(m.sentAt), 'HH:mm')}
                       {mine && <MessageTicks state={tickStateOf(m)} onDark />}
                     </p>
@@ -147,12 +147,16 @@ export default function MessagesPage() {
             <AttachmentButton state={attach} />
             <label htmlFor="msg" className="sr-only">Your message</label>
             <textarea id="msg" ref={inputRef} rows={1} value={content} maxLength={2000} onChange={(e) => setContent(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(e as any); } }}
+              onKeyDown={(e) => {
+                // Enter sends on a computer; on a phone it starts a new line, so a half-written medical message is not sent by accident.
+                // Nor while an input method is composing: there Enter confirms the word, it doesn't mean "send".
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { e.preventDefault(); send(e as any); }
+              }}
               placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
             <button type="submit" disabled={(!content.trim() && attach.files.length === 0) || attach.uploading} className={btnBlue}>Send</button>
           </div>
           <InlineError error={problem} size="xs" className="mt-2" />
-          <p className="text-[11px] text-slate-400 mt-2">
+          <p className="text-xs text-slate-500 mt-2">
             Not for emergencies. If it can’t wait, <Link href="/appointments?new=1&urgent=1" className="underline">request an urgent appointment</Link> or call {EMERGENCY_NUMBER}.
           </p>
         </form>

@@ -41,7 +41,7 @@ export function TreatmentPlanCard({ plan }: { plan: Plan }) {
       </div>
 
       <h3 className="text-sm font-semibold text-ink-900 mt-5">Plan Details</h3>
-      <ul className="mt-2 space-y-1 text-sm text-slate-600 list-disc pl-5 marker:text-slate-400">
+      <ul className="mt-2 space-y-1 text-sm text-slate-600 list-disc pl-5 marker:text-slate-500">
         <li>Product: {plan.productName}{plan.genericName ? ` (${plan.genericName})` : ''}</li>
         {plan.strength && <li>Dose: {plan.strength} (current)</li>}
         <li>Frequency: {plan.frequency}</li>

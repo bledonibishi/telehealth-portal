@@ -81,7 +81,9 @@ export function TodayCard() {
   if (ci?.state === 'READY') {
     checkInRow = (
       <Row icon="note" tone="lav" label="Monthly check-in" title="Ready for you now" detail="A few questions so your doctor can approve your next supply"
-        action={ci.url ? <a href={ci.url} className={`${pill} bg-lav-700 hover:bg-lav-500 text-white`}>Start <Icon name="arrow" className="w-4 h-4" /></a> : null} />
+        action={ci.url
+          ? <a href={ci.url} className={`${pill} bg-lav-700 hover:bg-lav-500 text-white`}>Start <Icon name="arrow" className="w-4 h-4" /></a>
+          : <Link href="/messages" className={`${pill} text-brand-600 hover:bg-brand-50`}>Ask us <Icon name="arrow" className="w-4 h-4" /></Link>} />
     );
   } else if (ci?.state === 'COMPLETED') {
     checkInRow = (
@@ -101,7 +103,7 @@ export function TodayCard() {
 
   if (!doseRow && !checkInRow) return null;
   return (
-    <section aria-label="Today" className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 shadow-[0_1px_2px_rgba(10,56,54,0.04)] mb-5">
+    <section aria-label="Today" className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 shadow-[0_1px_2px_rgba(10,56,54,0.04)]">
       <div className="h-1 bg-ring" aria-hidden />
       <div className={`grid gap-5 p-5 ${doseRow && checkInRow ? 'md:grid-cols-2 md:divide-x md:divide-slate-100 [&>*:nth-child(2)]:md:pl-5' : ''}`}>
         {doseRow}

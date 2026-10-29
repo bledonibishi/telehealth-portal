@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { useQuery } from '@apollo/client';
 import { MY_ORDERS } from '@/graphql/orders';
 import { ORDER_POLL_MS, expectedDelivery } from '@/lib/delivery';
+import { formatMoney } from '@/lib/money';
+import Link from 'next/link';
 import { Card, CardHeader, btnPrimary, btnOutline } from '@/components/portal/Card';
 import { Icon } from '@/components/portal/Icon';
 import { useRefill } from '@/lib/useRefill';
@@ -39,11 +41,20 @@ export function RecentOrders() {
           {(order.status === 'DISPATCHED' || order.status === 'OUT_FOR_DELIVERY') && expectedDelivery(order) && (
             <p className="text-xs text-ink-900 mt-3">Expected <b>{expectedDelivery(order)}</b></p>
           )}
-          {order.trackingUrl ? (
+          {order.status === 'AWAITING_PAYMENT' ? (
+            <div className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-semibold">Your doctor approved this supply. Pay for it and it goes to the pharmacy.</p>
+              {order.paymentUrl ? (
+                <a href={order.paymentUrl} target="_blank" rel="noreferrer" className={`${btnPrimary} w-full mt-3`}>Pay {formatMoney(order.paymentAmountCents, order.paymentCurrency)}</a>
+              ) : (
+                <Link href="/orders" className={`${btnOutline} w-full mt-3`}>Open Orders</Link>
+              )}
+            </div>
+          ) : order.trackingUrl ? (
             <a href={order.trackingUrl} target="_blank" rel="noreferrer" className={`${btnPrimary} w-full mt-4`}><Icon name="truck" className="w-4 h-4" /> Track Order</a>
-          ) : (
-            <p className="text-[11px] text-slate-400 mt-4 text-center">The pharmacy adds the tracking link once your order has shipped.</p>
-          )}
+          ) : order.status === 'PENDING' || order.status === 'DISPATCHED' || order.status === 'OUT_FOR_DELIVERY' ? (
+            <p className="text-xs text-slate-500 mt-4 text-center">The pharmacy adds the tracking link once your order has shipped.</p>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-slate-500 bg-slate-50 rounded-md p-4">
@@ -57,7 +68,7 @@ export function RecentOrders() {
             <Icon name="calendar" className="w-5 h-5 text-ink-700 flex-shrink-0" />
             <div className="min-w-[8rem] flex-1">
               <p className="text-xs font-semibold text-ink-900">Next order reminder</p>
-              <p className="text-[11px] text-slate-500">{refill.requested ? 'Requested — waiting for your doctor' : `Your next order is recommended ${when}`}</p>
+              <p className="text-xs text-slate-500">{refill.requested ? 'Requested — waiting for your doctor' : `Your next order is recommended ${when}`}</p>
             </div>
             {/* Only offered when it can be used; otherwise the line above says when. */}
             {!refill.requested && (refill.canRequest || refill.loading) && (

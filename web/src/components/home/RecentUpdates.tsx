@@ -15,8 +15,9 @@ import { Icon, type IconName } from '@/components/portal/Icon';
 type Update = { key: string; at: number; icon: IconName; tone: string; title: string; detail?: string; href?: string; extra?: React.ReactNode };
 
 /** The latest things that happened on the patient's journey, from their own data, newest first. */
-export function RecentUpdates({ limit = 4 }: { limit?: number }) {
-  const { points } = useRecentWeights();
+/** `hasJourney`: only weight-management patients have weigh-ins, photos and a Weight Journey page to go to. */
+export function RecentUpdates({ limit = 4, hasJourney = true }: { limit?: number; hasJourney?: boolean }) {
+  const { points } = useRecentWeights(!hasJourney);
   const { data: photos } = useQuery(MY_PROGRESS_PHOTOS, { fetchPolicy: 'cache-first' });
   const { data: rx } = useQuery(MY_PRESCRIPTIONS_BRIEF, { fetchPolicy: 'cache-and-network' });
   const { data: appts } = useQuery(MY_APPOINTMENTS, { fetchPolicy: 'cache-first' });
@@ -27,7 +28,7 @@ export function RecentUpdates({ limit = 4 }: { limit?: number }) {
     const change = i > 0 ? Math.round((p.w - points[i - 1].w) * 10) / 10 : null;
     updates.push({
       key: `w${p.t}`, at: p.t, icon: 'scale', tone: 'bg-ink-50 text-ink-700', title: 'Weight updated', detail: kg(p.w),
-      extra: change != null && change !== 0 ? <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${change < 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{kgChange(change)}</span> : undefined,
+      extra: change != null && change !== 0 ? <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${change < 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{kgChange(change)}</span> : undefined,
     });
   });
   for (const p of (photos?.myProgressPhotos ?? []) as any[]) {
@@ -45,16 +46,16 @@ export function RecentUpdates({ limit = 4 }: { limit?: number }) {
 
   return (
     <Card labelledBy="updates-title" className="h-full">
-      <CardHeader id="updates-title" title="Recent Updates" href="/weight-journey" action="View All" />
+      <CardHeader id="updates-title" title="Recent Updates" href={hasJourney ? '/weight-journey' : '/messages'} action={hasJourney ? 'View All' : 'Messages'} />
       {latest.length === 0 ? (
-        <p className="text-sm text-slate-500">Your weigh-ins, photos and messages will show up here.</p>
+        <p className="text-sm text-slate-500">{hasJourney ? 'Your weigh-ins, photos and messages will show up here.' : 'Your messages, prescriptions and appointments will show up here.'}</p>
       ) : (
         <ul className="divide-y divide-slate-100">
           {latest.map((u) => (
             <li key={u.key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
               <span className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${u.tone}`}><Icon name={u.icon} className="w-4 h-4" /></span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] text-slate-400">{format(new Date(u.at), 'd MMM yyyy')}</p>
+                <p className="text-xs text-slate-500">{format(new Date(u.at), 'd MMM yyyy')}</p>
                 <p className="text-sm text-ink-900 truncate">{u.title}</p>
                 {u.detail && <p className="text-xs text-slate-500 truncate">{u.detail}</p>}
               </div>

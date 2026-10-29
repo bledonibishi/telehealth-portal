@@ -39,7 +39,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
       <nav className="flex-1 px-2.5 py-3 overflow-y-auto" aria-label="Main">
         {groups.filter((g) => g.items.length).map((g) => (
           <div key={g.title} className="mb-4">
-            <p className="px-2.5 mb-1 text-[11px] font-medium text-slate-400">{g.title}</p>
+            <p className="px-2.5 mb-1 text-xs font-medium text-slate-500">{g.title}</p>
             <div className="space-y-0.5">
               {g.items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -68,7 +68,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
           <span className="w-8 h-8 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center flex-shrink-0"><Icon name="chat" className="w-4 h-4" /></span>
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-medium text-slate-900">Help & messages</span>
-            <span className="block text-[11px] text-slate-500">Chat with us, or send a request</span>
+            <span className="block text-xs text-slate-500">Chat with us, or send a request</span>
           </span>
           {unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-700 text-white text-[10px] font-semibold flex items-center justify-center">{unread}</span>}
         </Link>

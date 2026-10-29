@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery } from '@apollo/client';
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import { CANCEL_MY_APPOINTMENT, CHOOSE_CONSULT_REFUND, CHOOSE_CONSULT_RESCHEDULE, CONSULT_FEE, MY_APPOINTMENTS, REQUEST_APPOINTMENT } from '@/graphql/portal';
@@ -97,7 +98,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
             <label key={r.value} className={`rounded-md border p-3 cursor-pointer ${reason === r.value ? 'border-ink-600 bg-ink-50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <input type="radio" name="reason" value={r.value} checked={reason === r.value} onChange={() => setReason(r.value)} className="sr-only" />
               <span className="flex items-center gap-2 text-sm font-medium text-ink-900"><Icon name={r.icon} className="w-4 h-4 text-ink-700" />{r.label}</span>
-              <span className="block text-[11px] text-slate-500 mt-0.5">{r.hint}</span>
+              <span className="block text-xs text-slate-500 mt-0.5">{r.hint}</span>
             </label>
           ))}
         </div>
@@ -107,7 +108,7 @@ function RequestForm({ startUrgent, onDone }: { startUrgent: boolean; onDone: (a
         <div>
           <label htmlFor="pain" className="block text-sm font-semibold text-ink-900">How bad is it? <span className="font-normal text-slate-500">{pain}/10</span></label>
           <input id="pain" type="range" min={0} max={10} value={pain} onChange={(e) => setPain(Number(e.target.value))} className="w-full accent-ink-700 mt-2" />
-          <div className="flex justify-between text-[11px] text-slate-400"><span>No pain</span><span>Worst imaginable</span></div>
+          <div className="flex justify-between text-xs text-slate-500"><span>No pain</span><span>Worst imaginable</span></div>
         </div>
       )}
 
@@ -206,7 +207,7 @@ export default function AppointmentsPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink-900">
                         {REASON_LABEL[a.reason] ?? a.reason}
-                        {a.urgency === 'URGENT' && <span className="ml-2 text-[11px] font-semibold rounded-full bg-red-50 text-red-700 px-2 py-0.5">Urgent</span>}
+                        {a.urgency === 'URGENT' && <span className="ml-2 text-xs font-semibold rounded-full bg-red-50 text-red-700 px-2 py-0.5">Urgent</span>}
                       </p>
                       {a.details && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{a.details}</p>}
                     </div>
@@ -227,7 +228,7 @@ export default function AppointmentsPage() {
                         <button type="button" disabled={refunding || rebooking} onClick={() => rebook({ variables: { id: a.id } }).catch(() => undefined)} className={`${btnPrimary} !py-1.5 !text-xs`}>Keep my payment and pick a new time</button>
                         <button type="button" disabled={refunding || rebooking} onClick={() => takeRefund({ variables: { id: a.id } }).catch(() => undefined)} className={`${btnSoft} !py-1.5 !text-xs`}>Refund me</button>
                       </div>
-                      <p className="text-[11px] mt-2">If you don’t choose within 7 days, we refund you.</p>
+                      <p className="text-xs mt-2">If you don’t choose within 7 days, we refund you.</p>
                       <InlineError error={refundError ?? rebookError} />
                     </div>
                   )}
@@ -249,11 +250,19 @@ export default function AppointmentsPage() {
                   )}
                   {a.emergencyAdvised && a.status === 'REQUESTED' && <p className="text-xs font-medium text-red-700 mt-2">You ticked a warning sign — if you haven’t yet, call {EMERGENCY_NUMBER} now.</p>}
                   {a.clinicianNote && <p className="text-xs text-slate-600 mt-2"><b>Your doctor:</b> {a.clinicianNote}</p>}
-                  <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-400">
+                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
                     <span>Sent {format(new Date(a.createdAt), 'd MMM, HH:mm')}</span>
                     {a.status === 'REQUESTED' && <span>Reply expected {Date.parse(a.respondBy) > Date.now() ? `within ${formatDistanceToNowStrict(new Date(a.respondBy))}` : 'very soon'}</span>}
                     {(a.status === 'AWAITING_PAYMENT' || a.status === 'REQUESTED' || a.status === 'SCHEDULED') && !(a.paid && !a.canRefund) && (
-                      <button type="button" disabled={cancelling} onClick={() => cancel({ variables: { id: a.id } }).catch(() => undefined)} className="text-slate-500 hover:text-red-600 underline">{a.canRefund ? 'Cancel and get a refund' : 'Cancel'}</button>
+                      <button
+                        type="button"
+                        disabled={cancelling}
+                        onClick={() => {
+                          // One stray tap must not cancel a booked, possibly paid, appointment.
+                          if (window.confirm(a.canRefund ? 'Cancel this appointment? You will be refunded in full.' : 'Cancel this appointment?')) cancel({ variables: { id: a.id } }).catch(() => undefined);
+                        }}
+                        className="text-slate-600 hover:text-red-600 underline py-1.5"
+                      >{a.canRefund ? 'Cancel and get a refund' : 'Cancel'}</button>
                     )}
                     {a.paid && !a.canRefund && !a.refundedAt && (a.status === 'REQUESTED' || a.status === 'SCHEDULED' || a.status === 'COMPLETED') && <span>Paid · can’t be refunded once the consultation has started</span>}
                   </div>
@@ -280,7 +289,7 @@ export default function AppointmentsPage() {
               <li><b className="text-ink-900">Routine</b> — within 3 days</li>
               <li><b className="text-ink-900">Quick questions</b> — usually fastest in Messages</li>
             </ul>
-            <a href="/messages" className={`${btnSoft} w-full mt-4`}><Icon name="chat" className="w-4 h-4" /> Open Messages</a>
+            <Link href="/messages" className={`${btnSoft} w-full mt-4`}><Icon name="chat" className="w-4 h-4" /> Open Messages</Link>
           </Card>
         </div>
       </div>

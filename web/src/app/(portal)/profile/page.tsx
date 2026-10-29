@@ -23,7 +23,7 @@ function Item({ name, value, hint }: { name: string; value: React.ReactNode; hin
     <div className="py-3 border-b border-slate-100 last:border-0">
       <dt className="text-xs text-slate-500">{name}</dt>
       <dd className="text-sm font-medium text-ink-900 mt-0.5">{value}</dd>
-      {hint && <p className="text-[11px] text-slate-400 mt-0.5">{hint}</p>}
+      {hint && <p className="text-xs text-slate-500 mt-0.5">{hint}</p>}
     </div>
   );
 }
@@ -89,7 +89,7 @@ function MedicalForm({ p, onDone }: { p: any; onDone: () => void }) {
       <div>
         <label htmlFor="allergies" className={label}>Allergies</label>
         <textarea id="allergies" rows={3} maxLength={500} value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder="e.g. penicillin, latex — or leave empty if none" className={field} />
-        <p className="text-[11px] text-slate-400 mt-1">Your doctor prescribes from your medical questionnaire. If an allergy is new, message them as well.</p>
+        <p className="text-xs text-slate-500 mt-1">Your doctor prescribes from your medical questionnaire. If an allergy is new, message them as well.</p>
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         <div><label htmlFor="ec-name" className={label}>Emergency contact</label><input id="ec-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} placeholder="Name and relation" className={field} /></div>
@@ -142,7 +142,7 @@ export default function ProfilePage() {
   const p = data?.myProfile;
   const j = jData?.myWeightJourney;
 
-  if (!p) return <div className="px-4 sm:px-6 lg:px-8"><PageHeader title="Profile" /><Card><p className="text-sm text-slate-400">{loading ? 'Loading…' : 'Couldn’t load your profile.'}</p></Card></div>;
+  if (!p) return <div className="px-4 sm:px-6 lg:px-8"><PageHeader title="Profile" /><Card><p className="text-sm text-slate-500">{loading ? 'Loading…' : 'Couldn’t load your profile.'}</p></Card></div>;
 
   const dob = new Date(p.dateOfBirth);
   const bmi = p.heightCm && j?.currentWeightKg ? Math.round((j.currentWeightKg / (p.heightCm / 100) ** 2) * 10) / 10 : null;
@@ -190,7 +190,7 @@ export default function ProfilePage() {
             <Item name="Starting weight" value={kg(j?.startingWeightKg)} />
             <Item name="Current weight" value={kg(j?.currentWeightKg)} />
             <Item name="Target weight" value={<>{j?.targetWeightKg ? kg(j.targetWeightKg) : 'Not set'}{j?.startingWeightKg && <button type="button" onClick={() => setEditing('target')} className="ml-2 text-xs font-medium text-ink-600">{j?.targetWeightKg ? 'Change' : 'Set'}</button>}</>} />
-            <Item name="BMI" value={bmi ?? '—'} hint={bmi ? 'From your height and latest weight' : 'Add your height to see it'} />
+            <Item name="BMI" value={bmi ?? '—'} hint={bmi ? 'From your height and latest weight' : p.heightCm ? 'Shown once you have a recent weight' : 'Add your height to see it'} />
           </dl>
         </Card>
 
@@ -209,7 +209,7 @@ export default function ProfilePage() {
             <button type="button" onClick={() => setEditing('address')} className={`${btnSoft} !py-1.5 !px-3 !text-xs`}><Icon name="pencil" className="w-3.5 h-3.5" /> Edit</button>
           </CardHeader>
           <p className="text-sm text-ink-900">{address || 'Not set'}</p>
-          <p className="text-[11px] text-slate-400 mt-2">Changes apply to supplies that haven’t been dispatched yet.</p>
+          <p className="text-xs text-slate-500 mt-2">Changes apply to supplies that haven’t been dispatched yet.</p>
         </Card>
       </div>
 

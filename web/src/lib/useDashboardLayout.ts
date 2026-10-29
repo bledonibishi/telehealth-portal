@@ -22,6 +22,8 @@ export function useDashboardLayout() {
   // Cards support is hiding for a while: shown to the patient as a note, never saved as their own choice.
   const [staffHidden, setStaffHidden] = useState<Array<{ id: string; until: string }>>([]);
   const loaded = useRef(false);
+  // Saves go one after the other, in the order they were made: two quick changes must not arrive swapped and leave the older one saved.
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const [save] = useMutation(SAVE_MY_DASHBOARD_LAYOUT);
   const [reset] = useMutation(RESET_MY_DASHBOARD_LAYOUT);
 
@@ -37,7 +39,7 @@ export function useDashboardLayout() {
   const commit = (next: DashboardLayout) => {
     setLayout(next);
     setError(null);
-    save({ variables: { input: toApi(next) } }).catch(setError);
+    queue.current = queue.current.then(() => save({ variables: { input: toApi(next) } })).catch(setError);
   };
 
   /** The place a card is in right now. */
@@ -89,8 +91,11 @@ export function useDashboardLayout() {
   const restoreDefaults = () => {
     setLayout(defaultLayout());
     setError(null);
-    reset().catch(setError);
+    queue.current = queue.current.then(() => reset()).catch(setError);
   };
 
-  return { layout, staffHidden, loading: loading && !data, error, move, moveTo, setSize, hide, show, restoreDefaults };
+  // Data from the cache is there on the first render, but is applied a moment later (in the effect above): until then
+  // this still counts as loading, so the standard arrangement never flashes before the saved one.
+  const applying = Boolean(data?.myDashboardLayout) && !loaded.current;
+  return { layout, staffHidden, loading: (loading && !data) || applying, error, move, moveTo, setSize, hide, show, restoreDefaults };
 }

@@ -54,7 +54,7 @@ export function TreatmentTimeline({ plan, journey }: { plan?: Plan | null; journ
             </span>
             <div className="min-w-0 -mt-0.5">
               <p className={`text-sm ${s.state === 'next' ? 'text-slate-500' : 'font-semibold text-ink-900'}`}>
-                {s.title}{s.state === 'now' && <span className="ml-2 text-[11px] font-semibold rounded-full bg-ink-50 text-ink-700 px-2 py-0.5">You are here</span>}
+                {s.title}{s.state === 'now' && <span className="ml-2 text-xs font-semibold rounded-full bg-ink-50 text-ink-700 px-2 py-0.5">You are here</span>}
               </p>
               {s.detail && <p className="text-xs text-slate-500">{s.detail}</p>}
             </div>

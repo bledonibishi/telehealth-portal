@@ -139,6 +139,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const status = visualStatus(dose);
   const c = COLORS[status];
   const isPatch = dose.product.form === 'PATCH';
+  const unit = doseWords(dose.product.form).one;
   const advice = missedDoseAdvice(dose, needsClinician);
   const pen = isRotatingPen(dose);
   // Offered while logging, and afterwards if it was left out.
@@ -151,7 +152,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-900">{doseName(dose)}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{format(new Date(dose.scheduledFor), 'EEEE, d MMMM yyyy')}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{format(new Date(dose.scheduledFor), 'EEEE, d MMMM yyyy')}</p>
         </div>
         <button onClick={onClose} className="text-slate-300 hover:text-slate-500 text-sm">✕</button>
       </div>
@@ -164,8 +165,8 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       {dose.takenAt && <p className="text-sm font-medium text-emerald-700 mt-3">✅ Taken {takenAtText(new Date(dose.takenAt))}</p>}
       {dose.injectionSite && <p className="text-xs text-slate-500 mt-1">Injected: {SITE_LABEL[dose.injectionSite].toLowerCase()}</p>}
       {dose.note && <p className="text-xs text-slate-500 mt-2">Note: {dose.note}</p>}
-      {dose.product.requiresColdChain && <p className="text-xs text-slate-400 mt-2">Keep refrigerated (2–8°C).</p>}
-      {isPatch && <p className="text-xs text-slate-400 mt-2">Put the new patch on a different spot from the last one, below the waist.</p>}
+      {dose.product.requiresColdChain && <p className="text-xs text-slate-500 mt-2">Keep refrigerated (2–8°C).</p>}
+      {isPatch && <p className="text-xs text-slate-500 mt-2">Put the new patch on a different spot from the last one, below the waist.</p>}
       {(dose.status === 'MISSED' || status === 'DUE') && advice && <p className="text-xs text-slate-600 bg-amber-50 rounded-lg px-3 py-2 mt-3">{advice}</p>}
       {pen && (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
@@ -189,7 +190,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
 
       {notYet && (
         <p className="text-sm text-slate-600 bg-slate-50 rounded-md px-3 py-2.5 mt-4" role="status">
-          This {isPatch ? 'patch change' : 'injection'} is due {countdown(new Date(dose.scheduledFor))}, on {format(new Date(dose.scheduledFor), 'EEEE d MMMM')}. You can log it that day.
+          This {unit} is due {countdown(new Date(dose.scheduledFor))}, on {format(new Date(dose.scheduledFor), 'EEEE d MMMM')}. You can log it that day.
         </p>
       )}
 
@@ -221,7 +222,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       )}
 
       {(dose.status === 'TAKEN' || dose.status === 'SKIPPED') && (
-        <button onClick={() => unmark({ variables: { id: dose.id } })} disabled={undoing} className="mt-4 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-50">
+        <button onClick={() => unmark({ variables: { id: dose.id } })} disabled={undoing} className="mt-4 text-xs text-slate-500 hover:text-slate-600 disabled:opacity-50">
           {undoing ? 'Undoing…' : 'Undo'}
         </button>
       )}
@@ -282,18 +283,32 @@ export default function DosesPage() {
   const askedAbout = doseToAskAbout(doses.filter(isInjected));
   const lastSite = lastSiteOf(doses);
 
-  const handleEventClick = (arg: EventClickArg) => setSelectedId(arg.event.id);
+  const handleEventClick = (arg: EventClickArg) => select(arg.event.id);
 
   const handleDateClick = (arg: DateClickArg) => {
     const api = calendarRef.current?.getApi();
     const match = api?.getEvents().find((e) => e.startStr === arg.dateStr);
-    if (match) setSelectedId(match.id);
+    if (match) select(match.id);
   };
 
   // The hormone programmes use gels, patches and capsules; only GLP-1 and testosterone are injected.
   // Named by the active prescription's form, like the menu (not by old doses, nor the programme signed up for): a hormone
   // gel, patch or capsule is never called an injection. Each dose's own controls still follow that dose's form.
   const injections = planData?.myTreatmentPlan ? doseWords(planData.myTreatmentPlan.form).calendar === 'Injections' : doses.length > 0 && doses.every(isInjected);
+  // Banners name the medicine's own kind of dose: a patient on capsules is never told about an "injection".
+  const unit = planData?.myTreatmentPlan ? doseWords(planData.myTreatmentPlan.form).one : injections ? 'injection' : 'dose';
+
+  // On a phone the details open under the calendar, off the screen: bring them into view.
+  // Counted on every pick, so choosing the dose that is already open (after scrolling away from it) scrolls back to it too.
+  const [picks, setPicks] = useState(0);
+  const select = (id: string) => {
+    setSelectedId(id);
+    setPicks((n) => n + 1);
+  };
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedId && window.matchMedia('(max-width: 1023px)').matches) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedId, picks]);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
@@ -316,7 +331,7 @@ export default function DosesPage() {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
               <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.missedInARow} doses in a row</p>
               <p className="text-sm text-amber-900/80 mt-1">
-                Please message your clinician before your next injection. After a break, going straight back to your current dose can cause
+                Please message your clinician before your next {unit}. After a break, going straight back to your current dose can cause
                 strong side effects, so they may restart you on a lower one.
               </p>
               <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-ink-800 hover:text-ink-900">Message my clinician →</Link>
@@ -324,10 +339,11 @@ export default function DosesPage() {
           )}
           {!needsClinician && overdue && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
-              <p className="text-sm font-semibold text-amber-900">Your injection from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
+              {/* Named by this dose's own form: after a prescription change it can differ from the current one. */}
+              <p className="text-sm font-semibold text-amber-900">Your {doseWords(overdue.product.form).one} from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
               <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false) ?? 'If you haven’t taken it, message your care team before taking it late.'}</p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
-                <button type="button" onClick={() => setSelectedId(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
+                <button type="button" onClick={() => select(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
                 <Link href={messageClinicianHref} className="text-sm font-semibold text-ink-800 hover:text-ink-900">Message my care team →</Link>
               </div>
             </div>
@@ -345,7 +361,7 @@ export default function DosesPage() {
                 </p>
               </div>
               <button
-                onClick={() => setSelectedId(next.id)}
+                onClick={() => select(next.id)}
                 className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
               >
                 Open
@@ -380,11 +396,11 @@ export default function DosesPage() {
               />
             </div>
 
-            <div>
+            <div ref={panelRef} className="scroll-mt-4">
               {selected ? (
                 <DetailPanel key={selected.id} dose={selected} needsClinician={needsClinician} lastSite={lastSite} onClose={() => setSelectedId(null)} />
               ) : (
-                <div className="bg-white rounded-lg border border-slate-100 p-5 text-sm text-slate-400">
+                <div className="bg-white rounded-lg border border-slate-100 p-5 text-sm text-slate-500">
                   Click a dose on the calendar to log it or see the details.
                 </div>
               )}
