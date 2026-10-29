@@ -24,8 +24,8 @@
   --c-bg-hover:   #FAFDFC;
   --c-error:      #B42318;
   --g-ring: linear-gradient(120deg,#0C6F6A 0%,#0C6F6A 38%,#9A7FC4 60%,#7CB451 100%);
-  --f-head: 'Outfit', 'Inter', system-ui, sans-serif;
-  --f-body: 'Inter', system-ui, sans-serif;
+  --f-head: var(--font-outfit), var(--font-inter), system-ui, sans-serif;
+  --f-body: var(--font-inter), system-ui, sans-serif;
   --r-card: 28px;
   --r-btn:  999px;
   --r-input: 12px;

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { treatmentsFor } from '@/lib/treatments';
 import { DICT, anchor, homePath, type Lang } from '@/lib/i18n';
 
-export default function Navbar({ lang = 'en' }: { lang?: Lang }) {
+export default function Navbar({ lang = 'en', switchHref }: { lang?: Lang; switchHref?: string }) {
   const pathname = usePathname();
   const t = DICT[lang];
   const other: Lang = lang === 'sq' ? 'en' : 'sq';
@@ -25,7 +25,7 @@ export default function Navbar({ lang = 'en' }: { lang?: Lang }) {
           <Link href={anchor(lang, 'contact')}>{t.nav.contact}</Link>
         </div>
 
-        <Link href={homePath(other)} lang={other} hrefLang={other} className="pv-lang pv-lang-top" aria-label={other === 'sq' ? 'Shqip' : 'English'}>
+        <Link href={switchHref ?? homePath(other)} lang={other} hrefLang={other} className="pv-lang pv-lang-top" aria-label={other === 'sq' ? 'Shqip' : 'English'}>
           {t.nav.switchTo}
         </Link>
 

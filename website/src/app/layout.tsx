@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Inter, Outfit } from 'next/font/google';
 import './globals.css';
 import ReferralCapture from '@/components/ReferralCapture';
 import Analytics from '@/components/Analytics';
@@ -18,16 +19,14 @@ export const metadata: Metadata = {
   twitter: { card: 'summary', title: TITLE, description: DESCRIPTION, images: ['/omo-logo.png'] },
 };
 
+// Downloaded when the site is built and served from our own domain, so a visit sends nothing to Google (no consent
+// or disclosure needed for it). The variables feed --f-head and --f-body in globals.css.
+const outfit = Outfit({ subsets: ['latin', 'latin-ext'], weight: 'variable', display: 'swap', variable: '--font-outfit' });
+const inter = Inter({ subsets: ['latin', 'latin-ext'], weight: ['400', '500', '600', '700'], display: 'swap', variable: '--font-inter' });
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Outfit:wght@400..700&family=Inter:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className={`${outfit.variable} ${inter.variable}`}>
       <body>
         <ReferralCapture />
         <Analytics />

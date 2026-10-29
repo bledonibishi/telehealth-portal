@@ -1,8 +1,9 @@
 'use client';
 
 import { setConsent } from '@/lib/consent';
+import { forgetAnalytics } from '@/lib/analytics';
 
-/** Forgets the cookie choice and reloads, so the banner asks again. */
+/** Forgets the cookie choice and the analytics identifier, then reloads so the banner asks again. */
 export default function ConsentReset({ label }: { label: string }) {
   return (
     <button
@@ -10,6 +11,7 @@ export default function ConsentReset({ label }: { label: string }) {
       className="btn-secondary btn-sm"
       onClick={() => {
         setConsent(null);
+        forgetAnalytics();
         window.location.reload();
       }}
     >

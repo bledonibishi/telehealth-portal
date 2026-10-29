@@ -44,7 +44,7 @@ const EN: Pack = {
         'To check your identity and prevent fraud and unsafe prescribing.',
         'To keep you safe: reminders, check-ins and alerts about possible side effects.',
         'To take payment, issue receipts and handle refunds.',
-        'To run, secure and improve the service, including anonymised analytics.',
+        'To run, secure and improve the service, including analytics linked to an identifier kept in your browser (only if you accept analytics cookies).',
         'To meet legal duties, such as keeping medical records.',
       ] },
       { h: '4. Who sees your data', p: ['Only the people and companies that need it:'], ul: [
@@ -122,7 +122,7 @@ const SQ: Pack = {
         'Për të verifikuar identitetin tuaj dhe për të parandaluar mashtrimin dhe përshkrimin e pasigurt.',
         'Për sigurinë tuaj: kujtesa, check-in-e dhe sinjalizime për efekte anësore të mundshme.',
         'Për të marrë pagesën, për të lëshuar faturat dhe për të trajtuar rimbursimet.',
-        'Për të menaxhuar, siguruar dhe përmirësuar shërbimin, përfshirë analitikë të anonimizuar.',
+        'Për të menaxhuar, siguruar dhe përmirësuar shërbimin, përfshirë analitikë të lidhur me një identifikues të ruajtur në shfletuesin tuaj (vetëm nëse pranoni cookies për analitikë).',
         'Për të përmbushur detyrimet ligjore, si mbajtja e dosjeve mjekësore.',
       ] },
       { h: '4. Kush i sheh të dhënat tuaja', p: ['Vetëm njerëzit dhe kompanitë që kanë nevojë për to:'], ul: [

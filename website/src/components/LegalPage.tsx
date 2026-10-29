@@ -4,7 +4,7 @@ import SiteFooter from '@/components/SiteFooter';
 import ConsentReset from '@/components/ConsentReset';
 import HtmlLang from '@/components/HtmlLang';
 import { LEGAL, LEGAL_REVIEWED } from '@/lib/legal';
-import type { Lang } from '@/lib/i18n';
+import { LEGAL_PATHS, type Lang } from '@/lib/i18n';
 
 /** Text with [[placeholders]] shown highlighted, so what is still to be filled in cannot be missed. */
 function Marked({ text }: { text: string }) {
@@ -21,10 +21,12 @@ function Marked({ text }: { text: string }) {
 export default function LegalPage({ lang, doc }: { lang: Lang; doc: 'privacy' | 'terms' | 'cookies' }) {
   const pack = LEGAL[lang];
   const d = pack[doc];
+  // The language switch opens this same document in the other language, not the other home page.
+  const switchHref = LEGAL_PATHS[lang === 'sq' ? 'en' : 'sq'][doc];
   return (
     <>
       {lang === 'sq' && <HtmlLang lang="sq" />}
-      <Navbar lang={lang} />
+      <Navbar lang={lang} switchHref={switchHref} />
       <main className="pv-legal">
         <h1>{d.title}</h1>
         <p className="pv-legal-updated">{pack.updatedLabel}: <Marked text={pack.updated} /></p>
@@ -39,7 +41,7 @@ export default function LegalPage({ lang, doc }: { lang: Lang; doc: 'privacy' | 
         ))}
         {doc === 'cookies' && <p style={{ marginTop: 24 }}><ConsentReset label={pack.cookieSettings} /></p>}
       </main>
-      <SiteFooter lang={lang} />
+      <SiteFooter lang={lang} switchHref={switchHref} />
     </>
   );
 }

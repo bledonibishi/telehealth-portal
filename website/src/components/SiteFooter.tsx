@@ -4,7 +4,7 @@ import { DICT, LEGAL_PATHS, anchor, homePath, type Lang } from '@/lib/i18n';
 import { treatmentsFor } from '@/lib/treatments';
 
 /** The footer of every public page, in the page's language. */
-export default function SiteFooter({ lang = 'en' }: { lang?: Lang }) {
+export default function SiteFooter({ lang = 'en', switchHref }: { lang?: Lang; switchHref?: string }) {
   const t = DICT[lang].footer;
   const legal = LEGAL_PATHS[lang];
   const other: Lang = lang === 'sq' ? 'en' : 'sq';
@@ -33,7 +33,7 @@ export default function SiteFooter({ lang = 'en' }: { lang?: Lang }) {
             <Link href={anchor(lang, 'how-it-works')}>{t.how}</Link>
             <Link href={anchor(lang, 'contact')}>{t.contact}</Link>
             <a href={`mailto:${CONFIG.CONTACT.email}`}>{t.emailUs}</a>
-            <Link href={homePath(other)} lang={other} hrefLang={other}>{DICT[lang].nav.switchTo}</Link>
+            <Link href={switchHref ?? homePath(other)} lang={other} hrefLang={other}>{DICT[lang].nav.switchTo}</Link>
           </div>
         </div>
       </div>
