@@ -159,7 +159,7 @@ function Bell() {
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} data-guide="notifications" className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`}
         className="relative w-10 h-10 rounded-full border border-slate-200 bg-white text-ink-900 hover:bg-slate-50 flex items-center justify-center">
         <Icon name="bell" />
@@ -248,7 +248,7 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
   const { data } = useQuery(MY_PROFILE, { fetchPolicy: 'cache-first' });
   const p = data?.myProfile;
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} data-guide="account-menu" className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className={`w-full flex items-center gap-3 pl-1 pr-3 py-1 border transition-colors ${open ? 'bg-white border-slate-200 rounded-t-xl border-b-transparent' : 'border-transparent rounded-full hover:bg-slate-100'}`}>
         <Avatar first={p?.firstName} last={p?.lastName} />
         <span className="hidden sm:block text-left">
@@ -276,7 +276,7 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
 export function TopBar({ onMenu, onSignOut }: { onMenu: () => void; onSignOut: () => void }) {
   return (
     <header className="flex items-center justify-end gap-3 px-4 sm:px-6 lg:px-8 py-3">
-      <button type="button" onClick={onMenu} aria-label="Open menu" className="lg:hidden mr-auto w-10 h-10 rounded-md border border-slate-200 bg-white text-ink-900 flex items-center justify-center">
+      <button type="button" onClick={onMenu} data-guide="menu-button" aria-label="Open menu" className="lg:hidden mr-auto w-10 h-10 rounded-md border border-slate-200 bg-white text-ink-900 flex items-center justify-center">
         <Icon name="menu" />
       </button>
       <Bell />

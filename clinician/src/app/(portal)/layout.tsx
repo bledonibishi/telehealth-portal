@@ -10,6 +10,9 @@ import { NotificationBell } from '@/components/NotificationBell';
 import { NavIcon, type NavIconName } from '@/components/NavIcon';
 import ThemeToggle from '@/components/ThemeToggle';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import GuideToggle from '@/components/GuideToggle';
+import { GuideProvider, type GuideTheme } from '@telehealth/guide/web';
+import { WELCOME_TOUR, pageTourFor } from '@/lib/guide/tours';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_NOTIFICATION_COUNTS } from '@/graphql/notifications';
 
@@ -59,6 +62,11 @@ const ROLE_BADGE: Record<ClinicianRole, { label: string; cls: string }> = {
   PROVIDER: { label: 'Provider', cls: 'bg-amber-100 text-amber-700' },
 };
 
+// The guide follows the portal's light and dark mode through the same variables as the pages.
+const GUIDE_THEME: Partial<GuideTheme> = {
+  card: 'var(--bg-card)', text: 'var(--t-strong)', muted: 'var(--t-muted)', border: 'var(--border)', accent: '#0f766e', accentText: '#ffffff',
+};
+
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -102,6 +110,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }, []);
 
   return (
+    <GuideProvider welcome={WELCOME_TOUR} pageTour={authChecked ? pageTourFor(pathname) : null} pageKey={pathname} t={t} theme={GUIDE_THEME}>
     <div style={ready ? undefined : { visibility: 'hidden' }} className="dark-surface flex h-screen bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
       {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
       <aside
@@ -131,6 +140,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                     <Link
                       key={item.href}
                       href={item.href}
+                      data-guide={`nav:${item.href}`}
                       aria-current={active ? 'page' : undefined}
                       className={`group flex items-center gap-2.5 px-2.5 py-1.5 text-[13px] rounded-md border transition-colors ${
                         active
@@ -159,6 +169,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
+            data-guide="menu-button"
             aria-label={t('Open menu')}
             className="lg:hidden w-9 h-9 rounded-lg border border-[color:var(--border)] text-[color:var(--t-strong)] flex items-center justify-center"
           >
@@ -166,9 +177,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </button>
           <div className="hidden lg:block" /> {/* spacer */}
           <div className="flex items-center gap-3">
-            <LanguageSwitcher />
-            <ThemeToggle />
-            <NotificationBell />
+            <div data-guide="header-tools" className="flex items-center gap-3">
+              <LanguageSwitcher />
+              <ThemeToggle />
+            </div>
+            <GuideToggle />
+            <div data-guide="notifications" className="flex"><NotificationBell /></div>
             <div className="w-px h-5 bg-[color:var(--border)]" />
             <button
               onClick={handleLogout}
@@ -185,5 +199,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <main className="flex-1 overflow-y-auto">{authChecked ? children : null}</main>
       </div>
     </div>
+    </GuideProvider>
   );
 }

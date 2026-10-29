@@ -16,8 +16,10 @@ const MOVE_LABEL: Record<DashboardZone, string> = { top: 'above both columns, fu
 const SIZE_LABEL: Record<DashboardSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
 
 export function CustomizeSlot({
-  title, editing, required, zone, otherZone, size, sizeOptions, first, last, dragging, canDropHere, onSetSize, onMove, onSwitchColumn, onRemove, onDragStart, onDragEnd, onDropOn, className = '', children,
+  guideId, title, editing, required, zone, otherZone, size, sizeOptions, first, last, dragging, canDropHere, onSetSize, onMove, onSwitchColumn, onRemove, onDragStart, onDragEnd, onDropOn, className = '', children,
 }: {
+  /** What the app guide lights up when it explains this card. */
+  guideId?: string;
   title: string;
   editing: boolean;
   required?: boolean;
@@ -64,7 +66,7 @@ export function CustomizeSlot({
     if (Math.abs(from - to) > 1 && typeof el.animate === 'function') el.animate([{ width: `${from}px` }, { width: `${to}px` }], { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
   }, [settle]);
 
-  if (!editing) return <div className={className}>{children}</div>;
+  if (!editing) return <div data-guide={guideId} className={className}>{children}</div>;
 
   const resizable = !!size && !!sizeOptions && sizeOptions.length > 1 && !!onSetSize;
   // Where the right edge would be if it followed the pointer, as a share of the row: the nearest size wins.

@@ -1,9 +1,9 @@
 import Link from 'next/link';
 
 /** The white panel every dashboard block sits on. */
-export function Card({ children, className = '', labelledBy }: { children: React.ReactNode; className?: string; labelledBy?: string }) {
+export function Card({ children, className = '', labelledBy, guide }: { children: React.ReactNode; className?: string; labelledBy?: string; guide?: string }) {
   return (
-    <section aria-labelledby={labelledBy} className={`bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_1px_2px_rgba(10,56,54,0.04)] ${className}`}>
+    <section aria-labelledby={labelledBy} data-guide={guide} className={`bg-white rounded-2xl border border-slate-200/80 p-5 shadow-[0_1px_2px_rgba(10,56,54,0.04)] ${className}`}>
       {children}
     </section>
   );

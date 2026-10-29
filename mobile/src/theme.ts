@@ -47,4 +47,6 @@ export const colors = {
   danger: '#f43f5e',
   white: '#ffffff',
   page: '#f8fafc',
+  // The dim over the screen behind the app guide (slate900 at 60%).
+  scrim: 'rgba(15, 23, 42, 0.6)',
 };

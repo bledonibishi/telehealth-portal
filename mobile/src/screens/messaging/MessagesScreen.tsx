@@ -8,6 +8,8 @@ import type { Attachment } from '../../components/AttachmentsField';
 import { Button } from '../../components/ui';
 import { useConversation, type ChatMessage } from '../../lib/useConversation';
 import { colors } from '../../theme';
+import { GuideTarget, useScreenGuide } from '../../components/guide/GuideProvider';
+import { MESSAGES_TOUR } from '../../lib/guideTours';
 
 // Starting points for someone who doesn't know what to write: each fills the message box, and nothing is sent until they press Send.
 const STARTERS = [
@@ -22,6 +24,7 @@ const STARTERS = [
  * questions), with a way to send a written request about something specific.
  */
 export function MessagesScreen({ navigation }: any) {
+  useScreenGuide(MESSAGES_TOUR);
   const focused = useIsFocused();
   const { messages, me, loading, sending, send } = useConversation({ active: focused });
   const [content, setContent] = useState('');
@@ -45,13 +48,15 @@ export function MessagesScreen({ navigation }: any) {
   return (
     <SafeAreaView style={s.page} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 52 : 0}>
-        <View style={s.header}>
+        <GuideTarget id="screen-header" style={s.header}>
           <View style={{ flex: 1 }}>
             <Text style={s.title} accessibilityRole="header">Help & messages</Text>
             <Text style={s.subtitle}>Write to us here. Only you and our team can read this.</Text>
           </View>
-          <Button label="Send a request" small variant="outline" onPress={() => navigation.navigate('Help')} />
-        </View>
+          <GuideTarget id="messages:request">
+            <Button label="Send a request" small variant="outline" onPress={() => navigation.navigate('Help')} />
+          </GuideTarget>
+        </GuideTarget>
 
         <FlatList
           ref={listRef}

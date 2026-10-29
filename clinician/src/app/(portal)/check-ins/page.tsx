@@ -228,7 +228,7 @@ export default function CheckInsPage() {
   return (
     <div className="flex h-screen overflow-hidden">
       <div className={`${selected ? 'hidden lg:flex' : 'flex'} w-full lg:w-96 border-r border-gray-200 flex-col bg-white shrink-0`}>
-        <div className="px-5 py-4 border-b border-gray-200">
+        <div data-guide="page-header" className="px-5 py-4 border-b border-gray-200">
           <h1 className="text-lg font-semibold text-gray-900">{t('Check-ins')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('{n} waiting for review', { n: everything.length })}</p>
           <SearchInput className="w-full mt-3" value={query} onChange={setQuery} placeholder={t('Search name, email or ID…')} ariaLabel={t('Search name, email or ID…')} clearLabel={t('Clear search')} />
@@ -237,7 +237,7 @@ export default function CheckInsPage() {
         <MissedDoseAlerts />
         {loading && <div className="p-5"><SkeletonList rows={4} label={t('Loading…')} /></div>}
         <InlineError error={error} className="p-5" />
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+        <div data-guide="checkins:list" className="flex-1 overflow-y-auto divide-y divide-gray-100">
           {queue.map((c) => {
             const critical = c.redFlags.some((f: any) => f.severity === 'CRITICAL');
             return (

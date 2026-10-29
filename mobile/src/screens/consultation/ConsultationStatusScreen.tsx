@@ -9,6 +9,8 @@ import { LoadingState } from '../../components/Skeleton';
 import { MenuRow } from '../../components/MenuRow';
 import { Button, Card, CardTitle, Columns, Notice, Pill, ProgressBar, Screen, Stat } from '../../components/ui';
 import { colors } from '../../theme';
+import { GuideTarget, useScreenGuide } from '../../components/guide/GuideProvider';
+import { HOME_TOUR } from '../../lib/guideTours';
 
 // The doctor's decision arrives while the app is open: look again this often.
 const POLL_MS = 30_000;
@@ -34,6 +36,7 @@ const greeting = () => {
 
 /** The home screen: a warm greeting, where the treatment stands, what to do next, and the consultations so far. */
 export function ConsultationStatusScreen({ navigation }: any) {
+  useScreenGuide(HOME_TOUR);
   const { data, loading, error, refetch } = useQuery(MY_CONSULTATIONS, { fetchPolicy: 'network-only', pollInterval: POLL_MS });
   const { data: planData, refetch: refetchPlan } = useQuery(MY_TREATMENT_PLAN, { fetchPolicy: 'network-only', pollInterval: POLL_MS });
   const { data: nameData } = useQuery(ME_NAME, { fetchPolicy: 'cache-first' });
@@ -64,12 +67,15 @@ export function ConsultationStatusScreen({ navigation }: any) {
       onRefresh={() => { refetch(); refetchPlan(); }}
     >
       {!plan && (
+        <GuideTarget id="home:next">
         <Notice tone={next.stage === 'MORE_INFO' ? 'warn' : 'info'} title={next.title} action={next.action ? <Button label={next.action.label} onPress={goToNext} small /> : undefined}>
           {next.text}
         </Notice>
+        </GuideTarget>
       )}
 
       {plan && (
+        <GuideTarget id="home:plan">
         <Card tone="info" style={{ marginBottom: 14 }}>
           <CardTitle title={plan.productName} subtitle={[plan.strength, plan.programme].filter(Boolean).join(' · ')} right={<Pill label="Active" tone="good" />} />
           {plan.dosesPlanned > 0 && (
@@ -87,6 +93,7 @@ export function ConsultationStatusScreen({ navigation }: any) {
           {!!plan.prescriberName && <Text style={{ fontSize: 12, color: colors.slate400, marginTop: 8 }}>Prescribed by {plan.prescriberName}</Text>}
           {hasDoses && <View style={{ marginTop: 14 }}><Button label="Open my doses" onPress={() => navigation.navigate('Injections')} /></View>}
         </Card>
+        </GuideTarget>
       )}
 
       <Columns>

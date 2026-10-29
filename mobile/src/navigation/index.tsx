@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
 import { useQuery } from '@apollo/client';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -34,6 +34,7 @@ import { AccountScreen } from '../screens/account/AccountScreen';
 import { listenForNoticeTaps, registerForPush } from '../lib/push';
 import { navigationRef } from './navigationRef';
 import { withNativeHeader } from '../lib/nativeHeader';
+import { GuideLauncher, GuideTabBar } from '../components/guide/GuideProvider';
 
 const Stack = createNativeStackNavigator();
 const OnboardingStack = createNativeStackNavigator();
@@ -98,7 +99,8 @@ function PatientTabs() {
   const unread: number = unreadData?.unreadNotificationCount ?? 0;
   const unreadMessages = useUnreadMessageCount();
   return (
-    <Tab.Navigator sceneContainerStyle={{ backgroundColor: colors.page }} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.ink700, tabBarInactiveTintColor: colors.slate400, tabBarLabelStyle: { fontSize: 11, fontWeight: '600' } }}>
+    <View style={{ flex: 1 }}>
+    <Tab.Navigator tabBar={(props) => <GuideTabBar {...props} />} sceneContainerStyle={{ backgroundColor: colors.page }} screenOptions={{ headerShown: false, tabBarActiveTintColor: colors.ink700, tabBarInactiveTintColor: colors.slate400, tabBarLabelStyle: { fontSize: 11, fontWeight: '600' } }}>
       <Tab.Screen name="Status" component={ConsultationStatusScreen} options={{ title: 'Home', tabBarIcon: icon('🏠') }} />
       {kind === 'GLP1' && <Tab.Screen name="Weight" component={WeightScreen} options={{ tabBarIcon: icon('⚖️') }} />}
       {!!kind && <Tab.Screen name="Injections" component={InjectionsScreen} options={{ title: kind === 'HRT' ? 'Doses' : 'Injections', tabBarIcon: icon('💉') }} />}
@@ -106,6 +108,8 @@ function PatientTabs() {
       <Tab.Screen name="Messages" component={MessagesFlow} options={{ title: 'Messages', tabBarIcon: icon('💬'), tabBarBadge: unreadMessages > 0 ? (unreadMessages > 99 ? '99+' : unreadMessages) : undefined }} />
       <Tab.Screen name="More" component={MoreFlow} options={{ tabBarIcon: icon('☰'), tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined }} />
     </Tab.Navigator>
+    <GuideLauncher />
+    </View>
   );
 }
 

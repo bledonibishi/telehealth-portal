@@ -75,7 +75,7 @@ function Report() {
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div data-guide="page-header" className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{t('Monthly report')}</h1>
           <p className="text-sm text-gray-500 mt-0.5">{t('The clinic month by month: patients, revenue, check-in decisions and weight lost.')}</p>

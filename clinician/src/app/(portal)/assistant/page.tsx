@@ -209,10 +209,10 @@ export default function AssistantPage() {
   const tabCls = (on: boolean) => `px-4 py-2 text-sm font-medium border-b-2 -mb-px ${on ? 'border-brand-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-800'}`;
   return (
     <div>
-      <div className="px-4 sm:px-6 pt-5 border-b border-gray-200 bg-white">
+      <div data-guide="page-header" className="px-4 sm:px-6 pt-5 border-b border-gray-200 bg-white">
         <h1 className="text-lg font-semibold text-gray-900">{t('Assistant')}</h1>
         <p className="text-xs text-gray-500 mt-0.5 mb-3">{t('The automated assistant that answers patients’ everyday questions: how it is doing, and what it is allowed to say')}</p>
-        <div className="flex gap-1">
+        <div data-guide="assistant:tabs" className="flex gap-1">
           <button type="button" onClick={() => setTab('review')} className={tabCls(tab === 'review')}>{t('How it’s doing')}</button>
           <button type="button" onClick={() => setTab('articles')} className={tabCls(tab === 'articles')}>{t('Help articles')}</button>
         </div>

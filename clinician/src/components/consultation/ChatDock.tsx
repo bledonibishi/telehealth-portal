@@ -214,7 +214,7 @@ export function ChatDock({
   });
 
   return (
-    <aside className="fixed inset-0 z-40 w-full lg:static lg:z-auto lg:w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
+    <aside data-guide="consultation:chat" className="fixed inset-0 z-40 w-full lg:static lg:z-auto lg:w-[360px] shrink-0 border-l border-gray-200 bg-white flex flex-col min-h-0" aria-label={t('Secure messages')}>
       {watchers}
       <div className="h-16 shrink-0 px-4 flex items-center gap-3 border-b border-gray-200">
         <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-900 text-xs font-semibold flex items-center justify-center">

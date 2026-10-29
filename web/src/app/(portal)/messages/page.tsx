@@ -92,7 +92,7 @@ export default function MessagesPage() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
       <div className="min-w-0">
 
-      <div className="bg-white rounded-lg border border-slate-200/70 flex flex-col h-[calc(100vh-12rem)] min-h-[420px]">
+      <div data-guide="messages:chat" className="bg-white rounded-lg border border-slate-200/70 flex flex-col h-[calc(100vh-12rem)] min-h-[420px]">
         <div ref={scroller} className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-3" aria-live="polite">
           {chat.loading && !chat.messages.length && <SkeletonMessages label="Loading your messages…" />}
           {!chat.loading && !chat.messages.length && (
@@ -165,7 +165,7 @@ export default function MessagesPage() {
       </div>
 
       <aside className="space-y-4 min-w-0">
-        <Card>
+        <Card guide="messages:request">
           <CardHeader title="Something specific?" subtitle="Send a written request about a payment, a delivery, your account or a question for your doctor, with a photo if it helps." />
           <button type="button" onClick={() => { setSentRequest(null); setRequesting(true); }} className={`${btnBlue} w-full`}>Send a request</button>
         </Card>

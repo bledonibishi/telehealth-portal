@@ -59,7 +59,7 @@ export default function LabsPage() {
 
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-5xl">
-      <div>
+      <div data-guide="page-header">
         <h1 className="text-xl font-semibold text-gray-900">{t('Labs')}</h1>
         <p className="text-sm text-gray-400 mt-0.5">{t('Blood tests that need attention. Enter new results from the patient’s Labs tab.')}</p>
       </div>

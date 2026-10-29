@@ -423,7 +423,7 @@ function Patients() {
       {/* List */}
       {/* The whole list scrolls as one page; the root stays a fixed frame so the hover card and chat dock keep their place. */}
       <div className={`${selectedId ? 'hidden' : 'flex'} h-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:p-5`}>
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0">
+        <div data-guide="page-header" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 shrink-0">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-[color:var(--t-strong)]">{t('Doctor’s patient dashboard')}</h1>
             <p className="text-xs text-[color:var(--t-dim)]">{chatMode ? t('Click a patient to chat with them') : t('Hover a patient to preview their profile · click to open it in full')}</p>
@@ -441,9 +441,9 @@ function Patients() {
           </div>
         </div>
 
-        {isPrescriber && <HealthAlertsPanel />}
+        {isPrescriber && <div data-guide="patients:alerts"><HealthAlertsPanel /></div>}
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 shrink-0 overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)] divide-x divide-y lg:divide-y-0 divide-[color:var(--border-subtle)]">
+        <div data-guide="patients:stats" className="grid grid-cols-2 lg:grid-cols-5 shrink-0 overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--bg-card)] divide-x divide-y lg:divide-y-0 divide-[color:var(--border-subtle)]">
           <StatCard label="Total patients" value={all.length} hint={t('{n} activated · click to list all', { n: activated })} tone="text-emerald-400" active={!filtersActive && search === ''} onClick={showAll} />
           <StatCard label="Active on treatment" value={counts.active} tone="text-[color:var(--t-strong)]" active={quick === 'ACTIVE'} onClick={() => toggleQuick('ACTIVE')} />
           <StatCard label="Pending consults" value={counts.review} hint={t('Waiting for a clinician')} tone="text-amber-400" active={quick === 'REVIEW'} onClick={() => toggleQuick('REVIEW')} />

@@ -5,6 +5,7 @@ import { describeError } from '@telehealth/shared-types';
 import { colors } from '../theme';
 import { useLayout } from '../lib/layout';
 import { useHasNativeHeader } from '../lib/nativeHeader';
+import { GuideTarget } from './guide/GuideContext';
 
 /** The page every treatment screen sits on: a title, a scrolling body that is a centred column on a tablet. */
 export function Screen({ title, subtitle, right, children, refreshing, onRefresh }: {
@@ -20,13 +21,13 @@ export function Screen({ title, subtitle, right, children, refreshing, onRefresh
         refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} /> : undefined}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={s.header}>
+        <GuideTarget id="screen-header" style={s.header}>
           <View style={{ flex: 1 }}>
             <Text style={s.title} accessibilityRole="header">{title}</Text>
             {!!subtitle && <Text style={s.subtitle}>{subtitle}</Text>}
           </View>
           {right}
-        </View>
+        </GuideTarget>
         {children}
       </ScrollView>
     </SafeAreaView>

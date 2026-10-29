@@ -45,7 +45,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
                 const active = pathname === item.href || pathname.startsWith(item.href + '/');
                 const count = item.badge === 'messages' ? unread : 0;
                 return (
-                  <Link key={item.href} href={item.href} onClick={onNavigate} aria-current={active ? 'page' : undefined}
+                  <Link key={item.href} href={item.href} onClick={onNavigate} data-guide={`nav:${item.href}`} aria-current={active ? 'page' : undefined}
                     className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] border transition-colors ${active ? 'bg-white border-slate-200 text-slate-900 font-medium shadow-[0_1px_0_rgba(15,23,42,0.04)]' : 'border-transparent text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900'}`}>
                     <Icon name={item.icon} className={`w-4 h-4 flex-shrink-0 ${active ? 'text-brand-700' : 'text-slate-400 group-hover:text-slate-600'}`} />
                     <span className="flex-1 truncate">{item.label}</span>
@@ -62,6 +62,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
         <Link
           href={HELP_HREF}
           onClick={onNavigate}
+          data-guide={`nav:${HELP_HREF}`}
           aria-current={pathname === HELP_HREF ? 'page' : undefined}
           className={`flex items-center gap-2.5 rounded-md border px-3 py-2.5 transition-colors ${pathname === HELP_HREF ? 'border-brand-700/40 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}`}
         >

@@ -39,7 +39,7 @@ export function SideEffectAlerts() {
   if (alerts.length === 0) return null;
 
   return (
-    <div className="border-b border-gray-200 bg-red-50/50">
+    <div data-guide="checkins:alerts" className="border-b border-gray-200 bg-red-50/50">
       <div className="px-5 pt-3 pb-1">
         <p className="text-xs font-semibold text-red-900 uppercase tracking-wide">{t('Side effects reported')} · {alerts.length}</p>
         <p className="text-xs text-red-900/70 mt-0.5">{t('Reported by patients between check-ins. Acknowledge once you have looked at it.')}</p>

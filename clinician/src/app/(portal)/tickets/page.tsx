@@ -121,21 +121,21 @@ export default function TicketsPage() {
 
   return (
     <div>
-      <div className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
+      <div data-guide="page-header" className="px-4 sm:px-6 py-5 border-b border-gray-200 bg-white flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{t('Tickets')}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{t('What patients have asked for help with, and who is handling it')}</p>
         </div>
         <div className="flex items-center gap-2">
           {canEditReplies && <button type="button" onClick={() => setManagingReplies(true)} className="text-sm font-medium border border-gray-300 text-gray-700 bg-white rounded-lg px-3.5 py-2 hover:bg-gray-50">{t('Saved replies')}</button>}
-          <button type="button" onClick={() => setCreating(true)} className="bg-brand-500 text-white rounded-lg px-4 py-2 text-sm font-medium">{t('New ticket')}</button>
+          <button data-guide="tickets:new" type="button" onClick={() => setCreating(true)} className="bg-brand-500 text-white rounded-lg px-4 py-2 text-sm font-medium">{t('New ticket')}</button>
         </div>
       </div>
 
       <div className="px-4 sm:px-6 py-5 space-y-4">
         <ErrorAlert error={error} />
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div data-guide="tickets:filters" className="flex flex-wrap items-center gap-2">
           <SearchInput className="w-full sm:w-72" value={search} onChange={setSearch} placeholder={t('Search subject, patient or #…')} ariaLabel={t('Search tickets')} clearLabel={t('Clear search')} />
           <div className="flex flex-wrap items-center gap-1.5 sm:ml-2">
             <button type="button" onClick={() => setView('ACTIVE')} className={chip(view === 'ACTIVE')}>{t('Active')} · {active.length}</button>
@@ -154,7 +154,7 @@ export default function TicketsPage() {
           <LoadingState />
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+            <div data-guide="tickets:list" className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
               <table className="w-full text-sm">
                 <thead>
                   {table.getHeaderGroups().map((group) => (

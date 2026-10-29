@@ -72,7 +72,7 @@ export function SmartPatientSearch({ medicationOptions, onApply, onReset }: { me
   const clear = () => { setText(''); setTags([]); setUnsupported([]); setError(null); onReset(); };
 
   return (
-    <div className="shrink-0 space-y-1.5">
+    <div data-guide="patients:search" className="shrink-0 space-y-1.5">
       <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-1.5 transition-shadow focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-200">
         <AiMark />
         <input

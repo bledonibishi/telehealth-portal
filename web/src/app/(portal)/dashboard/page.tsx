@@ -113,6 +113,7 @@ export default function DashboardPage() {
       return (
         <CustomizeSlot
           key={id}
+          guideId={`dashboard:${id}`}
           title={widget.title}
           editing={editing}
           required={widget.required}
@@ -158,7 +159,7 @@ export default function DashboardPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8">
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 mb-5 -mt-1">
+      <div data-guide="page-header" className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 mb-5 -mt-1">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-semibold text-ink-900">{firstName ? `Welcome back, ${firstName}!` : 'Welcome back!'}</h1>
           <p className="text-sm text-slate-500 mt-0.5 mb-2">Here’s your health journey at a glance.</p>
@@ -168,6 +169,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => setReporting(true)}
+            data-guide="dashboard:side-effect"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg px-3.5 py-2"
           >
             <Icon name="alert" className="w-4 h-4 text-amber-600" /> Report a side effect
@@ -175,6 +177,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => setEditing((e) => !e)}
+            data-guide="dashboard:customize"
             disabled={dash.loading}
             aria-pressed={editing}
             className={`text-xs font-medium rounded-lg px-3 py-2 border disabled:opacity-50 ${editing ? 'bg-ink-800 text-white border-ink-800' : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-50'}`}

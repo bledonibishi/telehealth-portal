@@ -55,7 +55,7 @@ export default function TreatmentPlanPage() {
           <PlanHero plan={plan} detailsHref="#plan-details" />
 
           <div className="grid lg:grid-cols-3 gap-5 items-start">
-            <Card labelledBy="supply-title" className="lg:col-span-2">
+            <Card labelledBy="supply-title" className="lg:col-span-2" guide="treatment:supply">
               <CardHeader id="supply-title" title="This supply" subtitle="Order your next one a few days before this one runs out." />
               {plan.supplyDosesTotal != null ? (
                 <>
@@ -71,7 +71,7 @@ export default function TreatmentPlanPage() {
               <DoseAdherence />
             </Card>
 
-            <Card labelledBy="next-title">
+            <Card labelledBy="next-title" guide="treatment:next">
               <CardHeader id="next-title" title="Upcoming doses" href="/doses" action="Dose calendar →" />
               {upcoming.length ? (
                 <ul className="space-y-2.5">
@@ -96,7 +96,7 @@ export default function TreatmentPlanPage() {
             <div className="lg:col-span-2 min-w-0">
               <TreatmentTimeline plan={plan} journey={jData?.myWeightJourney} />
             </div>
-            <div className="space-y-5 min-w-0">
+            <div data-guide="treatment:side-effects" className="space-y-5 min-w-0">
               <WeeklySideEffectCard />
               <SideEffectHistory onReport={() => setReporting(true)} />
             </div>
@@ -104,7 +104,7 @@ export default function TreatmentPlanPage() {
 
           <div className="grid lg:grid-cols-3 gap-5 items-start">
             <div id="plan-details" className="lg:col-span-2 scroll-mt-4">
-            <Card labelledBy="facts-title">
+            <Card labelledBy="facts-title" guide="treatment:details">
               <CardHeader id="facts-title" title="Plan details" href="/prescription" action="Prescription →" />
               <dl>
                 <Fact label="Programme" value={plan.programme} />

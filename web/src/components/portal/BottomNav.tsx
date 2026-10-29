@@ -27,7 +27,7 @@ export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: strin
         {items.map((it) => {
           const active = pathname === it.href || pathname.startsWith(it.href + '/');
           return (
-            <Link key={it.href} href={it.href} aria-current={active ? 'page' : undefined} className={`${cell} ${active ? 'text-brand-600' : 'text-slate-500 hover:text-slate-800'}`}>
+            <Link key={it.href} href={it.href} data-guide={`nav:${it.href}`} aria-current={active ? 'page' : undefined} className={`${cell} ${active ? 'text-brand-600' : 'text-slate-500 hover:text-slate-800'}`}>
               <span className={`relative flex items-center justify-center w-12 h-7 rounded-full ${active ? 'bg-brand-50' : ''}`}>
                 <Icon name={it.icon} className="w-5 h-5" />
                 {it.badge && unread > 0 && (
@@ -38,7 +38,7 @@ export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: strin
             </Link>
           );
         })}
-        <button type="button" onClick={onMore} className={`${cell} text-slate-500 hover:text-slate-800`}>
+        <button type="button" onClick={onMore} data-guide="nav-more" className={`${cell} text-slate-500 hover:text-slate-800`}>
           <span className="flex items-center justify-center w-12 h-7"><Icon name="menu" className="w-5 h-5" /></span>
           More
         </button>

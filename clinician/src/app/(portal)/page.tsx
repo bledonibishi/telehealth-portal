@@ -58,7 +58,7 @@ type SectionProps = { title: string; children: React.ReactNode };
 function Section({ title, children }: SectionProps) {
   const { t } = useI18n();
   return (
-    <div>
+    <div data-guide={`dashboard:${title.toLowerCase()}`}>
       <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t(title)}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{children}</div>
     </div>
@@ -87,12 +87,12 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-6xl">
-      <div>
+      <div data-guide="page-header">
         <h1 className="text-xl font-semibold text-gray-900">{t('Good morning')}</h1>
         <p className="text-sm text-gray-400 mt-0.5">{today}</p>
       </div>
 
-      <RevenuePanel />
+      <div data-guide="dashboard:revenue"><RevenuePanel /></div>
 
       <Section title="Leads">
         {loading ? (

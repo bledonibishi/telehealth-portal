@@ -182,7 +182,7 @@ export function DecisionPanel({
   const close = () => { setAction(null); setError(null); };
 
   return (
-    <div className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+    <div data-guide="consultation:decision" className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
       <div className="text-xs min-w-0">
         {claimedByMe && <p className="text-gray-500">{t('You’re reviewing this consultation.')}</p>}
         {claimedByOther && (

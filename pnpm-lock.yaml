@@ -194,6 +194,9 @@ importers:
       '@telehealth/booking':
         specifier: workspace:*
         version: link:../packages/booking
+      '@telehealth/guide':
+        specifier: workspace:*
+        version: link:../packages/guide
       '@telehealth/loading':
         specifier: workspace:*
         version: link:../packages/loading
@@ -270,6 +273,9 @@ importers:
       '@react-navigation/native-stack':
         specifier: ^6.9.0
         version: 6.11.0(@react-navigation/native@6.1.18(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.4)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native-safe-area-context@5.7.0(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.4)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native-screens@4.26.2(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.4)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.4)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+      '@telehealth/guide':
+        specifier: workspace:*
+        version: link:../packages/guide
       '@telehealth/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
@@ -399,6 +405,24 @@ importers:
         specifier: ^5.3.0
         version: 5.9.3
 
+  packages/guide:
+    devDependencies:
+      '@types/react':
+        specifier: ^18.2.0
+        version: 18.2.79
+      '@types/react-dom':
+        specifier: ^18.2.0
+        version: 18.3.7(@types/react@18.2.79)
+      react:
+        specifier: ^18.2.0
+        version: 18.2.0
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.2.0)
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+
   packages/loading:
     devDependencies:
       '@apollo/client':
@@ -455,6 +479,9 @@ importers:
       '@telehealth/booking':
         specifier: workspace:*
         version: link:../packages/booking
+      '@telehealth/guide':
+        specifier: workspace:*
+        version: link:../packages/guide
       '@telehealth/loading':
         specifier: workspace:*
         version: link:../packages/loading
@@ -10785,9 +10812,7 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.3': {}
 

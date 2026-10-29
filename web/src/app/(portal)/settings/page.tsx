@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/portal/PageHeader';
 import { NotificationPreferences } from '@/components/portal/NotificationPreferences';
 import { Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
+import { GuideToggle } from '@/components/portal/GuideToggle';
 
 const FAQ: Array<[string, string]> = [
   ['When will my next supply arrive?', 'A few days before your current supply runs out, use “Order next dose early”. Your doctor approves it and the pharmacy sends it; you can follow it under Orders.'],
@@ -111,6 +112,11 @@ export default function SettingsPage() {
       <Card>
         <CardHeader title="Vouchers" subtitle="Rewards you earn when a friend you refer joins." />
         <VoucherAutoApplyToggle />
+      </Card>
+
+      <Card guide="settings:guide">
+        <CardHeader title="App guide" subtitle="New here, or looking for something? Let the portal show you around." />
+        <GuideToggle />
       </Card>
 
       <Card>
