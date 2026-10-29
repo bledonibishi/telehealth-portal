@@ -16,6 +16,7 @@ export { paymentFailedEmail } from './payment-failed';
 export { paymentReceiptEmail } from './payment-receipt';
 export { referralRewardEmail } from './referral-reward';
 export { staffAlertEmail } from './staff-alert';
+export { type ShopOrderEmail, type ShopOrderEmailKind, shopOrderEmail } from './shop-order';
 export { supplyPaymentEmail } from './supply-payment';
 export { refundEmail } from './refund';
 export { refundAwaitingReturnEmail } from './refund-awaiting-return';

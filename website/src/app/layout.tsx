@@ -4,6 +4,7 @@ import './globals.css';
 import ReferralCapture from '@/components/ReferralCapture';
 import Analytics from '@/components/Analytics';
 import ConsentBanner from '@/components/ConsentBanner';
+import PortalTransition from '@/components/PortalTransition';
 import { SITE_URL } from '@/lib/site';
 
 const TITLE = 'Omo Pharmacy – Doctor-led menopause, weight and men’s health care';
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Analytics />
         {children}
         <ConsentBanner />
+        <PortalTransition />
       </body>
     </html>
   );

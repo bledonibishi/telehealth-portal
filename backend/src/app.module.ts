@@ -51,6 +51,7 @@ import { SupportActionsModule } from './support-actions/support-actions.module';
 import { DashboardLayoutModule } from './dashboard-layout/dashboard-layout.module';
 import { TicketConversationModule } from './ticket-conversation/ticket-conversation.module';
 import { SavedRepliesModule } from './saved-replies/saved-replies.module';
+import { ShopModule } from './shop/shop.module';
 
 @Module({
   imports: [
@@ -122,6 +123,7 @@ import { SavedRepliesModule } from './saved-replies/saved-replies.module';
     DashboardLayoutModule,
     TicketConversationModule,
     SavedRepliesModule,
+    ShopModule,
   ],
 })
 export class AppModule {}

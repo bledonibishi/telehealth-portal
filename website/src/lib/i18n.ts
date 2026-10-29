@@ -7,7 +7,7 @@ export type Lang = 'en' | 'sq';
 export const LANGS: Lang[] = ['en', 'sq'];
 
 export interface Dict {
-  nav: { treatments: string; how: string; bmi: string; contact: string; switchTo: string };
+  nav: { treatments: string; how: string; bmi: string; contact: string; switchTo: string; shop: string; shopLabel: string };
   treatments: Record<'hrt' | 'trt' | 'glp', { name: string; full: string; short: string }>;
   chooser: { button: string; title: string; englishNote: string };
   hero: { chip: string; h1a: string; h1b: string; sub: string; how: string; trust: [string, string, string]; floatTitle: string; floatLabel: string; newBadge: string; newText: string };
@@ -26,7 +26,7 @@ export interface Dict {
 }
 
 const EN: Dict = {
-  nav: { treatments: 'Treatments', how: 'How it works', bmi: 'BMI Check', contact: 'Contact', switchTo: 'SQ' },
+  nav: { treatments: 'Treatments', how: 'How it works', bmi: 'BMI Check', contact: 'Contact', switchTo: 'SQ', shop: 'Shop', shopLabel: 'Omo Shop: everyday health products, no prescription needed' },
   treatments: {
     hrt: { name: 'Women’s hormones', full: 'Hormone replacement therapy', short: 'Women' },
     trt: { name: 'Men’s hormones', full: 'Testosterone replacement therapy', short: 'Men' },
@@ -109,7 +109,7 @@ const EN: Dict = {
 };
 
 const SQ: Dict = {
-  nav: { treatments: 'Trajtimet', how: 'Si funksionon', bmi: 'Kontrolli i BMI-së', contact: 'Kontakti', switchTo: 'EN' },
+  nav: { treatments: 'Trajtimet', how: 'Si funksionon', bmi: 'Kontrolli i BMI-së', contact: 'Kontakti', switchTo: 'EN', shop: 'Dyqani', shopLabel: 'Dyqani Omo: produkte për shëndetin e përditshëm, pa recetë' },
   treatments: {
     hrt: { name: 'Hormonet për gra', full: 'Terapia hormonale', short: 'Gra' },
     trt: { name: 'Hormonet për meshkuj', full: 'Terapia e testosteronit', short: 'Meshkuj' },

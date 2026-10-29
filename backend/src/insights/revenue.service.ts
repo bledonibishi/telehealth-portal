@@ -63,7 +63,9 @@ export class RevenueService {
     try {
       for await (const s of this.stripe.subscriptions.list({ status: 'all', limit: 100 })) {
         if (subs.length >= MAX_SUBSCRIPTIONS) { truncated = true; break; }
-        subs.push(s as unknown as SubscriptionLike);
+        // Stripe sends the items as a list object ({ data: [...] }), not an array.
+        const items = (s.items as unknown as { data?: SubscriptionLike['items'] } | undefined)?.data ?? [];
+        subs.push({ ...(s as unknown as SubscriptionLike), items });
       }
     } catch (err: any) {
       const message = String(err?.message ?? err);

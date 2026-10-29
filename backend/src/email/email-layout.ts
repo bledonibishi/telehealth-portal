@@ -26,12 +26,13 @@ export function formatMoney(minorUnits: number, currency: string): string {
 }
 
 /** Who the email is for: it decides the wording of the footer. */
-export type Audience = 'patient' | 'staff' | 'partner';
+export type Audience = 'patient' | 'staff' | 'partner' | 'shop';
 
 const FOOTER: Record<Audience, string> = {
   patient: `${BRAND_NAME} · Prescription treatment, reviewed by a licensed clinician<br>This is an automated message, so please don’t reply. You can message your care team from your portal.`,
   staff: `${BRAND_NAME} clinic portal · You’re receiving this because an administrator added you to the team.`,
   partner: `${BRAND_NAME} · Automated order notice for our pharmacy partners.`,
+  shop: `${BRAND_NAME} shop<br>This is an automated message, so please don’t reply. For help with your order, contact us through our website.`,
 };
 
 const FONT = 'Arial,Helvetica,sans-serif';
