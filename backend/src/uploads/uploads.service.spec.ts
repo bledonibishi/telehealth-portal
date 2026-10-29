@@ -19,7 +19,7 @@ describe('UploadsService encryption', () => {
   const file = { originalname: 'id.jpg', mimetype: 'image/jpeg', buffer: Buffer.from('secret image bytes') } as Express.Multer.File;
   const prisma: any = { uploadedFile: { create: jest.fn(({ data }) => Promise.resolve({ id: 'f-1', ...data })) } };
   const config = (key?: string) =>
-    ({ get: jest.fn((name: string) => (name === 'UPLOAD_DIR' ? dir : name === 'UPLOAD_ENCRYPTION_KEY' ? key : undefined)) }) as any;
+    ({ get: jest.fn((name: string) => (name === 'UPLOAD_DIR' ? dir : name === 'UPLOAD_ENCRYPTION_KEY' ? key : name === 'NODE_ENV' ? 'test' : undefined)) }) as any;
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -36,6 +36,17 @@ describe('UploadsService encryption', () => {
     const plain = await new UploadsService(prisma, config(undefined), new LocalFileStorage(dir)).save('p-1', 'SELFIE' as any, file);
     const withKey = new UploadsService(prisma, config(Buffer.alloc(32, 7).toString('base64')), new LocalFileStorage(dir));
     expect(await withKey.readContents(plain)).toEqual(file.buffer);
+  });
+
+  it('runs without a key only in development and tests, and refuses everywhere else (fail closed)', () => {
+    const env = (values: Record<string, string>) => ({ get: jest.fn((name: string) => values[name]) }) as any;
+    const start = (values: Record<string, string>) => () => new UploadsService(prisma, env({ UPLOAD_DIR: dir, ...values }), new LocalFileStorage(dir));
+    for (const nodeEnv of ['production', 'staging', 'prod', 'Production']) expect(start({ NODE_ENV: nodeEnv })).toThrow(/UPLOAD_ENCRYPTION_KEY is not set/);
+    // A server where NODE_ENV was never set is not a developer machine either.
+    expect(start({})).toThrow(/UPLOAD_ENCRYPTION_KEY is not set/);
+    expect(start({ NODE_ENV: 'development' })).not.toThrow();
+    expect(start({ NODE_ENV: 'test' })).not.toThrow();
+    expect(start({ NODE_ENV: 'production', UPLOAD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64') })).not.toThrow();
   });
 
   it('rejects a key of the wrong length', () => {
@@ -86,7 +97,7 @@ describe('UploadsService.remove', () => {
   const build = () => {
     const prisma: any = { uploadedFile: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) } };
     const storage = { put: jest.fn(), get: jest.fn(), delete: jest.fn().mockResolvedValue(undefined) };
-    return { prisma, storage, service: new UploadsService(prisma, { get: jest.fn() } as any, storage) };
+    return { prisma, storage, service: new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'NODE_ENV' ? 'test' : undefined)) } as any, storage) };
   };
 
   it('deletes the stored bytes first, then the record', async () => {
@@ -119,7 +130,7 @@ describe('UploadsService.findForAccess', () => {
   const FILE = (kind: string) => ({ id: 'f-1', patientId: 'p-1', kind, storageKey: 'k', mimeType: 'image/jpeg' });
   const service = (kind: string) => {
     const prisma: any = { uploadedFile: { findUnique: jest.fn().mockResolvedValue(FILE(kind)) } };
-    return new UploadsService(prisma, { get: jest.fn() } as any, { put: jest.fn(), get: jest.fn(), delete: jest.fn() });
+    return new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'NODE_ENV' ? 'test' : undefined)) } as any, { put: jest.fn(), get: jest.fn(), delete: jest.fn() });
   };
   const staff = (clinicianRole: string) => ({ id: 'c-1', role: 'CLINICIAN', clinicianRole }) as any;
   const patient = (id: string) => ({ id, role: 'PATIENT' }) as any;
@@ -196,7 +207,7 @@ describe('lab reports', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lab-uploads-'));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   const prisma: any = { uploadedFile: { create: jest.fn(({ data }) => Promise.resolve({ id: 'f-1', ...data })) } };
-  const service = new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'UPLOAD_DIR' ? dir : undefined)) } as any, new LocalFileStorage(dir));
+  const service = new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'UPLOAD_DIR' ? dir : k === 'NODE_ENV' ? 'test' : undefined)) } as any, new LocalFileStorage(dir));
   const file = (mimetype: string, bytes: Buffer, originalname = 'report') => ({ originalname, mimetype, buffer: bytes }) as Express.Multer.File;
   const pdf = Buffer.from('%PDF-1.7 rest of the file');
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]);
@@ -236,7 +247,7 @@ describe('support attachments', () => {
   const make = (waiting = 0) => {
     const prisma: any = { uploadedFile: { create: jest.fn(({ data }) => Promise.resolve({ id: 'f-1', ...data })), count: jest.fn().mockResolvedValue(waiting), findUnique: jest.fn() }, ticket: { findUnique: jest.fn() } };
     const storage = { put: jest.fn(), get: jest.fn(), delete: jest.fn() };
-    return { prisma, service: new UploadsService(prisma, { get: jest.fn() } as any, storage as any) };
+    return { prisma, service: new UploadsService(prisma, { get: jest.fn((k: string) => (k === 'NODE_ENV' ? 'test' : undefined)) } as any, storage as any) };
   };
   const file = (over: Partial<Express.Multer.File>) => ({ originalname: 'error.png', mimetype: 'image/png', buffer: PNG, ...over }) as Express.Multer.File;
 
