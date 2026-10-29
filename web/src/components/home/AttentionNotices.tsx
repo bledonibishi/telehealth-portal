@@ -22,7 +22,10 @@ export function Notice({ tone, title, text, href, action }: { tone: 'warn' | 'in
 export function AttentionNotices() {
   const { data: orders } = useQuery(MY_ORDERS, { fetchPolicy: 'cache-and-network' });
   const { data: appts } = useQuery(MY_APPOINTMENTS, { fetchPolicy: 'cache-and-network' });
-  const toPay = ((orders?.myOrders ?? []) as any[]).some((o) => o.status === 'AWAITING_PAYMENT');
+  const awaiting = ((orders?.myOrders ?? []) as any[]).filter((o) => o.status === 'AWAITING_PAYMENT');
+  const toPay = awaiting.some((o) => o.paymentUrl);
+  // Approved, but the payment link is still being made (the server retries it): nothing to pay yet.
+  const linkComing = !toPay && awaiting.length > 0;
   const list = (appts?.myAppointments ?? []) as any[];
   const consultToPay = list.some((a) => a.status === 'AWAITING_PAYMENT');
   const refundChoice = list.some((a) => a.refundOffered);
@@ -30,6 +33,7 @@ export function AttentionNotices() {
   return (
     <>
       {toPay && <Notice tone="warn" title="A supply is waiting for your payment." text="Your doctor approved it. Once it is paid, it goes to the pharmacy." href="/orders" action="Pay now →" />}
+      {linkComing && <Notice tone="info" title="Your doctor approved your next supply." text="We’re preparing your payment link; it will be ready shortly." href="/orders" action="View →" />}
       {refundChoice && <Notice tone="warn" title="Your doctor can’t make an appointment." text="Choose a new time or a refund." href="/appointments" action="Choose →" />}
       {consultToPay && <Notice tone="warn" title="An appointment request is waiting for your payment." text="It reaches your doctor once it is paid." href="/appointments" action="Pay now →" />}
     </>

@@ -94,5 +94,8 @@ export function useDashboardLayout() {
     queue.current = queue.current.then(() => reset()).catch(setError);
   };
 
-  return { layout, staffHidden, loading: loading && !data, error, move, moveTo, setSize, hide, show, restoreDefaults };
+  // Data from the cache is there on the first render, but is applied a moment later (in the effect above): until then
+  // this still counts as loading, so the standard arrangement never flashes before the saved one.
+  const applying = Boolean(data?.myDashboardLayout) && !loaded.current;
+  return { layout, staffHidden, loading: (loading && !data) || applying, error, move, moveTo, setSize, hide, show, restoreDefaults };
 }

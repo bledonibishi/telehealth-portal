@@ -149,7 +149,8 @@ export default function MessagesPage() {
             <textarea id="msg" ref={inputRef} rows={1} value={content} maxLength={2000} onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => {
                 // Enter sends on a computer; on a phone it starts a new line, so a half-written medical message is not sent by accident.
-                if (e.key === 'Enter' && !e.shiftKey && !window.matchMedia('(pointer: coarse)').matches) { e.preventDefault(); send(e as any); }
+                // Nor while an input method is composing: there Enter confirms the word, it doesn't mean "send".
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { e.preventDefault(); send(e as any); }
               }}
               placeholder="Write a message…" className="flex-1 resize-none border border-slate-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink-600 max-h-40" />
             <button type="submit" disabled={(!content.trim() && attach.files.length === 0) || attach.uploading} className={btnBlue}>Send</button>

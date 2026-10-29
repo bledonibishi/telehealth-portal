@@ -283,12 +283,12 @@ export default function DosesPage() {
   const askedAbout = doseToAskAbout(doses.filter(isInjected));
   const lastSite = lastSiteOf(doses);
 
-  const handleEventClick = (arg: EventClickArg) => setSelectedId(arg.event.id);
+  const handleEventClick = (arg: EventClickArg) => select(arg.event.id);
 
   const handleDateClick = (arg: DateClickArg) => {
     const api = calendarRef.current?.getApi();
     const match = api?.getEvents().find((e) => e.startStr === arg.dateStr);
-    if (match) setSelectedId(match.id);
+    if (match) select(match.id);
   };
 
   // The hormone programmes use gels, patches and capsules; only GLP-1 and testosterone are injected.
@@ -299,10 +299,16 @@ export default function DosesPage() {
   const unit = planData?.myTreatmentPlan ? doseWords(planData.myTreatmentPlan.form).one : injections ? 'injection' : 'dose';
 
   // On a phone the details open under the calendar, off the screen: bring them into view.
+  // Counted on every pick, so choosing the dose that is already open (after scrolling away from it) scrolls back to it too.
+  const [picks, setPicks] = useState(0);
+  const select = (id: string) => {
+    setSelectedId(id);
+    setPicks((n) => n + 1);
+  };
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (selectedId && window.matchMedia('(max-width: 1023px)').matches) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [selectedId]);
+  }, [selectedId, picks]);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
@@ -333,10 +339,11 @@ export default function DosesPage() {
           )}
           {!needsClinician && overdue && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
-              <p className="text-sm font-semibold text-amber-900">Your {unit} from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
+              {/* Named by this dose's own form: after a prescription change it can differ from the current one. */}
+              <p className="text-sm font-semibold text-amber-900">Your {doseWords(overdue.product.form).one} from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
               <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false) ?? 'If you haven’t taken it, message your care team before taking it late.'}</p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
-                <button type="button" onClick={() => setSelectedId(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
+                <button type="button" onClick={() => select(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
                 <Link href={messageClinicianHref} className="text-sm font-semibold text-ink-800 hover:text-ink-900">Message my care team →</Link>
               </div>
             </div>
@@ -354,7 +361,7 @@ export default function DosesPage() {
                 </p>
               </div>
               <button
-                onClick={() => setSelectedId(next.id)}
+                onClick={() => select(next.id)}
                 className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
               >
                 Open

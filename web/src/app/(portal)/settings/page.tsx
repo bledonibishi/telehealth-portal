@@ -22,7 +22,7 @@ import { InlineError } from '@/components/common/Alert';
 
 const FAQ: Array<[string, string]> = [
   ['When will my next supply arrive?', 'A few days before your current supply runs out, use “Order next dose early”. Your doctor approves it and the pharmacy sends it; you can follow it under Orders.'],
-  ['What if I miss a dose?', 'Log it as skipped on your dose calendar and message your doctor — they’ll tell you whether to take it late or wait for the next one.'],
+  ['What if I miss a dose?', 'Message your doctor — they’ll tell you whether to take it late or wait for the next one. If the dose is on your dose calendar, log it there as skipped too.'],
   ['Who can see my photos?', 'Only you and the doctors treating you. Every time a doctor opens one, it is recorded.'],
   ['How do I change or cancel my subscription?', 'Use “Manage subscription” below. It opens our payment provider, where you can update your card, see invoices, pause or cancel.'],
   ['Something feels wrong — what should I do?', `For chest pain, trouble breathing, severe stomach pain or fainting call ${EMERGENCY_NUMBER}. Otherwise book an urgent appointment — a doctor replies within 24 hours.`],
