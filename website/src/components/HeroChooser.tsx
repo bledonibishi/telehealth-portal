@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { TREATMENTS } from '@/lib/treatments';
+import { treatmentsFor } from '@/lib/treatments';
+import { DICT, type Lang } from '@/lib/i18n';
 
 /**
  * The hero's main button. The page offers three programmes, so instead of sending everyone to one of them the button
  * asks which one, with the same three choices as the header.
  */
-export default function HeroChooser() {
+export default function HeroChooser({ lang = 'en' }: { lang?: Lang }) {
+  const t = DICT[lang].chooser;
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
@@ -28,12 +30,12 @@ export default function HeroChooser() {
   return (
     <div className="pv-chooser" ref={box}>
       <button type="button" className="btn-primary" aria-expanded={open} aria-controls="pv-chooser-list" onClick={() => setOpen((o) => !o)}>
-        Check eligibility {open ? '↑' : '→'}
+        {t.button} {open ? '↑' : '→'}
       </button>
       {open && (
         <div className="pv-chooser-list" id="pv-chooser-list" role="menu">
-          <div className="pv-chooser-title">What would you like help with?</div>
-          {TREATMENTS.map((t) => (
+          <div className="pv-chooser-title">{t.title}</div>
+          {treatmentsFor(lang).map((t) => (
             <Link key={t.key} href={t.href} role="menuitem" className={`pv-treat pv-treat--${t.key}`}>
               <span className="pv-treat-ico">{t.icon}</span>
               <span className="pv-treat-text">
@@ -44,6 +46,7 @@ export default function HeroChooser() {
               </span>
             </Link>
           ))}
+          {t.englishNote && <p className="pv-chooser-note">{t.englishNote}</p>}
         </div>
       )}
     </div>
