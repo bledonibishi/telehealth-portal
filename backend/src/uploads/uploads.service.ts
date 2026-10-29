@@ -54,6 +54,9 @@ export function looksLikeImage(buf: Buffer): boolean {
   );
 }
 
+/** The only NODE_ENV values allowed to store uploads without UPLOAD_ENCRYPTION_KEY. */
+const UNENCRYPTED_ALLOWED = ['development', 'test'];
+
 @Injectable()
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
@@ -69,13 +72,16 @@ export class UploadsService {
       const key = Buffer.from(raw, 'base64');
       if (key.length !== 32) throw new Error('UPLOAD_ENCRYPTION_KEY must be 32 bytes, base64-encoded');
       this.key = key;
-    } else if (config.get<string>('NODE_ENV') === 'production') {
-      // The privacy policy promises files are encrypted at rest: in production, never start without the key and
-      // store ID documents and health photos as plain files.
-      throw new Error('UPLOAD_ENCRYPTION_KEY must be set in production (32 bytes, base64-encoded): uploads are never stored unencrypted');
-    } else {
+    } else if (UNENCRYPTED_ALLOWED.includes(config.get<string>('NODE_ENV') ?? '')) {
       this.key = null;
-      this.logger.warn('UPLOAD_ENCRYPTION_KEY not set — ID documents and photos are stored unencrypted (allowed outside production only)');
+      this.logger.warn('UPLOAD_ENCRYPTION_KEY not set — ID documents and photos are stored unencrypted (allowed in development and tests only)');
+    } else {
+      // The privacy policy promises files are encrypted at rest. Fail closed: anywhere not explicitly marked as
+      // development or a test (production, staging, NODE_ENV unset or misspelled), never store ID documents and health
+      // photos as plain files.
+      throw new Error(
+        'UPLOAD_ENCRYPTION_KEY is not set (32 bytes, base64-encoded, e.g. `openssl rand -base64 32`). Uploads are never stored unencrypted outside development: set the key, or NODE_ENV=development on a developer machine.',
+      );
     }
   }
 
