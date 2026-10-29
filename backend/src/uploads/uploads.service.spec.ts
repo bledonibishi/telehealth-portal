@@ -38,6 +38,13 @@ describe('UploadsService encryption', () => {
     expect(await withKey.readContents(plain)).toEqual(file.buffer);
   });
 
+  it('refuses to start in production without a key, and allows it elsewhere', () => {
+    const env = (values: Record<string, string>) => ({ get: jest.fn((name: string) => values[name]) }) as any;
+    expect(() => new UploadsService(prisma, env({ NODE_ENV: 'production', UPLOAD_DIR: dir }), new LocalFileStorage(dir))).toThrow(/must be set in production/);
+    expect(() => new UploadsService(prisma, env({ NODE_ENV: 'development', UPLOAD_DIR: dir }), new LocalFileStorage(dir))).not.toThrow();
+    expect(() => new UploadsService(prisma, env({ NODE_ENV: 'production', UPLOAD_DIR: dir, UPLOAD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64') }), new LocalFileStorage(dir))).not.toThrow();
+  });
+
   it('rejects a key of the wrong length', () => {
     expect(() => new UploadsService(prisma, config(Buffer.alloc(16).toString('base64')), new LocalFileStorage(dir))).toThrow(/32 bytes/);
   });

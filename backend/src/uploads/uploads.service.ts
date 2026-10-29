@@ -69,9 +69,13 @@ export class UploadsService {
       const key = Buffer.from(raw, 'base64');
       if (key.length !== 32) throw new Error('UPLOAD_ENCRYPTION_KEY must be 32 bytes, base64-encoded');
       this.key = key;
+    } else if (config.get<string>('NODE_ENV') === 'production') {
+      // The privacy policy promises files are encrypted at rest: in production, never start without the key and
+      // store ID documents and health photos as plain files.
+      throw new Error('UPLOAD_ENCRYPTION_KEY must be set in production (32 bytes, base64-encoded): uploads are never stored unencrypted');
     } else {
       this.key = null;
-      this.logger.warn('UPLOAD_ENCRYPTION_KEY not set — ID documents and photos are stored unencrypted');
+      this.logger.warn('UPLOAD_ENCRYPTION_KEY not set — ID documents and photos are stored unencrypted (allowed outside production only)');
     }
   }
 
