@@ -14,6 +14,7 @@ type ImageType = (typeof IMAGE_TYPES)[number];
 const MAX_BYTES = 15 * 1024 * 1024;
 const READ_DEADLINE_MS = 90_000;
 const MAX_ROWS = 60;
+const NOTES_MAX = 1000;
 
 /** The kinds the app tracks by name; any other test comes back as OTHER with its printed name. */
 export const READABLE_KINDS = ['ESTRADIOL', 'TESTOSTERONE', 'FSH', 'LH', 'SHBG', 'PSA', 'HEMATOCRIT', 'HBA1C', 'OTHER'] as const;
@@ -104,13 +105,22 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : n
  * they agree; otherwise why the row is left out.
  */
 export function printedMismatch(printed: unknown, value: number): string | null {
-  if (typeof printed !== 'string' || !printed.trim()) return null;
+  // Not given at all (an older answer shape): nothing to compare. Given but blank: the number was never checked.
+  if (typeof printed !== 'string') return null;
   const text = printed.trim();
+  if (!text) return 'no printed result to check the number against';
   if (/[<>≤≥]/.test(text)) return `printed as “${text}”, which is not an exact number`;
   const parsed = Number(text.replace(/\s+/g, '').replace(',', '.'));
   if (!Number.isFinite(parsed)) return `printed as “${text}”, which is not a plain number`;
   if (Math.abs(parsed - value) > 1e-9) return `printed as “${text}” but read as ${value}`;
   return null;
+}
+
+/** The model's notes, then why rows were left out. Only the model's part is cut to fit: the doctor must always see what was left out. */
+function notesWith(modelNotes: string, leftOut: string[]) {
+  const omitted = leftOut.join(' ').slice(0, NOTES_MAX);
+  const room = Math.max(0, NOTES_MAX - omitted.length - (omitted ? 1 : 0));
+  return [modelNotes.slice(0, room), omitted].filter(Boolean).join(' ');
 }
 
 /** What the model said, cleaned up: anything unusable is dropped rather than guessed at. */
@@ -142,7 +152,7 @@ export function toReading(raw: any): LabReading {
     labName: typeof raw?.lab_name === 'string' ? raw.lab_name.trim().slice(0, 120) || null : null,
     reportDate: isDate(raw?.report_date) ? raw.report_date : null,
     results: rows,
-    notes: [typeof raw?.notes === 'string' ? raw.notes.trim() : '', ...leftOut].filter(Boolean).join(' ').slice(0, 1000),
+    notes: notesWith(typeof raw?.notes === 'string' ? raw.notes.trim() : '', leftOut),
   };
 }
 

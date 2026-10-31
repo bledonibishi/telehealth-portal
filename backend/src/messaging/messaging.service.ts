@@ -107,7 +107,8 @@ export class MessagingService implements OnModuleInit {
     const [lastMinute, lastHour] = await Promise.all([sentSince(60_000), sentSince(3_600_000)]);
     if (lastMinute >= PATIENT_MESSAGES_PER_MINUTE || lastHour >= PATIENT_MESSAGES_PER_HOUR) {
       this.logger.warn(`Patient ${user.id} hit the message limit (${lastMinute} in a minute, ${lastHour} in an hour)`);
-      throw appError(ErrorCode.RATE_LIMITED, lastMinute >= PATIENT_MESSAGES_PER_MINUTE ? 'You’ve sent a lot of messages very quickly. Please wait a minute, then send the rest.' : 'You’ve sent a lot of messages in the last hour. Please wait a little before sending more. If something is urgent, call emergency services.');
+      // The hourly limit lasts longer, so when both are reached that is the one to tell the patient about.
+      throw appError(ErrorCode.RATE_LIMITED, lastHour >= PATIENT_MESSAGES_PER_HOUR ? 'You’ve sent a lot of messages in the last hour. Please wait a little before sending more. If something is urgent, call emergency services.' : 'You’ve sent a lot of messages very quickly. Please wait a minute, then send the rest.');
     }
   }
 

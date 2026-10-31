@@ -17,8 +17,19 @@ export function evalArgs(defaultRuns = 5) {
   const runs = Number(value('--runs') ?? defaultRuns);
   const out = value('--out');
   if (!Number.isInteger(runs) || runs < 1) throw new Error('--runs needs a whole number, 1 or more');
+  // A mistyped flag (--run 1) would otherwise be taken as the name filter, match nothing, and "pass".
+  const unknown = argv.find((a) => a.startsWith('--'));
+  if (unknown) throw new Error(`Unknown option ${unknown}. The options are a name filter, --runs N and --out file.json`);
+  if (argv.length > 1) throw new Error(`Give at most one name filter (got: ${argv.join(' ')})`);
   const filter = argv[0]?.toLowerCase();
-  return { runs, out, match: (name: string) => !filter || name.toLowerCase().includes(filter) };
+  return { runs, out, filter: filter ?? '', match: (name: string) => !filter || name.toLowerCase().includes(filter) };
+}
+
+/** Stops the run when the filter picked nothing: an empty run must never be reported as a pass. */
+export function requireCases(count: number, filter: string) {
+  if (count > 0) return;
+  console.error(`No case matches "${filter}". Nothing was run.`);
+  process.exit(1);
 }
 
 /** backend/.env, for the AI key and switches (the made-up cases are all that is sent). */

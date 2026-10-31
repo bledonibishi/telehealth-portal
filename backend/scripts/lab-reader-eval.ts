@@ -20,7 +20,7 @@ import PDFDocument from 'pdfkit';
 import { LabReaderService } from '../src/labs/lab-reader.service';
 import { LAB_CASES, type LabCase } from '../src/labs/lab-eval-cases';
 import { scoreReading, type LabScore } from '../src/labs/lab-eval-score';
-import { evalArgs, loadBackendEnv, pool, saveResults } from './eval-utils';
+import { evalArgs, loadBackendEnv, pool, requireCases, saveResults } from './eval-utils';
 
 /** The report as a laboratory would print it. */
 function render(c: LabCase): Promise<Buffer> {
@@ -55,7 +55,7 @@ function render(c: LabCase): Promise<Buffer> {
 }
 
 async function main() {
-  const { runs, out, match } = evalArgs(3);
+  const { runs, out, filter, match } = evalArgs(3);
   loadBackendEnv();
   const reader = new LabReaderService({ get: (key: string) => process.env[key] } as any);
   if (!reader.isConfigured) {
@@ -63,6 +63,7 @@ async function main() {
     process.exit(1);
   }
   const cases = LAB_CASES.filter((c) => match(c.name));
+  requireCases(cases.length, filter);
   console.log(`Lab reader: ${reader.model}. ${cases.length} reports, ${runs} run(s) each.\n`);
 
   const results = [];

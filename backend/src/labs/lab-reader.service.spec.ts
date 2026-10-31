@@ -44,10 +44,18 @@ describe('toReading', () => {
     expect(r.notes).toBe('All readable. psa was left out: printed as “<0.1”, which is not an exact number. fsh was left out: printed as “46.2” but read as 64.2.');
   });
 
+  it('keeps what was left out even when the model wrote long notes', () => {
+    const r = toReading({ readable: true, results: [{ ...good, kind: 'PSA', printed_result: '<0.1', value: 0.1, unit: 'ug/L' }], notes: 'x'.repeat(1500) });
+    expect(r.notes.length).toBeLessThanOrEqual(1000);
+    expect(r.notes).toMatch(/psa was left out: printed as “<0\.1”/);
+  });
+
   it('checks the printed result against the number read', () => {
     expect(printedMismatch('812', 812)).toBeNull();
     expect(printedMismatch(' 0,49 ', 0.49)).toBeNull();
     expect(printedMismatch(undefined, 5)).toBeNull();
+    expect(printedMismatch('', 5)).toMatch(/no printed result/);
+    expect(printedMismatch('   ', 5)).toMatch(/no printed result/);
     expect(printedMismatch('>100', 100)).toMatch(/not an exact number/);
     expect(printedMismatch('≤ 5', 5)).toMatch(/not an exact number/);
     expect(printedMismatch('see note', 5)).toMatch(/not a plain number/);
