@@ -1,7 +1,7 @@
 import { LabReaderService, nameMatches, printedMismatch, toReading } from './lab-reader.service';
 
 describe('toReading', () => {
-  const good = { kind: 'ESTRADIOL', analyte_name: null, value: 340, unit: ' pmol/L ', reference_low: 100, reference_high: 700, collected_on: '2026-09-30', flagged_by_lab: false };
+  const good = { kind: 'ESTRADIOL', analyte_name: null, value: 340, printed_result: '340', unit: ' pmol/L ', reference_low: 100, reference_high: 700, collected_on: '2026-09-30', flagged_by_lab: false };
 
   it('keeps a clean row and tidies it', () => {
     const r = toReading({ readable: true, patient_name: ' Alma Krasniqi ', lab_name: 'Lab', report_date: '2026-10-01', results: [good], notes: 'ok' });
@@ -17,7 +17,7 @@ describe('toReading', () => {
         { ...good, value: 'high' }, // not a number
         { ...good, unit: '' }, // no unit
         { ...good, kind: 'OTHER', analyte_name: '' }, // an "other" test with no name
-        { ...good, kind: 'MADE_UP', analyte_name: 'ALT', value: 31, unit: 'U/L' }, // an unknown kind becomes OTHER, keeping its name
+        { ...good, kind: 'MADE_UP', analyte_name: 'ALT', value: 31, printed_result: '31', unit: 'U/L' }, // an unknown kind becomes OTHER, keeping its name
       ],
     });
     expect(r.results.map((x) => [x.kind, x.analyteName, x.value])).toEqual([['ESTRADIOL', null, 340], ['OTHER', 'ALT', 31]]);
@@ -47,7 +47,8 @@ describe('toReading', () => {
   it('checks the printed result against the number read', () => {
     expect(printedMismatch('812', 812)).toBeNull();
     expect(printedMismatch(' 0,49 ', 0.49)).toBeNull();
-    expect(printedMismatch(undefined, 5)).toBeNull();
+    expect(printedMismatch(undefined, 5)).toMatch(/not given/);
+    expect(printedMismatch('  ', 5)).toMatch(/not given/);
     expect(printedMismatch('>100', 100)).toMatch(/not an exact number/);
     expect(printedMismatch('≤ 5', 5)).toMatch(/not an exact number/);
     expect(printedMismatch('see note', 5)).toMatch(/not a plain number/);

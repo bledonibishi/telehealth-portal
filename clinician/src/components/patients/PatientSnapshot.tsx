@@ -281,7 +281,10 @@ export default function PatientSnapshot({
   }
 
   // The two things from the old timeline that change a decision: when the next check-in is, and how the dose has moved.
-  const nextCheckIn = journey?.nextCheckInDueAt ?? (patient.checkIns ?? []).find((c: any) => c.status === 'SCHEDULED')?.dueAt ?? null;
+  // A check-in still open counts, whether it is only scheduled or already sent to the patient; the earliest is next.
+  const nextCheckIn = journey?.nextCheckInDueAt ?? ((patient.checkIns ?? [])
+    .filter((c: any) => c.status === 'SCHEDULED' || c.status === 'SENT')
+    .sort((a: any, b: any) => String(a.dueAt).localeCompare(String(b.dueAt)))[0]?.dueAt ?? null);
   const doseSteps: { dose: string; at: string }[] = [];
   for (const rx of [...prescriptions].sort((x, y) => new Date(x.issuedAt).getTime() - new Date(y.issuedAt).getTime())) {
     const dose = currentMedications([{ ...rx, status: 'ACTIVE' }]).map((m) => m.dose).filter(Boolean).join(' + ');

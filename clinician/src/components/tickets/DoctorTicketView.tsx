@@ -9,13 +9,20 @@ import { GET_TICKETS, HAND_TICKET_TO_SUPPORT, REPLY_TO_TICKET, SAVED_REPLIES, TI
 import { GET_PATIENT, PATIENT_ADHERENCE } from '@/graphql/patients';
 import { PATIENT_PRESCRIPTIONS } from '@/graphql/consultations';
 import { useI18n } from '@/lib/i18n/I18nProvider';
-import { getCurrentUserId } from '@/lib/role';
 import { InlineError } from '@/components/ui/Alert';
 import { Select } from '@/components/ui/Select';
 import { currentMedications } from '@/components/patients/PatientSnapshot';
 import MedicationPill from '@/components/patients/MedicationPill';
 import TicketConversation from './TicketConversation';
 import { isClosed, replyState, shortHours, type Ticket } from './ticket-meta';
+
+/**
+ * The doctor's two lists, asked for separately so the newest questions are never crowded out by old closed ones (the list
+ * returns at most 500): open questions oldest first, closed ones newest first.
+ */
+export const OPEN_TICKETS = { filter: { open: true } };
+export const CLOSED_TICKETS = { filter: { open: false, recentFirst: true } };
+const OPEN_LIST = [{ query: GET_TICKETS, variables: OPEN_TICKETS }, { query: GET_TICKETS, variables: CLOSED_TICKETS }];
 
 /** What a doctor needs beside the question, without opening the record: who, on what, since when, and what to watch for. */
 function PatientContext({ patientId }: { patientId: string }) {
@@ -75,20 +82,20 @@ function PatientContext({ patientId }: { patientId: string }) {
 export default function DoctorTicketView({ ticket }: { ticket: Ticket }) {
   const { t, timeAgo } = useI18n();
   const router = useRouter();
-  const me = getCurrentUserId();
   const [text, setText] = useState('');
   const [handing, setHanding] = useState(false);
   const [handNote, setHandNote] = useState('');
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
 
-  const { data: listData } = useQuery(GET_TICKETS, { fetchPolicy: 'cache-first' });
+  const { data: listData } = useQuery(GET_TICKETS, { variables: OPEN_TICKETS, fetchPolicy: 'cache-first' });
   const { data: repliesData } = useQuery(SAVED_REPLIES, { fetchPolicy: 'cache-first' });
   const saved: { id: string; title: string; body: string }[] = repliesData?.savedReplies ?? [];
-  const refresh = [{ query: TICKET_CONVERSATION, variables: { ticketId: ticket.id } }, { query: GET_TICKETS }];
-  const [reply, { loading: sending }] = useMutation(REPLY_TO_TICKET, { refetchQueries: refresh, onError: setError });
-  const [update, { loading: closing }] = useMutation(UPDATE_TICKET, { refetchQueries: [{ query: GET_TICKETS }], onError: setError });
-  const [hand, { loading: handingOver }] = useMutation(HAND_TICKET_TO_SUPPORT, { onError: setError });
+  const refresh = [{ query: TICKET_CONVERSATION, variables: { ticketId: ticket.id } }, ...OPEN_LIST];
+  // No onError here: with it, a failed mutation resolves instead of rejecting, and the catch blocks below would never see it.
+  const [reply, { loading: sending }] = useMutation(REPLY_TO_TICKET, { refetchQueries: refresh });
+  const [update, { loading: closing }] = useMutation(UPDATE_TICKET, { refetchQueries: OPEN_LIST });
+  const [hand, { loading: handingOver }] = useMutation(HAND_TICKET_TO_SUPPORT);
   const busy = sending || closing || handingOver;
 
   // The next question waiting, in the inbox's order, so a doctor can go straight on.
@@ -104,27 +111,42 @@ export default function DoctorTicketView({ ticket }: { ticket: Ticket }) {
     setText((cur) => (cur.trim() ? `${cur.trimEnd()}\n\n${filled}` : filled));
   };
 
-  // Answering also takes the ticket, so nobody else picks it up at the same time.
+  // A reply also takes the ticket and sets it waiting on the patient (the server does both), so only closing needs a second call.
   const send = async (close: boolean) => {
     if (!text.trim() || busy) return;
     setError(null);
     try {
       await reply({ variables: { ticketId: ticket.id, content: text.trim() } });
-      await update({ variables: { input: { id: ticket.id, ...(close ? { status: 'RESOLVED' } : {}), ...(ticket.assigneeId ? {} : { assigneeId: me }) } } });
-      setText('');
-      setDone(close ? t('Sent and closed.') : t('Sent. It comes back here when the patient replies.'));
-    } catch { /* shown by onError */ }
+    } catch (e) {
+      setError(e); // Nothing was sent: the answer stays in the box to try again.
+      return;
+    }
+    // Sent: clear the box now, so retrying a failed close can't send the same answer twice.
+    setText('');
+    if (close) {
+      try {
+        await update({ variables: { input: { id: ticket.id, status: 'RESOLVED' } } });
+      } catch (e) {
+        setError(e);
+        setDone(t('Sent, but the question could not be closed.'));
+        return;
+      }
+    }
+    setDone(close ? t('Sent and closed.') : t('Sent. It comes back here when the patient replies.'));
   };
   const closeOnly = async () => {
     setError(null);
     try {
       await update({ variables: { input: { id: ticket.id, status: 'RESOLVED' } } });
       setDone(t('Closed without a reply.'));
-    } catch { /* shown by onError */ }
+    } catch (e) { setError(e); }
   };
   const reopen = async () => {
     setError(null);
-    try { await update({ variables: { input: { id: ticket.id, status: 'OPEN' } } }); } catch { /* shown by onError */ }
+    try {
+      await update({ variables: { input: { id: ticket.id, status: 'OPEN' } } });
+      setDone(null);
+    } catch (e) { setError(e); }
   };
   const handOver = async () => {
     setError(null);
@@ -133,7 +155,7 @@ export default function DoctorTicketView({ ticket }: { ticket: Ticket }) {
       setHanding(false);
       setHandNote('');
       setDone(t('Handed to support. This question stays with you for the medical part.'));
-    } catch { /* shown by onError */ }
+    } catch (e) { setError(e); }
   };
 
   const rs = replyState(ticket);
@@ -173,7 +195,11 @@ export default function DoctorTicketView({ ticket }: { ticket: Ticket }) {
             </div>
           ) : done ? (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-green-50 px-4 py-3">
-              <p className="text-sm font-medium text-green-800">✓ {done}</p>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium text-green-800">✓ {done}</p>
+                <InlineError error={error} />
+              </div>
+              {!!error && !closed && <button type="button" disabled={busy} onClick={closeOnly} className="rounded-lg border border-gray-300 bg-white px-3.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Close it')}</button>}
               <button type="button" onClick={goNext} className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
                 {next ? t('Next question →') : t('Back to the list')}
               </button>

@@ -8,13 +8,15 @@ import { Icon } from '@/components/portal/Icon';
 
 /** Home screen: the patient's referral link, ready to copy, and what it has earned so far. The full page is Refer & earn. */
 export function ReferralCard() {
-  const { data } = useQuery(MY_REFERRAL, { fetchPolicy: 'cache-first' });
+  // Fetched again on each visit: a friend signing up sends no notification that would refresh the home screen.
+  const { data } = useQuery(MY_REFERRAL, { fetchPolicy: 'cache-and-network' });
   const [copied, setCopied] = useState(false);
   const referral = data?.myReferral;
   if (!referral) return null;
 
   const joined = referral.referrals.filter((r: { status: string }) => r.status === 'CONVERTED').length;
-  const waiting = referral.vouchers.filter((v: { status: string }) => v.status === 'ISSUED').length;
+  // Only rewards for referring a friend: the patient's own welcome discount, kept for later, is not one of them.
+  const waiting = referral.vouchers.filter((v: { kind: string; status: string }) => v.kind === 'REFERRER_REWARD' && v.status === 'ISSUED').length;
 
   const copy = async () => {
     try {

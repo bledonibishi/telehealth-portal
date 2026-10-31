@@ -77,12 +77,13 @@ export class TicketsService {
         ...(filter?.type ? { type: filter.type } : {}),
         ...(filter?.patientId ? { patientId: filter.patientId } : {}),
         ...(filter?.mine ? { assigneeId: user.id } : {}),
+        ...(filter?.open === true ? { status: { notIn: CLOSED } } : filter?.open === false ? { status: { in: CLOSED } } : {}),
         // Last, so no filter can widen what the caller may see (a doctor asking for another type still gets clinical ones only).
         ...this.scope(user),
       },
       include: INCLUDE,
-      // Oldest first: the one that has waited longest is at the top.
-      orderBy: [{ createdAt: 'asc' }],
+      // Oldest first: the one that has waited longest is at the top. A list of finished tickets asks for the newest instead.
+      orderBy: [{ createdAt: filter?.recentFirst ? 'desc' : 'asc' }],
       take: 500,
     });
     return this.present(rows);

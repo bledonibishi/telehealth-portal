@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ProofReviewCard } from '@/components/onboarding/ProofReviewCard';
 import { PhotoTile } from '@/components/PhotoTile';
@@ -88,6 +88,8 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
   // (need-to-know; each one opened is still recorded in the audit log). Before that, they are what is being reviewed.
   const approved = onboarding.status === 'APPROVED';
   const [showFiles, setShowFiles] = useState(!approved);
+  // Each status starts with its own view: approving an open review folds the files away, and anything else shows them again.
+  useEffect(() => { setShowFiles(!approved); }, [approved]);
   const savedStepDecision = (step: string) =>
     onboarding?.stepFeedback?.find((f: { step: string; approved: boolean; reason?: string }) => f.step === step);
   return (

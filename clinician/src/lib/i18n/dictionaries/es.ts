@@ -1950,4 +1950,8 @@ export const es: Record<string, string> = {
   "The answers rated bad here, with the conversation that led to each, are listed by:": "Las respuestas valoradas como malas aquí, con la conversación que llevó a cada una, las lista:",
   "The assistant could not check its draft answer, so it was not sent.": "El asistente no pudo comprobar su borrador de respuesta, por eso no se envió.",
   "The assistant’s draft answer said something its sources do not, so it was not sent.": "El borrador del asistente decía algo que sus fuentes no dicen, por eso no se envió.",
+  "Payments could not be checked": "No se pudieron comprobar los pagos",
+  "Stripe could not be read, so we can’t show what a refund would return. Try again before deciding.": "No se pudo leer Stripe, así que no podemos mostrar lo que devolvería un reembolso. Vuelva a intentarlo antes de decidir.",
+  "Sent, but the question could not be closed.": "Enviado, pero la pregunta no se pudo cerrar.",
+  "Close it": "Cerrarla",
 };

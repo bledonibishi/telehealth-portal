@@ -47,3 +47,13 @@ export function saveResults(out: string | undefined, data: unknown) {
   writeFileSync(out, JSON.stringify({ at: new Date().toISOString(), ...(data as object) }, null, 2));
   console.log(`Saved to ${out}.`);
 }
+
+/**
+ * Stops the run when the name filter matched nothing: "0 of 0 passed" would otherwise exit 0 and look like a passing gate
+ * after a typo in the filter.
+ */
+export function requireCases(count: number) {
+  if (count > 0) return;
+  console.error(`No case matches "${process.argv[2] ?? ''}". Check the name filter.`);
+  process.exit(1);
+}

@@ -82,6 +82,15 @@ describe('waiting for the patient to finish typing', () => {
     expect(tickets.assistantUpdate).not.toHaveBeenCalledWith('tk-2', expect.anything());
   });
 
+  it('still starts the assistant’s timer when reopening a waiting ticket fails', async () => {
+    const { bot, prisma, tickets } = setup();
+    prisma.ticket.findMany = jest.fn().mockResolvedValue([{ id: 'tk-1' }]);
+    prisma.supportThread.findMany = jest.fn().mockResolvedValue([]);
+    tickets.assistantUpdate.mockRejectedValueOnce(new Error('db down'));
+    await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
+    expect(prisma.supportThread.create).toHaveBeenCalled();
+  });
+
   it('steps back when a person from the team writes', async () => {
     const { bot, prisma } = setup();
     await bot.onStaffMessage({ patientId: 'p-1', consultationId: null });

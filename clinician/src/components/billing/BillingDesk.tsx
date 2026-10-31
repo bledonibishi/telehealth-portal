@@ -110,6 +110,8 @@ function RefundRequests({ requests }: { requests: any[] }) {
         const open = openId === r.id;
         const shown = open && overview?.patientId === r.patientId ? overview : null;
         const latestPaid = shown?.invoices?.find((i: any) => i.status === 'PAID');
+        // Only a confirmed "no paid payment": Stripe was reachable and listed none.
+        const nothingPaid = !!shown?.invoicesAvailable && !latestPaid;
         const shipped = LEFT_PHARMACY.includes(r.latestOrderStatus);
         const withCourier = WITH_COURIER.includes(r.latestOrderStatus);
         const confirm = confirming === r.id;
@@ -145,8 +147,19 @@ function RefundRequests({ requests }: { requests: any[] }) {
                     <p className="mt-0.5 text-sm">{t('Medicine cannot be taken back into stock. If you refund now, the patient keeps the medicine and you lose both the money and the medicine. Ask the courier to stop or return the parcel, or decline.')}</p>
                   </div>
                 )}
-                {shown && !shown.refundPreview && (
-                  // The backend refuses a refund with nothing paid, so the refund button is not offered at all.
+                {shown && !shown.refundPreview && !nothingPaid && (
+                  // No preview, but not because nothing was paid: Stripe couldn't be read, or the preview failed. Saying "nothing
+                  // to refund" here could lead an admin to decline a request that should be refunded.
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-amber-900">{t('Payments could not be checked')}</p>
+                      <p className="mt-0.5 text-amber-900/80">{t('Stripe could not be read, so we can’t show what a refund would return. Try again before deciding.')}</p>
+                    </div>
+                    <button type="button" disabled={loadingOverview} className="px-3 py-1.5 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-40" onClick={() => { setError(null); load({ variables: { patientId: r.patientId } }); }}>{loadingOverview ? t('Loading…') : t('Try again')}</button>
+                  </div>
+                )}
+                {shown && !shown.refundPreview && nothingPaid && (
+                  // Stripe was read and shows no paid payment; the backend refuses a refund then, so only Decline is offered.
                   <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-gray-900">{t('Nothing to refund')}</p>

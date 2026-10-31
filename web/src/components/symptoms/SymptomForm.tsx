@@ -10,7 +10,8 @@ import { btnPrimary, btnOutline } from '@/components/portal/Card';
 
 // Picked answers run from calm to warm, so a page of answers reads at a glance. The wording and scores are the
 // standard questionnaire's and come from the server unchanged.
-const PICKED = ['bg-emerald-600 border-emerald-600', 'bg-lime-600 border-lime-600', 'bg-amber-500 border-amber-500', 'bg-orange-600 border-orange-600', 'bg-rose-600 border-rose-600'];
+// The -700 shades keep white text above 4.5:1 contrast, so a patient can read their own answer.
+const PICKED = ['bg-emerald-700 border-emerald-700', 'bg-lime-700 border-lime-700', 'bg-amber-700 border-amber-700', 'bg-orange-700 border-orange-700', 'bg-rose-700 border-rose-700'];
 
 /**
  * The questionnaire, one group of symptoms per step. Starts from the last answers (when there are any) so a

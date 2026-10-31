@@ -101,10 +101,12 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : n
 /**
  * Whether the number the model gave is the one printed. A result printed as "<18" is not 18, and a model will sometimes
  * say 18 anyway, however clearly it is told not to: so the code checks, rather than the instructions alone. Null when
- * they agree; otherwise why the row is left out.
+ * they agree; otherwise why the row is left out (including when no printed result was given).
  */
 export function printedMismatch(printed: unknown, value: number): string | null {
-  if (typeof printed !== 'string' || !printed.trim()) return null;
+  // No printed text means nothing to check the number against, so the row is left out too: a missing row is far better
+  // than a wrong one.
+  if (typeof printed !== 'string' || !printed.trim()) return 'the printed result was not given, so the number could not be checked';
   const text = printed.trim();
   if (/[<>≤≥]/.test(text)) return `printed as “${text}”, which is not an exact number`;
   const parsed = Number(text.replace(/\s+/g, '').replace(',', '.'));

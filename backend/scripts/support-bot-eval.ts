@@ -21,7 +21,7 @@ import { SupportBotService } from '../src/support-bot/support-bot.service';
 import { DEFAULT_ARTICLES } from '../src/support-bot/support-knowledge';
 import { checkGrounding } from '../src/support-bot/grounding-check';
 import { answerProblems, EVAL_CASES, GROUNDING_CASES, type EvalCase } from '../src/support-bot/eval-cases';
-import { evalArgs, loadBackendEnv, pool, saveResults } from './eval-utils';
+import { evalArgs, loadBackendEnv, pool, saveResults, requireCases } from './eval-utils';
 
 type CaseResult = { name: string; kind: 'assistant' | 'checker'; runs: number; passed: number; blocking: boolean; problems: string[] };
 
@@ -62,6 +62,7 @@ async function main() {
   const bot = new SupportBotService(null as any, ai, null as any, null as any);
   const cases = EVAL_CASES.filter((c) => match(c.name));
   const checks = GROUNDING_CASES.filter((c) => match(c.name));
+  requireCases(cases.length + checks.length);
   console.log(`Assistant: ${ai.modelFor('support')}. Second look: ${ai.checkerModel()}. ${cases.length + checks.length} cases, ${runs} run(s) each.\n`);
 
   const jobs = [

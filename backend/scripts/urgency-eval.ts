@@ -19,7 +19,7 @@
 import { AiAssistService } from '../src/ai/ai-assist.service';
 import { MessageUrgencyService } from '../src/ai/message-urgency.service';
 import { URGENCY_CASES } from '../src/ai/urgency-eval-cases';
-import { evalArgs, loadBackendEnv, pool, saveResults } from './eval-utils';
+import { evalArgs, loadBackendEnv, pool, saveResults, requireCases } from './eval-utils';
 
 /** Above this share of routine messages marked urgent, the run is flagged: clinicians would start ignoring the mark. */
 const MAX_FALSE_ALARMS = 0.1;
@@ -35,6 +35,7 @@ async function main() {
   // Only assess() is used, which needs nothing but the AI service.
   const check = new MessageUrgencyService(null as any, ai);
   const cases = URGENCY_CASES.filter((c) => match(c.name));
+  requireCases(cases.length);
   console.log(`Urgency check: ${ai.modelFor('urgency')}. ${cases.length} messages, ${runs} run(s) each.\n`);
 
   const results = [];

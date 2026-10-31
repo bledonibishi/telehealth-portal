@@ -28,28 +28,28 @@ export default function SettingsPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
-      <PageHeader title="Settings" subtitle="Your account, payments, privacy and help." />
+      <PageHeader title={t('Settings')} subtitle={t('Your account, payments, privacy and help.')} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
         <div className="space-y-6">
-          <SettingsGroup title="Account">
-            <SettingsRow href="/profile" icon="user" label="Profile" hint="Your personal, body and delivery details." />
-            <SettingsRow href="/settings/password" icon="lock" label="Password" hint="Change the password you sign in with." />
-            <SettingsRow href="/settings/notifications" icon="bell" label="Notifications" hint="What we send to your phone and by email." />
+          <SettingsGroup title={t('Account')}>
+            <SettingsRow href="/profile" icon="user" label={t('Profile')} hint={t('Your personal, body and delivery details.')} />
+            <SettingsRow href="/settings/password" icon="lock" label={t('Password')} hint={t('Change the password you sign in with.')} />
+            <SettingsRow href="/settings/notifications" icon="bell" label={t('Notifications')} hint={t('What we send to your phone and by email.')} />
           </SettingsGroup>
 
-          <SettingsGroup title="Payments">
-            <SettingsRow href="/settings/billing" icon="cart" label="Billing & payments" hint="Your subscription, payments, refunds and vouchers." />
-            <SettingsRow href="/rewards" icon="gift" label="Refer & earn" hint="Invite a friend and get a voucher when they join." />
+          <SettingsGroup title={t('Payments')}>
+            <SettingsRow href="/settings/billing" icon="cart" label={t('Billing & payments')} hint={t('Your subscription, payments, refunds and vouchers.')} />
+            <SettingsRow href="/rewards" icon="gift" label={t('Refer & earn')} hint={t('Invite a friend and get a voucher when they join.')} />
           </SettingsGroup>
 
-          <SettingsGroup title="Help & privacy">
-            <SettingsRow href="/settings/help" icon="help" label="Help & FAQ" hint="Answers to common questions, and how to reach us." />
-            <SettingsRow href="/settings/privacy" icon="shield" label="Privacy & your data" hint="Who can see your details. Get a copy or delete your account." />
+          <SettingsGroup title={t('Help & privacy')}>
+            <SettingsRow href="/settings/help" icon="help" label={t('Help & FAQ')} hint={t('Answers to common questions, and how to reach us.')} />
+            <SettingsRow href="/settings/privacy" icon="shield" label={t('Privacy & your data')} hint={t('Who can see your details. Get a copy or delete your account.')} />
           </SettingsGroup>
 
-          <SettingsGroup title="Session">
-            <SettingsRow onClick={signOut} icon="logout" label="Sign out" danger />
+          <SettingsGroup title={t('Session')}>
+            <SettingsRow onClick={signOut} icon="logout" label={t('Sign out')} danger />
           </SettingsGroup>
         </div>
 
@@ -58,8 +58,8 @@ export default function SettingsPage() {
             <Avatar first={p?.firstName} last={p?.lastName} className="mx-auto w-16 h-16 text-xl" />
             <p className="mt-3 text-base font-semibold text-ink-900 truncate">{p ? `${p.firstName} ${p.lastName}` : '\u00a0'}</p>
             {p?.email && <p className="text-sm text-slate-500 truncate">{p.email}</p>}
-            {p && <p className="mt-2 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Patient ID: {p.patientNumber}</p>}
-            <Link href="/profile" className={`${btnSoft} mt-4 w-full`}><Icon name="pencil" className="w-4 h-4" /> Edit profile</Link>
+            {p && <p className="mt-2 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{t('Patient ID: {id}', { id: p.patientNumber })}</p>}
+            <Link href="/profile" className={`${btnSoft} mt-4 w-full`}><Icon name="pencil" className="w-4 h-4" /> {t('Edit profile')}</Link>
           </Card>
 
           <Card>
@@ -73,9 +73,9 @@ export default function SettingsPage() {
           </Card>
 
           <div className="rounded-2xl bg-ink-50/70 border border-ink-100 p-5">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink-900"><Icon name="chat" className="w-4 h-4 text-ink-700" /> Need a hand?</h2>
-            <p className="mt-1.5 text-sm text-slate-600">Can’t find a setting, or something isn’t working? Your care team can help.</p>
-            <Link href="/messages" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink-700 hover:text-ink-800">Message us <Icon name="arrow" className="w-4 h-4" /></Link>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-ink-900"><Icon name="chat" className="w-4 h-4 text-ink-700" /> {t('Need a hand?')}</h2>
+            <p className="mt-1.5 text-sm text-slate-600">{t('Can’t find a setting, or something isn’t working? Your care team can help.')}</p>
+            <Link href="/messages" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink-700 hover:text-ink-800">{t('Message us')} <Icon name="arrow" className="w-4 h-4" /></Link>
           </div>
         </aside>
       </div>

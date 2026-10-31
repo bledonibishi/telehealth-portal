@@ -1950,4 +1950,8 @@ export const sq: Record<string, string> = {
   "The answers rated bad here, with the conversation that led to each, are listed by:": "Përgjigjet e vlerësuara keq këtu, me bisedën që çoi në secilën, i liston:",
   "The assistant could not check its draft answer, so it was not sent.": "Asistenti nuk mundi ta kontrollonte përgjigjen e draftit, ndaj nuk u dërgua.",
   "The assistant’s draft answer said something its sources do not, so it was not sent.": "Përgjigjja e draftit të asistentit tha diçka që burimet e tij nuk e thonë, ndaj nuk u dërgua.",
+  "Payments could not be checked": "Pagesat nuk mund të kontrolloheshin",
+  "Stripe could not be read, so we can’t show what a refund would return. Try again before deciding.": "Stripe nuk mund të lexohej, ndaj nuk mund të tregojmë çfarë do të kthente rimbursimi. Provoni përsëri para se të vendosni.",
+  "Sent, but the question could not be closed.": "U dërgua, por pyetja nuk mund të mbyllej.",
+  "Close it": "Mbylle",
 };

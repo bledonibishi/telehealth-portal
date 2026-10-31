@@ -123,7 +123,10 @@ export default function RewardsPage() {
   const friends: ReferredFriend[] = referral?.referrals ?? [];
   const joined = friends.filter((f) => f.status === 'CONVERTED').length;
   const earned = vouchers.filter((v) => v.kind === 'REFERRER_REWARD');
-  const earnedTotal = earned.length ? money(earned.reduce((n, v) => n + v.amountCents, 0), earned[0].currency) : '—';
+  // One total per currency: amounts in different currencies can't be added (older vouchers keep the currency they were made in).
+  const byCurrency = new Map<string, number>();
+  for (const v of earned) byCurrency.set(v.currency, (byCurrency.get(v.currency) ?? 0) + v.amountCents);
+  const earnedTotal = byCurrency.size ? [...byCurrency].map(([cur, cents]) => money(cents, cur)).join(' · ') : '—';
 
   const copy = async () => {
     if (!referral?.link) return;

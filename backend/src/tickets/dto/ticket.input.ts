@@ -50,4 +50,10 @@ export class TicketFilterInput {
 
   @Field({ nullable: true, description: 'Only tickets assigned to the caller' })
   mine?: boolean;
+
+  @Field({ nullable: true, description: 'true: only tickets still being worked on; false: only resolved or closed ones' })
+  open?: boolean;
+
+  @Field({ nullable: true, description: 'Newest first instead of oldest first (e.g. for a list of closed tickets)' })
+  recentFirst?: boolean;
 }

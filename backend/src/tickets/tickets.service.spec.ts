@@ -32,6 +32,16 @@ describe('TicketsService visibility', () => {
     expect(prisma.ticket.findMany.mock.calls[0][0].where).toMatchObject({ type: 'CLINICAL' });
   });
 
+  it('can ask for only open tickets, or only finished ones newest first', async () => {
+    const { service, prisma } = setup();
+    await service.list(doctor, { open: true });
+    expect(prisma.ticket.findMany.mock.calls[0][0].where).toMatchObject({ status: { notIn: ['RESOLVED', 'CLOSED'] }, type: 'CLINICAL' });
+    expect(prisma.ticket.findMany.mock.calls[0][0].orderBy).toEqual([{ createdAt: 'asc' }]);
+    await service.list(doctor, { open: false, recentFirst: true });
+    expect(prisma.ticket.findMany.mock.calls[1][0].where).toMatchObject({ status: { in: ['RESOLVED', 'CLOSED'] } });
+    expect(prisma.ticket.findMany.mock.calls[1][0].orderBy).toEqual([{ createdAt: 'desc' }]);
+  });
+
   it('shows support everything', async () => {
     const { service, prisma } = setup();
     await service.list(support);

@@ -8,7 +8,7 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { getCurrentUserId } from '@/lib/role';
 import { ErrorAlert } from '@/components/ui/Alert';
 import { LoadingState } from '@telehealth/loading';
-import { sortForDoctor } from './DoctorTicketView';
+import { CLOSED_TICKETS, OPEN_TICKETS, sortForDoctor } from './DoctorTicketView';
 import { isClosed, replyState, shortHours, type Ticket } from './ticket-meta';
 
 type View = 'REPLY' | 'WAITING' | 'CLOSED';
@@ -17,13 +17,17 @@ type View = 'REPLY' | 'WAITING' | 'CLOSED';
 export default function DoctorInbox() {
   const { t, timeAgo } = useI18n();
   const me = getCurrentUserId();
-  const { data, loading, error } = useQuery(GET_TICKETS, { pollInterval: 30_000 });
   const [view, setView] = useState<View>('REPLY');
-  const all: Ticket[] = (data?.supportTickets ?? []).filter((x: Ticket) => x.type === 'CLINICAL');
+  // Open and closed questions are fetched apart (see OPEN_TICKETS): the closed list only loads when its tab is opened.
+  const open = useQuery(GET_TICKETS, { variables: OPEN_TICKETS, pollInterval: 30_000 });
+  const done = useQuery(GET_TICKETS, { variables: CLOSED_TICKETS, skip: view !== 'CLOSED' });
+  const { data, loading, error } = view === 'CLOSED' ? done : open;
+  const clinical = (rows: Ticket[] | undefined) => (rows ?? []).filter((x) => x.type === 'CLINICAL');
+  const openRows = clinical(open.data?.supportTickets);
   const groups: Record<View, Ticket[]> = {
-    REPLY: sortForDoctor(all.filter((x) => !isClosed(x.status) && x.status !== 'WAITING_ON_PATIENT')),
-    WAITING: all.filter((x) => x.status === 'WAITING_ON_PATIENT').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    CLOSED: all.filter((x) => isClosed(x.status)).sort((a, b) => (b.resolvedAt ?? b.updatedAt).localeCompare(a.resolvedAt ?? a.updatedAt)).slice(0, 50),
+    REPLY: sortForDoctor(openRows.filter((x) => x.status !== 'WAITING_ON_PATIENT')),
+    WAITING: openRows.filter((x) => x.status === 'WAITING_ON_PATIENT').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    CLOSED: clinical(done.data?.supportTickets).filter((x) => isClosed(x.status)).slice(0, 50),
   };
   const rows = groups[view];
   const tabs: Array<[View, string]> = [['REPLY', t('Needs your reply')], ['WAITING', t('Waiting for the patient')], ['CLOSED', t('Closed')]];
