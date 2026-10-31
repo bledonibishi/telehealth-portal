@@ -167,27 +167,21 @@ describe('MessagingService', () => {
       await expect(service.sendAs(patient, { consultationId: 'theirs', content: 'x' })).rejects.toThrow();
     });
 
-    // A fixed clock: the limits count back from "now", and a clock that moves between the check and the mock would flip them.
-    const NOW = new Date('2026-10-31T12:00:00Z').getTime();
-    const lastMinute = (where: any) => NOW - where.sentAt.gte.getTime() <= 60_000;
-
     it('stops a patient sending faster than a person types, counting only their own messages', async () => {
-      jest.spyOn(Date, 'now').mockReturnValue(NOW);
-      prisma.message.count.mockImplementation(async ({ where }: any) => (lastMinute(where) ? 20 : 25));
-      await expect(service.sendAs(patient, { content: 'again' })).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RATE_LIMITED', severity: 'warning' }) });
+      // The minute is counted first, then the hour.
+      prisma.message.count.mockResolvedValueOnce(20).mockResolvedValueOnce(25);
+      await expect(service.sendAs(patient, { content: 'again' })).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RATE_LIMITED', severity: 'warning', message: expect.stringMatching(/wait a minute/) }) });
       expect(prisma.message.count.mock.calls[0][0].where).toMatchObject({ patientId: 'patient-1', senderRole: 'PATIENT' });
       expect(prisma.message.create).not.toHaveBeenCalled();
     });
 
     it('also stops a patient who keeps sending over an hour, and says where to go if it is urgent', async () => {
-      jest.spyOn(Date, 'now').mockReturnValue(NOW);
-      prisma.message.count.mockImplementation(async ({ where }: any) => (lastMinute(where) ? 3 : 200));
+      prisma.message.count.mockResolvedValueOnce(3).mockResolvedValueOnce(200);
       await expect(service.sendAs(patient, { content: 'again' })).rejects.toThrow(/emergency services/);
     });
 
-    it('gives the hour-limit advice when both limits are reached, since that is the longer wait', async () => {
-      jest.spyOn(Date, 'now').mockReturnValue(NOW);
-      prisma.message.count.mockImplementation(async ({ where }: any) => (lastMinute(where) ? 20 : 200));
+    it('tells the patient about the hourly limit when both are reached, since it lasts longer', async () => {
+      prisma.message.count.mockResolvedValueOnce(20).mockResolvedValueOnce(200);
       await expect(service.sendAs(patient, { content: 'again' })).rejects.toThrow(/last hour/);
     });
 
