@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MessagingService } from '../messaging/messaging.service';
@@ -13,6 +13,7 @@ const AUDIT_EVERY_MS = 10 * 60_000;
 
 @Injectable()
 export class TicketConversationService {
+  private readonly logger = new Logger(TicketConversationService.name);
   private lastAudited = new Map<string, number>();
 
   constructor(
@@ -42,8 +43,21 @@ export class TicketConversationService {
     const message = thread
       ? await this.messaging.sendToThread(user, thread, text)
       : await this.messaging.sendAs(user, { patientId: ticket.patientId!, content: text } as any);
-    const updated = await this.tickets.recordStaffReply(user, ticketId);
-    return { message, ticket: updated };
+    // The patient has the message now, and that can't be undone: from here the reply has succeeded. Failing the request
+    // would tell the doctor nothing was sent, and a retry would send the same answer twice. So recording it on the ticket
+    // (first reply, waiting on the patient, assignee) is tried twice and, if it still fails, logged, never thrown.
+    return { message, ticket: await this.recordReply(user, ticketId) };
+  }
+
+  private async recordReply(user: AuthUser, ticketId: string) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        return await this.tickets.recordStaffReply(user, ticketId);
+      } catch (err) {
+        this.logger.error(`Reply sent on ticket ${ticketId}, but recording it failed (attempt ${attempt}): ${(err as Error)?.message}`);
+      }
+    }
+    return this.tickets.get(ticketId, user).catch(() => null);
   }
 
   private async noteRead(user: AuthUser, ticketId: string, patientId: string) {

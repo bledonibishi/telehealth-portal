@@ -50,6 +50,20 @@ describe('TicketConversationService.reply', () => {
     expect(result.ticket.status).toBe('WAITING_ON_PATIENT');
   });
 
+  it('still succeeds once the message is sent, even if recording it on the ticket fails, so a retry can’t send it twice', async () => {
+    const { service, messaging, tickets } = setup();
+    tickets.recordStaffReply.mockRejectedValueOnce(new Error('db blip'));
+    const result: any = await service.reply(cx, 't-1', 'Your card was charged once.');
+    expect(messaging.sendAs).toHaveBeenCalledTimes(1);
+    expect(tickets.recordStaffReply).toHaveBeenCalledTimes(2);
+    expect(result.ticket.status).toBe('WAITING_ON_PATIENT');
+
+    tickets.recordStaffReply.mockRejectedValue(new Error('db down'));
+    const again: any = await service.reply(cx, 't-1', 'Second answer.');
+    expect(again.message).toEqual({ id: 'm-new' });
+    expect(again.ticket).toEqual({ id: 't-1', patientId: 'p-1', type: 'BILLING' });
+  });
+
   it('replies in the conversation the ticket came from, not the newest chat', async () => {
     const { service, messaging, prisma } = setup();
     prisma.supportThread.findFirst.mockResolvedValue({ patientId: 'p-1', consultationId: 'c-old' });

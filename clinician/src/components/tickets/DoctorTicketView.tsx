@@ -118,7 +118,9 @@ export default function DoctorTicketView({ ticket }: { ticket: Ticket }) {
     try {
       await reply({ variables: { ticketId: ticket.id, content: text.trim() } });
     } catch (e) {
-      setError(e); // Nothing was sent: the answer stays in the box to try again.
+      // The server only fails a reply that was not sent (once sent, recording it on the ticket never fails the request),
+      // so the answer stays in the box to try again without risk of sending it twice.
+      setError(e);
       return;
     }
     // Sent: clear the box now, so retrying a failed close can't send the same answer twice.
