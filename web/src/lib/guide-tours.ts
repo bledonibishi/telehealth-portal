@@ -104,10 +104,10 @@ const PAGE_TOURS: Record<string, GuideTour> = {
     steps: [header('Your documents', 'Check-in reports, prescriptions, lab results and invoices, all in one place.')],
   },
   '/settings': {
-    id: 'web.page.settings.v1',
+    id: 'web.page.settings.v2',
     title: 'Settings',
     steps: [
-      header('Settings', 'Your subscription, notifications, password and privacy.'),
+      header('Settings', 'Everything about your account, in one menu: your profile, password, notifications, payments, privacy and help.'),
       { target: 'settings:guide', title: 'The guide', body: 'Turn this guide on or off here. While it is on, each page explains itself the first time you open it, and the Guide button replays any tour.' },
     ],
   },

@@ -6,8 +6,7 @@ import { differenceInDays } from 'date-fns';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { GET_WEIGHT_CHART } from '@/graphql/weight';
 import { PATIENT_ADHERENCE, PATIENT_RECENT_DOSES } from '@/graphql/patients';
-import { FEELINGS, kg, kgChange } from '@/lib/weight';
-import { medicationStyle } from '@/lib/medication';
+import { FEELINGS, kg } from '@/lib/weight';
 import { STALE_WEIGH_IN_DAYS, TREATMENT_STATUS, type TreatmentStatus } from '@/lib/patient-status';
 import MedicationPill from './MedicationPill';
 import ProgressRing from './ProgressRing';
@@ -145,81 +144,6 @@ export function WeightChart({ timeline, loading, from, height = 240 }: {
 
 // ── Treatment journey ───────────────────────────────────────────────────────
 
-export type JourneyEvent = { at: Date; title: string; detail?: string; med?: string; future?: boolean; milestone?: boolean };
-
-export function buildEvents(patient: any, prescriptions: any[], journey: any, timeline: any, t: (text: string, vars?: Record<string, string | number>) => string): JourneyEvent[] {
-  const events: JourneyEvent[] = [{ at: new Date(patient.createdAt), title: t('Joined') }];
-
-  const rxs = [...prescriptions].sort((a, b) => new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime());
-  let previousDose: string | null = null;
-  for (const rx of rxs) {
-    const meds = currentMedications([{ ...rx, status: 'ACTIVE' }]);
-    const label = meds.map((m) => m.label).join(' + ');
-    const dose = meds.map((m) => m.dose).filter(Boolean).join(' + ');
-    events.push({
-      at: new Date(rx.issuedAt),
-      title: previousDose === null ? t('Treatment started') : dose === previousDose ? t('Prescription renewed') : t('Dose changed'),
-      detail: [label, dose].filter(Boolean).join(' · '),
-      med: meds[0]?.label,
-    });
-    previousDose = dose;
-  }
-
-  const byCheckIn = new Map<string, any>((journey?.entries ?? []).map((e: any) => [e.checkInId, e]));
-  for (const c of patient.checkIns ?? []) {
-    if (c.status !== 'COMPLETED' || !c.completedAt) continue;
-    const entry = byCheckIn.get(c.id);
-    events.push({
-      at: new Date(c.completedAt),
-      title: entry ? t('Check-in · month {n}', { n: entry.month }) : t('Check-in completed'),
-      detail: entry ? `${kg(entry.weightKg)} (${entry.changeKg === 0 ? t('no change') : kgChange(entry.changeKg)})` : undefined,
-    });
-  }
-
-  // The first weighing at or past each 5 kg lost, and the day the target was reached.
-  const start: number | null = timeline?.startingWeightKg ?? journey?.startingWeightKg ?? null;
-  if (start !== null) {
-    let milestone = 5;
-    let reachedTarget = false;
-    for (const m of timeline?.measurements ?? []) {
-      while (start - m.weightKg >= milestone) {
-        events.push({ at: new Date(m.measuredAt), title: t('Lost {n} kg', { n: milestone }), detail: t('Weighed {weight}', { weight: kg(m.weightKg) }), milestone: true });
-        milestone += 5;
-      }
-      if (!reachedTarget && timeline.targetWeightKg !== null && m.weightKg <= timeline.targetWeightKg) {
-        reachedTarget = true;
-        events.push({ at: new Date(m.measuredAt), title: t('Target reached'), detail: kg(m.weightKg), milestone: true });
-      }
-    }
-  }
-
-  const next = journey?.nextCheckInDueAt ?? (patient.checkIns ?? []).find((c: any) => c.status === 'SCHEDULED')?.dueAt;
-  if (next && new Date(next) > new Date()) events.push({ at: new Date(next), title: t('Next check-in'), future: true });
-
-  return events.sort((a, b) => a.at.getTime() - b.at.getTime());
-}
-
-function TreatmentJourney({ events }: { events: JourneyEvent[] }) {
-  const { fmt } = useI18n();
-  return (
-    <div className="overflow-x-auto pb-2 -mx-1 px-1">
-      <ol className="flex min-w-max">
-        {events.map((e, i) => {
-          const dot = e.future ? 'bg-white border-2 border-dashed border-gray-300' : e.milestone ? 'bg-green-500' : e.med ? medicationStyle(e.med).dot : 'bg-brand-500';
-          return (
-            <li key={i} className="relative w-40 pr-3 pt-6">
-              <span className={`absolute top-[7px] h-0.5 left-0 ${i === events.length - 1 ? 'w-4' : 'right-0'} ${e.future ? 'border-t-2 border-dashed border-gray-200' : 'bg-gray-200'}`} />
-              <span className={`absolute top-0 left-0 w-4 h-4 rounded-full ring-4 ring-white ${dot}`} />
-              <p className="text-[11px] text-gray-400">{fmt(e.at, 'd MMM yyyy')}</p>
-              <p className={`text-sm font-medium mt-0.5 ${e.future ? 'text-gray-400' : 'text-gray-900'}`}>{e.title}</p>
-              {e.detail && <p className="text-xs text-gray-500 mt-0.5">{e.detail}</p>}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
 
 // ── Dose adherence ──────────────────────────────────────────────────────────
 
@@ -233,7 +157,8 @@ function RecentInjections({ patientId }: { patientId: string }) {
   const { t, fmt } = useI18n();
   const { data } = useQuery(PATIENT_RECENT_DOSES, { variables: { patientId } });
   const taken: any[] = (data?.patientDoseCalendar ?? [])
-    .filter((d: any) => d.status === 'TAKEN' && d.takenAt)
+    // Only injected doses: a gel, patch or capsule is never listed as an injection.
+    .filter((d: any) => d.status === 'TAKEN' && d.takenAt && (d.product?.form === 'INJECTION_PEN' || d.product?.form === 'INJECTION_VIAL'))
     .sort((a: any, b: any) => b.takenAt.localeCompare(a.takenAt))
     .slice(0, 5);
   if (taken.length === 0) return null;
@@ -329,7 +254,6 @@ export default function PatientSnapshot({
   const status = TREATMENT_STATUS[treatmentStatusOf(patient, prescriptions)];
   const meds = currentMedications(prescriptions);
   const { timeline, loading: timelineLoading, from } = useWeightTimeline(patient.id, !journey);
-  const events = useMemo(() => buildEvents(patient, prescriptions, journey, timeline, t), [patient, prescriptions, journey, timeline, t]);
 
   const hasGoal = journey && journey.progressPercentage !== null && journey.progressPercentage !== undefined;
   const lost: number | null = hasGoal ? journey.weightLostKg : null;
@@ -343,17 +267,28 @@ export default function PatientSnapshot({
   const missedRecently = (adherenceData?.doseAdherenceTrend ?? []).reduce((n: number, w: any) => n + w.missed, 0);
 
   // Things a clinician would want to know before opening anything else.
-  const attention: { text: string; cls: string }[] = [];
+  const attention: { text: string; level: 'critical' | 'warning' }[] = [];
   for (const rf of latestConsult?.redFlags ?? []) {
-    attention.push({ text: rf.description, cls: rf.severity === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700' });
+    attention.push({ text: rf.description, level: rf.severity === 'CRITICAL' ? 'critical' : 'warning' });
   }
-  if (awaitingReply) attention.push({ text: t('Patient is waiting for a reply'), cls: 'bg-rose-50 text-rose-700' });
+  if (awaitingReply) attention.push({ text: t('Patient is waiting for a reply'), level: 'warning' });
   if (lastEntry?.feeling === 'NOT_WELL' || lastEntry?.feeling === 'DIFFICULTIES') {
-    attention.push({ text: t('Last check-in: {feeling}', { feeling: t(FEELINGS[lastEntry.feeling].label).toLowerCase() }), cls: 'bg-amber-50 text-amber-700' });
+    attention.push({ text: t('Last check-in: {feeling}', { feeling: t(FEELINGS[lastEntry.feeling].label).toLowerCase() }), level: 'warning' });
   }
-  if (missedRecently > 0) attention.push({ text: missedRecently > 1 ? t('{n} missed doses in the last 2 weeks', { n: missedRecently }) : t('1 missed dose in the last 2 weeks'), cls: 'bg-amber-50 text-amber-700' });
+  if (missedRecently > 0) attention.push({ text: missedRecently > 1 ? t('{n} missed doses in the last 2 weeks', { n: missedRecently }) : t('1 missed dose in the last 2 weeks'), level: 'warning' });
   if (status === TREATMENT_STATUS.ACTIVE && journey?.latestMeasurementAt && differenceInDays(new Date(), new Date(journey.latestMeasurementAt)) > STALE_WEIGH_IN_DAYS) {
-    attention.push({ text: t('No weigh-in for {n} days', { n: differenceInDays(new Date(), new Date(journey.latestMeasurementAt)) }), cls: 'bg-amber-50 text-amber-700' });
+    attention.push({ text: t('No weigh-in for {n} days', { n: differenceInDays(new Date(), new Date(journey.latestMeasurementAt)) }), level: 'warning' });
+  }
+
+  // The two things from the old timeline that change a decision: when the next check-in is, and how the dose has moved.
+  // A check-in still open counts, whether it is only scheduled or already sent to the patient; the earliest is next.
+  const nextCheckIn = journey?.nextCheckInDueAt ?? ((patient.checkIns ?? [])
+    .filter((c: any) => c.status === 'SCHEDULED' || c.status === 'SENT')
+    .sort((a: any, b: any) => String(a.dueAt).localeCompare(String(b.dueAt)))[0]?.dueAt ?? null);
+  const doseSteps: { dose: string; at: string }[] = [];
+  for (const rx of [...prescriptions].sort((x, y) => new Date(x.issuedAt).getTime() - new Date(y.issuedAt).getTime())) {
+    const dose = currentMedications([{ ...rx, status: 'ACTIVE' }]).map((m) => m.dose).filter(Boolean).join(' + ');
+    if (dose && doseSteps[doseSteps.length - 1]?.dose !== dose) doseSteps.push({ dose, at: rx.issuedAt });
   }
 
   const startedAt = prescriptions.length
@@ -364,10 +299,20 @@ export default function PatientSnapshot({
   return (
     <div className="space-y-5">
       {attention.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {attention.map((a, i) => (
-            <span key={i} className={`text-xs font-medium px-2.5 py-1 rounded-full ${a.cls}`}>{a.text}</span>
-          ))}
+        // One list, critical first, so a doctor reads every warning once before deciding anything.
+        <div className={`${CARD} overflow-hidden`}>
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+            <p className={HEADING}>{t('Things to know')}</p>
+            <span className="text-xs text-gray-400">{attention.length}</span>
+          </div>
+          <ul className="grid divide-y divide-gray-100 lg:grid-cols-2 lg:divide-y-0">
+            {[...attention].sort((a, b) => (a.level === b.level ? 0 : a.level === 'critical' ? -1 : 1)).map((a, i) => (
+              <li key={i} className="flex items-start gap-2.5 px-5 py-2.5 lg:border-b lg:border-gray-100">
+                <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${a.level === 'critical' ? 'bg-red-600' : 'bg-amber-500'}`} aria-label={a.level === 'critical' ? t('Critical') : t('Warning')}>!</span>
+                <span className={`text-sm ${a.level === 'critical' ? 'font-medium text-red-800' : 'text-gray-800'}`}>{a.text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -388,6 +333,26 @@ export default function PatientSnapshot({
               </span>
               {startedAt && <span className="text-xs text-gray-400">{t('On treatment since {date}', { date: fmt(startedAt, 'd MMM yyyy') })}</span>}
             </div>
+            {(nextCheckIn || doseSteps.length > 1) && (
+              <dl className="mt-3 space-y-1 text-sm">
+                {nextCheckIn && (
+                  <div className="flex gap-2">
+                    <dt className="text-gray-500">{t('Next check-in')}:</dt>
+                    <dd className={`font-medium ${new Date(nextCheckIn) < new Date() ? 'text-red-700' : 'text-gray-900'}`}>{fmt(nextCheckIn, 'd MMM yyyy')}</dd>
+                  </div>
+                )}
+                {doseSteps.length > 1 && (
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-gray-500">{t('Dose history')}:</dt>
+                    <dd className="text-gray-900">
+                      {doseSteps.map((d, i) => (
+                        <span key={i}>{i > 0 && <span className="mx-1 text-gray-400">→</span>}<span className={i === doseSteps.length - 1 ? 'font-semibold' : ''}>{d.dose}</span> <span className="text-xs text-gray-400">({fmt(d.at, 'd MMM')})</span></span>
+                      ))}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            )}
           </div>
 
           {journey && (
@@ -452,12 +417,6 @@ export default function PatientSnapshot({
           <WeightChart timeline={timeline} loading={timelineLoading} from={from} />
         </div>
       )}
-
-      {/* Journey */}
-      <div className={`${CARD} p-5`}>
-        <p className={`${HEADING} mb-4`}>{t('Treatment journey')}</p>
-        <TreatmentJourney events={events} />
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {canSeeAdherence && <Adherence patientId={patient.id} />}

@@ -12,8 +12,8 @@ class TicketReplyResultModel {
   @Field(() => MessageModel)
   message: MessageModel;
 
-  @Field(() => TicketModel)
-  ticket: TicketModel;
+  @Field(() => TicketModel, { nullable: true, description: 'The ticket after the reply; null only if it could not be read back (the message was still sent)' })
+  ticket: TicketModel | null;
 }
 
 const TICKET_STAFF = [ClinicianRole.ADMIN, ClinicianRole.CX_TEAM, ClinicianRole.DOCTOR] as const;

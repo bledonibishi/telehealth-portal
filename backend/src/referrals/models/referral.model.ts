@@ -30,6 +30,9 @@ export class MyReferralModel {
   @Field()
   link: string;
 
+  @Field({ description: 'What each side gets when a referred friend joins, as people read it, e.g. "€20"' })
+  reward: string;
+
   @Field()
   voucherAutoApply: boolean;
 

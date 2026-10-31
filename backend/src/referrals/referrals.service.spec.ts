@@ -128,7 +128,7 @@ describe('ReferralsService.handleConversion', () => {
       { amount: -2000, currency: 'gbp', description: expect.stringContaining('voucher-referrer') },
       { idempotencyKey: 'voucher-credit-voucher-referrer' },
     );
-    expect(email.sendReferralRewardEmail).toHaveBeenCalledWith('advocate@x.com', 'Advocate', '£20.00', true, expect.stringMatching(/\/rewards$/));
+    expect(email.sendReferralRewardEmail).toHaveBeenCalledWith('advocate@x.com', 'Advocate', '£20', true, expect.stringMatching(/\/rewards$/));
   });
 
   it('leaves the referrer reward unapplied when their preference is off', async () => {
@@ -146,7 +146,7 @@ describe('ReferralsService.handleConversion', () => {
     await service.handleConversion(lead, patient);
 
     expect((service as any).stripe.customers.createBalanceTransaction).not.toHaveBeenCalled();
-    expect(email.sendReferralRewardEmail).toHaveBeenCalledWith('advocate@x.com', 'Advocate', '£20.00', false, expect.stringMatching(/\/rewards$/));
+    expect(email.sendReferralRewardEmail).toHaveBeenCalledWith('advocate@x.com', 'Advocate', '£20', false, expect.stringMatching(/\/rewards$/));
   });
 });
 

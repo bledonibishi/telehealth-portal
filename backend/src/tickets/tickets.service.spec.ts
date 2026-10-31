@@ -32,6 +32,16 @@ describe('TicketsService visibility', () => {
     expect(prisma.ticket.findMany.mock.calls[0][0].where).toMatchObject({ type: 'CLINICAL' });
   });
 
+  it('can ask for only open tickets, or only finished ones newest first', async () => {
+    const { service, prisma } = setup();
+    await service.list(doctor, { open: true });
+    expect(prisma.ticket.findMany.mock.calls[0][0].where).toMatchObject({ status: { notIn: ['RESOLVED', 'CLOSED'] }, type: 'CLINICAL' });
+    expect(prisma.ticket.findMany.mock.calls[0][0].orderBy).toEqual([{ createdAt: 'asc' }]);
+    await service.list(doctor, { open: false, recentFirst: true });
+    expect(prisma.ticket.findMany.mock.calls[1][0].where).toMatchObject({ status: { in: ['RESOLVED', 'CLOSED'] } });
+    expect(prisma.ticket.findMany.mock.calls[1][0].orderBy).toEqual([{ createdAt: 'desc' }]);
+  });
+
   it('shows support everything', async () => {
     const { service, prisma } = setup();
     await service.list(support);
@@ -280,5 +290,26 @@ describe('TicketsService passing a ticket to the engineers', () => {
     expect(tx.ticket.update.mock.calls[0][0].data.engineeringDoneAt).toBeInstanceOf(Date);
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'TICKET_BACK_FROM_ENGINEERING' }), expect.anything());
     await expect(build(row()).service.finishEngineering(support, 't-1')).rejects.toThrow(/not with the engineers/i);
+  });
+});
+
+describe('TicketsService.handToSupport', () => {
+  it('opens a support ticket for the same patient and notes the hand-over on the clinical one', async () => {
+    const { service, prisma, tx, audit } = setup(row({ id: 't-9', number: 9, type: 'CLINICAL', priority: 'URGENT' }));
+    prisma.ticket.findUnique = jest.fn().mockResolvedValue(null);
+    await service.handToSupport(doctor, 't-9', 'Asks when the parcel arrives');
+    expect(tx.ticket.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ type: 'OTHER', patientId: 'p-1', priority: 'HIGH' }) }));
+    expect(tx.ticket.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't-9' } }));
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'TICKET_HANDED_TO_SUPPORT', actorId: 'dr-1' }), expect.anything());
+  });
+
+  it('refuses a ticket that is not clinical', async () => {
+    const { service } = setup(row({ type: 'BILLING' }));
+    await expect(service.handToSupport(doctor, 't-1', 'Please help with the invoice')).rejects.toThrow(/medical ticket/);
+  });
+
+  it('asks for a note that says what the patient needs', async () => {
+    const { service } = setup(row({ type: 'CLINICAL' }));
+    await expect(service.handToSupport(doctor, 't-1', 'ok')).rejects.toThrow(/few words/);
   });
 });

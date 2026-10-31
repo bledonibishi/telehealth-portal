@@ -52,8 +52,9 @@ function MissingArticles({ days }: { days: number }) {
           )}
           {g.groups.length > 0 && (
             <ul className="divide-y divide-gray-100">
-              {g.groups.map((x: Gap) => (
-                <li key={x.topic} className="px-5 py-3">
+              {g.groups.map((x: Gap, i: number) => (
+                // The topic is the AI's wording and can repeat; each ticket is in one group only, so its first ticket is unique.
+                <li key={x.tickets[0]?.id ?? `gap-${i}`} className="px-5 py-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <p className="text-sm font-medium text-gray-900">{x.topic}</p>
                     <span className="text-xs font-medium text-amber-700 whitespace-nowrap">{t('{n} questions', { n: x.count })}</span>

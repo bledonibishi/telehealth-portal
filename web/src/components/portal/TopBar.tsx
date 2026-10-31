@@ -15,6 +15,8 @@ import { MARK_ALL_NOTIFICATIONS_READ, MARK_NOTIFICATIONS_READ, MY_NOTIFICATIONS,
 import { InlineError } from '@/components/common/Alert';
 import { Avatar, Icon, type IconName } from './Icon';
 import { LoadingState } from '@telehealth/loading';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { LanguageSwitch } from './LanguageSwitch';
 
 type Note = { key: string; title: string; detail: string; href: string; icon: IconName };
 
@@ -243,6 +245,7 @@ function Bell() {
 }
 
 function UserMenu({ onSignOut }: { onSignOut: () => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   const { data } = useQuery(MY_PROFILE, { fetchPolicy: 'cache-first' });
@@ -253,7 +256,7 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
         <Avatar first={p?.firstName} last={p?.lastName} />
         <span className="hidden sm:block text-left">
           <span className="block text-sm font-semibold text-ink-900 leading-tight">{p ? `${p.firstName} ${p.lastName}` : ' '}</span>
-          {p && <span className="block text-xs text-slate-500">Patient ID: {p.patientNumber}</span>}
+          {p && <span className="block text-xs text-slate-500">{t('Patient ID: {id}', { id: p.patientNumber })}</span>}
         </span>
         <Icon name="chevron" className={`w-4 h-4 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -261,12 +264,13 @@ function UserMenu({ onSignOut }: { onSignOut: () => void }) {
         <div className="absolute right-0 top-full -mt-px w-full min-w-[13rem] bg-white rounded-b-xl border border-slate-200 shadow-xl z-40 p-1.5 pt-0">
           {[{ href: '/profile', label: 'Profile', icon: 'user' as const }, { href: '/settings', label: 'Settings', icon: 'settings' as const }].map((i) => (
             <Link key={i.href} href={i.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-              <Icon name={i.icon} className="w-4 h-4" /> {i.label}
+              <Icon name={i.icon} className="w-4 h-4" /> {t(i.label)}
             </Link>
           ))}
           <button type="button" onClick={onSignOut} className="w-full flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-            <Icon name="logout" className="w-4 h-4" /> Sign out
+            <Icon name="logout" className="w-4 h-4" /> {t('Sign out')}
           </button>
+          <div className="mt-1 border-t border-slate-100 px-1.5 pt-2 pb-1"><LanguageSwitch className="w-full" /></div>
         </div>
       )}
     </div>

@@ -16,7 +16,7 @@ function setup(opts: { enabled?: boolean; row?: any; messages?: any[]; ai?: any;
       findMany: jest.fn().mockResolvedValue([row]),
     },
     message: { findMany: jest.fn().mockResolvedValue([...(opts.messages ?? [msg('m1', 'PATIENT', 'I forgot my password')])].reverse()), count: jest.fn().mockResolvedValue(0) },
-    ticket: { findUnique: jest.fn().mockResolvedValue({ status: 'OPEN' }) },
+    ticket: { findUnique: jest.fn().mockResolvedValue({ status: 'OPEN' }), findMany: jest.fn().mockResolvedValue([]) },
     uploadedFile: { count: jest.fn().mockResolvedValue(0) },
     order: { findMany: jest.fn().mockResolvedValue([]) },
   };
@@ -68,6 +68,27 @@ describe('waiting for the patient to finish typing', () => {
     prisma.ticket.findUnique.mockResolvedValue({ status: 'RESOLVED' });
     await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
     expect(prisma.supportThread.update.mock.calls[0][0].data).toMatchObject({ status: 'ACTIVE', attempts: 0, ticketId: null });
+  });
+
+  it('puts a ticket that was waiting on the patient back in the team’s list when the patient answers', async () => {
+    const { bot, prisma, tickets } = setup();
+    prisma.supportThread.findUnique.mockResolvedValue(thread({ status: 'ESCALATED', ticketId: 'tk-1' }));
+    prisma.ticket.findUnique.mockResolvedValue({ status: 'OPEN' });
+    prisma.ticket.findMany = jest.fn().mockResolvedValue([{ id: 'tk-1' }, { id: 'tk-2' }]);
+    // tk-2 is one the assistant is still answering itself: it stays with the assistant.
+    prisma.supportThread.findMany = jest.fn().mockResolvedValue([{ ticketId: 'tk-2' }]);
+    await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
+    expect(tickets.assistantUpdate).toHaveBeenCalledWith('tk-1', expect.objectContaining({ status: 'OPEN' }));
+    expect(tickets.assistantUpdate).not.toHaveBeenCalledWith('tk-2', expect.anything());
+  });
+
+  it('still starts the assistant’s timer when reopening a waiting ticket fails', async () => {
+    const { bot, prisma, tickets } = setup();
+    prisma.ticket.findMany = jest.fn().mockResolvedValue([{ id: 'tk-1' }]);
+    prisma.supportThread.findMany = jest.fn().mockResolvedValue([]);
+    tickets.assistantUpdate.mockRejectedValueOnce(new Error('db down'));
+    await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
+    expect(prisma.supportThread.create).toHaveBeenCalled();
   });
 
   it('steps back when a person from the team writes', async () => {
@@ -189,6 +210,8 @@ describe('what it never answers', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatch(/doctors/i);
     expect(sent[0]).toMatch(/emergency/i);
+    // Its own "passed to the doctors" reply is not an answer: the doctors' reply deadline must start.
+    expect(tickets.assistantUpdate).toHaveBeenCalledWith('tk-1', expect.objectContaining({ status: 'OPEN', needsPerson: true }));
   });
 
   it('does not even ask the AI when a message was marked urgent', async () => {

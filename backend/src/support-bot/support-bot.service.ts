@@ -126,8 +126,28 @@ export class SupportBotService {
     return `${patientId}:${consultationId ?? 'pre'}`;
   }
 
+  /**
+   * The team was waiting for this patient's answer: those tickets go back to the people who need to reply. Done whether or not
+   * the assistant is switched on, so a reply is never left under "waiting for the patient". Tickets the assistant is still
+   * handling itself are left to it. Each ticket on its own, so one that fails does not stop the others. Never throws.
+   */
+  private async reopenWaitingTickets(patientId: string) {
+    try {
+      const waiting = await this.prisma.ticket.findMany({ where: { patientId, status: TicketStatus.WAITING_ON_PATIENT }, select: { id: true } });
+      if (!waiting.length) return;
+      const ids = waiting.map((w) => w.id);
+      const byAssistant = new Set((await this.prisma.supportThread.findMany({ where: { ticketId: { in: ids }, status: { not: 'ESCALATED' } }, select: { ticketId: true } })).map((x) => x.ticketId));
+      const results = await Promise.allSettled(ids.filter((id) => !byAssistant.has(id)).map((id) => this.tickets.assistantUpdate(id, { status: TicketStatus.OPEN, note: 'The patient replied.' })));
+      for (const r of results) if (r.status === 'rejected') this.logger.error(`Could not reopen a ticket after the patient replied: ${(r.reason as Error)?.message}`);
+    } catch (err) {
+      this.logger.error(`Could not look for tickets waiting on patient ${patientId}: ${(err as Error)?.message}`);
+    }
+  }
+
   /** A patient wrote: (re)start the quiet timer. Cheap and never throws; nothing is sent from here. */
   async onPatientMessage(m: { patientId: string; consultationId: string | null }) {
+    // Separate from the assistant's own work below: a failure here must not stop the assistant from answering.
+    await this.reopenWaitingTickets(m.patientId);
     try {
       if (!this.enabled) return;
       const threadKey = this.key(m.patientId, m.consultationId);
@@ -380,8 +400,8 @@ export class SupportBotService {
     const recent = await this.prisma.message.findMany({ where: { patientId: thread.patientId, consultationId: thread.consultationId, senderRole: UserRole.PATIENT }, orderBy: { sentAt: 'desc' }, take: 3 });
     const note = `Handed to a person: ${o.reason}\nWhat the patient wrote last:\n${this.excerpt([...recent].reverse())}`;
     let ticketId = thread.ticketId;
-    if (ticketId) await this.tickets.assistantUpdate(ticketId, { status: TicketStatus.OPEN, type, priority, note });
-    else ticketId = await this.tickets.openForAssistant(thread.patientId, { type, subject: o.subject?.trim() || 'Message that needs a person', priority, note }).then(async (id) => { await this.tickets.assistantUpdate(id, { status: TicketStatus.OPEN }); return id; });
+    if (ticketId) await this.tickets.assistantUpdate(ticketId, { status: TicketStatus.OPEN, type, priority, note, needsPerson: true });
+    else ticketId = await this.tickets.openForAssistant(thread.patientId, { type, subject: o.subject?.trim() || 'Message that needs a person', priority, note }).then(async (id) => { await this.tickets.assistantUpdate(id, { status: TicketStatus.OPEN, needsPerson: true }); return id; });
     await this.prisma.supportThread.update({ where: { id: thread.id }, data: { status: 'ESCALATED', ticketId, replyDueAt: null, awaitingSince: null, escalationReason: o.reason.slice(0, 300), escalatedAt: new Date() } });
     await this.tickets.notifyStaffAbout(ticketId);
     if (!o.quiet) {

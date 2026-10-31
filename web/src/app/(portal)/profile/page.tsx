@@ -12,6 +12,7 @@ import { GENDER_LABEL } from '@/components/home/ProfileSummaryCard';
 import { Dialog } from '@/components/common/Dialog';
 import { Card, CardHeader, btnPrimary, btnSoft } from '@/components/portal/Card';
 import { PageHeader } from '@/components/portal/PageHeader';
+import { SettingsBackLink } from '@/components/portal/SettingsMenu';
 import { Avatar, Icon } from '@/components/portal/Icon';
 import { InlineError } from '@/components/common/Alert';
 
@@ -142,7 +143,7 @@ export default function ProfilePage() {
   const p = data?.myProfile;
   const j = jData?.myWeightJourney;
 
-  if (!p) return <div className="px-4 sm:px-6 lg:px-8"><PageHeader title="Profile" /><Card><p className="text-sm text-slate-500">{loading ? 'Loading…' : 'Couldn’t load your profile.'}</p></Card></div>;
+  if (!p) return <div className="px-4 sm:px-6 lg:px-8"><SettingsBackLink /><PageHeader title="Profile" /><Card><p className="text-sm text-slate-500">{loading ? 'Loading…' : 'Couldn’t load your profile.'}</p></Card></div>;
 
   const dob = new Date(p.dateOfBirth);
   const bmi = p.heightCm && j?.currentWeightKg ? Math.round((j.currentWeightKg / (p.heightCm / 100) ** 2) * 10) / 10 : null;
@@ -150,6 +151,7 @@ export default function ProfilePage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
+      <SettingsBackLink />
       <PageHeader title="Profile" subtitle="Your personal, body and delivery details." />
 
       <Card className="mb-5">

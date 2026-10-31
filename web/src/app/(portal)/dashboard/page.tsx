@@ -18,6 +18,7 @@ import { AppointmentCard, ChatCard, ContactCard, EmergencyCard } from '@/compone
 import { RecentUpdates } from '@/components/home/RecentUpdates';
 import { RecentOrders } from '@/components/home/RecentOrders';
 import { QuickLinks } from '@/components/home/QuickLinks';
+import { ReferralCard } from '@/components/home/ReferralCard';
 import { TodayCard } from '@/components/home/TodayCard';
 import { AttentionNotices, Notice } from '@/components/home/AttentionNotices';
 import { Card, btnPrimary } from '@/components/portal/Card';
@@ -90,6 +91,7 @@ export default function DashboardPage() {
     appointment: { node: <AppointmentCard /> },
     emergency: { node: <EmergencyCard /> },
     contact: { node: <ContactCard /> },
+    referral: { node: <ReferralCard /> },
   };
 
   // How wide a card is in the wide column (in the narrow one every card is the full width of it). A card that can be
@@ -255,8 +257,8 @@ export default function DashboardPage() {
       <footer className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
         <p className="flex items-center gap-2"><Icon name="help" className="w-4 h-4" /> Your health is our priority. We’re here to support you every step of the way.</p>
         <nav className="flex gap-5" aria-label="Legal">
-          <Link href="/settings#privacy" className="hover:text-ink-800">Privacy</Link>
-          <Link href="/settings#help" className="hover:text-ink-800">Help</Link>
+          <Link href="/settings/privacy" className="hover:text-ink-800">Privacy</Link>
+          <Link href="/settings/help" className="hover:text-ink-800">Help</Link>
         </nav>
       </footer>
 

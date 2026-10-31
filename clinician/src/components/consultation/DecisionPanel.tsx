@@ -65,8 +65,14 @@ const DECLINE_TEMPLATES = [
 
 const cls = 'w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
+// One size and shape for every decision button; colour says how much each one matters (Approve is the only solid one).
+const BTN = 'inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors disabled:opacity-50';
+const Glyph = ({ d }: { d: string }) => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>
+);
+
 export function DecisionPanel({
-  consultationId, kind, status, declineReason, refundStatus, clinician, currentUserId, patientId, blockedReason,
+  consultationId, kind, status, declineReason, refundStatus, clinician, currentUserId, patientId, blockedReason, criticalFlags = [],
 }: {
   consultationId: string;
   kind: 'HRT' | 'GLP1' | 'TRT';
@@ -78,6 +84,8 @@ export function DecisionPanel({
   patientId: string;
   /** Why this can't be decided yet (onboarding unfinished, identity not approved); the server enforces it too. */
   blockedReason?: string | null;
+  /** Critical red flags on this consultation: said next to the decision, where it is made. */
+  criticalFlags?: string[];
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -182,7 +190,7 @@ export function DecisionPanel({
   const close = () => { setAction(null); setError(null); };
 
   return (
-    <div data-guide="consultation:decision" className="px-4 sm:px-6 py-2.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+    <div data-guide="consultation:decision" className="px-4 sm:px-6 py-3 bg-white border-t border-gray-200 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
       <div className="text-xs min-w-0">
         {claimedByMe && <p className="text-gray-500">{t('You’re reviewing this consultation.')}</p>}
         {claimedByOther && (
@@ -195,6 +203,14 @@ export function DecisionPanel({
         )}
         {status === 'SUBMITTED' && <p className="text-gray-500">{t('Not yet claimed — claim it so colleagues know you’re on it.')}</p>}
         {blockedReason && <p className="text-warn-900">{t(blockedReason)}</p>}
+        {!blocked && criticalFlags.length > 0 && (
+          // The questionnaire marks a critical flag as not treatable online; the prescribing checks don't look at flags, so the
+          // doctor is told here, beside the Approve button.
+          <p className="mt-0.5 flex items-start gap-1.5 font-medium text-danger-500">
+            <span aria-hidden>⚠</span>
+            <span>{t('Critical flag: {flags}. This is usually not treatable online.', { flags: criticalFlags.join('; ') })}</span>
+          </p>
+        )}
         {!action && <InlineError error={error} />}
       </div>
 
@@ -203,11 +219,13 @@ export function DecisionPanel({
           <button
             onClick={() => claim({ variables: { id: consultationId } })}
             disabled={claiming}
-            className="text-sm font-medium border border-brand-500 text-brand-500 bg-white rounded-lg px-3 py-1.5 hover:bg-brand-50 disabled:opacity-50"
+            className={`${BTN} border border-gray-300 bg-white text-gray-800 hover:bg-gray-50`}
           >
+            <Glyph d="M12 4.5v15m7.5-7.5h-15" />
             {claiming ? t('Claiming…') : t('Claim for review')}
           </button>
         )}
+        {status === 'SUBMITTED' && !blocked && <span className="mx-1 hidden h-6 w-px bg-gray-200 sm:block" aria-hidden />}
         {(claimedByMe || (claimedByOther && isAdmin)) && (
           <button
             onClick={() => release({ variables: { id: consultationId } })}
@@ -220,24 +238,28 @@ export function DecisionPanel({
         {!blocked && (
           <>
             {canRedo && status !== 'MORE_INFO_REQUESTED' && (
-              <button onClick={() => { setRedoStep(redoable[0]?.key ?? ''); setAction('redo'); }} className="text-sm font-medium border border-gray-300 text-gray-700 bg-white rounded-lg px-3.5 py-1.5 hover:bg-gray-50">
+              <button onClick={() => { setRedoStep(redoable[0]?.key ?? ''); setAction('redo'); }} className={`${BTN} border border-gray-300 bg-white text-gray-800 hover:bg-gray-50`}>
+                <Glyph d="M16 4h4v4M20 4l-6 6M8 20H4v-4m0 4 6-6" />
                 {t('Ask to redo a step')}
               </button>
             )}
             {status !== 'MORE_INFO_REQUESTED' && (
-              <button onClick={() => setAction('more_info')} className="text-sm font-medium border border-warn-500 text-warn-900 bg-white rounded-lg px-3.5 py-1.5 hover:bg-warn-50">
+              <button onClick={() => setAction('more_info')} className={`${BTN} border border-gray-300 bg-white text-gray-800 hover:bg-gray-50`}>
+                <Glyph d="M4 5h16v11H9l-5 4V5Zm5 5h6" />
                 {t('Request info')}
               </button>
             )}
-            <button onClick={() => setAction('decline')} className="text-sm font-medium border border-danger-500 text-danger-500 bg-white rounded-lg px-3.5 py-1.5 hover:bg-danger-50">
+            <button onClick={() => setAction('decline')} className={`${BTN} border border-transparent bg-danger-50 text-danger-500 hover:border-danger-500/40`}>
+              <Glyph d="M6 6l12 12M18 6 6 18" />
               {t('Decline')}
             </button>
             <button
               onClick={() => setAction('approve')}
               disabled={!!blockedReason}
               title={blockedReason ? t(blockedReason) : undefined}
-              className="text-sm font-medium bg-green-600 text-white rounded-lg px-4 py-1.5 hover:bg-green-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-green-600"
+              className={`${BTN} bg-green-600 px-5 text-white shadow-sm hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-green-600`}
             >
+              <Glyph d="m5 12.5 4.5 4.5L19 7.5" />
               {t('Approve')}
             </button>
           </>

@@ -122,6 +122,9 @@ export const apolloClient = new ApolloClient({
       // is in both MRS and AMS), so they are stored inside their scale, not by id.
       SymptomScaleItem: { keyFields: false },
       SymptomScaleDomain: { keyFields: false },
+      // A patient's referral has no id; its code is unique, so changing a setting (voucher auto-apply) updates the
+      // page that shows it instead of only the server.
+      MyReferral: { keyFields: ['code'] },
     },
   }),
 });

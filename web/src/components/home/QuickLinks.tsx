@@ -6,7 +6,7 @@ const LINKS: Array<{ href: string; icon: IconName; title: string; text: string }
   { href: '/treatment-plan', icon: 'plan', title: 'Treatment Plan', text: 'View your full plan and dosage details' },
   { href: '/weight-journey', icon: 'scale', title: 'Weight Journey', text: 'Track your weight and see your progress' },
   { href: '/orders', icon: 'cart', title: 'Orders & Prescriptions', text: 'View order history and delivery status' },
-  { href: '/settings#help', icon: 'help', title: 'Support & FAQ', text: 'Answers to common questions' },
+  { href: '/settings/help', icon: 'help', title: 'Support & FAQ', text: 'Answers to common questions' },
 ];
 
 /** `columns`: the links in one list, or two side by side when the card is wide. `hasJourney`: the Weight Journey link is only for weight-management patients. */

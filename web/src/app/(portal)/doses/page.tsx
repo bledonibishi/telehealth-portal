@@ -14,6 +14,9 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin, { type DateClickArg } from '@fullcalendar/interaction';
 import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
 import { differenceInCalendarDays, differenceInHours, format, isPast, isToday } from 'date-fns';
+
+type T = ReturnType<typeof useI18n>['t'];
+type Fmt = ReturnType<typeof useI18n>['fmt'];
 import { MARK_DOSE_SKIPPED, MARK_DOSE_TAKEN, MY_DOSE_CALENDAR, MY_MISSED_DOSE_STATUS, UNMARK_DOSE } from '@/graphql/dosing';
 import { MY_CONSULTATIONS } from '@/graphql/consultations';
 import { InjectionSitePicker } from '@/components/doses/InjectionSitePicker';
@@ -26,6 +29,8 @@ import { lastSiteOf, SITE_LABEL, suggestNextSite, type InjectionSite } from '@/l
 import '@/styles/dose-calendar.css';
 import { InlineError } from '@/components/common/Alert';
 import { LoadingState } from '@telehealth/loading';
+import sqLocale from '@fullcalendar/core/locales/sq';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type DoseEvent = {
   id: string;
@@ -54,7 +59,8 @@ const COLORS: Record<string, { bg: string; solid: string; text: string }> = {
 const LEGEND: (keyof typeof COLORS)[] = ['SCHEDULED', 'DUE', 'TAKEN', 'MISSED', 'SKIPPED'];
 
 const doseName = (d: DoseEvent) => `${d.product.brandName ?? d.product.name} ${d.strength.label}`;
-const statusLabel = (s: string) => (s === 'DUE' ? 'Due' : s.charAt(0) + s.slice(1).toLowerCase());
+const STATUS_LABEL: Record<string, string> = { SCHEDULED: 'Scheduled', DUE: 'Due', TAKEN: 'Taken', MISSED: 'Missed', SKIPPED: 'Skipped' };
+const statusLabel = (s: string, t: T) => t(STATUS_LABEL[s] ?? s);
 // "0.75 mg per pump" -> "0.75 mg", "50 micrograms/24 h" -> "50 mcg" — the grid cell has no room for more.
 const shortStrength = (label: string) => (label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?.[0] ?? label).replace(/micrograms?$/, 'mcg');
 
@@ -62,17 +68,17 @@ const shortStrength = (label: string) => (label.match(/^[\d.]+\s*[a-zA-Zµ%]+/)?
 // product's licence (semaglutide: within 5 days; otherwise skip to the next one).
 // Products not listed get "ask your clinician" rather than a guess.
 const LATE_DOSE_WINDOW_DAYS: Record<string, number> = { Semaglutide: 5 };
-function missedDoseAdvice(d: DoseEvent, needsClinician: boolean): string | null {
+function missedDoseAdvice(d: DoseEvent, needsClinician: boolean, t: T): string | null {
   if (d.product.category !== 'GLP1') return null;
   const daysLate = differenceInCalendarDays(new Date(), new Date(d.scheduledFor));
   if (daysLate < 1) return null;
   // After several missed in a row, restarting at this dose is the clinician's call.
-  if (needsClinician) return 'You’ve missed several doses in a row — please message your clinician before taking this or your next dose.';
+  if (needsClinician) return t('You’ve missed several doses in a row — please message your clinician before taking this or your next dose.');
   const window = LATE_DOSE_WINDOW_DAYS[d.product.name];
-  if (window === undefined) return 'Missed this dose? Message your clinician for advice before taking it late.';
+  if (window === undefined) return t('Missed this dose? Message your clinician for advice before taking it late.');
   return daysLate <= window
-    ? `Missed it? You can still take it today — it’s within ${window} days of the scheduled day. Then carry on with your usual day.`
-    : `It’s more than ${window} days since this dose was due, so skip it and take your next one on your usual day. Never take two doses to catch up.`;
+    ? t('Missed it? You can still take it today — it’s within {days} days of the scheduled day. Then carry on with your usual day.', { days: window })
+    : t('It’s more than {days} days since this dose was due, so skip it and take your next one on your usual day. Never take two doses to catch up.', { days: window });
 }
 
 // Where the injection-site picker and the how-to guide apply: pens for the weight-loss medicines.
@@ -81,17 +87,17 @@ const isRotatingPen = (d: DoseEvent) => d.product.category === 'GLP1' && d.produ
 const isInjected = (d: DoseEvent) => d.product.form === 'INJECTION_PEN' || d.product.form === 'INJECTION_VIAL';
 
 /** "today" / "tomorrow" / "in 7 days" / "2 days ago", counted in calendar days. */
-function countdown(date: Date): string {
+function countdown(date: Date, t: T): string {
   const n = differenceInCalendarDays(date, new Date());
-  if (n === 0) return 'today';
-  if (n === 1) return 'tomorrow';
-  if (n === -1) return 'yesterday';
-  return n > 0 ? `in ${n} days` : `${-n} days ago`;
+  if (n === 0) return t('today');
+  if (n === 1) return t('tomorrow');
+  if (n === -1) return t('yesterday');
+  return n > 0 ? t('in {n} days', { n }) : t('{n} days ago', { n: -n });
 }
 
 /** "today at 09:00" / "Tue 6 Oct at 09:00" — the actual time, not "about 1 hour ago". */
-function takenAtText(date: Date): string {
-  return `${isToday(date) ? 'today' : format(date, 'EEE d MMM')} at ${format(date, 'HH:mm')}`;
+function takenAtText(date: Date, t: T, fmt: Fmt): string {
+  return t('{day} at {time}', { day: isToday(date) ? t('today') : fmt(date, 'EEE d MMM'), time: format(date, 'HH:mm') });
 }
 
 /** A dose two or more days past due and still not logged, when no later one has been dealt with. */
@@ -125,6 +131,7 @@ function DoseChip(arg: EventContentArg) {
 }
 
 function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEvent; needsClinician: boolean; lastSite: InjectionSite | null; onClose: () => void }) {
+  const { t, fmt } = useI18n();
   const [note, setNote] = useState('');
   const suggestedSite = suggestNextSite(lastSite);
   const [site, setSite] = useState<InjectionSite | null>(null);
@@ -140,7 +147,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
   const c = COLORS[status];
   const isPatch = dose.product.form === 'PATCH';
   const unit = doseWords(dose.product.form).one;
-  const advice = missedDoseAdvice(dose, needsClinician);
+  const advice = missedDoseAdvice(dose, needsClinician, t);
   const pen = isRotatingPen(dose);
   // Offered while logging, and afterwards if it was left out.
   // The backend takes a dose from DOSE_EARLY_LOG_HOURS before its time, so nothing earlier is offered here either.
@@ -152,35 +159,35 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-semibold text-slate-900">{doseName(dose)}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{format(new Date(dose.scheduledFor), 'EEEE, d MMMM yyyy')}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{fmt(dose.scheduledFor, 'EEEE, d MMMM yyyy')}</p>
         </div>
-        <button onClick={onClose} className="text-slate-300 hover:text-slate-500 text-sm">✕</button>
+        <button onClick={onClose} aria-label={t('Close')} className="text-slate-300 hover:text-slate-500 text-sm">✕</button>
       </div>
 
       <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: c.bg, color: c.text }}>
         <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.solid }} />
-        {status === 'DUE' ? 'Due — not yet logged' : statusLabel(status)}
+        {status === 'DUE' ? t('Due — not yet logged') : statusLabel(status, t)}
       </span>
 
-      {dose.takenAt && <p className="text-sm font-medium text-emerald-700 mt-3">✅ Taken {takenAtText(new Date(dose.takenAt))}</p>}
-      {dose.injectionSite && <p className="text-xs text-slate-500 mt-1">Injected: {SITE_LABEL[dose.injectionSite].toLowerCase()}</p>}
-      {dose.note && <p className="text-xs text-slate-500 mt-2">Note: {dose.note}</p>}
-      {dose.product.requiresColdChain && <p className="text-xs text-slate-500 mt-2">Keep refrigerated (2–8°C).</p>}
-      {isPatch && <p className="text-xs text-slate-500 mt-2">Put the new patch on a different spot from the last one, below the waist.</p>}
+      {dose.takenAt && <p className="text-sm font-medium text-emerald-700 mt-3">✅ {t('Taken {when}', { when: takenAtText(new Date(dose.takenAt), t, fmt) })}</p>}
+      {dose.injectionSite && <p className="text-xs text-slate-500 mt-1">{t('Injected: {site}', { site: t(SITE_LABEL[dose.injectionSite]).toLowerCase() })}</p>}
+      {dose.note && <p className="text-xs text-slate-500 mt-2">{t('Note: {note}', { note: dose.note })}</p>}
+      {dose.product.requiresColdChain && <p className="text-xs text-slate-500 mt-2">{t('Keep refrigerated (2–8°C).')}</p>}
+      {isPatch && <p className="text-xs text-slate-500 mt-2">{t('Put the new patch on a different spot from the last one, below the waist.')}</p>}
       {(dose.status === 'MISSED' || status === 'DUE') && advice && <p className="text-xs text-slate-600 bg-amber-50 rounded-lg px-3 py-2 mt-3">{advice}</p>}
       {pen && (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-          <button type="button" onClick={() => setVideo(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">▶ Watch how to inject</button>
-          <button type="button" onClick={() => setGuide(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">Step-by-step guide →</button>
+          <button type="button" onClick={() => setVideo(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">▶ {t('Watch how to inject')}</button>
+          <button type="button" onClick={() => setGuide(true)} className="text-xs font-semibold text-brand-600 hover:text-brand-700">{t('Step-by-step guide →')}</button>
         </div>
       )}
       {askSite && (
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <p className="text-xs font-semibold text-slate-700 mb-2">Where are you injecting?</p>
+          <p className="text-xs font-semibold text-slate-700 mb-2">{t('Where are you injecting?')}</p>
           <InjectionSitePicker value={site} suggested={suggestedSite} last={lastSite} onChange={setSite} />
           {dose.status === 'TAKEN' && (
             <button type="button" disabled={!site || taking} onClick={() => markTaken({ variables: { id: dose.id, injectionSite: site } })}
-              className="mt-3 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50">Save where I injected</button>
+              className="mt-3 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50">{t('Save where I injected')}</button>
           )}
         </div>
       )}
@@ -190,7 +197,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
 
       {notYet && (
         <p className="text-sm text-slate-600 bg-slate-50 rounded-md px-3 py-2.5 mt-4" role="status">
-          This {unit} is due {countdown(new Date(dose.scheduledFor))}, on {format(new Date(dose.scheduledFor), 'EEEE d MMMM')}. You can log it that day.
+          {t('This {unit} is due {when}, on {date}. You can log it that day.', { unit, when: countdown(new Date(dose.scheduledFor), t), date: fmt(dose.scheduledFor, 'EEEE d MMMM') })}
         </p>
       )}
 
@@ -201,13 +208,13 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
             disabled={taking}
             className="w-full bg-ink-700 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-md"
           >
-            {taking ? 'Saving…' : isPatch ? 'Mark patch changed' : 'Mark as taken'}
+            {taking ? t('Saving…') : isPatch ? t('Mark patch changed') : t('Mark as taken')}
           </button>}
           <div className="flex gap-2">
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Reason (optional)"
+              placeholder={t('Reason (optional)')}
               className="flex-1 border border-slate-200 rounded-md px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ink-500"
             />
             <button
@@ -215,7 +222,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
               disabled={skipping}
               className="flex-shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700 border border-slate-200 rounded-md px-3 whitespace-nowrap disabled:opacity-50"
             >
-              {skipping ? '…' : 'Skip'}
+              {skipping ? '…' : t('Skip')}
             </button>
           </div>
         </div>
@@ -223,7 +230,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
 
       {(dose.status === 'TAKEN' || dose.status === 'SKIPPED') && (
         <button onClick={() => unmark({ variables: { id: dose.id } })} disabled={undoing} className="mt-4 text-xs text-slate-500 hover:text-slate-600 disabled:opacity-50">
-          {undoing ? 'Undoing…' : 'Undo'}
+          {undoing ? t('Undoing…') : t('Undo')}
         </button>
       )}
     </div>
@@ -231,6 +238,7 @@ function DetailPanel({ dose, needsClinician, lastSite, onClose }: { dose: DoseEv
 }
 
 export default function DosesPage() {
+  const { t, fmt, locale } = useI18n();
   const { data, loading, error } = useQuery(MY_DOSE_CALENDAR, { variables: { fromDays: 60, toDays: 90 } });
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -312,16 +320,16 @@ export default function DosesPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pb-8 max-w-5xl">
-      <PageHeader title={injections ? 'Injections' : 'My doses'} subtitle={injections ? 'When each injection is due, and what you’ve taken.' : 'When each dose is due, and what you’ve taken.'} />
+      <PageHeader title={injections ? t('Injections') : t('My doses')} subtitle={injections ? t('When each injection is due, and what you’ve taken.') : t('When each dose is due, and what you’ve taken.')} />
 
-      {loading && <LoadingState variant="inline" label="Loading…" />}
+      {loading && <LoadingState variant="inline" label={t('Loading…')} />}
       <InlineError error={error} />
 
       {!loading && doses.length === 0 && (
         <EmptyState
           icon="syringe"
-          what={injections ? 'Your injection schedule' : 'Your dose schedule'}
-          whenTreating={{ text: 'Your medicine has no fixed dose days, so there is nothing to tick off here. Take it as your prescription says.', action: { href: '/treatment-plan', label: 'See how to take it' } }}
+          what={injections ? t('Your injection schedule') : t('Your dose schedule')}
+          whenTreating={{ text: t('Your medicine has no fixed dose days, so there is nothing to tick off here. Take it as your prescription says.'), action: { href: '/treatment-plan', label: t('See how to take it') } }}
         />
       )}
 
@@ -329,22 +337,21 @@ export default function DosesPage() {
         <>
           {needsClinician && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
-              <p className="text-sm font-semibold text-amber-900">You’ve missed {missed.missedInARow} doses in a row</p>
+              <p className="text-sm font-semibold text-amber-900">{t('You’ve missed {n} doses in a row', { n: missed.missedInARow })}</p>
               <p className="text-sm text-amber-900/80 mt-1">
-                Please message your clinician before your next {unit}. After a break, going straight back to your current dose can cause
-                strong side effects, so they may restart you on a lower one.
+                {t('Please message your clinician before your next {unit}. After a break, going straight back to your current dose can cause strong side effects, so they may restart you on a lower one.', { unit })}
               </p>
-              <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-ink-800 hover:text-ink-900">Message my clinician →</Link>
+              <Link href={messageClinicianHref} className="inline-block mt-3 text-sm font-semibold text-ink-800 hover:text-ink-900">{t('Message my clinician →')}</Link>
             </div>
           )}
           {!needsClinician && overdue && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6" role="alert">
               {/* Named by this dose's own form: after a prescription change it can differ from the current one. */}
-              <p className="text-sm font-semibold text-amber-900">Your {doseWords(overdue.product.form).one} from {format(new Date(overdue.scheduledFor), 'EEEE d MMMM')} hasn’t been logged</p>
-              <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false) ?? 'If you haven’t taken it, message your care team before taking it late.'}</p>
+              <p className="text-sm font-semibold text-amber-900">{t('Your {unit} from {date} hasn’t been logged', { unit: doseWords(overdue.product.form).one, date: fmt(overdue.scheduledFor, 'EEEE d MMMM') })}</p>
+              <p className="text-sm text-amber-900/80 mt-1">{missedDoseAdvice(overdue, false, t) ?? t('If you haven’t taken it, message your care team before taking it late.')}</p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
-                <button type="button" onClick={() => select(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">I’ve taken it — log it</button>
-                <Link href={messageClinicianHref} className="text-sm font-semibold text-ink-800 hover:text-ink-900">Message my care team →</Link>
+                <button type="button" onClick={() => select(overdue.id)} className="text-sm font-semibold text-ink-800 hover:text-ink-900">{t('I’ve taken it — log it')}</button>
+                <Link href={messageClinicianHref} className="text-sm font-semibold text-ink-800 hover:text-ink-900">{t('Message my care team →')}</Link>
               </div>
             </div>
           )}
@@ -353,18 +360,18 @@ export default function DosesPage() {
           {next && (
             <div className="bg-white rounded-lg border border-slate-100 p-5 mb-6 flex items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">Next {injections ? 'injection' : 'dose'}</p>
+                <p className="text-xs font-semibold text-ink-800 uppercase tracking-wide">{injections ? t('Next injection') : t('Next dose')}</p>
                 <p className="text-lg font-semibold text-slate-900 mt-1">{doseName(next)}</p>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  {format(new Date(next.scheduledFor), 'EEEE, d MMMM')} · <b className="text-slate-700">{countdown(new Date(next.scheduledFor))}</b>
-                  {isRotatingPen(next) && <> · try the <b className="text-slate-700">{SITE_LABEL[suggestNextSite(lastSite)].toLowerCase()}</b></>}
+                  {fmt(next.scheduledFor, 'EEEE, d MMMM')} · <b className="text-slate-700">{countdown(new Date(next.scheduledFor), t)}</b>
+                  {isRotatingPen(next) && <> · {t('try the {site}', { site: t(SITE_LABEL[suggestNextSite(lastSite)]).toLowerCase() })}</>}
                 </p>
               </div>
               <button
                 onClick={() => select(next.id)}
                 className="flex-shrink-0 bg-ink-700 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-md"
               >
-                Open
+                {t('Open')}
               </button>
             </div>
           )}
@@ -373,7 +380,7 @@ export default function DosesPage() {
             {LEGEND.map((s) => (
               <span key={s} className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full" style={{ background: COLORS[s].solid }} />
-                {statusLabel(s)}
+                {statusLabel(s, t)}
               </span>
             ))}
           </div>
@@ -385,7 +392,8 @@ export default function DosesPage() {
                 plugins={[dayGridPlugin, listPlugin, interactionPlugin]}
                 initialView="dayGridMonth"
                 headerToolbar={{ left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' }}
-                buttonText={{ today: 'Today', month: 'Month', list: 'List' }}
+                locale={locale === 'sq' ? sqLocale : 'en-gb'}
+                buttonText={{ today: t('Today'), month: t('Month'), list: t('List') }}
                 height="auto"
                 events={events}
                 eventContent={DoseChip}
@@ -401,7 +409,7 @@ export default function DosesPage() {
                 <DetailPanel key={selected.id} dose={selected} needsClinician={needsClinician} lastSite={lastSite} onClose={() => setSelectedId(null)} />
               ) : (
                 <div className="bg-white rounded-lg border border-slate-100 p-5 text-sm text-slate-500">
-                  Click a dose on the calendar to log it or see the details.
+                  {t('Click a dose on the calendar to log it or see the details.')}
                 </div>
               )}
             </div>

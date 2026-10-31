@@ -2,7 +2,7 @@ import { MessagingService } from './messaging.service';
 import { UserRole } from '../common/enums';
 
 describe('MessagingService', () => {
-  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock }; consultation: { findUniqueOrThrow: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock } };
+  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock }; consultation: { findUniqueOrThrow: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock }; $transaction: jest.Mock; $executeRaw: jest.Mock };
   let audit: { log: jest.Mock };
   let posthog: { capture: jest.Mock };
   let service: MessagingService;
@@ -15,6 +15,8 @@ describe('MessagingService', () => {
     content: 'Hello',
     sentAt: new Date(),
   };
+
+  afterEach(() => jest.restoreAllMocks());
 
   beforeEach(() => {
     prisma = {
@@ -29,6 +31,9 @@ describe('MessagingService', () => {
         findUnique: jest.fn().mockResolvedValue({ patientId: 'patient-1' }),
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      // A patient's message is counted and saved in one transaction; here the transaction is the same mock.
+      $transaction: jest.fn((fn: any) => fn(prisma)),
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     posthog = { capture: jest.fn() };
@@ -178,6 +183,13 @@ describe('MessagingService', () => {
     it('tells the patient about the hourly limit when both are reached, since it lasts longer', async () => {
       prisma.message.count.mockResolvedValueOnce(20).mockResolvedValueOnce(200);
       await expect(service.sendAs(patient, { content: 'again' })).rejects.toThrow(/last hour/);
+    });
+
+    it('counts and saves a patient’s message under a lock on that patient, so a burst can’t slip past the limit', async () => {
+      await service.sendAs(patient, { content: 'Hi' });
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRaw.mock.calls[0].slice(1)).toEqual(['messages:patient-1']);
+      expect(prisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.message.create.mock.invocationCallOrder[0]);
     });
 
     it('never holds up staff, however much they send', async () => {
@@ -351,7 +363,7 @@ describe('MessagingService and the support assistant', () => {
 
 describe('MessagingService attachments', () => {
   const build = (own: number) => {
-    const tx: any = { message: { create: jest.fn().mockResolvedValue({ id: 'm-1', patientId: 'patient-1', consultationId: 'c-1', senderRole: 'PATIENT', sentAt: new Date() }) }, uploadedFile: { updateMany: jest.fn().mockResolvedValue({ count: own }) } };
+    const tx: any = { message: { create: jest.fn().mockResolvedValue({ id: 'm-1', patientId: 'patient-1', consultationId: 'c-1', senderRole: 'PATIENT', sentAt: new Date() }), count: jest.fn().mockResolvedValue(0) }, uploadedFile: { updateMany: jest.fn().mockResolvedValue({ count: own }) }, $executeRaw: jest.fn().mockResolvedValue(1) };
     const prisma: any = {
       uploadedFile: { count: jest.fn().mockResolvedValue(own) },
       consultation: { findUnique: jest.fn().mockResolvedValue({ patientId: 'patient-1' }), findFirst: jest.fn().mockResolvedValue({ id: 'c-1' }) },

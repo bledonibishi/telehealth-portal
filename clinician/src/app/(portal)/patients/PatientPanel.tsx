@@ -206,7 +206,19 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
       <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between">
         <div>
           <p className="font-semibold text-gray-900 text-base">{p.firstName} {p.lastName}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{p.email} · {t('{n} yrs', { n: age })}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-gray-500">
+            <span>{p.email}</span>
+            <span className="text-gray-300">·</span>
+            <span>{t('Born {date} ({n})', { date: fmt(p.dateOfBirth, 'd MMM yyyy'), n: age })}</span>
+            <span className="text-gray-300">·</span>
+            <span>{t('joined {when}', { when: timeAgo(p.createdAt) })}</span>
+            {isAdmin && !editing && (
+              <>
+                <span className="text-gray-300">·</span>
+                <button onClick={() => setEditing(true)} className="font-medium text-brand-500 hover:text-brand-900">{t('Edit')}</button>
+              </>
+            )}
+          </p>
           <div className="flex gap-2 mt-2">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${status.cls}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
@@ -219,6 +231,20 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
             )}
             {currentMedications(allPrescriptions).map((m, i) => <MedicationPill key={i} label={m.label} dose={m.dose} solid />)}
           </div>
+          {editing && (
+            <div className="mt-3 max-w-2xl rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="grid grid-cols-2 gap-4">
+                {field('firstName', 'First name', p.firstName)}
+                {field('lastName', 'Last name', p.lastName)}
+                {field('email', 'Email', p.email, 'email')}
+                {field('dateOfBirth', 'Date of birth', fmt(p.dateOfBirth, 'yyyy-MM-dd'), 'date')}
+              </div>
+              <div className="mt-3 flex justify-end gap-3">
+                <button onClick={() => { setEditing(false); setForm({}); }} className="text-sm text-gray-500 hover:text-gray-800">{t('Cancel')}</button>
+                <button onClick={handleSave} disabled={saving} className="rounded-lg bg-brand-500 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">{saving ? t('Saving…') : t('Save')}</button>
+              </div>
+            </div>
+          )}
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
       </div>
@@ -256,72 +282,47 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
               onOpenTab={setTab}
             />
 
-            {/* Basic details card */}
-            <div className="bg-gray-50 rounded-md p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Basic details')}</p>
-                {isAdmin && !editing && (
-                  <button onClick={() => setEditing(true)} className="text-xs text-brand-500 hover:text-brand-900">{t('Edit')}</button>
-                )}
-                {editing && (
-                  <div className="flex gap-2">
-                    <button onClick={() => { setEditing(false); setForm({}); }} className="text-xs text-gray-400 hover:text-gray-600">{t('Cancel')}</button>
-                    <button onClick={handleSave} disabled={saving} className="text-xs bg-brand-500 text-white px-2.5 py-1 rounded-md hover:bg-brand-600 disabled:opacity-50">
-                      {saving ? t('Saving…') : t('Save')}
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {field('firstName', 'First name', p.firstName)}
-                {field('lastName', 'Last name', p.lastName)}
-                {field('email', 'Email', p.email, 'email')}
-                {field('dateOfBirth', 'Date of birth', fmt(p.dateOfBirth, 'yyyy-MM-dd'), 'date')}
-                <div>
-                  <p className="text-xs text-gray-400 mb-0.5">{t('Age')}</p>
-                  <p className="text-sm text-gray-800 font-medium">{t('{n} years', { n: age })}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-0.5">{t('Joined')}</p>
-                  <p className="text-sm text-gray-800 font-medium">{timeAgo(p.createdAt)}</p>
-                </div>
-              </div>
-            </div>
 
-            {/* Consultation history */}
+            {/* Consultation history: one line each; the answers open on demand. The latest one's warnings are listed above. */}
             {p.consultations?.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Consultations')}</p>
-                <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('Consultations')}</p>
+                <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
                   {p.consultations.map((c: any) => (
-                    <div key={c.id} className="border border-gray-100 rounded-md p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex gap-2">
+                    <li key={c.id}>
+                      <details className="group">
+                        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 hover:bg-gray-50">
+                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 flex-shrink-0 text-gray-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden><path d="m9 6 6 6-6 6" /></svg>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${KIND_BADGE[c.kind]}`}>{c.kind}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${STATUS_BADGE[c.status]}`}>{t(c.status.replace(/_/g, ' '))}</span>
+                          {c.redFlags?.length > 0 && (
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.redFlags.some((rf: any) => rf.severity === 'CRITICAL') ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {c.redFlags.length === 1 ? t('1 red flag') : t('{n} red flags', { n: c.redFlags.length })}
+                            </span>
+                          )}
+                          <span className="ml-auto text-xs text-gray-400">{c.submittedAt ? fmt(c.submittedAt, 'd MMM yyyy') : '—'}</span>
+                        </summary>
+                        <div className="space-y-3 border-t border-gray-100 px-4 py-4">
+                          {c.redFlags?.length > 0 && (
+                            <ul className="space-y-1">
+                              {c.redFlags.map((rf: any) => (
+                                <li key={rf.id} className={`text-xs ${rf.severity === 'CRITICAL' ? 'font-medium text-red-700' : 'text-amber-700'}`}>• {rf.description}</li>
+                              ))}
+                            </ul>
+                          )}
+                          <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+                            {c.quizAnswers?.map((a: any, i: number) => (
+                              <div key={i} className="border-b border-gray-50 py-2">
+                                <dt className="text-xs text-gray-400">{a.question}</dt>
+                                <dd className="text-sm text-gray-900">{a.answer}</dd>
+                              </div>
+                            ))}
+                          </dl>
                         </div>
-                        <span className="text-xs text-gray-400">{timeAgo(c.submittedAt)}</span>
-                      </div>
-                      {c.redFlags?.length > 0 && (
-                        <div className="mb-3 space-y-1">
-                          {c.redFlags.map((rf: any) => (
-                            <div key={rf.id} className={`text-xs px-3 py-1.5 rounded-lg ${rf.severity === 'CRITICAL' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                              {rf.severity === 'CRITICAL' ? '🚨' : '⚠️'} {rf.description}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        {c.quizAnswers?.map((a: any, i: number) => (
-                          <div key={i} className="bg-gray-50 rounded-lg px-3 py-2">
-                            <p className="text-xs text-gray-400">{a.question}</p>
-                            <p className="text-xs font-medium text-gray-800 mt-0.5">{a.answer}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                      </details>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
           </div>
@@ -369,11 +370,11 @@ export default function PatientPanel({ patientId, onClose, initialTab = 'overvie
 
         {/* ── Orders ── */}
         {tab === 'orders' && (
-          <div className="py-2">
+          <div className="p-5">
             {orders.length === 0 ? (
               <div className="py-12 text-center text-sm text-gray-400">{t('No orders yet.')}</div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="space-y-4">
                 {orders.map((order: any) => (
                   <OrderCard
                     key={order.id}

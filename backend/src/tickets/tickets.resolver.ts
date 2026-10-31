@@ -63,6 +63,12 @@ export class TicketsResolver {
     return this.tickets.update(user, input);
   }
 
+  @Authorized(ClinicianRole.DOCTOR, ClinicianRole.ADMIN)
+  @Mutation(() => TicketModel, { description: 'A doctor passes the non-medical part of a clinical ticket to support as a new ticket; returns the clinical ticket' })
+  handTicketToSupport(@CurrentUser() user: AuthUser, @Args('ticketId', { type: () => ID }) ticketId: string, @Args('note') note: string) {
+    return this.tickets.handToSupport(user, ticketId, note);
+  }
+
   @Authorized(...TICKET_STAFF)
   @Mutation(() => TicketModel, { description: 'Adds an internal note; the patient never sees it' })
   addTicketNote(@CurrentUser() user: AuthUser, @Args('ticketId', { type: () => ID }) ticketId: string, @Args('body') body: string) {

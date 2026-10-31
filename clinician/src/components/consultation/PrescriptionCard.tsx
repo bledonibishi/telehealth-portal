@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client';
 import { CANCEL_PRESCRIPTION, CHANGE_DOSE, PATIENT_HISTORY } from '@/graphql/consultations';
 import { CREATE_REPEAT_ORDER, GET_ORDERS, PATIENT_ORDERS } from '@/graphql/orders';
@@ -126,6 +126,48 @@ const STATUS_PILL: Record<string, string> = {
 };
 const short = (id: string) => `#${id.slice(-8)}`;
 
+/** One action in a prescription's menu: what it does in a line, and why not when it can't be used. */
+type Action = { key: string; label: string; hint: string; onClick: () => void; tone?: 'danger' | 'test'; disabled?: string | false; busy?: boolean };
+
+/** The "Actions" button at the top of a prescription and the box it opens. Closes on a click outside or Escape. */
+function ActionsMenu({ actions }: { actions: Action[] }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50">
+        {t('Actions')}
+        <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-20 mt-1.5 w-80 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+          {actions.map((a, i) => (
+            <button key={a.key} type="button" role="menuitem" disabled={!!a.disabled || a.busy}
+              onClick={() => { setOpen(false); a.onClick(); }}
+              className={`block w-full px-4 py-2.5 text-left hover:bg-gray-50 disabled:cursor-not-allowed disabled:hover:bg-white ${i > 0 ? 'border-t border-gray-100' : ''}`}>
+              <span className={`flex items-center gap-2 text-sm font-medium ${a.disabled ? 'text-gray-400' : a.tone === 'danger' ? 'text-danger-500' : 'text-gray-900'}`}>
+                {a.label}
+                {a.tone === 'test' && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">{t('Test only')}</span>}
+              </span>
+              <span className="block text-xs text-gray-500">{a.disabled || a.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * One prescription, with what it is connected to: the orders sent on it, the check-in that led to it or is due on it,
  * and the prescription it replaced. `orders`, `checkIns` (numbered, oldest first) and `siblings` are the patient's own,
@@ -185,6 +227,28 @@ export function PrescriptionCard({
   const replacedBy = siblings.find((x) => x.supersedesId === rx.id);
   const hasLinks = myOrders.length > 0 || cameFrom || nextCheckIn || reviewedOn.length > 0 || rx.supersedesId || replacedBy;
   const ckLabel = (c: any) => t('Check-in {n}', { n: c.number ?? 1 });
+  const inactive = rx.status !== 'ACTIVE' ? t('Only for the current prescription.') : expired ? t('This prescription has expired.') : !isPrescriber ? t('Only a doctor can do this.') : '';
+  const actions: Action[] = [
+    { key: 'pdf', label: t('View PDF'), hint: t('The signed prescription, as the pharmacy sees it.'), onClick: () => openAuthedDocument(rx.documentUrl, t) },
+    {
+      key: 'edit', label: t('Edit details'), hint: t('Change the dose, quantity or directions. Issues a corrected prescription; this one stays on record.'),
+      onClick: () => setChangingDose(true), disabled: !canChangeDose && (inactive || t('Not available for this prescription.')),
+    },
+    {
+      key: 'repeat', label: t('Order repeat'), hint: t('{n} repeats left. Sends the next supply to the pharmacy queue.', { n: rx.repeatsRemaining ?? 0 }),
+      onClick: () => { setRepeatSent(false); setRepeatError(null); orderRepeat({ variables: { prescriptionId: rx.id } }); }, busy: ordering,
+      disabled: !canRepeat && (inactive || t('No repeats left on this prescription.')),
+    },
+    ...(canProcess ? [{
+      key: 'process', label: t('Process now'), hint: t('Ships the waiting order as the pharmacy would, then schedules the check-in straight away.'), tone: 'test' as const,
+      onClick: () => { setProcessError(null); processNow({ variables: { prescriptionId: rx.id } }); }, busy: processing,
+    }] : []),
+    { key: 'copy', label: t('Copy prescription ID'), hint: short(rx.id), onClick: () => { void navigator.clipboard?.writeText(rx.id).catch(() => undefined); } },
+    {
+      key: 'cancel', label: t('Cancel prescription'), hint: t('Stops it at the pharmacy. You will be asked for a reason.'), tone: 'danger',
+      onClick: () => setCancelling(true), disabled: !canCancel && (inactive || t('Not available for this prescription.')),
+    },
+  ];
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-5">
@@ -199,15 +263,8 @@ export function PrescriptionCard({
             {rx.prescriber && <> · {t('Dr {name}', { name: rx.prescriber.lastName })}</>}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => openAuthedDocument(rx.documentUrl, t)} className="text-xs font-medium px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700">
-            {t('View PDF')}
-          </button>
-          {canChangeDose && !changingDose && !cancelling && (
-            <button onClick={() => setChangingDose(true)} className="text-xs font-medium px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-brand-500">
-              {t('Edit')}
-            </button>
-          )}
+        <div className="shrink-0">
+          <ActionsMenu actions={actions} />
         </div>
       </div>
 
@@ -308,44 +365,10 @@ export function PrescriptionCard({
         </div>
       )}
 
-      {canProcess && (
-        <div className="border-t border-dashed border-gray-200 pt-3">
-          <p className="text-xs text-gray-400 mb-2">{t('Development only')}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => { setProcessError(null); processNow({ variables: { prescriptionId: rx.id } }); }}
-              disabled={processing}
-              className="text-xs px-3 py-1.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-40"
-            >
-              {processing ? t('Processing…') : t('Process now')}
-            </button>
-            <span className="text-xs text-gray-400">{t('Ships the waiting order as the pharmacy would, then schedules the check-in straight away.')}</span>
-          </div>
-          <InlineError error={processError} size="xs" className="mt-2" />
-        </div>
-      )}
-
+      {processing && <p className="text-xs text-gray-500" role="status">{t('Processing…')}</p>}
+      <InlineError error={processError} size="xs" />
       {repeatSent && <p className="text-xs text-gray-600" role="status">{t('Repeat sent to the pharmacy queue')}</p>}
       <InlineError error={repeatError} size="xs" />
-
-      {!changingDose && (canRepeat || (canCancel && !cancelling)) && (
-        <div className="flex gap-4">
-          {canRepeat && (
-            <button
-              onClick={() => { setRepeatSent(false); setRepeatError(null); orderRepeat({ variables: { prescriptionId: rx.id } }); }}
-              disabled={ordering}
-              className="text-xs font-medium text-brand-500 hover:underline disabled:opacity-50"
-            >
-              {ordering ? t('Ordering…') : t('Order repeat')}
-            </button>
-          )}
-          {canCancel && !cancelling && (
-            <button onClick={() => setCancelling(true)} className="text-xs text-danger-500 hover:underline">
-              {t('Cancel prescription')}
-            </button>
-          )}
-        </div>
-      )}
 
       {changingDose && kind && (
         <Dialog

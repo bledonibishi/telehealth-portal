@@ -250,3 +250,19 @@ export const PRESCRIBING_CONTEXT = gql`
     }
   }
 `;
+
+/** The review queue without the answers and prescriptions: enough for the home screen's list of what is waiting longest. */
+export const QUEUE_PREVIEW = gql`
+  query QueuePreview {
+    consultationQueue {
+      id
+      kind
+      status
+      submittedAt
+      riskTag
+      patient { id firstName lastName }
+      clinician { id }
+      redFlags { id severity }
+    }
+  }
+`;

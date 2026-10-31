@@ -63,8 +63,9 @@ export default function BillingDesk() {
       <div className="px-4 sm:px-6 pt-4 grid grid-cols-2 lg:grid-cols-5 gap-3">
         {TABS.map((x) => (
           <button key={x.key} type="button" onClick={() => setTab(x.key)}
-            className={`text-left rounded-lg border px-4 py-3 ${active === x.key ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
-            <span className="block text-2xl font-semibold text-gray-900">{x.key === 'history' ? '' : x.n}{x.key === 'history' ? '↺' : ''}</span>
+            aria-pressed={active === x.key}
+            className={`text-left rounded-xl border px-4 py-3 transition-colors ${active === x.key ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+            <span className={`block text-2xl font-semibold ${x.n > 0 && x.key !== 'history' ? 'text-gray-900' : 'text-gray-400'}`}>{x.n}</span>
             <span className="block text-sm font-medium text-gray-800">{t(x.label)}</span>
             <span className="block text-xs text-gray-500 mt-0.5">{t(x.hint)}</span>
           </button>
@@ -109,27 +110,34 @@ function RefundRequests({ requests }: { requests: any[] }) {
         const open = openId === r.id;
         const shown = open && overview?.patientId === r.patientId ? overview : null;
         const latestPaid = shown?.invoices?.find((i: any) => i.status === 'PAID');
+        // Only a confirmed "no paid payment": Stripe was reachable and listed none.
+        const nothingPaid = !!shown?.invoicesAvailable && !latestPaid;
         const shipped = LEFT_PHARMACY.includes(r.latestOrderStatus);
         const withCourier = WITH_COURIER.includes(r.latestOrderStatus);
         const confirm = confirming === r.id;
         return (
-          <li key={r.id} className="rounded-lg border border-amber-200 bg-white">
-            <div className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <li key={r.id} className={`rounded-xl border bg-white overflow-hidden ${open ? 'border-gray-300 shadow-sm' : 'border-gray-200'}`}>
+            <div className="px-4 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-sm font-semibold text-amber-800" aria-hidden>
+                {r.patientName?.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900">{r.patientName} <span className="font-normal text-gray-500">· {r.patientEmail}</span></p>
-                <p className="text-xs text-gray-600">
-                  {shipped && <span className="mr-2 rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-800">{t('Already shipped')}</span>}
-                  {t(r.latestOrderStatus ? (ORDER_LABEL[r.latestOrderStatus] ?? r.latestOrderStatus) : 'No order yet')} · {t('asked')} {timeAgo(r.requestedAt)}
-                </p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{r.patientName} <span className="font-normal text-gray-500">· {r.patientEmail}</span></p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  {shipped && <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-800">{t('Already shipped')}</span>}
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700">{t(r.latestOrderStatus ? (ORDER_LABEL[r.latestOrderStatus] ?? r.latestOrderStatus) : 'No order yet')}</span>
+                  <span className="text-gray-500">{t('Asked {when}', { when: timeAgo(r.requestedAt) })}</span>
+                </div>
               </div>
-              <button type="button" className="text-xs font-medium text-brand-600 hover:text-brand-700"
+              <button type="button" aria-expanded={open} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 onClick={() => { setError(null); setConfirming(null); if (open) setOpenId(null); else { setOpenId(r.id); load({ variables: { patientId: r.patientId } }); } }}>
-                {open ? t('Hide details') : t('Show payments and supplies')}
+                {open ? t('Hide details') : t('Review')}
+                <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
               </button>
             </div>
 
             {open && (
-              <div className="border-t border-gray-100 px-4 py-4 space-y-4 text-sm">
+              <div className="border-t border-gray-100 bg-gray-50/60 px-4 py-4 space-y-4 text-sm">
                 {loadingOverview && !shown && <p className="text-gray-500">{t('Loading…')}</p>}
                 {overviewError && !shown && <InlineError error={overviewError} size="xs" />}
                 {shown && <PatientMoney overview={shown} />}
@@ -139,26 +147,43 @@ function RefundRequests({ requests }: { requests: any[] }) {
                     <p className="mt-0.5 text-sm">{t('Medicine cannot be taken back into stock. If you refund now, the patient keeps the medicine and you lose both the money and the medicine. Ask the courier to stop or return the parcel, or decline.')}</p>
                   </div>
                 )}
-                {shown && (
-                  <div className="rounded-lg bg-amber-50 px-4 py-3 space-y-3">
+                {shown && !shown.refundPreview && !nothingPaid && (
+                  // No preview, but not because nothing was paid: Stripe couldn't be read, or the preview failed. Saying "nothing
+                  // to refund" here could lead an admin to decline a request that should be refunded.
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-amber-900">{t('Payments could not be checked')}</p>
+                      <p className="mt-0.5 text-amber-900/80">{t('Stripe could not be read, so we can’t show what a refund would return. Try again before deciding.')}</p>
+                    </div>
+                    <button type="button" disabled={loadingOverview} className="px-3 py-1.5 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-40" onClick={() => { setError(null); load({ variables: { patientId: r.patientId } }); }}>{loadingOverview ? t('Loading…') : t('Try again')}</button>
+                  </div>
+                )}
+                {shown && !shown.refundPreview && nothingPaid && (
+                  // Stripe was read and shows no paid payment; the backend refuses a refund then, so only Decline is offered.
+                  <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900">{t('Nothing to refund')}</p>
+                      <p className="mt-0.5 text-gray-600">{t('This patient has no paid payment. Decline the request, and message the patient to explain why.')}</p>
+                    </div>
+                    <button type="button" disabled={loading} className="px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-40" onClick={() => { setError(null); decide({ variables: { id: r.id, approve: false } }); }}>{t('Decline')}</button>
+                  </div>
+                )}
+                {shown?.refundPreview && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-3">
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                       <p className="flex-1 min-w-0 text-amber-900">
-                        {shown.refundPreview ? (
-                          <>
-                            {t('Refunding returns')} <b>{money(shown.refundPreview.amountCents, shown.refundPreview.currency)}</b> {t('to the card ending')} {latestPaid?.cardLast4 ?? '····'}
-                            {shown.refundPreview.feeKeptCents > 0 && <> · {t('the prescription fee of')} <b>{money(shown.refundPreview.feeKeptCents, shown.refundPreview.currency)}</b> {t('is kept, because the doctor’s work cannot be undone')}</>}
-                          </>
-                        ) : t('No paid payment was found to refund.')}
+                        {t('Refunding returns')} <b>{money(shown.refundPreview.amountCents, shown.refundPreview.currency)}</b> {t('to the card ending')} {latestPaid?.cardLast4 ?? '····'}
+                        {shown.refundPreview.feeKeptCents > 0 && <> · {t('the prescription fee of')} <b>{money(shown.refundPreview.feeKeptCents, shown.refundPreview.currency)}</b> {t('is kept, because the doctor’s work cannot be undone')}</>}
                       </p>
-                      <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" checked={endSubscription[r.id] ?? true} onChange={(e) => setEndSubscription({ ...endSubscription, [r.id]: e.target.checked })} />
                         {t('End the subscription')}
                       </label>
                       {!confirm && (
-                        <>
-                          <button type="button" disabled={loading} className="px-3 py-1.5 bg-danger-500 text-white text-sm rounded-lg disabled:opacity-40" onClick={() => { setError(null); setConfirming(r.id); }}>{t('Refund last payment')}</button>
-                          <button type="button" disabled={loading} className="text-xs text-gray-600 hover:text-gray-900" onClick={() => { setError(null); decide({ variables: { id: r.id, approve: false } }); }}>{t('Decline')}</button>
-                        </>
+                        <div className="flex items-center gap-3">
+                          <button type="button" disabled={loading} className="px-3 py-1.5 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-40" onClick={() => { setError(null); decide({ variables: { id: r.id, approve: false } }); }}>{t('Decline')}</button>
+                          <button type="button" disabled={loading} className="px-3 py-1.5 bg-danger-500 text-white text-sm font-medium rounded-lg disabled:opacity-40" onClick={() => { setError(null); setConfirming(r.id); }}>{t('Refund last payment')}</button>
+                        </div>
                       )}
                     </div>
                     {confirm && (
@@ -204,8 +229,8 @@ function PatientMoney({ overview }: { overview: any }) {
   const d = (x?: string | null) => (x ? fmt(x, 'd MMM yyyy') : '—');
   const sub = overview.subscription;
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div>
+    <div className="grid gap-3 lg:grid-cols-2">
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('How they pay')}</p>
         <p className="mt-1 text-gray-900">{t(PLAN_LABEL[overview.plan] ?? overview.plan)}</p>
         {sub && (
@@ -214,7 +239,7 @@ function PatientMoney({ overview }: { overview: any }) {
           </p>
         )}
       </div>
-      <div>
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('Earlier refund requests')}</p>
         {overview.refundHistory.length <= 1 ? <p className="mt-1 text-gray-600">{t('None before this one')}</p> : (
           <ul className="mt-1 space-y-0.5 text-xs text-gray-600">
@@ -224,7 +249,7 @@ function PatientMoney({ overview }: { overview: any }) {
           </ul>
         )}
       </div>
-      <div>
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('Payments')}</p>
         {!overview.invoicesAvailable && <p className="mt-1 text-xs text-amber-700">{t('Stripe could not be reached, so this list may be incomplete.')}</p>}
         {overview.invoices.length === 0 ? <p className="mt-1 text-gray-600">{t('No payments found')}</p> : (
@@ -241,7 +266,7 @@ function PatientMoney({ overview }: { overview: any }) {
           </ul>
         )}
       </div>
-      <div>
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('Supplies')}</p>
         {overview.orders.length === 0 ? <p className="mt-1 text-gray-600">{t('No orders yet')}</p> : (
           <ul className="mt-1 divide-y divide-gray-100">

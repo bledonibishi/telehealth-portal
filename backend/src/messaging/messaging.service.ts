@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleIn
 import { NotificationKind } from '@telehealth/shared-types';
 import { PubSub } from 'graphql-subscriptions';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { UserRole } from '../common/enums';
 import { SendMessageInput } from './dto/send-message.input';
@@ -86,29 +87,32 @@ export class MessagingService implements OnModuleInit {
 
   /** A message written in the app: the thread is worked out from the sender (see resolveThread). */
   async sendAs(user: AuthUser, input: SendMessageInput) {
-    if (user.role === UserRole.PATIENT) await this.checkPatientPace(user);
     // Only a patient sends files, and only their own, uploaded for this purpose and not yet used.
     const attachmentIds = user.role === UserRole.PATIENT ? [...new Set(input.attachmentIds ?? [])] : [];
     if (input.attachmentIds?.length && user.role !== UserRole.PATIENT) throw new BadRequestException('Only patients can attach files');
     if (!input.content.trim() && attachmentIds.length === 0) throw new BadRequestException('Write a message or attach a file');
     if (attachmentIds.length > MAX_MESSAGE_ATTACHMENTS) throw new BadRequestException(`You can attach up to ${MAX_MESSAGE_ATTACHMENTS} files`);
-    return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content, false, attachmentIds);
+    // A patient's message is paced (see checkPatientPace), inside the same transaction that saves it.
+    return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content, false, attachmentIds, undefined, user.role === UserRole.PATIENT);
   }
 
   /**
    * A cap on how fast one patient can send. Every patient message is read by the AI (the urgency check, the assistant), so
    * a script or a stuck app sending thousands would cost real money. The limits are far above what a person types, and
    * count the patient's own messages, so staff and other patients are never held up by one account.
+   *
+   * Runs inside the transaction that saves the message, after a lock on this patient (see deliver): parallel requests are
+   * counted one after another, so a burst can't all pass the check before any of them is saved.
    */
-  private async checkPatientPace(user: AuthUser) {
-    // A patient's own id is their patient id (see resolveThread).
+  private async checkPatientPace(patientId: string, db: Prisma.TransactionClient) {
     const now = Date.now();
-    const sentSince = (ms: number) => this.prisma.message.count({ where: { patientId: user.id, senderRole: UserRole.PATIENT, sentAt: { gte: new Date(now - ms) } } });
+    const sentSince = (ms: number) => db.message.count({ where: { patientId, senderRole: UserRole.PATIENT, sentAt: { gte: new Date(now - ms) } } });
     const [lastMinute, lastHour] = await Promise.all([sentSince(60_000), sentSince(3_600_000)]);
-    if (lastMinute >= PATIENT_MESSAGES_PER_MINUTE || lastHour >= PATIENT_MESSAGES_PER_HOUR) {
-      this.logger.warn(`Patient ${user.id} hit the message limit (${lastMinute} in a minute, ${lastHour} in an hour)`);
-      // The hourly limit lasts longer, so when both are reached that is the one to tell the patient about.
-      throw appError(ErrorCode.RATE_LIMITED, lastHour >= PATIENT_MESSAGES_PER_HOUR ? 'You’ve sent a lot of messages in the last hour. Please wait a little before sending more. If something is urgent, call emergency services.' : 'You’ve sent a lot of messages very quickly. Please wait a minute, then send the rest.');
+    const hourFull = lastHour >= PATIENT_MESSAGES_PER_HOUR;
+    if (hourFull || lastMinute >= PATIENT_MESSAGES_PER_MINUTE) {
+      this.logger.warn(`Patient ${patientId} hit the message limit (${lastMinute} in a minute, ${lastHour} in an hour)`);
+      // The hour limit is the longer wait, so it is the one to tell them about when both are reached.
+      throw appError(ErrorCode.RATE_LIMITED, hourFull ? 'You’ve sent a lot of messages in the last hour. Please wait a little before sending more. If something is urgent, call emergency services.' : 'You’ve sent a lot of messages very quickly. Please wait a minute, then send the rest.');
     }
   }
 
@@ -132,16 +136,23 @@ export class MessagingService implements OnModuleInit {
     isAi = false,
     attachmentIds: string[] = [],
     aiArticleId?: string,
+    paced = false,
   ) {
     if (attachmentIds.length) {
       const own = await this.prisma.uploadedFile.count({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null } });
       if (own !== attachmentIds.length) throw new BadRequestException('One of the files could not be attached. Please add it again.');
     }
     const data = { patientId, consultationId, senderId, senderRole, content, isAi, ...(aiArticleId ? { aiArticleId } : {}) };
-    // With files, the message and the link to them are saved together, so a file is never half attached.
-    const message = attachmentIds.length
+    // With files, the message and the link to them are saved together, so a file is never half attached. A paced message
+    // is counted and saved under a lock on its patient, so the limit holds however many requests arrive at once.
+    const message = attachmentIds.length || paced
       ? await this.prisma.$transaction(async (tx) => {
+          if (paced) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`messages:${patientId}`}))`;
+            await this.checkPatientPace(patientId, tx);
+          }
           const created = await tx.message.create({ data });
+          if (!attachmentIds.length) return created;
           const claimed = await tx.uploadedFile.updateMany({ where: { id: { in: attachmentIds }, patientId, kind: 'SUPPORT_ATTACHMENT', ticketId: null, messageId: null }, data: { messageId: created.id } });
           // Another send took a file first: undo this one rather than send a message without the files the patient chose.
           if (claimed.count !== attachmentIds.length) throw new BadRequestException('One of the files could not be attached. Please add it again.');
