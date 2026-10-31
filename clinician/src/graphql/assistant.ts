@@ -33,6 +33,26 @@ export const ASSISTANT_REVIEW = gql`
   }
 `;
 
+export const ASSISTANT_ARTICLE_GAPS = gql`
+  query AssistantArticleGaps($days: Int) {
+    assistantArticleGaps(days: $days) {
+      days
+      questions
+      available
+      groups {
+        topic
+        suggestedTitle
+        count
+        examples
+        tickets {
+          id
+          number
+        }
+      }
+    }
+  }
+`;
+
 export const RATE_ASSISTANT_ANSWER = gql`
   mutation RateAssistantAnswer($messageId: ID!, $rating: String!, $note: String) {
     rateAssistantAnswer(messageId: $messageId, rating: $rating, note: $note) {

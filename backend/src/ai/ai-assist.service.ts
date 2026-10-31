@@ -29,7 +29,17 @@ export function featureSwitchedOn(config: { get: (key: string) => string | undef
 export const DEFAULT_AI_ASSIST_MODEL = 'claude-sonnet-5-5';
 const DEADLINE_MS = 60_000;
 
-export type AiResult<T> = { status: 'COMPLETED'; data: T; model: string } | { status: 'DISABLED' | 'FAILED'; reason: string };
+/** Checks another model's work: see checkerModel(). */
+export const DEFAULT_CHECKER_MODEL = 'claude-haiku-4-5';
+/** Lookups the model may make before it must answer. */
+const MAX_TOOL_ROUNDS = 3;
+const NO_INPUT = { type: 'object', properties: {}, additionalProperties: false };
+
+/** Something the model may look up. `run` is ours: it decides what data it returns, whatever the model asked for. */
+export type AiTool = { name: string; description: string; inputSchema?: Record<string, unknown>; run: (input: unknown) => Promise<unknown> };
+export type ToolOutput = { name: string; output: string };
+
+export type AiResult<T> = { status: 'COMPLETED'; data: T; model: string; toolOutputs?: ToolOutput[] } | { status: 'DISABLED' | 'FAILED'; reason: string };
 
 /**
  * The one place the AI helpers call Claude from: it knows whether a feature is on, asks for JSON that fits a schema,
@@ -75,8 +85,20 @@ export class AiAssistService {
   }
 
   /**
+   * The small, cheap model used to check another model's work (the support assistant's draft answers): a yes/no judgement on
+   * a short text needs no more. AI_MODEL_CHECKER overrides it.
+   */
+  checkerModel(): string {
+    return this.config.get<string>('AI_MODEL_CHECKER')?.trim() || DEFAULT_CHECKER_MODEL;
+  }
+
+  /**
    * Asks for JSON matching `schema`. `system` is our instructions; `user` carries the record or message text and is never
    * traced. `summarise` says what a trace may show of the answer (counts and flags, never its words).
+   *
+   * `tools` lets the model look something up before it answers (the tool runs here, in our code, never on the model's
+   * say-so about whose data it is). What a tool returned comes back in `toolOutputs`, so a caller can check the answer
+   * against it. Neither the tool's input nor its output reaches a trace, only its name.
    */
   async json<T>(opts: {
     feature: AiFeature;
@@ -85,11 +107,15 @@ export class AiAssistService {
     schema: Record<string, unknown>;
     maxTokens?: number;
     patientId?: string;
+    model?: string;
+    tools?: AiTool[];
     summarise?: (data: T) => unknown;
   }): Promise<AiResult<T>> {
     if (!this.isEnabled(opts.feature)) return { status: 'DISABLED', reason: 'This AI helper isn’t switched on' };
-    const model = this.modelFor(opts.feature);
+    const model = opts.model || this.modelFor(opts.feature);
     const maxTokens = opts.maxTokens ?? 4000;
+    const tools = opts.tools ?? [];
+    const toolOutputs: ToolOutput[] = [];
 
     return this.tracing.trace(
       `ai-${opts.feature}`,
@@ -97,49 +123,84 @@ export class AiAssistService {
         userId: opts.patientId,
         tags: ['ai-assist', opts.feature],
         input: { feature: opts.feature },
-        output: (r: AiResult<T>) => (r.status === 'COMPLETED' ? { status: r.status, ...(opts.summarise ? (opts.summarise(r.data) as object) : {}) } : { status: r.status }),
+        output: (r: AiResult<T>) => (r.status === 'COMPLETED' ? { status: r.status, tools: r.toolOutputs?.map((o) => o.name) ?? [], ...(opts.summarise ? (opts.summarise(r.data) as object) : {}) } : { status: r.status }),
       },
       async (): Promise<AiResult<T>> => {
         try {
-          const response = await this.tracing.generation(
-            `ai-${opts.feature}`,
-            {
-              model,
-              // Our instructions only: what the model was sent about a patient is never passed to a trace.
-              input: [{ role: 'system', content: opts.system }],
-              modelParameters: { max_tokens: maxTokens, ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' } : {}) },
-            },
-            async (record) => {
-              const res = await this.getClient().beta.messages.create(
-                {
-                  model,
-                  max_tokens: maxTokens,
-                  ...(SUPPORTS_FALLBACKS.test(model) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-                  output_config: { ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' as const } : {}), format: { type: 'json_schema', schema: opts.schema } },
-                  system: opts.system,
-                  messages: [{ role: 'user', content: opts.user }],
-                },
-                { signal: AbortSignal.timeout(DEADLINE_MS) },
-              );
-              record({
-                model: res.model,
-                usage: res.usage,
-                output: { stop_reason: res.stop_reason },
-                warning: res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens' ? `Stopped: ${res.stop_reason}` : undefined,
-              });
-              return res;
-            },
-          );
-          if (response.stop_reason === 'refusal') return { status: 'FAILED', reason: 'The AI declined this one' };
-          if (response.stop_reason === 'max_tokens') return { status: 'FAILED', reason: 'The answer was cut off' };
-          const text = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text;
-          if (!text) return { status: 'FAILED', reason: 'The AI gave no answer' };
-          return { status: 'COMPLETED', data: JSON.parse(text) as T, model };
+          const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: opts.user }];
+          for (let round = 0; ; round++) {
+            const response = await this.call(opts.feature, model, maxTokens, opts.system, opts.schema, messages, tools);
+            if (response.stop_reason === 'refusal') return { status: 'FAILED', reason: 'The AI declined this one' };
+            if (response.stop_reason === 'max_tokens') return { status: 'FAILED', reason: 'The answer was cut off' };
+            if (response.stop_reason === 'tool_use') {
+              // A model that keeps asking for lookups is stuck: better a person than a loop.
+              if (round >= MAX_TOOL_ROUNDS) return { status: 'FAILED', reason: 'The AI kept looking things up without answering' };
+              messages.push({ role: 'assistant', content: response.content });
+              messages.push({ role: 'user', content: await this.runTools(response.content, tools, toolOutputs) });
+              continue;
+            }
+            const text = response.content.find((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')?.text;
+            if (!text) return { status: 'FAILED', reason: 'The AI gave no answer' };
+            return { status: 'COMPLETED', data: JSON.parse(text) as T, model, ...(toolOutputs.length ? { toolOutputs } : {}) };
+          }
         } catch (err) {
           this.logger.error(`AI ${opts.feature} failed: ${err instanceof Anthropic.APIError ? `${err.status} ${err.message}` : (err as Error).message}`);
           return { status: 'FAILED', reason: 'The AI helper isn’t available right now' };
         }
       },
+    );
+  }
+
+  /** One request to the model, recorded as one generation (our instructions, the model, tokens; never the conversation). */
+  private call(feature: AiFeature, model: string, maxTokens: number, system: string, schema: Record<string, unknown>, messages: Anthropic.Beta.BetaMessageParam[], tools: AiTool[]) {
+    return this.tracing.generation(
+      `ai-${feature}`,
+      {
+        model,
+        // Our instructions only: what the model was sent about a patient is never passed to a trace.
+        input: [{ role: 'system', content: system }],
+        modelParameters: { max_tokens: maxTokens, ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' } : {}) },
+      },
+      async (record) => {
+        const res = await this.getClient().beta.messages.create(
+          {
+            model,
+            max_tokens: maxTokens,
+            ...(SUPPORTS_FALLBACKS.test(model) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+            output_config: { ...(SUPPORTS_EFFORT.test(model) ? { effort: 'medium' as const } : {}), format: { type: 'json_schema', schema } },
+            ...(tools.length ? { tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: (t.inputSchema ?? NO_INPUT) as Anthropic.Beta.BetaTool.InputSchema, strict: true })) } : {}),
+            system,
+            messages,
+          },
+          { signal: AbortSignal.timeout(DEADLINE_MS) },
+        );
+        record({
+          model: res.model,
+          usage: res.usage,
+          output: { stop_reason: res.stop_reason },
+          warning: res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens' ? `Stopped: ${res.stop_reason}` : undefined,
+        });
+        return res;
+      },
+    );
+  }
+
+  /** Runs the lookups the model asked for and hands back every result in one message (a failed one says so, it is not dropped). */
+  private async runTools(content: Anthropic.Beta.BetaContentBlock[], tools: AiTool[], outputs: ToolOutput[]): Promise<Anthropic.Beta.BetaToolResultBlockParam[]> {
+    const calls = content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === 'tool_use');
+    return Promise.all(
+      calls.map(async (call): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+        const tool = tools.find((t) => t.name === call.name);
+        if (!tool) return { type: 'tool_result', tool_use_id: call.id, content: `There is no tool called ${call.name}.`, is_error: true };
+        try {
+          const output = JSON.stringify(await tool.run(call.input));
+          outputs.push({ name: tool.name, output });
+          return { type: 'tool_result', tool_use_id: call.id, content: output };
+        } catch (err) {
+          this.logger.error(`AI tool ${tool.name} failed: ${(err as Error).message}`);
+          return { type: 'tool_result', tool_use_id: call.id, content: 'The lookup failed. Answer without it.', is_error: true };
+        }
+      }),
     );
   }
 }

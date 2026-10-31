@@ -6,7 +6,7 @@ import { AiAssistService } from './ai-assist.service';
 
 const SWEEP_BATCH = 20;
 
-const SYSTEM = `You help the care team of an online clinic (hormone therapy and weight-management medicines) notice when a patient's message might be urgent, so a clinician sees it sooner. You only ever raise a message's priority; a person reads every message.
+export const URGENCY_SYSTEM = `You help the care team of an online clinic (hormone therapy and weight-management medicines) notice when a patient's message might be urgent, so a clinician sees it sooner. You only ever raise a message's priority; a person reads every message.
 
 Mark urgent: true when the message describes, or may describe, any of: chest pain or pressure; trouble breathing; a severe allergic reaction (swelling of the face or throat, hives with breathing trouble); severe or persistent abdominal pain (especially spreading to the back, or with vomiting); persistent vomiting or being unable to keep fluids down; yellowing of the skin or eyes; signs of a blood clot (a swollen painful leg, sudden shortness of breath) or a stroke (sudden weakness, speech or vision change, severe headache); heavy or unexpected bleeding; thoughts of suicide or self-harm, or feeling unable to cope; pregnancy; taking far more than the prescribed dose or the wrong medicine; fainting or collapse; a very low mood together with the treatment.
 
@@ -40,15 +40,7 @@ export class MessageUrgencyService {
       const message = await this.prisma.message.findUnique({ where: { id: messageId }, select: { id: true, content: true, patientId: true, senderRole: true, aiCheckedAt: true } });
       if (!message || message.senderRole !== UserRole.PATIENT || message.aiCheckedAt || !message.content.trim()) return false;
 
-      const result = await this.ai.json<{ urgent: boolean; reason: string }>({
-        feature: 'urgency',
-        system: SYSTEM,
-        user: `<message>${message.content.slice(0, 3000)}</message>`,
-        schema: SCHEMA,
-        maxTokens: 600,
-        patientId: message.patientId,
-        summarise: (d) => ({ urgent: d.urgent }),
-      });
+      const result = await this.assess(message.content, message.patientId);
       if (result.status !== 'COMPLETED') return false;
       const urgent = result.data.urgent === true;
       await this.prisma.message.update({ where: { id: messageId }, data: { aiCheckedAt: new Date(), aiUrgent: urgent, aiUrgentReason: urgent ? String(result.data.reason ?? '').slice(0, 200) || null : null } });
@@ -57,6 +49,22 @@ export class MessageUrgencyService {
       this.logger.error(`Urgency check for message ${messageId} failed: ${(err as Error)?.message}`);
       return false;
     }
+  }
+
+  /**
+   * What the model makes of one message's text. Used for a live message, and by the test-message script
+   * (`pnpm urgency-eval`) to check it before a change to the instructions or the model.
+   */
+  assess(content: string, patientId?: string) {
+    return this.ai.json<{ urgent: boolean; reason: string }>({
+      feature: 'urgency',
+      system: URGENCY_SYSTEM,
+      user: `<message>${content.slice(0, 3000)}</message>`,
+      schema: SCHEMA,
+      maxTokens: 600,
+      patientId,
+      summarise: (d) => ({ urgent: d.urgent }),
+    });
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES)

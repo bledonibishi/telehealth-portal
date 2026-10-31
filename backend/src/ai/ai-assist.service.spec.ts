@@ -47,3 +47,50 @@ describe('AiAssistService feature switches', () => {
     expect(service().modelFor('reply')).toBe('claude-sonnet-5-5');
   });
 });
+
+describe('AiAssistService lookups (tools)', () => {
+  const on = () => service({ ANTHROPIC_API_KEY: 'k', AI_ENABLED_FEATURES: 'support' });
+  const withReplies = (s: AiAssistService, ...replies: any[]) => {
+    const create = jest.fn();
+    for (const r of replies) create.mockResolvedValueOnce(r);
+    (s as any).client = { beta: { messages: { create } } };
+    return create;
+  };
+  const toolUse = (name: string, input: unknown = {}) => ({ stop_reason: 'tool_use', model: 'm', usage: {}, content: [{ type: 'tool_use', id: `tu-${name}`, name, input }] });
+  const answer = (data: unknown) => ({ stop_reason: 'end_turn', model: 'm', usage: {}, content: [{ type: 'text', text: JSON.stringify(data) }] });
+
+  it('runs a lookup the model asks for, sends the result back, and returns what it looked up with the answer', async () => {
+    const s = on();
+    const create = withReplies(s, toolUse('get_my_orders'), answer({ ok: 1 }));
+    const run = jest.fn().mockResolvedValue({ orders: [{ stage: 'DISPATCHED' }] });
+    const r = await s.json({ feature: 'support', system: 's', user: 'u', schema: {}, tools: [{ name: 'get_my_orders', description: 'd', run }] });
+    expect(r).toMatchObject({ status: 'COMPLETED', data: { ok: 1 }, toolOutputs: [{ name: 'get_my_orders', output: '{"orders":[{"stage":"DISPATCHED"}]}' }] });
+    expect(create.mock.calls[0][0].tools[0]).toMatchObject({ name: 'get_my_orders', strict: true });
+    const second = create.mock.calls[1][0].messages;
+    expect(second.at(-1).content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'tu-get_my_orders', content: '{"orders":[{"stage":"DISPATCHED"}]}' });
+  });
+
+  it('tells the model when a tool does not exist or failed, instead of dropping the call', async () => {
+    const s = on();
+    const create = withReplies(s, toolUse('delete_everything'), toolUse('get_my_orders'), answer({}));
+    await s.json({ feature: 'support', system: 's', user: 'u', schema: {}, tools: [{ name: 'get_my_orders', description: 'd', run: jest.fn().mockRejectedValue(new Error('db down')) }] });
+    expect(create.mock.calls[1][0].messages.at(-1).content[0]).toMatchObject({ is_error: true });
+    expect(create.mock.calls[2][0].messages.at(-1).content[0]).toMatchObject({ is_error: true, content: expect.not.stringContaining('db down') });
+  });
+
+  it('gives up on a model that keeps looking things up without answering', async () => {
+    const s = on();
+    withReplies(s, toolUse('t'), toolUse('t'), toolUse('t'), toolUse('t'), toolUse('t'));
+    const r = await s.json({ feature: 'support', system: 's', user: 'u', schema: {}, tools: [{ name: 't', description: 'd', run: async () => ({}) }] });
+    expect(r).toMatchObject({ status: 'FAILED' });
+  });
+
+  it('can be asked to use another model for one call (the small checker)', async () => {
+    const s = on();
+    const create = withReplies(s, answer({ grounded: true }));
+    await s.json({ feature: 'support', system: 's', user: 'u', schema: {}, model: s.checkerModel() });
+    expect(create.mock.calls[0][0].model).toBe('claude-haiku-4-5');
+    expect(create.mock.calls[0][0].tools).toBeUndefined();
+    expect(service({ AI_MODEL_CHECKER: 'claude-sonnet-5-5' }).checkerModel()).toBe('claude-sonnet-5-5');
+  });
+});

@@ -1,4 +1,4 @@
-import { LabReaderService, nameMatches, toReading } from './lab-reader.service';
+import { LabReaderService, nameMatches, printedMismatch, toReading } from './lab-reader.service';
 
 describe('toReading', () => {
   const good = { kind: 'ESTRADIOL', analyte_name: null, value: 340, unit: ' pmol/L ', reference_low: 100, reference_high: 700, collected_on: '2026-09-30', flagged_by_lab: false };
@@ -27,6 +27,38 @@ describe('toReading', () => {
     const r = toReading({ readable: true, report_date: '31/10/2026', results: [{ ...good, collected_on: '2999-01-01', reference_low: 700, reference_high: 100 }] });
     expect(r.reportDate).toBeNull();
     expect(r.results[0]).toMatchObject({ collectedOn: null, referenceLow: null, referenceHigh: null });
+  });
+
+  it('leaves out a result printed as "<18", even when the model gave 18, and tells the doctor why', () => {
+    const r = toReading({
+      readable: true,
+      results: [
+        { ...good, printed_result: '340' },
+        { ...good, kind: 'PSA', printed_result: '<0.1', value: 0.1, unit: 'ug/L' },
+        { ...good, kind: 'LH', printed_result: '18,6', value: 18.6, unit: 'IU/L' },
+        { ...good, kind: 'FSH', printed_result: '46.2', value: 64.2, unit: 'IU/L' },
+      ],
+      notes: 'All readable.',
+    });
+    expect(r.results.map((x) => [x.kind, x.value])).toEqual([['ESTRADIOL', 340], ['LH', 18.6]]);
+    expect(r.notes).toBe('All readable. psa was left out: printed as “<0.1”, which is not an exact number. fsh was left out: printed as “46.2” but read as 64.2.');
+  });
+
+  it('keeps what was left out even when the model wrote long notes', () => {
+    const r = toReading({ readable: true, results: [{ ...good, kind: 'PSA', printed_result: '<0.1', value: 0.1, unit: 'ug/L' }], notes: 'x'.repeat(1500) });
+    expect(r.notes.length).toBeLessThanOrEqual(1000);
+    expect(r.notes).toMatch(/psa was left out: printed as “<0\.1”/);
+  });
+
+  it('checks the printed result against the number read', () => {
+    expect(printedMismatch('812', 812)).toBeNull();
+    expect(printedMismatch(' 0,49 ', 0.49)).toBeNull();
+    expect(printedMismatch(undefined, 5)).toBeNull();
+    expect(printedMismatch('', 5)).toMatch(/no printed result/);
+    expect(printedMismatch('   ', 5)).toMatch(/no printed result/);
+    expect(printedMismatch('>100', 100)).toMatch(/not an exact number/);
+    expect(printedMismatch('≤ 5', 5)).toMatch(/not an exact number/);
+    expect(printedMismatch('see note', 5)).toMatch(/not a plain number/);
   });
 
   it('copes with nothing useful at all', () => {

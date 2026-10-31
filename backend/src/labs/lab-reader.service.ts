@@ -14,6 +14,7 @@ type ImageType = (typeof IMAGE_TYPES)[number];
 const MAX_BYTES = 15 * 1024 * 1024;
 const READ_DEADLINE_MS = 90_000;
 const MAX_ROWS = 60;
+const NOTES_MAX = 1000;
 
 /** The kinds the app tracks by name; any other test comes back as OTHER with its printed name. */
 export const READABLE_KINDS = ['ESTRADIOL', 'TESTOSTERONE', 'FSH', 'LH', 'SHBG', 'PSA', 'HEMATOCRIT', 'HBA1C', 'OTHER'] as const;
@@ -25,6 +26,7 @@ Report only what is printed. Never guess, never calculate, never convert units, 
 
 For every numeric result:
 - kind: ESTRADIOL, TESTOSTERONE, FSH, LH, SHBG, PSA, HEMATOCRIT (also called haematocrit, packed cell volume or PCV) or HBA1C; anything else is OTHER, with analyte_name exactly as printed (for example "ALT", "Vitamin D", "TSH"). Do not use a named kind for a different measurement: "free testosterone" is OTHER, not TESTOSTERONE.
+- printed_result: the result exactly as it is printed, character for character, including any sign such as "<", ">", "≤" or a decimal comma (for example "<18", "18,6", "812").
 - value: the number as printed (use a dot for a decimal point). If it is given as "<0.5" or ">100", leave the row out and mention it in notes.
 - unit: exactly as printed (for example "pmol/L", "nmol/L", "%", "mmol/mol").
 - reference_low and reference_high: the lab's reference range printed next to that result. For a range like "<5" use reference_low null and reference_high 5; for ">50" use reference_low 50 and reference_high null. Null when none is printed.
@@ -51,6 +53,7 @@ const SCHEMA = {
         properties: {
           kind: { type: 'string', enum: [...READABLE_KINDS] },
           analyte_name: nullable('string'),
+          printed_result: { type: 'string' },
           value: { type: 'number' },
           unit: { type: 'string' },
           reference_low: nullable('number'),
@@ -58,7 +61,7 @@ const SCHEMA = {
           collected_on: nullable('string'),
           flagged_by_lab: nullable('boolean'),
         },
-        required: ['kind', 'analyte_name', 'value', 'unit', 'reference_low', 'reference_high', 'collected_on', 'flagged_by_lab'],
+        required: ['kind', 'analyte_name', 'printed_result', 'value', 'unit', 'reference_low', 'reference_high', 'collected_on', 'flagged_by_lab'],
         additionalProperties: false,
       },
     },
@@ -96,9 +99,34 @@ const isDate = (v: unknown): v is string => {
 };
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+/**
+ * Whether the number the model gave is the one printed. A result printed as "<18" is not 18, and a model will sometimes
+ * say 18 anyway, however clearly it is told not to: so the code checks, rather than the instructions alone. Null when
+ * they agree; otherwise why the row is left out.
+ */
+export function printedMismatch(printed: unknown, value: number): string | null {
+  // Not given at all (an older answer shape): nothing to compare. Given but blank: the number was never checked.
+  if (typeof printed !== 'string') return null;
+  const text = printed.trim();
+  if (!text) return 'no printed result to check the number against';
+  if (/[<>≤≥]/.test(text)) return `printed as “${text}”, which is not an exact number`;
+  const parsed = Number(text.replace(/\s+/g, '').replace(',', '.'));
+  if (!Number.isFinite(parsed)) return `printed as “${text}”, which is not a plain number`;
+  if (Math.abs(parsed - value) > 1e-9) return `printed as “${text}” but read as ${value}`;
+  return null;
+}
+
+/** The model's notes, then why rows were left out. Only the model's part is cut to fit: the doctor must always see what was left out. */
+function notesWith(modelNotes: string, leftOut: string[]) {
+  const omitted = leftOut.join(' ').slice(0, NOTES_MAX);
+  const room = Math.max(0, NOTES_MAX - omitted.length - (omitted ? 1 : 0));
+  return [modelNotes.slice(0, room), omitted].filter(Boolean).join(' ');
+}
+
 /** What the model said, cleaned up: anything unusable is dropped rather than guessed at. */
 export function toReading(raw: any): LabReading {
   const rows: ReadResultRow[] = [];
+  const leftOut: string[] = [];
   for (const r of Array.isArray(raw?.results) ? raw.results : []) {
     const value = num(r?.value);
     const unit = typeof r?.unit === 'string' ? r.unit.trim().slice(0, 30) : '';
@@ -106,6 +134,12 @@ export function toReading(raw: any): LabReading {
     const kind: ReadableKind = (READABLE_KINDS as readonly string[]).includes(r?.kind) ? r.kind : 'OTHER';
     const name = typeof r?.analyte_name === 'string' ? r.analyte_name.trim().slice(0, 80) : '';
     if (kind === 'OTHER' && !name) continue;
+    // A missing row costs the doctor a few seconds of typing; a wrong number can be saved into the record.
+    const mismatch = printedMismatch(r?.printed_result, value);
+    if (mismatch) {
+      leftOut.push(`${kind === 'OTHER' ? name : kind.toLowerCase()} was left out: ${mismatch}.`);
+      continue;
+    }
     let low = num(r.reference_low);
     let high = num(r.reference_high);
     if (low !== null && high !== null && low > high) [low, high] = [null, null];
@@ -118,7 +152,7 @@ export function toReading(raw: any): LabReading {
     labName: typeof raw?.lab_name === 'string' ? raw.lab_name.trim().slice(0, 120) || null : null,
     reportDate: isDate(raw?.report_date) ? raw.report_date : null,
     results: rows,
-    notes: typeof raw?.notes === 'string' ? raw.notes.slice(0, 1000) : '',
+    notes: notesWith(typeof raw?.notes === 'string' ? raw.notes.trim() : '', leftOut),
   };
 }
 
