@@ -206,3 +206,13 @@ export const FINISH_TICKET_ENGINEERING = gql`
   }
   ${TICKET_FIELDS}
 `;
+
+/** A doctor passes the non-medical part of a clinical ticket to support (a new ticket for support). Returns the clinical ticket. */
+export const HAND_TICKET_TO_SUPPORT = gql`
+  mutation HandTicketToSupport($ticketId: ID!, $note: String!) {
+    handTicketToSupport(ticketId: $ticketId, note: $note) {
+      ...TicketFields
+    }
+  }
+  ${TICKET_FIELDS}
+`;

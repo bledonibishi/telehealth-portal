@@ -29,7 +29,7 @@ export function hasAccess(allowed: ClinicianRole[]): boolean {
 // to (see NAV in the portal layout).
 const LANDING_PATH: Record<ClinicianRole, string> = {
   ADMIN: '/',
-  DOCTOR: '/queue',
+  DOCTOR: '/',
   CX_TEAM: '/tickets',
   PROVIDER: '/orders',
 };

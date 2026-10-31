@@ -61,6 +61,7 @@ export const DASHBOARD_WIDGETS: DashboardWidget[] = [
     id: 'emergency', staffCannotHide: true, title: 'In an emergency', description: 'What to do if you feel very unwell', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small',
     confirmHide: 'This card tells you what to do if you feel very unwell. The same advice is always shown under the message box in Help & messages. Remove it from your home screen anyway?',
   },
+  { id: 'referral', title: 'Refer a friend', description: 'Your link to share, and the rewards you’ve earned', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
   // Messages and the emergency number are on the chat and emergency cards.
   { id: 'contact', startsHidden: true, title: 'Contact us', description: 'Ways to reach the clinic', zone: 'side', zones: ANYWHERE, sizes: ALL_SIZES, defaultSize: 'small' },
 ];

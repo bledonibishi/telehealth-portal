@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useUnreadMessages } from '@/lib/useUnreadMessages';
 import { Icon, type IconName } from './Icon';
 import { BrandMark } from './BrandMark';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 export type NavItem = { href: string; label: string; icon: IconName; badge?: 'messages' };
 
@@ -23,6 +24,7 @@ const GROUPS: { title: string; hrefs: string[] }[] = [
 
 export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { t } = useI18n();
   const { unread } = useUnreadMessages();
   const groups = GROUPS.map((g) => ({ title: g.title, items: g.hrefs.map((h) => items.find((i) => i.href === h)).filter((i): i is NavItem => !!i) }));
   // Anything not placed in a group still shows, so a new page never goes missing from the menu.
@@ -36,10 +38,10 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
         <Link href="/dashboard" onClick={onNavigate} aria-label={`${BRAND.name} home`}><BrandMark size={30} /></Link>
       </div>
 
-      <nav className="flex-1 px-2.5 py-3 overflow-y-auto" aria-label="Main">
+      <nav className="flex-1 px-2.5 py-3 overflow-y-auto" aria-label={t('Main')}>
         {groups.filter((g) => g.items.length).map((g) => (
           <div key={g.title} className="mb-4">
-            <p className="px-2.5 mb-1 text-xs font-medium text-slate-500">{g.title}</p>
+            <p className="px-2.5 mb-1 text-xs font-medium text-slate-500">{t(g.title)}</p>
             <div className="space-y-0.5">
               {g.items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -48,7 +50,7 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
                   <Link key={item.href} href={item.href} onClick={onNavigate} data-guide={`nav:${item.href}`} aria-current={active ? 'page' : undefined}
                     className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] border transition-colors ${active ? 'bg-white border-slate-200 text-slate-900 font-medium shadow-[0_1px_0_rgba(15,23,42,0.04)]' : 'border-transparent text-slate-600 hover:bg-slate-900/[0.04] hover:text-slate-900'}`}>
                     <Icon name={item.icon} className={`w-4 h-4 flex-shrink-0 ${active ? 'text-brand-700' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                    <span className="flex-1 truncate">{item.label}</span>
+                    <span className="flex-1 truncate">{t(item.label)}</span>
                     {count > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-700 text-white text-[10px] font-semibold flex items-center justify-center">{count}</span>}
                   </Link>
                 );
@@ -68,8 +70,8 @@ export function Sidebar({ items, onNavigate }: { items: NavItem[]; onNavigate?: 
         >
           <span className="w-8 h-8 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center flex-shrink-0"><Icon name="chat" className="w-4 h-4" /></span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-medium text-slate-900">Help & messages</span>
-            <span className="block text-xs text-slate-500">Chat with us, or send a request</span>
+            <span className="block text-[13px] font-medium text-slate-900">{t('Help & messages')}</span>
+            <span className="block text-xs text-slate-500">{t('Chat or send a request')}</span>
           </span>
           {unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-700 text-white text-[10px] font-semibold flex items-center justify-center">{unread}</span>}
         </Link>

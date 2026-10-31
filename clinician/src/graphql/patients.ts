@@ -64,6 +64,7 @@ export const PATIENT_RECENT_DOSES = gql`
       injectionSite
       feelingAfter
       strength { label }
+      product { form }
     }
   }
 `;

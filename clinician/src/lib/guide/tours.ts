@@ -38,15 +38,14 @@ const header = (title: string, body: string) => ({ target: 'page-header', title,
 /** One tour per page, found by the path (see `pageTourFor`). */
 const PAGE_TOURS: Record<string, GuideTour> = {
   '/': {
-    id: 'clinician.page.dashboard.v1',
+    id: 'clinician.page.dashboard.v2',
     title: 'Dashboard',
     steps: [
       header('Your day at a glance', 'The dashboard sums up the whole clinic. Every number is live.'),
+      { target: 'dashboard:attention', title: 'Needs attention', body: 'What is waiting on the team: consultations to decide, supplies to send, refund requests and failed payments. Each opens the page where you deal with it.' },
       { target: 'dashboard:revenue', title: 'Revenue and sales funnel', body: 'Money taken and how visitors turn into patients, for the period you choose.' },
-      { target: 'dashboard:leads', title: 'Leads', body: 'How many people took the eligibility quiz: in total, this week and today.' },
-      { target: 'dashboard:patients', title: 'Patients', body: 'All patients, those active on treatment, new this week, and how many leads became patients.' },
-      { target: 'dashboard:consultations', title: 'Consultations', body: 'Consultations waiting for a doctor, and those approved.' },
-      { target: 'dashboard:orders', title: 'Orders', body: 'Orders waiting to be sent, and orders on their way.' },
+      { target: 'dashboard:trends', title: 'Month by month', body: 'New leads and patients, revenue, supplies sent and check-in decisions over the last months. Point at a month to see its numbers.' },
+      { target: 'dashboard:totals', title: 'All time', body: 'Totals since the clinic opened.' },
     ],
   },
   '/queue': {
@@ -178,7 +177,18 @@ const PAGE_TOURS: Record<string, GuideTour> = {
   },
 };
 
-export function pageTourFor(pathname: string): GuideTour | null {
+/** A doctor's start page is their own work list, not the clinic's figures, so it has its own tour. */
+const DOCTOR_HOME_TOUR: GuideTour = {
+  id: 'clinician.page.doctor-home.v1',
+  title: 'Dashboard',
+  steps: [
+    header('Your day at a glance', 'Everything waiting for you, in one place. Every number is live.'),
+    { target: 'dashboard:work', title: 'Waiting for you', body: 'Urgent appointments and side effects first, then consultations, missed doses, messages, tickets and supplies. Each opens the page where you deal with it.' },
+  ],
+};
+
+export function pageTourFor(pathname: string, role?: string | null): GuideTour | null {
+  if (pathname === '/' && role === 'DOCTOR') return DOCTOR_HOME_TOUR;
   if (PAGE_TOURS[pathname]) return PAGE_TOURS[pathname];
   if (pathname.startsWith('/consultation/')) return PAGE_TOURS['/consultation'];
   return null;

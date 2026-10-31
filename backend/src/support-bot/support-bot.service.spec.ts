@@ -1,13 +1,14 @@
 import { CLOSE_AFTER_HOURS, MAX_ATTEMPTS, QUIET_MS, SupportBotService } from './support-bot.service';
 import { overpromises } from './answer-guard';
 import { DEFAULT_ARTICLES } from './support-knowledge';
+import { GROUNDING_SYSTEM } from './grounding-check';
 
 const NOW = new Date('2026-10-14T12:00:00Z');
 const thread = (over: any = {}) => ({ id: 't-1', threadKey: 'p-1:pre', patientId: 'p-1', consultationId: null, status: 'ACTIVE', replyDueAt: new Date(NOW.getTime() - 1000), attempts: 0, usedArticles: [], ticketId: null, awaitingSince: null, ...over });
 const msg = (id: string, role: 'PATIENT' | 'CLINICIAN', content: string, over: any = {}) => ({ id, senderRole: role, content, isAi: false, aiCheckedAt: new Date(), aiUrgent: false, sentAt: new Date(NOW.getTime() - 60_000), ...over });
 const decision = (over: any = {}) => ({ status: 'COMPLETED', data: { language: 'en', intent: 'SUPPORT_QUESTION', ticketType: 'ACCOUNT', subject: 'Forgot password', articleId: 'reset-password', answer: 'Use Forgot password on the sign-in page.', ...over } });
 
-function setup(opts: { enabled?: boolean; row?: any; messages?: any[]; ai?: any } = {}) {
+function setup(opts: { enabled?: boolean; row?: any; messages?: any[]; ai?: any; grounding?: any } = {}) {
   const row = opts.row ?? thread();
   const prisma: any = {
     supportThread: {
@@ -15,10 +16,16 @@ function setup(opts: { enabled?: boolean; row?: any; messages?: any[]; ai?: any 
       findMany: jest.fn().mockResolvedValue([row]),
     },
     message: { findMany: jest.fn().mockResolvedValue([...(opts.messages ?? [msg('m1', 'PATIENT', 'I forgot my password')])].reverse()), count: jest.fn().mockResolvedValue(0) },
-    ticket: { findUnique: jest.fn().mockResolvedValue({ status: 'OPEN' }) },
+    ticket: { findUnique: jest.fn().mockResolvedValue({ status: 'OPEN' }), findMany: jest.fn().mockResolvedValue([]) },
     uploadedFile: { count: jest.fn().mockResolvedValue(0) },
+    order: { findMany: jest.fn().mockResolvedValue([]) },
   };
-  const ai = { isEnabled: jest.fn().mockReturnValue(opts.enabled ?? true), json: jest.fn().mockResolvedValue(opts.ai ?? decision()) };
+  // The assistant's decision, and the second model's check of its draft (which passes unless a test says otherwise).
+  const ai = {
+    isEnabled: jest.fn().mockReturnValue(opts.enabled ?? true),
+    checkerModel: jest.fn().mockReturnValue('claude-haiku-4-5'),
+    json: jest.fn().mockImplementation(async (o: any) => (o.system === GROUNDING_SYSTEM ? opts.grounding ?? { status: 'COMPLETED', data: { grounded: true, problem: '' } } : opts.ai ?? decision())),
+  };
   const tickets = { openForAssistant: jest.fn().mockResolvedValue('tk-1'), assistantUpdate: jest.fn().mockResolvedValue(undefined), notifyStaffAbout: jest.fn().mockResolvedValue(undefined) };
   const urgency = { check: jest.fn().mockResolvedValue(false) };
   const articles = { active: jest.fn().mockResolvedValue(DEFAULT_ARTICLES) };
@@ -61,6 +68,18 @@ describe('waiting for the patient to finish typing', () => {
     prisma.ticket.findUnique.mockResolvedValue({ status: 'RESOLVED' });
     await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
     expect(prisma.supportThread.update.mock.calls[0][0].data).toMatchObject({ status: 'ACTIVE', attempts: 0, ticketId: null });
+  });
+
+  it('puts a ticket that was waiting on the patient back in the team’s list when the patient answers', async () => {
+    const { bot, prisma, tickets } = setup();
+    prisma.supportThread.findUnique.mockResolvedValue(thread({ status: 'ESCALATED', ticketId: 'tk-1' }));
+    prisma.ticket.findUnique.mockResolvedValue({ status: 'OPEN' });
+    prisma.ticket.findMany = jest.fn().mockResolvedValue([{ id: 'tk-1' }, { id: 'tk-2' }]);
+    // tk-2 is one the assistant is still answering itself: it stays with the assistant.
+    prisma.supportThread.findMany = jest.fn().mockResolvedValue([{ ticketId: 'tk-2' }]);
+    await bot.onPatientMessage({ patientId: 'p-1', consultationId: null });
+    expect(tickets.assistantUpdate).toHaveBeenCalledWith('tk-1', expect.objectContaining({ status: 'OPEN' }));
+    expect(tickets.assistantUpdate).not.toHaveBeenCalledWith('tk-2', expect.anything());
   });
 
   it('steps back when a person from the team writes', async () => {
@@ -182,6 +201,8 @@ describe('what it never answers', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatch(/doctors/i);
     expect(sent[0]).toMatch(/emergency/i);
+    // Its own "passed to the doctors" reply is not an answer: the doctors' reply deadline must start.
+    expect(tickets.assistantUpdate).toHaveBeenCalledWith('tk-1', expect.objectContaining({ status: 'OPEN', needsPerson: true }));
   });
 
   it('does not even ask the AI when a message was marked urgent', async () => {
@@ -295,5 +316,86 @@ describe('answers that promise or ask for too much', () => {
     await bot.processDue(NOW);
     expect(sent.some((m) => /make sure you get it/.test(m))).toBe(false);
     expect(tickets.notifyStaffAbout).toHaveBeenCalled();
+  });
+});
+
+describe('the second look at a draft answer', () => {
+  const groundingCall = (ai: any) => ai.json.mock.calls.find((c: any[]) => c[0].system === GROUNDING_SYSTEM)?.[0];
+
+  it('checks the draft against the article with the small model before sending it', async () => {
+    const { bot, ai, sent } = setup();
+    await bot.processDue(NOW);
+    const check = groundingCall(ai);
+    expect(check.model).toBe('claude-haiku-4-5');
+    expect(check.user).toContain(DEFAULT_ARTICLES.find((a) => a.id === 'reset-password')!.body);
+    expect(check.user).toContain('Use Forgot password on the sign-in page.');
+    expect(sent[0]).toMatch(/Did that solve it/);
+  });
+
+  it('does not send a draft the check says goes beyond its sources, in any language, and hands it over', async () => {
+    const albanian = 'Mos u shqetëso, do t’ju kthejmë paratë brenda 3 ditëve.';
+    const { bot, sent, tickets } = setup({ ai: decision({ language: 'sq', articleId: 'stop-or-refund', answer: albanian }), grounding: { status: 'COMPLETED', data: { grounded: false, problem: 'Promises a refund within 3 days.' } } });
+    await bot.processDue(NOW);
+    expect(sent.join('\n')).not.toContain(albanian);
+    expect(tickets.notifyStaffAbout).toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toMatch(/Did that solve it/);
+  });
+
+  it('does not send anything it could not check', async () => {
+    const { bot, sent, prisma } = setup({ grounding: { status: 'FAILED', reason: 'down' } });
+    await bot.processDue(NOW);
+    expect(sent.some((m) => /Did that solve it/.test(m))).toBe(false);
+    expect(prisma.supportThread.update.mock.calls.at(-1)[0].data).toMatchObject({ status: 'ESCALATED', escalationReason: 'The assistant could not check its draft answer, so it was not sent.' });
+  });
+
+  it('checks an order answer against what the lookup returned as well', async () => {
+    const lookup = '{"orders":[{"stage":"DISPATCHED","courier":"PostaKS"}]}';
+    const { bot, ai } = setup({ ai: { ...decision({ articleId: 'track-order', answer: 'Your order is with PostaKS.' }), toolOutputs: [{ name: 'get_my_orders', output: lookup }] } });
+    await bot.processDue(NOW);
+    expect(groundingCall(ai).user).toContain(lookup);
+  });
+});
+
+describe('looking up the patient’s orders', () => {
+  it('offers the lookup only while the order article is on, and it reads only that patient’s orders', async () => {
+    const { bot, ai, prisma } = setup();
+    await bot.processDue(NOW);
+    const tools = ai.json.mock.calls[0][0].tools;
+    expect(tools.map((t: any) => t.name)).toEqual(['get_my_orders']);
+    // Whatever the model asks for, the lookup is for the patient in this conversation.
+    await tools[0].run({ patientId: 'someone-else' });
+    expect(prisma.order.findMany.mock.calls[0][0].where).toEqual({ patientId: 'p-1' });
+
+    const off = setup();
+    off.articles.active.mockResolvedValue(DEFAULT_ARTICLES.filter((a) => a.id !== 'track-order'));
+    await off.bot.processDue(NOW);
+    expect(off.ai.json.mock.calls[0][0].tools).toEqual([]);
+  });
+
+  it('tells the model where an order is, and nothing about the medicine, the address, the payment or a cancellation reason', async () => {
+    const { bot, prisma } = setup();
+    prisma.order.findMany.mockResolvedValue([{ sequence: 2, status: 'DISPATCHED', createdAt: new Date('2026-10-10T08:00:00Z'), dispatchedAt: new Date('2026-10-12T08:00:00Z'), carrier: 'PostaKS', trackingNumber: 'PK123', trackingUrl: 'https://track/PK123', estimatedDeliveryFrom: new Date('2026-10-15T00:00:00Z'), estimatedDeliveryTo: null, outForDeliveryAt: null, deliveredAt: null, cancelledAt: null }]);
+    const out = await bot.ordersFor('p-1');
+    expect(out.orders[0]).toMatchObject({ supply: 2, stage: 'DISPATCHED', shipped: '2026-10-12', courier: 'PostaKS', trackingNumber: 'PK123', expectedFrom: '2026-10-15' });
+    const select = prisma.order.findMany.mock.calls[0][0].select;
+    for (const field of ['shippingAddress', 'prescriptionId', 'prescription', 'cancelReason', 'cancelBillingNote', 'paymentUrl', 'paymentAmountCents']) expect(select[field]).toBeUndefined();
+  });
+});
+
+describe('a draft it has no use for', () => {
+  it('is dropped for a health question, so the model’s own words can never reach the patient', async () => {
+    const draft = 'I’m not a doctor, but dizziness after a dose is usually nothing to worry about.';
+    const { bot, sent } = setup({ ai: decision({ intent: 'MEDICAL', articleId: 'reset-password', answer: draft }) });
+    const r: any = await bot.interpret({ articles: DEFAULT_ARTICLES, transcript: 'Patient: I feel dizzy', attempts: 0, awaiting: false });
+    expect(r.data).toMatchObject({ intent: 'MEDICAL', articleId: null, answer: '' });
+    await bot.processDue(NOW);
+    expect(sent.join('\n')).not.toContain(draft);
+  });
+
+  it('is kept for a practical question', async () => {
+    const { bot } = setup();
+    const r: any = await bot.interpret({ articles: DEFAULT_ARTICLES, transcript: 'Patient: I forgot my password', attempts: 0, awaiting: false });
+    expect(r.data).toMatchObject({ articleId: 'reset-password', answer: 'Use Forgot password on the sign-in page.' });
   });
 });

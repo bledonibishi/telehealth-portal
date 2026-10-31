@@ -8,6 +8,8 @@ import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ErrorAlert } from '@/components/ui/Alert';
 import { LoadingState } from '@telehealth/loading';
 import TicketDetail from '@/components/tickets/TicketDetail';
+import DoctorTicketView from '@/components/tickets/DoctorTicketView';
+import { getCurrentRole } from '@/lib/role';
 
 export default function TicketPage() {
   const { t } = useI18n();
@@ -23,5 +25,5 @@ export default function TicketPage() {
       </div>
     );
   }
-  return <TicketDetail ticket={data.ticket} />;
+  return getCurrentRole() === 'DOCTOR' ? <DoctorTicketView ticket={data.ticket} /> : <TicketDetail ticket={data.ticket} />;
 }

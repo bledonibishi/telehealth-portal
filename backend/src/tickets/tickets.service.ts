@@ -295,6 +295,39 @@ export class TicketsService {
     return toPatientModel(row);
   }
 
+  /**
+   * A doctor passes the non-medical part of a clinical ticket (a delivery, a payment, an account question) to support. Doctors
+   * can't move a ticket out of clinical, so this opens a separate support ticket for the same patient with the doctor's note,
+   * tells support, and records the hand-over on the clinical ticket, which stays with the doctors.
+   */
+  async handToSupport(user: AuthUser, ticketId: string, note: string) {
+    const text = note.trim();
+    if (text.length < 5) throw appError(ErrorCode.BAD_REQUEST, 'Tell support what the patient needs, in a few words.');
+    if (text.length > 1500) throw appError(ErrorCode.BAD_REQUEST, 'That is too long (1500 characters at most).');
+    const ticket = await this.load(ticketId, user);
+    if (ticket.type !== TicketType.CLINICAL || !ticket.patientId) throw appError(ErrorCode.BAD_REQUEST, 'Only a patient’s medical ticket can be handed to support this way.');
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.ticket.create({
+        data: {
+          subject: `From the doctors: ${text.split('\n')[0].slice(0, 120)}`,
+          description: text,
+          type: TicketType.OTHER,
+          priority: ticket.priority === TicketPriority.URGENT ? TicketPriority.HIGH : ticket.priority,
+          patientId: ticket.patientId,
+          createdById: user.id,
+          notes: { create: { authorId: user.id, body: `Handed over from clinical ticket #${ticket.number}.` } },
+        },
+      });
+      await tx.ticket.update({ where: { id: ticket.id }, data: { notes: { create: { authorId: user.id, body: `Handed to support as ticket #${row.number}:\n${text}` } } } });
+      await this.audit.log({ actorId: user.id, actorRole: UserRole.CLINICIAN, action: 'TICKET_HANDED_TO_SUPPORT', resourceType: 'Ticket', resourceId: ticket.id, patientId: ticket.patientId ?? undefined, metadata: { number: ticket.number, supportTicket: row.number } }, tx);
+      return row;
+    });
+    await this.notifyStaffAbout(created.id);
+    // The clinical ticket, now with the hand-over noted on it: the doctor can't open the support ticket itself.
+    return this.get(ticket.id, user);
+  }
+
   /** The automated assistant starts a ticket for a conversation it is handling. Nobody is told until it needs a person. */
   async openForAssistant(patientId: string, input: { type: TicketType; subject: string; priority?: TicketPriority; note?: string }) {
     const subject = input.subject.trim().slice(0, 160) || 'Support question';
@@ -313,7 +346,11 @@ export class TicketsService {
   }
 
   /** The assistant moves its own ticket along, with a note on what it did. */
-  async assistantUpdate(ticketId: string, patch: { status?: TicketStatus; type?: TicketType; priority?: TicketPriority; note?: string }) {
+  /**
+   * `needsPerson`: the assistant is handing it over, so its own automatic reply no longer counts as the first reply. The reply
+   * deadline (ticket-sla) then runs again, and a medical question that nobody answers shows as late instead of looking answered.
+   */
+  async assistantUpdate(ticketId: string, patch: { status?: TicketStatus; type?: TicketType; priority?: TicketPriority; note?: string; needsPerson?: boolean }) {
     const ticket = await this.prisma.ticket.findUnique({ where: { id: ticketId }, select: { id: true, number: true, patientId: true, status: true, resolvedAt: true } });
     if (!ticket) return;
     const status = patch.status ?? ticket.status;
@@ -322,6 +359,7 @@ export class TicketsService {
         where: { id: ticketId },
         data: {
           ...(patch.type ? { type: patch.type } : {}), ...(patch.priority ? { priority: patch.priority } : {}), ...(patch.status ? { status: patch.status } : {}),
+          ...(patch.needsPerson ? { firstResponseAt: null } : {}),
           ...(CLOSED.includes(status) ? (ticket.resolvedAt ? {} : { resolvedAt: new Date() }) : { resolvedAt: null }),
           ...(patch.note ? { notes: { create: { authorId: ASSISTANT_ID, body: patch.note.slice(0, 4000) } } } : {}),
         },

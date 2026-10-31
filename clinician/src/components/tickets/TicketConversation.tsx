@@ -18,7 +18,8 @@ type Message = { id: string; senderId: string; senderRole: string; isAi: boolean
  * moves the ticket along: it counts as the first reply and waits on the patient. Support cannot answer a medical question: that
  * ticket is for a doctor.
  */
-export default function TicketConversation({ ticketId, ticketType, patientName }: { ticketId: string; ticketType: TicketType; patientName?: string | null }) {
+/** `bare`: only the messages, for a page that has its own reply box (the doctor's view). */
+export default function TicketConversation({ ticketId, ticketType, patientName, bare = false }: { ticketId: string; ticketType: TicketType; patientName?: string | null; bare?: boolean }) {
   const { t, fmt, timeAgo } = useI18n();
   const role = getCurrentRole();
   const blocked = ticketType === 'CLINICAL' && role === 'CX_TEAM';
@@ -59,12 +60,12 @@ export default function TicketConversation({ ticketId, ticketType, patientName }
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3 mb-3">
+      {!bare && <div className="flex items-baseline justify-between gap-3 mb-3">
         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Conversation with the patient')}</h2>
         <span className="text-xs text-gray-400">{t('What you write here is sent to the patient.')}</span>
-      </div>
+      </div>}
 
-      <div className="max-h-[420px] overflow-y-auto rounded-lg bg-gray-50 p-3 space-y-2" aria-live="polite">
+      <div className={`${bare ? 'max-h-[60vh]' : 'max-h-[420px]'} overflow-y-auto rounded-lg bg-gray-50 p-3 space-y-2`} aria-live="polite">
         {loading && messages.length === 0 && <p className="text-sm text-gray-400 py-6 text-center">{t('Loading…')}</p>}
         {!loading && messages.length === 0 && <p className="text-sm text-gray-400 py-6 text-center">{t('No messages yet.')}</p>}
         {messages.map((m) => {
@@ -90,7 +91,7 @@ export default function TicketConversation({ ticketId, ticketType, patientName }
         <div ref={end} />
       </div>
 
-      {blocked ? (
+      {bare ? null : blocked ? (
         <p className="mt-3 text-sm text-purple-700 bg-purple-50 rounded-lg px-3 py-2">{t('This is a medical question, so a doctor answers it. Please don’t reply yourself.')}</p>
       ) : (
         <form className="mt-3 space-y-2" onSubmit={(e) => { e.preventDefault(); submit(); }}>

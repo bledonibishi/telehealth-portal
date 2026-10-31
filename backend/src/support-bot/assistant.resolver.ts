@@ -42,6 +42,29 @@ class AssistantReviewModel {
   @Field(() => [AssistantHandoverModel]) recentHandovers: AssistantHandoverModel[];
 }
 
+@ObjectType('AssistantGapTicket')
+class AssistantGapTicketModel {
+  @Field(() => ID) id: string;
+  @Field(() => Int) number: number;
+}
+
+@ObjectType('AssistantArticleGap')
+class AssistantArticleGapModel {
+  @Field({ description: 'What the patients want to know' }) topic: string;
+  @Field({ description: 'The question a new help article would answer' }) suggestedTitle: string;
+  @Field(() => Int) count: number;
+  @Field(() => [String]) examples: string[];
+  @Field(() => [AssistantGapTicketModel]) tickets: AssistantGapTicketModel[];
+}
+
+@ObjectType('AssistantArticleGaps')
+class AssistantArticleGapsModel {
+  @Field(() => Int) days: number;
+  @Field(() => Int, { description: 'Questions handed to a person because no article covered them' }) questions: number;
+  @Field({ description: 'false when the AI could not be asked to group them' }) available: boolean;
+  @Field(() => [AssistantArticleGapModel]) groups: AssistantArticleGapModel[];
+}
+
 @ObjectType('SupportArticle')
 class SupportArticleModel {
   @Field(() => ID) id: string;
@@ -74,6 +97,12 @@ export class AssistantResolver {
   @Query(() => AssistantReviewModel, { description: 'How the automated assistant is doing: its answers, ratings and the conversations it handed over' })
   assistantReview(@Args('days', { type: () => Int, nullable: true }) days?: number) {
     return this.review.review(days ?? 30);
+  }
+
+  @Authorized(...TEAM)
+  @Query(() => AssistantArticleGapsModel, { description: 'The questions no help article covered, grouped by what they ask: the articles worth writing next' })
+  assistantArticleGaps(@Args('days', { type: () => Int, nullable: true }) days?: number) {
+    return this.review.articleGaps(days ?? 30);
   }
 
   @Authorized(...TEAM)

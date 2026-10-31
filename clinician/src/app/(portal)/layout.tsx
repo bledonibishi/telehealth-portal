@@ -37,7 +37,7 @@ type NotifCounts = {
 };
 
 const NAV: NavItem[] = [
-  { href: '/',         label: 'Dashboard',     icon: 'home',     group: 'Overview', roles: ['ADMIN'] },
+  { href: '/',         label: 'Dashboard',     icon: 'home',     group: 'Overview', roles: ['ADMIN', 'DOCTOR'] },
   { href: '/leads',    label: 'Leads',         icon: 'flag',     group: 'Clinical', roles: ['ADMIN', 'CX_TEAM'],                               badgeKey: 'newLeads' },
   { href: '/tickets', label: 'Tickets',        icon: 'inbox',    group: 'Clinical', roles: ['ADMIN', 'CX_TEAM', 'DOCTOR'],                     badgeKey: 'ticketsToDo' },
   { href: '/patients', label: 'Patients',       icon: 'user',     group: 'Clinical', roles: ['ADMIN', 'DOCTOR', 'CX_TEAM'],                     badgeKey: 'patientMessages' },
@@ -100,7 +100,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   const handleLogout = () => { clearToken(); router.replace('/login'); };
 
-  const visibleNav = NAV.filter((item) => !role || item.roles.includes(role));
+  // A doctor's tickets are medical questions from patients, and are named that way.
+  const visibleNav = NAV.filter((item) => !role || item.roles.includes(role)).map((item) => (role === 'DOCTOR' && item.href === '/tickets' ? { ...item, label: 'Patient questions' } : item));
   const badge = role ? ROLE_BADGE[role] : null;
   // Links sit under small section headings, in the order the groups first appear in NAV.
   const groups = visibleNav.reduce<{ title: string; items: NavItem[] }[]>((acc, item) => {
@@ -110,7 +111,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   }, []);
 
   return (
-    <GuideProvider welcome={WELCOME_TOUR} pageTour={authChecked ? pageTourFor(pathname) : null} pageKey={pathname} t={t} theme={GUIDE_THEME}>
+    <GuideProvider welcome={WELCOME_TOUR} pageTour={authChecked ? pageTourFor(pathname, role) : null} pageKey={pathname} t={t} theme={GUIDE_THEME}>
     <div style={ready ? undefined : { visibility: 'hidden' }} className="dark-surface flex h-screen bg-[color:var(--bg-page)] text-[color:var(--t-body)]">
       {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden />}
       <aside

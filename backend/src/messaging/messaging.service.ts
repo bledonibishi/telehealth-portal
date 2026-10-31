@@ -12,11 +12,15 @@ import { ClinicianRole } from '../common/enums';
 import { MessageUrgencyService } from '../ai/message-urgency.service';
 import { SupportBotService } from '../support-bot/support-bot.service';
 import { ASSISTANT_ID } from '../tickets/tickets.service';
+import { appError, ErrorCode } from '../common/errors/app-error';
 
 const pubSub = new PubSub();
 
 /** Files a patient can send with one chat message. */
 export const MAX_MESSAGE_ATTACHMENTS = 3;
+/** How fast one patient may send (see checkPatientPace): far above anyone typing, low enough to stop a script. */
+export const PATIENT_MESSAGES_PER_MINUTE = 20;
+export const PATIENT_MESSAGES_PER_HOUR = 200;
 
 // One notification per conversation thread and side (see NotifierService groupKey). A thread is a consultation, or the
 // pre-consultation thread; a patient can have several, and each keeps its own notification, so reading or answering one
@@ -82,12 +86,29 @@ export class MessagingService implements OnModuleInit {
 
   /** A message written in the app: the thread is worked out from the sender (see resolveThread). */
   async sendAs(user: AuthUser, input: SendMessageInput) {
+    if (user.role === UserRole.PATIENT) await this.checkPatientPace(user);
     // Only a patient sends files, and only their own, uploaded for this purpose and not yet used.
     const attachmentIds = user.role === UserRole.PATIENT ? [...new Set(input.attachmentIds ?? [])] : [];
     if (input.attachmentIds?.length && user.role !== UserRole.PATIENT) throw new BadRequestException('Only patients can attach files');
     if (!input.content.trim() && attachmentIds.length === 0) throw new BadRequestException('Write a message or attach a file');
     if (attachmentIds.length > MAX_MESSAGE_ATTACHMENTS) throw new BadRequestException(`You can attach up to ${MAX_MESSAGE_ATTACHMENTS} files`);
     return this.deliver(user.id, user.role as UserRole, await this.resolveThread(user, input), input.content, false, attachmentIds);
+  }
+
+  /**
+   * A cap on how fast one patient can send. Every patient message is read by the AI (the urgency check, the assistant), so
+   * a script or a stuck app sending thousands would cost real money. The limits are far above what a person types, and
+   * count the patient's own messages, so staff and other patients are never held up by one account.
+   */
+  private async checkPatientPace(user: AuthUser) {
+    // A patient's own id is their patient id (see resolveThread).
+    const now = Date.now();
+    const sentSince = (ms: number) => this.prisma.message.count({ where: { patientId: user.id, senderRole: UserRole.PATIENT, sentAt: { gte: new Date(now - ms) } } });
+    const [lastMinute, lastHour] = await Promise.all([sentSince(60_000), sentSince(3_600_000)]);
+    if (lastMinute >= PATIENT_MESSAGES_PER_MINUTE || lastHour >= PATIENT_MESSAGES_PER_HOUR) {
+      this.logger.warn(`Patient ${user.id} hit the message limit (${lastMinute} in a minute, ${lastHour} in an hour)`);
+      throw appError(ErrorCode.RATE_LIMITED, lastMinute >= PATIENT_MESSAGES_PER_MINUTE ? 'You’ve sent a lot of messages very quickly. Please wait a minute, then send the rest.' : 'You’ve sent a lot of messages in the last hour. Please wait a little before sending more. If something is urgent, call emergency services.');
+    }
   }
 
   /** A message from staff into a thread that is already known (a consultation, or the pre-consultation one when `consultationId` is null). */

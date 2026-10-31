@@ -2,7 +2,7 @@ import { MessagingService } from './messaging.service';
 import { UserRole } from '../common/enums';
 
 describe('MessagingService', () => {
-  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock }; consultation: { findUniqueOrThrow: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock } };
+  let prisma: { message: { create: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock; count: jest.Mock }; consultation: { findUniqueOrThrow: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock } };
   let audit: { log: jest.Mock };
   let posthog: { capture: jest.Mock };
   let service: MessagingService;
@@ -22,6 +22,7 @@ describe('MessagingService', () => {
         create: jest.fn().mockResolvedValue(MESSAGE),
         findMany: jest.fn().mockResolvedValue([MESSAGE]),
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        count: jest.fn().mockResolvedValue(0),
       },
       consultation: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({ patientId: 'patient-1' }),
@@ -159,6 +160,25 @@ describe('MessagingService', () => {
 
       prisma.consultation.findUnique.mockResolvedValue({ patientId: 'patient-2' });
       await expect(service.sendAs(patient, { consultationId: 'theirs', content: 'x' })).rejects.toThrow();
+    });
+
+    it('stops a patient sending faster than a person types, counting only their own messages', async () => {
+      prisma.message.count.mockImplementation(async ({ where }: any) => (Date.now() - where.sentAt.gte.getTime() <= 60_000 ? 20 : 25));
+      await expect(service.sendAs(patient, { content: 'again' })).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RATE_LIMITED', severity: 'warning' }) });
+      expect(prisma.message.count.mock.calls[0][0].where).toMatchObject({ patientId: 'patient-1', senderRole: 'PATIENT' });
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+
+    it('also stops a patient who keeps sending over an hour, and says where to go if it is urgent', async () => {
+      prisma.message.count.mockImplementation(async ({ where }: any) => (Date.now() - where.sentAt.gte.getTime() <= 60_000 ? 3 : 200));
+      await expect(service.sendAs(patient, { content: 'again' })).rejects.toThrow(/emergency services/);
+    });
+
+    it('never holds up staff, however much they send', async () => {
+      prisma.message.count.mockResolvedValue(10_000);
+      await service.sendAs(doctor, { patientId: 'patient-1', content: 'Reply' });
+      expect(prisma.message.count).not.toHaveBeenCalled();
+      expect(prisma.message.create).toHaveBeenCalled();
     });
 
     it('staff reply to a patient without a consultation by patient id', async () => {

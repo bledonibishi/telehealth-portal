@@ -11,7 +11,6 @@ import { Select } from '@/components/ui/Select';
 import QuickFixes from './QuickFixes';
 import TicketConversation from './TicketConversation';
 import EngineeringHandoff from './EngineeringHandoff';
-import PatientDashboardCards from './PatientDashboardCards';
 import { systemNote, systemText } from '@/lib/system-text';
 import { PhotoTile } from '@/components/PhotoTile';
 import { filePath, openAuthedFile } from '@/lib/files';
@@ -110,13 +109,12 @@ export default function TicketDetail({ ticket }: { ticket: Ticket }) {
 
           {canQuickFix && (
             <section className={`${card} p-5`}>
-              <PatientDashboardCards patientId={ticket.patientId!} />
-            </section>
-          )}
-
-          {canQuickFix && (
-            <section className={`${card} p-5`}>
               <QuickFixes ticketId={ticket.id} patientId={ticket.patientId!} ticketType={ticket.type} />
+              {/* Changing their home screen is rarely what a ticket is about, so it is a link to the patient's own tab, not a panel here. */}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-4">
+                <p className="text-sm text-gray-500">{t('Ticket about a missing card on their home screen?')}</p>
+                <Link href={`/patients?patient=${ticket.patientId}&tab=homescreen`} className="text-sm font-medium text-brand-600 hover:underline">{t('Change their home screen →')}</Link>
+              </div>
             </section>
           )}
 

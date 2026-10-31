@@ -239,6 +239,7 @@ export class ReferralsService {
     return {
       code,
       link: this.linkFor(code),
+      reward: this.rewardLabel(),
       voucherAutoApply: patient.voucherAutoApply,
       vouchers,
       referrals: referrals.map((r) => ({
@@ -257,6 +258,8 @@ function generateCode(): string {
   return crypto.randomBytes(5).toString('hex').toUpperCase();
 }
 
+/** "£20" for a whole amount, "£20.50" otherwise. */
 function formatAmount(cents: number, currency: string): string {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(cents / 100);
+  const whole = cents % 100 === 0;
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency, minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(cents / 100);
 }

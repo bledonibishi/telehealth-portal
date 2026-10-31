@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useMutation, useQuery } from '@apollo/client';
-import { ASSISTANT_REVIEW, RATE_ASSISTANT_ANSWER, SAVE_SUPPORT_ARTICLE, SET_SUPPORT_ARTICLE_ACTIVE, SUPPORT_ARTICLES } from '@/graphql/assistant';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client';
+import { ASSISTANT_ARTICLE_GAPS, ASSISTANT_REVIEW, RATE_ASSISTANT_ANSWER, SAVE_SUPPORT_ARTICLE, SET_SUPPORT_ARTICLE_ACTIVE, SUPPORT_ARTICLES } from '@/graphql/assistant';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { Alert, ErrorAlert, InlineError } from '@/components/ui/Alert';
 import { Modal } from '@/components/consultation/Modal';
@@ -22,6 +22,54 @@ function Stat({ label, value, hint, tone }: { label: string; value: number | str
       <p className={`text-2xl font-semibold mt-0.5 ${tone ?? 'text-gray-900'}`}>{value}</p>
       {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
     </div>
+  );
+}
+
+type Gap = { topic: string; suggestedTitle: string; count: number; examples: string[]; tickets: Array<{ id: string; number: number }> };
+
+/** The questions no article covered, grouped by what they ask. Asked for on a click: grouping them is a call to the AI. */
+function MissingArticles({ days }: { days: number }) {
+  const { t } = useI18n();
+  const [find, { data, loading, error, called }] = useLazyQuery(ASSISTANT_ARTICLE_GAPS, { fetchPolicy: 'network-only' });
+  const g = data?.assistantArticleGaps;
+  return (
+    <section className={card}>
+      <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900">{t('Articles worth writing')}</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{t('The questions no article covered, grouped by what they ask. The biggest group is the article that would help most patients.')}</p>
+        </div>
+        <button type="button" disabled={loading} onClick={() => find({ variables: { days } })} className="text-xs font-medium border border-gray-300 text-gray-700 bg-white rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap">
+          {loading ? t('Looking…') : called ? t('Look again') : t('Find what’s missing')}
+        </button>
+      </div>
+      {error && <div className="p-5"><ErrorAlert error={error} /></div>}
+      {g && !loading && (
+        <>
+          {!g.available && <div className="px-5 pt-4"><Alert tone="warning" title={t('The questions could not be grouped right now')}>{t('{n} questions had no article in this period. Try again in a few minutes.', { n: g.questions })}</Alert></div>}
+          {g.available && g.groups.length === 0 && (
+            <p className="p-6 text-sm text-gray-400">{g.questions === 0 ? t('Every question in this period had an article.') : t('{n} questions had no article, but none came up more than once.', { n: g.questions })}</p>
+          )}
+          {g.groups.length > 0 && (
+            <ul className="divide-y divide-gray-100">
+              {g.groups.map((x: Gap) => (
+                <li key={x.topic} className="px-5 py-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-medium text-gray-900">{x.topic}</p>
+                    <span className="text-xs font-medium text-amber-700 whitespace-nowrap">{t('{n} questions', { n: x.count })}</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">{t('Suggested article:')} <span className="font-medium">{x.suggestedTitle}</span></p>
+                  <p className="text-xs text-gray-400 mt-1">{x.examples.join(' · ')}</p>
+                  <p className="text-xs mt-1.5 flex flex-wrap gap-2">
+                    {x.tickets.slice(0, 5).map((tk) => <Link key={tk.id} href={`/tickets/${tk.id}`} className="text-brand-500 hover:underline">#{tk.number}</Link>)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -109,11 +157,15 @@ function Review() {
         )}
       </section>
 
+      <MissingArticles days={days} />
+
       <section className={`${card} p-5`}>
         <h2 className="text-sm font-semibold text-gray-900">{t('Before changing the assistant')}</h2>
         <p className="text-sm text-gray-600 mt-1">{t('Whoever maintains the system runs the test questions first and after any change to the instructions, an article or the AI model:')}</p>
         <pre className="mt-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 overflow-x-auto">cd backend && pnpm support-bot-eval</pre>
         <p className="text-xs text-gray-500 mt-2">{t('Add a test question whenever the assistant gets something wrong, so it can never get it wrong that way again.')}</p>
+        <p className="text-xs text-gray-500 mt-2">{t('The answers rated bad here, with the conversation that led to each, are listed by:')}</p>
+        <pre className="mt-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 overflow-x-auto">cd backend && pnpm support-bot-bad-answers</pre>
       </section>
     </div>
   );

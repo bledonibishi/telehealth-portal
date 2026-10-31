@@ -4,6 +4,7 @@ const MY_REFERRAL_FIELDS = gql`
   fragment MyReferralFields on MyReferral {
     code
     link
+    reward
     voucherAutoApply
     vouchers {
       id

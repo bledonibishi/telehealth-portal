@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { ProofReviewCard } from '@/components/onboarding/ProofReviewCard';
 import { PhotoTile } from '@/components/PhotoTile';
@@ -83,6 +84,10 @@ function PhotoCheckNotes({ checks }: { checks: Array<{ view: string; outcome: st
  */
 export function OnboardingReview({ onboarding }: { onboarding: any }) {
   const { t, timeAgo } = useI18n();
+  // Once onboarding is approved the ID and body photos have done their job: they stay closed until someone asks for them
+  // (need-to-know; each one opened is still recorded in the audit log). Before that, they are what is being reviewed.
+  const approved = onboarding.status === 'APPROVED';
+  const [showFiles, setShowFiles] = useState(!approved);
   const savedStepDecision = (step: string) =>
     onboarding?.stepFeedback?.find((f: { step: string; approved: boolean; reason?: string }) => f.step === step);
   return (
@@ -99,6 +104,9 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
                   >
                     {t(onboarding.status.replace(/_/g, ' '))}
                   </span>
+                  {approved && showFiles && (
+                    <button type="button" onClick={() => setShowFiles(false)} className="ml-auto mr-3 text-xs font-medium text-brand-600 hover:underline">{t('Hide ID and photos')}</button>
+                  )}
                   {onboarding.submittedAt && (
                     <span className="text-xs text-gray-400">
                       {t('Submitted {when}', { when: timeAgo(onboarding.submittedAt) })}
@@ -106,7 +114,7 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {showFiles && <div className="grid grid-cols-2 gap-3">
                   <div className="bg-gray-50 rounded-md p-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Identity check')}</p>
                     <p className="text-sm text-gray-800">
@@ -118,9 +126,30 @@ export function OnboardingReview({ onboarding }: { onboarding: any }) {
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('Photo compliance')}</p>
                     <p className="text-sm text-gray-800">{t(onboarding.photoReviewStatus.replace(/_/g, ' '))}</p>
                   </div>
-                </div>
+                </div>}
 
-                {(() => {
+                {approved && !showFiles && (
+                  <div className="rounded-lg border border-gray-200">
+                    <ul className="divide-y divide-gray-100">
+                      {[
+                        [t('Identity'), onboarding.personaStatus === 'NOT_CONFIGURED' ? t('Checked by a clinician') : t(onboarding.personaStatus.replace(/_/g, ' '))],
+                        [t('Body photos'), t(onboarding.photoReviewStatus.replace(/_/g, ' '))],
+                        [t('Prior medication use'), !onboarding.priorMedicationUse ? t('None — first time') : onboarding.prescriptionProofUnavailable ? t('Yes, without proof') : t('Yes, proof uploaded')],
+                      ].map(([k, v]) => (
+                        <li key={k} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                          <span className="text-gray-500">{k}</span>
+                          <span className="font-medium text-gray-900">{v}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
+                      <p className="text-xs text-gray-500">{t('Approved. The ID and photos are hidden until you need them, and each one opened is recorded.')}</p>
+                      <button type="button" onClick={() => setShowFiles(true)} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{t('Show ID and photos')}</button>
+                    </div>
+                  </div>
+                )}
+
+                {showFiles && (() => {
                   const stepProps = (step: string) => ({ savedDecision: savedStepDecision(step) });
 
                   return (

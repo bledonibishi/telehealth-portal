@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@apollo/client';
 import Link from 'next/link';
 import { GET_CONSULTATION } from '@/graphql/consultations';
@@ -48,26 +47,83 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 
 const initials = (first: string, last: string) => `${first?.[0] ?? ''}${last?.[0] ?? ''}`.toUpperCase();
 
-/** A questionnaire section that folds away; open by default, so no answer is hidden unless the reader hides it. */
-function AnswerSection({ title, count, children }: { title: string; count: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
+// Answers that need no attention: a plain no or none. Everything else (a yes, a list, free text) is shown first.
+const NOTHING_TO_NOTE = /^(no|none|none of the above|never|no, never|not applicable|n\/a|jo|asnjë|asnjë nga këto)\.?$/i;
+// Already shown in the key numbers at the top.
+const IN_KEY_FACTS = new Set(['weight_kg', 'height_cm', 'bmi_calculated']);
+
+function AnswerRow({ a, highlight = false }: { a: any; highlight?: boolean }) {
   return (
-    <section className="bg-white rounded-md border border-gray-200 overflow-hidden">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left">
-        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        <span className="flex items-center gap-2 text-xs text-gray-400">
-          {count}
-          <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-        </span>
-      </button>
-      {/* Animating grid rows from 0fr to 1fr slides the height to its natural size without measuring it. */}
-      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-        {/* inert + aria-hidden: folded answers are hidden from keyboard and screen-reader users, not only from sight. */}
-        <div className="overflow-hidden min-h-0" aria-hidden={!open} {...(open ? {} : { inert: '' as unknown as boolean })}>
-          <div className="border-t border-gray-200 divide-y divide-gray-100">{children}</div>
+    <div className="px-4 py-2.5 grid gap-x-6 gap-y-0.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <p className="text-[13px] text-gray-500">{a.question}</p>
+      <p className={`text-sm whitespace-pre-wrap ${highlight ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>{a.answer}</p>
+    </div>
+  );
+}
+
+/**
+ * The questionnaire for a doctor deciding: the answers worth reading first, then the rest (all a plain no or none) one click
+ * away, grouped by section. Nothing is hidden that can't be opened, and nothing worth reading is folded away.
+ */
+function Answers({ answers }: { answers: any[] }) {
+  const { t } = useI18n();
+  const shown = answers.filter((a) => !IN_KEY_FACTS.has(a.questionId));
+  const notable = shown.filter((a) => !NOTHING_TO_NOTE.test(String(a.answer ?? '').trim()));
+  const rest = shown.filter((a) => NOTHING_TO_NOTE.test(String(a.answer ?? '').trim()));
+  return (
+    <div className="space-y-3">
+      <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <h2 className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {t('Answers to look at')}<span className="font-normal normal-case tracking-normal text-gray-400">{notable.length}</span>
+        </h2>
+        {notable.length ? <div className="divide-y divide-gray-100">{notable.map((a) => <AnswerRow key={a.questionId} a={a} highlight />)}</div>
+          : <p className="px-4 py-4 text-sm text-gray-500">{t('Every answer is a plain no or none.')}</p>}
+      </section>
+      {rest.length > 0 && (
+        <details className="group overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
+            <span>{t('Other answers ({n}): all no or none', { n: rest.length })}</span>
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+          </summary>
+          <div className="border-t border-gray-100">
+            {groupBySection(rest).map(([section, list]) => (
+              <div key={section}>
+                <p className="bg-gray-50 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t(section)}</p>
+                <div className="divide-y divide-gray-100">{list.map((a) => <AnswerRow key={a.questionId} a={a} />)}</div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** The numbers a doctor checks first, read from the answers: age, weight, height and the BMI they make. */
+function KeyFacts({ answers, age }: { answers: any[]; age: number }) {
+  const { t } = useI18n();
+  const num = (id: string) => {
+    const v = parseFloat(String(answers.find((a) => a.questionId === id)?.answer ?? '').replace(',', '.'));
+    return Number.isFinite(v) ? v : null;
+  };
+  const weight = num('weight_kg');
+  const height = num('height_cm');
+  const bmi = weight && height ? weight / ((height / 100) * (height / 100)) : null;
+  const facts: Array<[string, string]> = [
+    [t('Age'), t('{n} yrs', { n: age })],
+    ...(weight ? [[t('Weight'), `${weight} kg`] as [string, string]] : []),
+    ...(height ? [[t('Height'), `${height} cm`] as [string, string]] : []),
+    ...(bmi ? [[t('BMI'), bmi.toFixed(1)] as [string, string]] : []),
+  ];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
+      {facts.map(([label, value]) => (
+        <div key={label} className="px-4 py-3">
+          <p className="text-xs text-gray-500">{label}</p>
+          <p className="text-lg font-semibold tabular-nums text-gray-900">{value}</p>
         </div>
-      </div>
-    </section>
+      ))}
+    </div>
   );
 }
 
@@ -112,7 +168,7 @@ export function ConsultationDetail({ id }: { id: string }) {
                 </div>
                 <p className="text-sm text-gray-500 mt-0.5">
                   {t('{n} yrs', { n: differenceInYears(new Date(), dob) })} · {c.kind} · {t('submitted {when}', { when: timeAgo(c.submittedAt) })}
-                  {c.questionnaireVersion && <span className="text-gray-400"> · {c.questionnaireVersion}</span>}
+                  {' · '}<a href={`mailto:${c.patient.email}`} className="hover:text-brand-500">{c.patient.email}</a>
                 </p>
               </div>
             </div>
@@ -128,58 +184,34 @@ export function ConsultationDetail({ id }: { id: string }) {
             currentUserId={currentUserId}
             patientId={c.patient.id}
             blockedReason={c.decisionBlockedReason}
+            criticalFlags={(c.redFlags ?? []).filter((f: any) => f.severity === 'CRITICAL').map((f: any) => f.description)}
           />
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4 sm:p-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
             <div data-guide="consultation:answers" className="space-y-5 min-w-0">
+              <KeyFacts answers={c.quizAnswers ?? []} age={differenceInYears(new Date(), dob)} />
+
               <RedFlagBanner redFlags={c.redFlags} />
 
-              {onboarding && onboarding.status !== 'IN_PROGRESS' && (
+              {/* Once approved, the side card says so; the full review only shows while it still needs deciding. */}
+              {onboarding && onboarding.status !== 'IN_PROGRESS' && onboarding.status !== 'APPROVED' && (
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold text-gray-900">{t('Identity & onboarding')}</h2>
                   <OnboardingReview onboarding={onboarding} />
                 </section>
               )}
 
-              {groupBySection(c.quizAnswers ?? []).map(([section, answers]) => (
-                <AnswerSection key={section} title={t(section)} count={answers.length === 1 ? t('1 answer') : t('{n} answers', { n: answers.length })}>
-                  {answers.map((a: any, i: number) => (
-                    <div key={a.questionId} className="px-4 py-2.5 flex flex-wrap items-baseline gap-x-6 gap-y-0.5">
-                      <p className="flex-1 basis-56 text-[13px] text-gray-500">
-                        <span className="text-gray-300 mr-2 tabular-nums">{i + 1}</span>
-                        {a.question}
-                      </p>
-                      <p className="flex-1 basis-40 text-sm font-medium text-gray-900 whitespace-pre-wrap">{a.answer}</p>
-                    </div>
-                  ))}
-                </AnswerSection>
-              ))}
+              <Answers answers={c.quizAnswers ?? []} />
             </div>
 
             <aside data-guide="consultation:sidebar" className="space-y-4 min-w-0">
-              <div className="bg-white rounded-md border border-gray-200 p-4">
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Patient')}</h3>
-                <dl className="space-y-2.5 text-sm">
-                  <div>
-                    <dt className="text-xs text-gray-500">{t('Email')}</dt>
-                    <dd className="break-all">
-                      <a href={`mailto:${c.patient.email}`} className="hover:text-brand-500">{c.patient.email}</a>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-gray-500">{t('Date of birth')}</dt>
-                    <dd>{fmt(dob, 'dd/MM/yyyy')} <span className="text-gray-400">· {t('{n} yrs', { n: differenceInYears(new Date(), dob) })}</span></dd>
-                  </div>
-                </dl>
-              </div>
-
               <OnboardingSummary patientId={c.patient.id} />
 
               {c.prescription && <PrescriptionCard prescription={c.prescription} patientId={c.patient.id} />}
 
-              <div className="bg-white rounded-md border border-gray-200 p-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('Prior consultations')}</h3>
                 <PatientHistory patientId={c.patient.id} excludeId={c.id} />
               </div>

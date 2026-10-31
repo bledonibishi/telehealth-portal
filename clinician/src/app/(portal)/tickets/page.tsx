@@ -14,6 +14,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { LoadingState } from '@telehealth/loading';
 import NewTicketDialog from '@/components/tickets/NewTicketDialog';
 import SavedRepliesDialog from '@/components/tickets/SavedRepliesDialog';
+import DoctorInbox from '@/components/tickets/DoctorInbox';
 import {
   isClosed, withEngineering, replyState, shortHours, PRIORITY_CLS, PRIORITY_LABEL, STATUS_CLS, STATUS_LABEL, TYPE_CLS, TYPE_LABEL,
   type Ticket, type TicketPriority, type TicketStatus, type TicketType,
@@ -25,7 +26,12 @@ type View = 'ACTIVE' | 'MINE' | 'ENGINEERING' | 'RESOLVED';
 const PRIORITY_RANK: Record<TicketPriority, number> = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 };
 const STATUS_RANK: Record<TicketStatus, number> = { OPEN: 0, IN_PROGRESS: 1, WAITING_ON_PATIENT: 2, RESOLVED: 3, CLOSED: 4 };
 
+/** Doctors get their own inbox of medical questions; support and admins the full ticket list. */
 export default function TicketsPage() {
+  return getCurrentRole() === 'DOCTOR' ? <DoctorInbox /> : <TicketsList />;
+}
+
+function TicketsList() {
   const { t, timeAgo } = useI18n();
   const router = useRouter();
   const { data, loading, error } = useQuery(GET_TICKETS, { pollInterval: 30_000 });

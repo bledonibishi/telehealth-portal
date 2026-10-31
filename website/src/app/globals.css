@@ -577,13 +577,14 @@ ul,ol{list-style:none}
 }
 
 /* The programme buttons, the Shop button and the language switch no longer fit beside the links on narrower screens */
-@media (max-width:1620px){.pv-nav-links{display:none}}
+/* Without the links in the middle, the language switch joins the programme buttons on the right instead of floating in the gap. */
+@media (max-width:1620px){.pv-nav-links{display:none}.pv-lang.pv-lang-top{margin-left:auto}}
 /* The logo, the Shop button, the language switch and three full-size buttons need about 1200px, so the buttons drop to their own row before that */
 @media (max-width:1220px){
   .pv-nav-inner{flex-direction:column;align-items:stretch;gap:10px;padding-block:10px;position:relative}
-  .pv-lang-top{position:absolute;top:18px;right:var(--px);margin:0}
+  .pv-lang.pv-lang-top{position:absolute;top:16px;right:var(--px);margin:0;height:36px;padding:0 12px 0 10px}
   /* The language switch sits in the top right corner: the Shop button stops short of it. */
-  .pv-nav-brand{padding-right:58px}
+  .pv-nav-brand{padding-right:84px}
   .pv-logo{align-self:flex-start}
   .pv-nav-cta{display:grid;grid-template-columns:repeat(3,1fr)}
   #treatments,#how-it-works,#bmi,#contact{scroll-margin-top:140px}
@@ -733,7 +734,9 @@ ul,ol{list-style:none}
 @media (min-width:821px){.th-prod-card .th-billing{grid-template-columns:1fr 1fr}.th-prod-card .th-billing-opt{padding:8px 12px}.th-prod-card .th-billing-body>small{font-size:12px;line-height:1.35}.th-prod-card .th-dose-chip{padding:7px 14px;font-size:14px}.th-prod-card .th-plan-price{font-size:26px}.th-prod-card .th-prod-cta{padding:11px 22px;font-size:15px}}
 
 /* ── Language switch, the patients-treated card's text, the legal pages and the cookie banner ── */
-.pv-lang{margin-left:2px;padding:4px 10px;letter-spacing:.04em;border:1.5px solid var(--c-border);border-radius:999px;font-size:13px;font-weight:600;color:var(--c-brand);white-space:nowrap}
+/* Same shape as the Shop button beside it: a 40px pill, a small globe and the language code. */
+.pv-lang{display:inline-flex;align-items:center;gap:6px;height:40px;margin-left:2px;padding:0 14px 0 12px;letter-spacing:.04em;border:1.5px solid var(--c-border);border-radius:999px;background:#fff;font-size:13px;font-weight:600;color:var(--c-brand);white-space:nowrap;transition:background .2s,border-color .2s}
+.pv-lang svg{flex-shrink:0;opacity:.8}
 .pv-lang:hover{background:var(--c-bg-brand);color:var(--c-brand)!important}
 .pv-float-text{font-size:17px}
 .pv-chooser-note{font-size:12px;line-height:1.45;color:var(--c-muted);padding:4px 6px 2px}

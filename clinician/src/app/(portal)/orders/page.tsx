@@ -228,7 +228,7 @@ export default function OrdersPage() {
       {loading && !data && <div className="p-4 sm:p-6"><SkeletonList rows={4} label={t('Loading…')} /></div>}
       <InlineError error={error} className="p-6" />
 
-      <div className="divide-y divide-gray-100">
+      <div className="space-y-4 p-4 sm:p-6">
         {orders.map((order) => (
           <OrderCard key={order.id} order={order} refetchQueries={[{ query: GET_ORDERS }]} />
         ))}

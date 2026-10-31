@@ -192,7 +192,7 @@ export function OrderCard({
   const showDetail = open || !finished;
 
   return (
-    <div className={`px-4 sm:px-6 py-5 bg-white hover:bg-gray-50/60 ${cancelled ? 'opacity-70' : ''}`}>
+    <div className={`rounded-xl border border-gray-200 bg-white px-4 sm:px-6 py-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ${cancelled ? 'opacity-70' : ''}`}>
       <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-6">
         <div className="flex-1 min-w-0">
           {/* Who it is for, where it stands, and the code on the parcel */}

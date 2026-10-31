@@ -47,16 +47,21 @@ export default function ThemeToggle() {
       aria-label={light ? t('Switch to dark mode') : t('Switch to light mode')}
       title={light ? t('Dark mode') : t('Light mode')}
       onClick={() => choose(light ? 'dark' : 'light')}
-      className="relative w-[58px] h-7 shrink-0 rounded-full border border-[color:var(--border)] bg-[color:var(--bg-subtle)] flex items-center justify-between px-[7px] transition-colors"
+      // Two 24px slots with a 2px gap inside a 2px padding: the knob is exactly one slot and moves exactly one slot (26px),
+      // so it sits centred on the sun or the moon in both modes.
+      className="relative inline-flex h-[30px] w-[56px] shrink-0 items-center gap-[2px] rounded-full border border-[color:var(--border)] bg-[color:var(--bg-subtle)] p-[2px] transition-colors"
     >
-      <SunIcon className={`w-4 h-4 relative z-10 transition-colors ${light ? 'text-amber-500' : 'text-[color:var(--t-dim)]'}`} />
-      <MoonIcon className={`w-4 h-4 relative z-10 transition-colors ${light ? 'text-slate-400' : 'text-sky-200'}`} />
       <span
-        className={`absolute top-[2px] left-[2px] w-6 h-6 rounded-full shadow transition-transform duration-200 ${
-          light ? 'translate-x-0 bg-white' : 'translate-x-[30px] bg-sky-500/70'
-        }`}
+        aria-hidden
+        className={`absolute left-[2px] top-[2px] h-6 w-6 rounded-full transition-transform duration-200 ${light ? 'translate-x-0 bg-white' : 'translate-x-[26px] bg-sky-500/70'}`}
         style={light ? { boxShadow: '0 1px 4px rgba(15,23,42,.25)' } : undefined}
       />
+      <span className="relative z-10 flex h-6 w-6 items-center justify-center">
+        <SunIcon className={`h-4 w-4 transition-colors ${light ? 'text-amber-500' : 'text-[color:var(--t-dim)]'}`} />
+      </span>
+      <span className="relative z-10 flex h-6 w-6 items-center justify-center">
+        <MoonIcon className={`h-4 w-4 transition-colors ${light ? 'text-slate-400' : 'text-sky-100'}`} />
+      </span>
     </button>
   );
 }

@@ -1,4 +1,4 @@
-import { answerProblems, EVAL_CASES } from './eval-cases';
+import { answerProblems, EVAL_CASES, GROUNDING_CASES } from './eval-cases';
 import { DEFAULT_ARTICLES } from './support-knowledge';
 
 describe('the assistant’s test questions', () => {
@@ -21,5 +21,16 @@ describe('the assistant’s test questions', () => {
 
   it('the starting articles themselves pass the safety check', () => {
     for (const a of DEFAULT_ARTICLES) expect(answerProblems(a.body)).toEqual([]);
+  });
+
+  it('every order question that is not medical expects the order article', () => {
+    for (const c of EVAL_CASES.filter((x) => x.orders && !x.expect.intent.includes('MEDICAL'))) expect(c.expect.article).toBe('track-order');
+  });
+
+  it('the grounding cases are unique and test both outcomes, including other languages', () => {
+    expect(new Set(GROUNDING_CASES.map((c) => c.name)).size).toBe(GROUNDING_CASES.length);
+    expect(GROUNDING_CASES.filter((c) => c.grounded).length).toBeGreaterThanOrEqual(3);
+    expect(GROUNDING_CASES.filter((c) => !c.grounded).length).toBeGreaterThanOrEqual(5);
+    for (const c of GROUNDING_CASES) for (const s of c.sources) expect(s).toBeTruthy();
   });
 });

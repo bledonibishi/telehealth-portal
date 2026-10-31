@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useUnreadMessages } from '@/lib/useUnreadMessages';
 import { Icon, type IconName } from './Icon';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Item = { href: string; label: string; icon: IconName; badge?: boolean };
 
@@ -13,6 +14,7 @@ type Item = { href: string; label: string; icon: IconName; badge?: boolean };
  */
 export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: string; dosesIcon: IconName; onMore: () => void }) {
   const pathname = usePathname();
+  const { t } = useI18n();
   const { unread } = useUnreadMessages();
   const items: Item[] = [
     { href: '/dashboard', label: 'Home', icon: 'home' },
@@ -22,7 +24,7 @@ export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: strin
   ];
   const cell = 'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-xs font-medium transition-colors';
   return (
-    <nav aria-label="Main" className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+    <nav aria-label={t('Main')} className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
       <div className="flex">
         {items.map((it) => {
           const active = pathname === it.href || pathname.startsWith(it.href + '/');
@@ -34,13 +36,13 @@ export function BottomNav({ dosesLabel, dosesIcon, onMore }: { dosesLabel: strin
                   <span className="absolute -top-1 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-brand-600 text-white text-[10px] font-semibold flex items-center justify-center">{unread}</span>
                 )}
               </span>
-              {it.label}
+              {t(it.label)}
             </Link>
           );
         })}
         <button type="button" onClick={onMore} data-guide="nav-more" className={`${cell} text-slate-500 hover:text-slate-800`}>
           <span className="flex items-center justify-center w-12 h-7"><Icon name="menu" className="w-5 h-5" /></span>
-          More
+          {t('More')}
         </button>
       </div>
     </nav>
